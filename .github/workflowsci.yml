@@ -1,0 +1,47 @@
+name: Rust AI CI
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Ambil Kode
+      - uses: actions/checkout@v4
+
+      # 2. Install Rust TERBARU (Stable)
+      # Ini mengatasi masalah versi Rust lama di Replit
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      # 3. Cache (Supaya build kedua, ketiga, dst ngebut)
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      # 4. Cek Error (Pengganti cargo check di Replit)
+      - name: Check Code
+        run: cargo check --verbose
+
+      # 5. Install Wasm-Pack
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      # 6. Build WASM (Hanya jika Check lolos)
+      - name: Build WASM
+        run: wasm-pack build --target web --out-dir pkg
+
+      # 7. Simpan Hasil Build (Bisa didownload)
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-wasm-output
+          path: pkg/
