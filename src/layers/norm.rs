@@ -15,7 +15,9 @@ impl StrictBatchNormConfig {
 
 #[derive(Module, Debug)]
 pub struct StrictBatchNorm<B: Backend> {
-    inner: nn::BatchNorm<B, 2>, // Biasanya untuk 2D features (setelah Conv)
+    // PERBAIKAN DI SINI:
+    // Hapus angka 2. Cukup <B> saja.
+    inner: nn::BatchNorm<B>, 
 }
 
 impl<B: Backend> StrictBatchNorm<B> {
