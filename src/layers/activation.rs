@@ -11,12 +11,14 @@ impl StrictRelu {
         Self { inner: nn::Relu::new() }
     }
 
-    pub fn forward<B: Backend>(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+    // PERBAIKAN: Ubah Tensor<B, 2> menjadi Tensor<B, 4>
+    // Agar kompatibel dengan WasmTensor yang sekarang universal 4D
+    pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         self.inner.forward(input)
     }
 }
 
-// 2. Gelu (Gaussian Error Linear Unit - Dipakai di LLM)
+// 2. Gelu (Gaussian Error Linear Unit)
 #[derive(Module, Debug, Clone)]
 pub struct StrictGelu {
     inner: nn::Gelu,
@@ -27,13 +29,13 @@ impl StrictGelu {
         Self { inner: nn::Gelu::new() }
     }
 
-    pub fn forward<B: Backend>(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+    // PERBAIKAN: Ubah ke 4D
+    pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         self.inner.forward(input)
     }
 }
 
-// 3. Sigmoid (Untuk probabilitas 0-1)
-// Burn belum punya struct khusus Sigmoid di nn, jadi kita panggil tensor ops langsung
+// 3. Sigmoid
 #[derive(Module, Debug, Clone)]
 pub struct StrictSigmoid;
 
@@ -42,7 +44,8 @@ impl StrictSigmoid {
         Self
     }
 
-    pub fn forward<B: Backend>(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
+    // PERBAIKAN: Ubah ke 4D
+    pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         burn::tensor::activation::sigmoid(input)
     }
 }
