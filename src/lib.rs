@@ -83,6 +83,31 @@ impl WasmStrictLinear {
         let out_4d = out.reshape([b_out, d_out, 1, 1]);
         WasmTensor { inner: out_4d }
     }
+
+    // --- TAMBAHAN BARU ---
+    // JS memanggil: layer.load_weights(floatArrayWeights, floatArrayBias)
+    pub fn load_weights(&mut self, weights: &[f32], bias: &[f32]) {
+        // 1. Clone layer saat ini (karena kita akan menggantinya)
+        // (Di Rust, memodifikasi struct in-place yang punya generic agak tricky, 
+        //  jadi kita clone -> update -> replace).
+        let current_layer = self.inner.clone();
+
+        // 2. Cek apakah bias kosong (panjang 0)
+        let bias_opt = if bias.is_empty() {
+            None
+        } else {
+            Some(bias.to_vec())
+        };
+
+        // 3. Panggil fungsi load_weights yang kita buat di linear.rs
+        let updated_layer = current_layer.load_weights(
+            weights.to_vec(), 
+            bias_opt
+        );
+
+        // 4. Ganti layer lama dengan layer baru yang sudah pintar
+        self.inner = updated_layer;
+    }
 }
 
 #[wasm_bindgen]
