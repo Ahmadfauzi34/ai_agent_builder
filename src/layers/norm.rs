@@ -1,6 +1,6 @@
 use burn::prelude::*;
 
-// 1. BatchNorm (Untuk Gambar)
+// 1. BatchNorm
 #[derive(Config, Debug)]
 pub struct StrictBatchNormConfig {
     pub num_features: usize,
@@ -15,8 +15,7 @@ impl StrictBatchNormConfig {
 
 #[derive(Module, Debug)]
 pub struct StrictBatchNorm<B: Backend> {
-    // PERBAIKAN DI SINI:
-    // Hapus angka 2. Cukup <B> saja.
+    // PERBAIKAN BURN 0.20: Hapus angka 2, cukup <B>
     inner: nn::BatchNorm<B>, 
 }
 
@@ -26,7 +25,7 @@ impl<B: Backend> StrictBatchNorm<B> {
     }
 }
 
-// 2. LayerNorm (Untuk Teks/Transformer)
+// 2. LayerNorm
 #[derive(Config, Debug)]
 pub struct StrictLayerNormConfig {
     pub d_model: usize,
