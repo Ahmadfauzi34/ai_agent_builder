@@ -1,6 +1,0 @@
-modules = ["rust-stable", "rust-nightly"]
-[agent]
-expertMode = true
-
-[nix]
-channel = "stable-25_05"
