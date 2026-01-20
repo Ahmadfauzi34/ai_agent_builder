@@ -1,86 +1,63 @@
 use burn::prelude::*;
-use burn::module::{Module, Param}; // PENTING: Untuk load_record
-use burn::tensor::TensorData;
+use burn::nn::{Linear, LinearConfig};
+use wasm_bindgen::prelude::*;
+use crate::{WasmBackend, WasmTensor}; // Import dari lib.rs
 
-// 1. CONFIG (Tetap sama)
+// --- CONFIG & MODULE ---
 #[derive(Config, Debug)]
-pub struct StrictLinearConfig {
+pub struct LinearLayerConfig {
     pub d_input: usize,
     pub d_output: usize,
     #[config(default = true)]
     pub bias: bool,
 }
 
-impl StrictLinearConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> StrictLinear<B> {
-        let linear = nn::LinearConfig::new(self.d_input, self.d_output)
+impl LinearLayerConfig {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> LinearLayer<B> {
+        let linear = LinearConfig::new(self.d_input, self.d_output)
             .with_bias(self.bias)
             .init(device);
-
-        StrictLinear {
-            inner: linear,
-            expected_input_dim: self.d_input,
-        }
+        LinearLayer { inner: linear }
     }
 }
 
-// 2. MODULE
 #[derive(Module, Debug)]
-pub struct StrictLinear<B: Backend> {
-    inner: nn::Linear<B>,
-    expected_input_dim: usize,
+pub struct LinearLayer<B: Backend> {
+    inner: Linear<B>,
 }
 
-impl<B: Backend> StrictLinear<B> {
+impl<B: Backend> LinearLayer<B> {
     pub fn forward(&self, input: Tensor<B, 2>) -> Tensor<B, 2> {
-        let [_batch, dim] = input.dims();
-        
-        if dim != self.expected_input_dim {
-            panic!("STRICT ERROR: Input dim {} != Layer dim {}", dim, self.expected_input_dim);
-        }
-
         self.inner.forward(input)
     }
+}
 
-    // --- FITUR BARU: LOAD WEIGHTS ---
-    // Fungsi ini memakan layer lama (self), menyuntikkan weights, dan mengembalikan layer baru.
-    pub fn load_weights(self, w_flat: Vec<f32>, b_flat: Option<Vec<f32>>) -> Self {
-        let device = self.inner.weight.device();
-        let [d_out, d_in] = self.inner.weight.dims(); // Shape asli layer
+// --- WASM WRAPPER (Pindahan dari lib.rs) ---
+#[wasm_bindgen]
+pub struct WasmLinear {
+    inner: LinearLayer<WasmBackend>,
+}
 
-        // 1. Validasi Ukuran Weights
-        if w_flat.len() != d_out * d_in {
-            panic!("STRICT LOAD: Weight length mismatch. Expected {}, got {}", d_out * d_in, w_flat.len());
-        }
-
-        // 2. Buat Tensor Weight
-        let w_data = TensorData::new(w_flat, [d_out, d_in]);
-        let w_tensor = Tensor::from_data(w_data, &device);
-
-        // 3. Buat Tensor Bias (Jika ada)
-        let b_param = if let Some(b_data) = b_flat {
-            if b_data.len() != d_out {
-                panic!("STRICT LOAD: Bias length mismatch. Expected {}, got {}", d_out, b_data.len());
-            }
-            let b_tensor = Tensor::from_data(TensorData::new(b_data, [d_out]), &device);
-            Some(Param::from_tensor(b_tensor))
-        } else {
-            None
+#[wasm_bindgen]
+impl WasmLinear {
+    #[wasm_bindgen(constructor)]
+    pub fn new(in_dim: usize, out_dim: usize, bias: bool) -> WasmLinear {
+        let device = Default::default();
+        let config = LinearLayerConfig { 
+            d_input: in_dim, 
+            d_output: out_dim, 
+            bias 
         };
+        WasmLinear { inner: config.init(&device) }
+    }
 
-        // 4. Bungkus jadi Record (Format penyimpanan Burn)
-        let record = nn::LinearRecord {
-            weight: Param::from_tensor(w_tensor),
-            bias: b_param,
-        };
-
-        // 5. Load Record ke dalam Module
-        let new_inner = self.inner.load_record(record);
-
-        // 6. Kembalikan Layer Baru yang sudah punya "Otak"
-        StrictLinear {
-            inner: new_inner,
-            expected_input_dim: self.expected_input_dim,
-        }
+    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
+        let x = input.inner.clone();
+        let [b, d, _, _] = x.dims(); 
+        let x_2d = x.reshape([b, d]); 
+        let out = self.inner.forward(x_2d);
+        let [b_out, d_out] = out.dims();
+        let out_4d = out.reshape([b_out, d_out, 1, 1]);
+        WasmTensor { inner: out_4d }
     }
 }
