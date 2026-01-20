@@ -1,18 +1,23 @@
 use wasm_bindgen::prelude::*;
 use burn::prelude::*;
-use burn::tensor::TensorData; // Kita hanya pakai TensorData sekarang
+use burn::tensor::TensorData;
 
-// Import modul layer
+// 1. REGISTRASI MODUL
+// Pastikan folder src/layers/ ada dan berisi activation.rs & mod.rs
 pub mod layers;
-use layers::linear::{StrictLinear, StrictLinearConfig};
-use layers::conv::{StrictConv2d, StrictConv2dConfig};
-use layers::embedding::{StrictEmbedding, StrictEmbeddingConfig};
-use layers::activation::{StrictRelu, StrictGelu};
 
-// Kunci Backend ke NdArray (CPU) untuk WASM
-// (Nanti bisa diganti Wgpu jika mau WebGPU)
+// Import Enum Aktivasi yang baru kita buat
+use layers::activation::{Activation, ActivationConfig};
+
+// Import Config bawaan Burn untuk parameter aktivasi
+use burn::nn::{
+    LeakyReluConfig, PreluConfig, HardSigmoidConfig, SoftplusConfig, SwiGluConfig
+};
+
+// 2. KUNCI BACKEND (CPU)
 type WasmBackend = burn_ndarray::NdArray<f32>;
 
+// 3. JEMBATAN DATA (WasmTensor)
 #[wasm_bindgen]
 pub struct WasmTensor {
     inner: Tensor<WasmBackend, 4>, 
@@ -24,31 +29,20 @@ impl WasmTensor {
     pub fn new(data: &[f32], shape: &[usize]) -> WasmTensor {
         let device = Default::default();
         
-        // Logic Shape 4D (Tetap sama)
+        // Paksa shape menjadi 4 Dimensi [d1, d2, d3, d4]
         let mut dims = [1, 1, 1, 1];
         for (i, &d) in shape.iter().enumerate().take(4) {
             dims[i] = d;
         }
 
-        // PERUBAHAN V0.20:
-        // TensorData sekarang lebih strict soal bytes/dtype.
-        // new(data, shape) biasanya masih didukung, tapi kita pastikan alurnya.
-        let tensor_data = TensorData::new(
-            data.to_vec(), 
-            dims
-        );
-
+        let tensor_data = TensorData::new(data.to_vec(), dims);
         let tensor = Tensor::from_data(tensor_data, &device);
         
         WasmTensor { inner: tensor }
     }
 
     pub fn to_array(&self) -> Vec<f32> {
-        // PERUBAHAN V0.20:
-        // Mengambil data balik ke Vec<f32>
         let data = self.inner.to_data();
-        
-        // Kita pastikan konversi ke slice aman
         data.as_slice::<f32>().unwrap().to_vec()
     }
     
@@ -57,137 +51,92 @@ impl WasmTensor {
     }
 }
 
-// --- WRAPPER LAYER (Tidak banyak berubah karena API Layer Burn stabil) ---
-
+// 4. WRAPPER AKTIVASI (Menggunakan Enum Activation)
 #[wasm_bindgen]
-pub struct WasmStrictLinear {
-    inner: StrictLinear<WasmBackend>,
+pub struct WasmActivation {
+    inner: Activation<WasmBackend>,
 }
 
 #[wasm_bindgen]
-impl WasmStrictLinear {
-    #[wasm_bindgen(constructor)]
-    pub fn new(in_dim: usize, out_dim: usize) -> WasmStrictLinear {
+impl WasmActivation {
+    // --- Factory Methods (Pembuat Layer) ---
+
+    #[wasm_bindgen]
+    pub fn new_relu() -> WasmActivation {
         let device = Default::default();
-        let config = StrictLinearConfig::new(in_dim, out_dim);
-        let layer = config.init(&device);
-        WasmStrictLinear { inner: layer }
+        WasmActivation { inner: ActivationConfig::Relu.init(&device) }
     }
 
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let [b, d, _, _] = x.dims(); 
-        let x_2d = x.reshape([b, d]); 
-        let out = self.inner.forward(x_2d);
-        let [b_out, d_out] = out.dims();
-        let out_4d = out.reshape([b_out, d_out, 1, 1]);
-        WasmTensor { inner: out_4d }
+    #[wasm_bindgen]
+    pub fn new_gelu() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Gelu.init(&device) }
     }
 
-    // --- TAMBAHAN BARU ---
-    // JS memanggil: layer.load_weights(floatArrayWeights, floatArrayBias)
-    pub fn load_weights(&mut self, weights: &[f32], bias: &[f32]) {
-        // 1. Clone layer saat ini (karena kita akan menggantinya)
-        // (Di Rust, memodifikasi struct in-place yang punya generic agak tricky, 
-        //  jadi kita clone -> update -> replace).
-        let current_layer = self.inner.clone();
+    #[wasm_bindgen]
+    pub fn new_sigmoid() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Sigmoid.init(&device) }
+    }
 
-        // 2. Cek apakah bias kosong (panjang 0)
-        let bias_opt = if bias.is_empty() {
-            None
-        } else {
-            Some(bias.to_vec())
-        };
+    #[wasm_bindgen]
+    pub fn new_tanh() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Tanh.init(&device) }
+    }
 
-        // 3. Panggil fungsi load_weights yang kita buat di linear.rs
-        let updated_layer = current_layer.load_weights(
-            weights.to_vec(), 
-            bias_opt
+    #[wasm_bindgen]
+    pub fn new_hard_swish() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::HardSwish.init(&device) }
+    }
+
+    // --- Factory Methods dengan Parameter ---
+
+    #[wasm_bindgen]
+    pub fn new_leaky_relu(slope: f64) -> WasmActivation {
+        let device = Default::default();
+        let config = ActivationConfig::LeakyRelu(
+            LeakyReluConfig::new().with_negative_slope(slope)
         );
-
-        // 4. Ganti layer lama dengan layer baru yang sudah pintar
-        self.inner = updated_layer;
+        WasmActivation { inner: config.init(&device) }
     }
-}
 
-#[wasm_bindgen]
-pub struct WasmConv2d {
-    inner: StrictConv2d<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmConv2d {
-    #[wasm_bindgen(constructor)]
-    pub fn new(c_in: usize, c_out: usize, kernel: usize) -> WasmConv2d {
+    #[wasm_bindgen]
+    pub fn new_prelu() -> WasmActivation {
         let device = Default::default();
-        let config = StrictConv2dConfig::new(c_in, c_out, kernel);
-        WasmConv2d { inner: config.init(&device) }
+        // Prelu punya weights yang bisa dilatih, diinit default dulu
+        let config = ActivationConfig::Prelu(PreluConfig::new());
+        WasmActivation { inner: config.init(&device) }
     }
 
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmEmbedding {
-    inner: StrictEmbedding<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmEmbedding {
-    #[wasm_bindgen(constructor)]
-    pub fn new(n_vocab: usize, d_model: usize) -> WasmEmbedding {
+    #[wasm_bindgen]
+    pub fn new_swiglu(d_model: usize) -> WasmActivation {
         let device = Default::default();
-        let config = StrictEmbeddingConfig::new(n_vocab, d_model);
-        WasmEmbedding { inner: config.init(&device) }
+        // SwiGlu butuh dimensi input karena dia memecah tensor
+        let config = ActivationConfig::SwiGlu(SwiGluConfig::new(d_model));
+        WasmActivation { inner: config.init(&device) }
     }
 
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x_float = input.inner.clone();
-        let x_int = x_float.int(); 
-        let [b, s, _, _] = x_int.dims();
-        let x_2d = x_int.reshape([b, s]);
-        let out = self.inner.forward(x_2d);
-        let [b_out, s_out, d_out] = out.dims();
-        let out_4d = out.reshape([b_out, s_out, d_out, 1]);
-        WasmTensor { inner: out_4d }
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmRelu {
-    inner: StrictRelu,
-}
-
-#[wasm_bindgen]
-impl WasmRelu {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmRelu {
-        WasmRelu { inner: StrictRelu::new() }
+    #[wasm_bindgen]
+    pub fn new_hard_sigmoid(alpha: f64, beta: f64) -> WasmActivation {
+        let device = Default::default();
+        let config = ActivationConfig::HardSigmoid(
+            HardSigmoidConfig::new().with_alpha(alpha).with_beta(beta)
+        );
+        WasmActivation { inner: config.init(&device) }
     }
 
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmGelu {
-    inner: StrictGelu,
-}
-
-#[wasm_bindgen]
-impl WasmGelu {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmGelu {
-        WasmGelu { inner: StrictGelu::new() }
+    #[wasm_bindgen]
+    pub fn new_softplus(beta: f64) -> WasmActivation {
+        let device = Default::default();
+        let config = ActivationConfig::Softplus(
+            SoftplusConfig::new().with_beta(beta)
+        );
+        WasmActivation { inner: config.init(&device) }
     }
 
+    // --- Forward Pass ---
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
         let x = input.inner.clone();
         let out = self.inner.forward(x);
