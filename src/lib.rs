@@ -6,7 +6,7 @@ use burn::tensor::TensorData;
 pub mod layers;
 
 // 2. KUNCI BACKEND (CPU)
-// Kita buat pub agar bisa dipakai di file lain
+// pub agar bisa diakses oleh file layer lain
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
 // 3. JEMBATAN DATA (WasmTensor)
