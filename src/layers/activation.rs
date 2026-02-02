@@ -1,18 +1,12 @@
 use burn::prelude::*;
 use burn::nn::{
-    Gelu, HardSigmoid, HardSigmoidConfig, LeakyRelu, LeakyReluConfig, PRelu,
+    Gelu, HardSigmoid, HardSigmoidConfig, HardSwish, LeakyRelu, LeakyReluConfig, PRelu,
     PReluConfig, Relu, Sigmoid, Softplus, SoftplusConfig, SwiGlu, SwiGluConfig, Tanh,
 };
-use burn::nn::activation::HardSwish; // Import spesifik untuk HardSwish
+use wasm_bindgen::prelude::*; // <-- Butuh ini buat Wrapper
+use crate::{WasmBackend, WasmTensor}; // <-- Import tipe dari lib.rs
 
-// --- TAMBAHAN UNTUK WASM ---
-use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
-
-// ============================================================
-// 1. LOGIKA BURN (Internal Rust)
-// ============================================================
-
+// --- 1. CONFIGURATION ENUM (Burn Logic) ---
 #[derive(Config, Debug)]
 pub enum ActivationConfig {
     Gelu,
@@ -25,6 +19,11 @@ pub enum ActivationConfig {
     SwiGlu(SwiGluConfig),
     HardSigmoid(HardSigmoidConfig),
     Softplus(SoftplusConfig),
+    // Manual Ops
+    Mish,
+    Softmax { dim: usize },
+    LogSoftmax { dim: usize },
+    Glu { dim: usize },
 }
 
 impl ActivationConfig {
@@ -35,15 +34,20 @@ impl ActivationConfig {
             ActivationConfig::Sigmoid => Activation::Sigmoid(Sigmoid::new()),
             ActivationConfig::Tanh => Activation::Tanh(Tanh::new()),
             ActivationConfig::HardSwish => Activation::HardSwish(HardSwish::new()),
-            ActivationConfig::LeakyRelu(config) => Activation::LeakyRelu(config.init()),
-            ActivationConfig::PRelu(config) => Activation::PRelu(config.init(device)),
-            ActivationConfig::SwiGlu(config) => Activation::SwiGlu(config.init(device)),
-            ActivationConfig::HardSigmoid(config) => Activation::HardSigmoid(config.init()),
-            ActivationConfig::Softplus(config) => Activation::Softplus(config.init()),
+            ActivationConfig::LeakyRelu(c) => Activation::LeakyRelu(c.init()),
+            ActivationConfig::PRelu(c) => Activation::PRelu(c.init(device)),
+            ActivationConfig::SwiGlu(c) => Activation::SwiGlu(c.init(device)),
+            ActivationConfig::HardSigmoid(c) => Activation::HardSigmoid(c.init()),
+            ActivationConfig::Softplus(c) => Activation::Softplus(c.init()),
+            ActivationConfig::Mish => Activation::Mish,
+            ActivationConfig::Softmax { dim } => Activation::Softmax(*dim),
+            ActivationConfig::LogSoftmax { dim } => Activation::LogSoftmax(*dim),
+            ActivationConfig::Glu { dim } => Activation::Glu(*dim),
         }
     }
 }
 
+// --- 2. MODULE ENUM (Burn Logic) ---
 #[derive(Module, Debug)]
 pub enum Activation<B: Backend> {
     Gelu(Gelu),
@@ -56,29 +60,34 @@ pub enum Activation<B: Backend> {
     SwiGlu(SwiGlu<B>),
     HardSigmoid(HardSigmoid),
     Softplus(Softplus),
+    Mish,
+    Softmax(usize),
+    LogSoftmax(usize),
+    Glu(usize),
 }
 
 impl<B: Backend> Activation<B> {
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         match self {
-            Activation::Gelu(layer) => layer.forward(input),
-            Activation::Relu(layer) => layer.forward(input),
-            Activation::Sigmoid(layer) => layer.forward(input),
-            Activation::Tanh(layer) => layer.forward(input),
-            Activation::HardSwish(layer) => layer.forward(input),
-            Activation::LeakyRelu(layer) => layer.forward(input),
-            Activation::PRelu(layer) => layer.forward(input),
-            Activation::SwiGlu(layer) => layer.forward(input),
-            Activation::HardSigmoid(layer) => layer.forward(input),
-            Activation::Softplus(layer) => layer.forward(input),
+            Activation::Gelu(m) => m.forward(input),
+            Activation::Relu(m) => m.forward(input),
+            Activation::Sigmoid(m) => m.forward(input),
+            Activation::Tanh(m) => m.forward(input),
+            Activation::HardSwish(m) => m.forward(input),
+            Activation::LeakyRelu(m) => m.forward(input),
+            Activation::PRelu(m) => m.forward(input),
+            Activation::SwiGlu(m) => m.forward(input),
+            Activation::HardSigmoid(m) => m.forward(input),
+            Activation::Softplus(m) => m.forward(input),
+            Activation::Mish => burn::tensor::activation::mish(input),
+            Activation::Softmax(dim) => burn::tensor::activation::softmax(input, *dim),
+            Activation::LogSoftmax(dim) => burn::tensor::activation::log_softmax(input, *dim),
+            Activation::Glu(dim) => burn::tensor::activation::glu(input, *dim),
         }
     }
 }
 
-// ============================================================
-// 2. WRAPPER WASM (Ekspor ke JavaScript)
-// ============================================================
-
+// --- 3. WASM WRAPPER (Pindahan dari lib.rs) ---
 #[wasm_bindgen]
 pub struct WasmActivation {
     inner: Activation<WasmBackend>,
@@ -86,83 +95,87 @@ pub struct WasmActivation {
 
 #[wasm_bindgen]
 impl WasmActivation {
-    // --- Factory Methods (Tanpa Parameter) ---
-
+    // Basic
     #[wasm_bindgen]
     pub fn new_relu() -> WasmActivation {
         let device = Default::default();
         WasmActivation { inner: ActivationConfig::Relu.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_gelu() -> WasmActivation {
         let device = Default::default();
         WasmActivation { inner: ActivationConfig::Gelu.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_sigmoid() -> WasmActivation {
         let device = Default::default();
         WasmActivation { inner: ActivationConfig::Sigmoid.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_tanh() -> WasmActivation {
         let device = Default::default();
         WasmActivation { inner: ActivationConfig::Tanh.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_hard_swish() -> WasmActivation {
         let device = Default::default();
         WasmActivation { inner: ActivationConfig::HardSwish.init(&device) }
     }
+    #[wasm_bindgen]
+    pub fn new_mish() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Mish.init(&device) }
+    }
 
-    // --- Factory Methods (Dengan Parameter) ---
-
+    // Configurable
     #[wasm_bindgen]
     pub fn new_leaky_relu(slope: f64) -> WasmActivation {
         let device = Default::default();
-        let config = ActivationConfig::LeakyRelu(
-            LeakyReluConfig::new().with_negative_slope(slope)
-        );
+        let config = ActivationConfig::LeakyRelu(LeakyReluConfig::new().with_negative_slope(slope));
         WasmActivation { inner: config.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_prelu() -> WasmActivation {
         let device = Default::default();
         let config = ActivationConfig::PRelu(PReluConfig::new());
         WasmActivation { inner: config.init(&device) }
     }
-
     #[wasm_bindgen]
-    pub fn new_swiglu(d_model: usize) -> WasmActivation {
+    pub fn new_swiglu(d_input: usize, d_output: usize) -> WasmActivation {
         let device = Default::default();
-        // SwiGlu butuh input dan output dim. Kita samakan saja.
-        let config = ActivationConfig::SwiGlu(SwiGluConfig::new(d_model, d_model));
+        let config = ActivationConfig::SwiGlu(SwiGluConfig::new(d_input, d_output));
         WasmActivation { inner: config.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_hard_sigmoid(alpha: f64, beta: f64) -> WasmActivation {
         let device = Default::default();
-        let config = ActivationConfig::HardSigmoid(
-            HardSigmoidConfig::new().with_alpha(alpha).with_beta(beta)
-        );
+        let config = ActivationConfig::HardSigmoid(HardSigmoidConfig::new().with_alpha(alpha).with_beta(beta));
         WasmActivation { inner: config.init(&device) }
     }
-
     #[wasm_bindgen]
     pub fn new_softplus(beta: f64) -> WasmActivation {
         let device = Default::default();
-        let config = ActivationConfig::Softplus(
-            SoftplusConfig::new().with_beta(beta)
-        );
+        let config = ActivationConfig::Softplus(SoftplusConfig::new().with_beta(beta));
         WasmActivation { inner: config.init(&device) }
     }
 
-    // --- Forward Pass ---
+    // Dimension Aware
+    #[wasm_bindgen]
+    pub fn new_softmax(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Softmax { dim }.init(&device) }
+    }
+    #[wasm_bindgen]
+    pub fn new_log_softmax(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::LogSoftmax { dim }.init(&device) }
+    }
+    #[wasm_bindgen]
+    pub fn new_glu(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Glu { dim }.init(&device) }
+    }
+
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
         let x = input.inner.clone();
         let out = self.inner.forward(x);
