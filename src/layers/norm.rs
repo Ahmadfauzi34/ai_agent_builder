@@ -3,6 +3,7 @@ use burn::nn::{
     BatchNorm, BatchNormConfig, GroupNorm, GroupNormConfig, InstanceNorm, InstanceNormConfig,
     LayerNorm, LayerNormConfig, RmsNorm, RmsNormConfig,
 };
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder}; // <-- WAJIB ADA
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
@@ -58,6 +59,7 @@ pub struct WasmNorm {
 
 #[wasm_bindgen]
 impl WasmNorm {
+    // 1. RMS Norm
     #[wasm_bindgen]
     pub fn new_rms_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -66,6 +68,7 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
+    // 2. Layer Norm
     #[wasm_bindgen]
     pub fn new_layer_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -74,6 +77,7 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
+    // 3. Batch Norm
     #[wasm_bindgen]
     pub fn new_batch_norm(num_features: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -82,9 +86,50 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
+    // 4. Group Norm (Tadi Terlewat)
+    #[wasm_bindgen]
+    pub fn new_group_norm(num_groups: usize, num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
+        let device = Default::default();
+        let eps = epsilon.unwrap_or(1e-5);
+        let config = NormalizationConfig::Group(GroupNormConfig::new(num_groups, num_channels).with_epsilon(eps));
+        WasmNorm { inner: config.init(&device) }
+    }
+
+    // 5. Instance Norm (Tadi Terlewat)
+    #[wasm_bindgen]
+    pub fn new_instance_norm(num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
+        let device = Default::default();
+        let eps = epsilon.unwrap_or(1e-5);
+        let config = NormalizationConfig::Instance(InstanceNormConfig::new(num_channels).with_epsilon(eps));
+        WasmNorm { inner: config.init(&device) }
+    }
+
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
         let x = input.inner.clone();
         let out = self.inner.forward(x);
         WasmTensor { inner: out }
+    }
+
+    // --- FITUR SAVE/LOAD (WAJIB UNTUK NORM) ---
+
+    pub fn num_params(&self) -> usize {
+        self.inner.num_params()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        let device = Default::default();
+        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .load(data.to_vec(), &device)
+            .map_err(|e| e.to_string())?;
+        self.inner = self.inner.load_record(record);
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> Result<Vec<u8>, String> {
+        let record = self.inner.clone().into_record();
+        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .record(record, ())
+            .map_err(|e| e.to_string())?;
+        Ok(bytes)
     }
 }
