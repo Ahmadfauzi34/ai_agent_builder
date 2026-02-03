@@ -1,71 +1,58 @@
 use burn::prelude::*;
-use burn::nn::conv::{Conv2d, Conv2dConfig};
+use burn::nn::conv::{
+    Conv1d, Conv1dConfig,
+    Conv2d, Conv2dConfig,
+    ConvTranspose2d, ConvTranspose2dConfig
+};
 use burn::nn::PaddingConfig2d;
-use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
 
-// --- CONFIG ---
+// --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
-pub struct Conv2dLayerConfig {
-    pub channels_in: usize,
-    pub channels_out: usize,
-    // PERBAIKAN: Pastikan tipe datanya Array [usize; 2]
-    pub kernel_size: [usize; 2],
-    pub stride: [usize; 2],
-    pub padding: [usize; 2],
+pub enum ConvolutionConfig {
+    Conv1d(Conv1dConfig),
+    Conv2d(Conv2dConfig),
+    ConvTranspose2d(ConvTranspose2dConfig),
 }
 
-impl Conv2dLayerConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Conv2dLayer<B> {
-        let conv = Conv2dConfig::new(
-            [self.channels_in, self.channels_out],
-            self.kernel_size
-        )
-        .with_stride(self.stride)
-        .with_padding(PaddingConfig2d::Explicit(self.padding[0], self.padding[1]))
-        .init(device);
-
-        Conv2dLayer { inner: conv }
+impl ConvolutionConfig {
+    pub fn init<B: Backend>(&self, device: &B::Device) -> Convolution<B> {
+        match self {
+            ConvolutionConfig::Conv1d(c) => Convolution::Conv1d(c.init(device)),
+            ConvolutionConfig::Conv2d(c) => Convolution::Conv2d(c.init(device)),
+            ConvolutionConfig::ConvTranspose2d(c) => Convolution::ConvTranspose2d(c.init(device)),
+        }
     }
 }
 
-// --- MODULE ---
+// --- MODULE ENUM ---
 #[derive(Module, Debug)]
-pub struct Conv2dLayer<B: Backend> {
-    inner: Conv2d<B>,
+pub enum Convolution<B: Backend> {
+    Conv1d(Conv1d<B>),
+    Conv2d(Conv2d<B>),
+    ConvTranspose2d(ConvTranspose2d<B>),
 }
 
-impl<B: Backend> Conv2dLayer<B> {
+impl<B: Backend> Convolution<B> {
+    // Input kita selalu 4D [Batch, Channel, H, W] dari WasmTensor
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
-        self.inner.forward(input)
-    }
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmConv2d {
-    inner: Conv2dLayer<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmConv2d {
-    #[wasm_bindgen(constructor)]
-    pub fn new(c_in: usize, c_out: usize, k_h: usize, k_w: usize, pad_h: usize, pad_w: usize, stride: usize) -> WasmConv2d {
-        let device = Default::default();
-        // PERBAIKAN: Inisialisasi struct sesuai tipe data array
-        let config = Conv2dLayerConfig {
-            channels_in: c_in,
-            channels_out: c_out,
-            kernel_size: [k_h, k_w],
-            stride: [stride, stride],
-            padding: [pad_h, pad_w],
-        };
-        WasmConv2d { inner: config.init(&device) }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        match self {
+            // Conv2d & Transpose2d native support 4D
+            Convolution::Conv2d(layer) => layer.forward(input),
+            Convolution::ConvTranspose2d(layer) => layer.forward(input),
+            
+            // Conv1d butuh 3D [Batch, Channel, Length]
+            // Kita lakukan Reshape otomatis (Squeeze dimensi terakhir)
+            Convolution::Conv1d(layer) => {
+                let [b, c, h, _w] = input.dims();
+                // Anggap Height sebagai Length, Width diabaikan (biasanya 1)
+                let x_3d = input.reshape([b, c, h]);
+                
+                let out = layer.forward(x_3d);
+                
+                // Kembalikan ke 4D [Batch, Channel, Length, 1]
+                let [b_out, c_out, l_out] = out.dims();
+                out.reshape([b_out, c_out, l_out, 1])
+            }
+        }
     }
 }
