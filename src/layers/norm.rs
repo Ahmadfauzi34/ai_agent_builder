@@ -3,7 +3,7 @@ use burn::nn::{
     BatchNorm, BatchNormConfig, GroupNorm, GroupNormConfig, InstanceNorm, InstanceNormConfig,
     LayerNorm, LayerNormConfig, RmsNorm, RmsNormConfig,
 };
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder}; // <-- WAJIB ADA
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
@@ -30,7 +30,7 @@ impl NormalizationConfig {
 }
 
 // --- MODULE ENUM ---
-#[derive(Module, Debug)]
+#[derive(Module, Debug, Clone)] // Tambahkan Clone
 pub enum Normalization<B: Backend> {
     Batch(BatchNorm<B>),
     Group(GroupNorm<B>),
@@ -59,7 +59,6 @@ pub struct WasmNorm {
 
 #[wasm_bindgen]
 impl WasmNorm {
-    // 1. RMS Norm
     #[wasm_bindgen]
     pub fn new_rms_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -68,7 +67,6 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
-    // 2. Layer Norm
     #[wasm_bindgen]
     pub fn new_layer_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -77,7 +75,6 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
-    // 3. Batch Norm
     #[wasm_bindgen]
     pub fn new_batch_norm(num_features: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -86,7 +83,6 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
-    // 4. Group Norm (Tadi Terlewat)
     #[wasm_bindgen]
     pub fn new_group_norm(num_groups: usize, num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -95,7 +91,6 @@ impl WasmNorm {
         WasmNorm { inner: config.init(&device) }
     }
 
-    // 5. Instance Norm (Tadi Terlewat)
     #[wasm_bindgen]
     pub fn new_instance_norm(num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
         let device = Default::default();
@@ -110,8 +105,6 @@ impl WasmNorm {
         WasmTensor { inner: out }
     }
 
-    // --- FITUR SAVE/LOAD (WAJIB UNTUK NORM) ---
-
     pub fn num_params(&self) -> usize {
         self.inner.num_params()
     }
@@ -121,7 +114,9 @@ impl WasmNorm {
         let record = BinBytesRecorder::<FullPrecisionSettings>::default()
             .load(data.to_vec(), &device)
             .map_err(|e| e.to_string())?;
-        self.inner = self.inner.load_record(record);
+            
+        // PERBAIKAN: Clone dulu
+        self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
 
