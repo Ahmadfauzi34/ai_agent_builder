@@ -1,9 +1,10 @@
 use burn::prelude::*;
 use burn::nn::{Linear, LinearConfig};
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder}; // <-- WAJIB ADA
 use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor}; // Import dari lib.rs
+use crate::{WasmBackend, WasmTensor};
 
-// --- CONFIG & MODULE ---
+// --- CONFIGURATION ---
 #[derive(Config, Debug)]
 pub struct LinearLayerConfig {
     pub d_input: usize,
@@ -21,6 +22,7 @@ impl LinearLayerConfig {
     }
 }
 
+// --- MODULE ---
 #[derive(Module, Debug)]
 pub struct LinearLayer<B: Backend> {
     inner: Linear<B>,
@@ -32,7 +34,7 @@ impl<B: Backend> LinearLayer<B> {
     }
 }
 
-// --- WASM WRAPPER (Pindahan dari lib.rs) ---
+// --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmLinear {
     inner: LinearLayer<WasmBackend>,
@@ -52,12 +54,44 @@ impl WasmLinear {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
+        // 1. Ambil input 4D
         let x = input.inner.clone();
+        
+        // 2. Reshape ke 2D [Batch, Dim]
+        // Kita asumsikan input [Batch, Dim, 1, 1]
         let [b, d, _, _] = x.dims(); 
         let x_2d = x.reshape([b, d]); 
+
+        // 3. Proses Linear
         let out = self.inner.forward(x_2d);
+        
+        // 4. Kembalikan ke 4D [Batch, OutDim, 1, 1]
         let [b_out, d_out] = out.dims();
         let out_4d = out.reshape([b_out, d_out, 1, 1]);
+        
         WasmTensor { inner: out_4d }
+    }
+
+    // --- FITUR SAVE/LOAD (WAJIB UNTUK LINEAR) ---
+
+    pub fn num_params(&self) -> usize {
+        self.inner.num_params()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        let device = Default::default();
+        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .load(data.to_vec(), &device)
+            .map_err(|e| e.to_string())?;
+        self.inner = self.inner.load_record(record);
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> Result<Vec<u8>, String> {
+        let record = self.inner.clone().into_record();
+        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .record(record, ())
+            .map_err(|e| e.to_string())?;
+        Ok(bytes)
     }
 }
