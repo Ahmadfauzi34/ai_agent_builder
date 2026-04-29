@@ -191,9 +191,7 @@ impl WasmActivation {
     #[wasm_bindgen(js_name = newSwiGlu)]
     pub fn new_swiglu(d_input: usize, d_output: usize, bias: Option<bool>) -> WasmActivation {
         let device = Default::default();
-        let mut config = SwiGluConfig::new();
-        config.d_input = d_input;
-        config.d_output = d_output;
+        let mut config = SwiGluConfig::new(d_input, d_output);
         if let Some(b) = bias {
             config = config.with_bias(b);
         }
