@@ -29,19 +29,21 @@ impl GhostModuleConfig {
         let primary_ch = self.out_channels / self.ratio;
 
         // Primary conv: full Conv2d biasa
-        // Conv2dConfig::new() hanya terima kernel_size, field lain di-set manual
-        let mut primary_cfg = Conv2dConfig::new(self.kernel_size);
-        primary_cfg.in_channels = self.in_channels;
-        primary_cfg.out_channels = primary_ch;
+        // Conv2dConfig::new(channels, kernel_size) — channels = [in, out]
+        let mut primary_cfg = Conv2dConfig::new(
+            [self.in_channels, primary_ch],
+            self.kernel_size,
+        );
         primary_cfg.stride = self.stride;
         primary_cfg.padding = PaddingConfig2d::Explicit(self.padding[0], self.padding[1]);
         let primary = primary_cfg.init(device);
 
         // Cheap conv: depthwise (groups = primary_ch) pada output primary
         // Kernel 1x1 untuk efisiensi maksimal, no bias
-        let mut cheap_cfg = Conv2dConfig::new([1, 1]);
-        cheap_cfg.in_channels = primary_ch;
-        cheap_cfg.out_channels = primary_ch;
+        let mut cheap_cfg = Conv2dConfig::new(
+            [primary_ch, primary_ch],
+            [1, 1],
+        );
         cheap_cfg.groups = primary_ch;
         cheap_cfg.bias = false;
         let cheap = cheap_cfg.init(device);
