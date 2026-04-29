@@ -22,7 +22,7 @@ impl LinearLayerConfig {
     }
 }
 
-#[derive(Module, Debug, Clone)] // Tambahkan Clone di sini
+#[derive(Module, Debug)] 
 pub struct LinearLayer<B: Backend> {
     inner: Linear<B>,
 }
