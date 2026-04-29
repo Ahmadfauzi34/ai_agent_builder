@@ -6,7 +6,6 @@ use burn::nn::pool::{
     AvgPool2d, AvgPool2dConfig,
     AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig,
 };
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
@@ -21,20 +20,22 @@ pub enum PoolingConfig {
 }
 
 impl PoolingConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> Pooling<B> {
+    // Pooling layers tidak punya parameter, jadi init() tanpa device
+    pub fn init(&self) -> Pooling {
         match self {
-            PoolingConfig::MaxPool1d(c) => Pooling::MaxPool1d(c.init(device)),
-            PoolingConfig::MaxPool2d(c) => Pooling::MaxPool2d(c.init(device)),
-            PoolingConfig::AvgPool1d(c) => Pooling::AvgPool1d(c.init(device)),
-            PoolingConfig::AvgPool2d(c) => Pooling::AvgPool2d(c.init(device)),
-            PoolingConfig::AdaptiveAvgPool2d(c) => Pooling::AdaptiveAvgPool2d(c.init(device)),
+            PoolingConfig::MaxPool1d(c) => Pooling::MaxPool1d(c.init()),
+            PoolingConfig::MaxPool2d(c) => Pooling::MaxPool2d(c.init()),
+            PoolingConfig::AvgPool1d(c) => Pooling::AvgPool1d(c.init()),
+            PoolingConfig::AvgPool2d(c) => Pooling::AvgPool2d(c.init()),
+            PoolingConfig::AdaptiveAvgPool2d(c) => Pooling::AdaptiveAvgPool2d(c.init()),
         }
     }
 }
 
 // --- MODULE ENUM ---
+// Pooling tidak generic (tidak ada trainable params)
 #[derive(Module, Debug)]
-pub enum Pooling<B: Backend> {
+pub enum Pooling {
     MaxPool1d(MaxPool1d),
     MaxPool2d(MaxPool2d),
     AvgPool1d(AvgPool1d),
@@ -42,9 +43,9 @@ pub enum Pooling<B: Backend> {
     AdaptiveAvgPool2d(AdaptiveAvgPool2d),
 }
 
-impl<B: Backend> Pooling<B> {
+impl Pooling {
     // Input selalu 4D [Batch, Channel, H, W] dari WasmTensor
-    pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
+    pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         match self {
             // 2D pooling native support 4D
             Pooling::MaxPool2d(layer) => layer.forward(input),
@@ -74,7 +75,7 @@ impl<B: Backend> Pooling<B> {
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmPool {
-    inner: Pooling<WasmBackend>,
+    inner: Pooling,
 }
 
 #[wasm_bindgen]
@@ -85,7 +86,6 @@ impl WasmPool {
         stride: Option<usize>,
         padding: Option<usize>,
     ) -> WasmPool {
-        let device = Default::default();
         let mut config = MaxPool1dConfig::new(kernel_size);
         if let Some(s) = stride {
             config = config.with_stride(s);
@@ -94,26 +94,29 @@ impl WasmPool {
             config = config.with_padding(p);
         }
         WasmPool {
-            inner: PoolingConfig::MaxPool1d(config).init(&device),
+            inner: PoolingConfig::MaxPool1d(config).init(),
         }
     }
 
+    // [usize; 2] dipecah jadi 2 parameter karena wasm_bindgen tidak support array
     #[wasm_bindgen(js_name = newMaxPool2d)]
     pub fn new_max_pool2d(
-        kernel_size: [usize; 2],
-        stride: Option<[usize; 2]>,
-        padding: Option<[usize; 2]>,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
     ) -> WasmPool {
-        let device = Default::default();
-        let mut config = MaxPool2dConfig::new(kernel_size);
-        if let Some(s) = stride {
-            config = config.with_stride(s);
+        let mut config = MaxPool2dConfig::new([kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config = config.with_stride([sh, sw]);
         }
-        if let Some(p) = padding {
-            config = config.with_padding(p);
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config = config.with_padding([ph, pw]);
         }
         WasmPool {
-            inner: PoolingConfig::MaxPool2d(config).init(&device),
+            inner: PoolingConfig::MaxPool2d(config).init(),
         }
     }
 
@@ -123,7 +126,6 @@ impl WasmPool {
         stride: Option<usize>,
         padding: Option<usize>,
     ) -> WasmPool {
-        let device = Default::default();
         let mut config = AvgPool1dConfig::new(kernel_size);
         if let Some(s) = stride {
             config = config.with_stride(s);
@@ -132,35 +134,39 @@ impl WasmPool {
             config = config.with_padding(p);
         }
         WasmPool {
-            inner: PoolingConfig::AvgPool1d(config).init(&device),
+            inner: PoolingConfig::AvgPool1d(config).init(),
         }
     }
 
     #[wasm_bindgen(js_name = newAvgPool2d)]
     pub fn new_avg_pool2d(
-        kernel_size: [usize; 2],
-        stride: Option<[usize; 2]>,
-        padding: Option<[usize; 2]>,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
     ) -> WasmPool {
-        let device = Default::default();
-        let mut config = AvgPool2dConfig::new(kernel_size);
-        if let Some(s) = stride {
-            config = config.with_stride(s);
+        let mut config = AvgPool2dConfig::new([kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config = config.with_stride([sh, sw]);
         }
-        if let Some(p) = padding {
-            config = config.with_padding(p);
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config = config.with_padding([ph, pw]);
         }
         WasmPool {
-            inner: PoolingConfig::AvgPool2d(config).init(&device),
+            inner: PoolingConfig::AvgPool2d(config).init(),
         }
     }
 
     #[wasm_bindgen(js_name = newAdaptiveAvgPool2d)]
-    pub fn new_adaptive_avg_pool2d(output_size: [usize; 2]) -> WasmPool {
-        let device = Default::default();
-        let config = AdaptiveAvgPool2dConfig::new(output_size);
+    pub fn new_adaptive_avg_pool2d(
+        output_size_h: usize,
+        output_size_w: usize,
+    ) -> WasmPool {
+        let config = AdaptiveAvgPool2dConfig::new([output_size_h, output_size_w]);
         WasmPool {
-            inner: PoolingConfig::AdaptiveAvgPool2d(config).init(&device),
+            inner: PoolingConfig::AdaptiveAvgPool2d(config).init(),
         }
     }
 
@@ -170,25 +176,8 @@ impl WasmPool {
         WasmTensor { inner: out }
     }
 
+    // Pooling tidak punya trainable params
     pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .load(data.to_vec(), &device)
-            .map_err(|e| e.to_string())?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        0
     }
 }
-
