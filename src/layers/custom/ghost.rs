@@ -10,9 +10,9 @@ use crate::{WasmBackend, WasmTensor};
 pub struct GhostModuleConfig {
     pub in_channels: usize,
     pub out_channels: usize,
+    pub kernel_size: [usize; 2],
     #[config(default = 2)]
     pub ratio: usize,
-    pub kernel_size: [usize; 2],
     #[config(default = "[1, 1]")]
     pub stride: [usize; 2],
     #[config(default = "[0, 0]")]
@@ -29,17 +29,22 @@ impl GhostModuleConfig {
         let primary_ch = self.out_channels / self.ratio;
 
         // Primary conv: full Conv2d biasa
-        let primary = Conv2dConfig::new(self.in_channels, primary_ch, self.kernel_size)
-            .with_stride(self.stride)
-            .with_padding(PaddingConfig2d::Explicit(self.padding[0], self.padding[1]))
-            .init(device);
+        // Conv2dConfig::new() hanya terima kernel_size, field lain di-set manual
+        let mut primary_cfg = Conv2dConfig::new(self.kernel_size);
+        primary_cfg.in_channels = self.in_channels;
+        primary_cfg.out_channels = primary_ch;
+        primary_cfg.stride = self.stride;
+        primary_cfg.padding = PaddingConfig2d::Explicit(self.padding[0], self.padding[1]);
+        let primary = primary_cfg.init(device);
 
         // Cheap conv: depthwise (groups = primary_ch) pada output primary
         // Kernel 1x1 untuk efisiensi maksimal, no bias
-        let cheap = Conv2dConfig::new(primary_ch, primary_ch, [1, 1])
-            .with_groups(primary_ch)
-            .with_bias(false)
-            .init(device);
+        let mut cheap_cfg = Conv2dConfig::new([1, 1]);
+        cheap_cfg.in_channels = primary_ch;
+        cheap_cfg.out_channels = primary_ch;
+        cheap_cfg.groups = primary_ch;
+        cheap_cfg.bias = false;
+        let cheap = cheap_cfg.init(device);
 
         GhostModule {
             primary,
@@ -68,7 +73,6 @@ impl<B: Backend> GhostModule<B> {
         let ghost = self.cheap.forward(intrinsic.clone());
 
         // 3. Concat intrinsic + ghost
-        // Total channel = primary_ch + primary_ch = 2 * primary_ch = out_channels (jika ratio=2)
         Tensor::cat(vec![intrinsic, ghost], 1)
     }
 }
@@ -94,8 +98,7 @@ impl WasmGhostModule {
         padding_w: Option<usize>,
     ) -> WasmGhostModule {
         let device = Default::default();
-        let mut config = GhostModuleConfig::new(in_channels, out_channels);
-        config.kernel_size = [kernel_size_h, kernel_size_w];
+        let mut config = GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
         if let Some(r) = ratio {
             config.ratio = r;
         }
@@ -137,4 +140,3 @@ impl WasmGhostModule {
         Ok(bytes)
     }
 }
-
