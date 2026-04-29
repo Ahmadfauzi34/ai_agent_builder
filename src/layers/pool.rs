@@ -114,7 +114,7 @@ impl WasmPool {
             config = config.with_strides([sh, sw]);
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding(PaddingConfig2d::Explicit([ph, pw]));
+            config = config.with_padding(PaddingConfig2d::Explicit(ph, pw));
         }
         WasmPool {
             inner: PoolingConfig::MaxPool2d(config).init(),
@@ -153,7 +153,7 @@ impl WasmPool {
             config = config.with_strides([sh, sw]);
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding(PaddingConfig2d::Explicit([ph, pw]));
+            config = config.with_padding(PaddingConfig2d::Explicit(ph, pw));
         }
         WasmPool {
             inner: PoolingConfig::AvgPool2d(config).init(),
