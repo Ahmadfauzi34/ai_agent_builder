@@ -1,4 +1,4 @@
-Name: Jules Agent
+name: Jules Agent
 
 on:
   pull_request:
