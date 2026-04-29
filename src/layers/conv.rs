@@ -4,7 +4,7 @@ use burn::nn::conv::{
     Conv2d, Conv2dConfig,
     ConvTranspose2d, ConvTranspose2dConfig
 };
-use burn::nn::PaddingConfig2d;
+
 
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
