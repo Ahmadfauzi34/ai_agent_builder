@@ -30,7 +30,7 @@ impl NormalizationConfig {
 }
 
 // --- MODULE ENUM ---
-#[derive(Module, Debug, Clone)] // Tambahkan Clone
+#[derive(Module, Debug)] 
 pub enum Normalization<B: Backend> {
     Batch(BatchNorm<B>),
     Group(GroupNorm<B>),
