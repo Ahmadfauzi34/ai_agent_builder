@@ -6,11 +6,12 @@ use burn::nn::pool::{
     AvgPool2d, AvgPool2dConfig,
     AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig,
 };
+use burn::nn::{PaddingConfig1d, PaddingConfig2d};
 use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
+use crate::WasmTensor;
 
 // --- CONFIGURATION ENUM ---
-#[derive(Config, Debug)]
+#[derive(Debug)]
 pub enum PoolingConfig {
     MaxPool1d(MaxPool1dConfig),
     MaxPool2d(MaxPool2dConfig),
@@ -20,7 +21,7 @@ pub enum PoolingConfig {
 }
 
 impl PoolingConfig {
-    // Pooling layers tidak punya parameter, jadi init() tanpa device
+    // Pooling layers tidak punka parameter, init() tanpa device
     pub fn init(&self) -> Pooling {
         match self {
             PoolingConfig::MaxPool1d(c) => Pooling::MaxPool1d(c.init()),
@@ -33,8 +34,8 @@ impl PoolingConfig {
 }
 
 // --- MODULE ENUM ---
-// Pooling tidak generic (tidak ada trainable params)
-#[derive(Module, Debug)]
+// Tidak pakai #[derive(Module)] karena pooling layers tidak Clone dan tidak punya trainable params
+#[derive(Debug)]
 pub enum Pooling {
     MaxPool1d(MaxPool1d),
     MaxPool2d(MaxPool2d),
@@ -91,7 +92,7 @@ impl WasmPool {
             config = config.with_stride(s);
         }
         if let Some(p) = padding {
-            config = config.with_padding(p);
+            config = config.with_padding(PaddingConfig1d::Explicit(p));
         }
         WasmPool {
             inner: PoolingConfig::MaxPool1d(config).init(),
@@ -110,10 +111,10 @@ impl WasmPool {
     ) -> WasmPool {
         let mut config = MaxPool2dConfig::new([kernel_size_h, kernel_size_w]);
         if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config = config.with_stride([sh, sw]);
+            config = config.with_strides([sh, sw]);
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding([ph, pw]);
+            config = config.with_padding(PaddingConfig2d::Explicit([ph, pw]));
         }
         WasmPool {
             inner: PoolingConfig::MaxPool2d(config).init(),
@@ -131,7 +132,7 @@ impl WasmPool {
             config = config.with_stride(s);
         }
         if let Some(p) = padding {
-            config = config.with_padding(p);
+            config = config.with_padding(PaddingConfig1d::Explicit(p));
         }
         WasmPool {
             inner: PoolingConfig::AvgPool1d(config).init(),
@@ -149,10 +150,10 @@ impl WasmPool {
     ) -> WasmPool {
         let mut config = AvgPool2dConfig::new([kernel_size_h, kernel_size_w]);
         if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config = config.with_stride([sh, sw]);
+            config = config.with_strides([sh, sw]);
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding([ph, pw]);
+            config = config.with_padding(PaddingConfig2d::Explicit([ph, pw]));
         }
         WasmPool {
             inner: PoolingConfig::AvgPool2d(config).init(),
