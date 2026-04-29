@@ -1,7 +1,7 @@
 use wasm_bindgen::prelude::*;
 use burn::prelude::*;
 use burn::tensor::TensorData;
-use js_sys::{Float32Array, Object, Reflect};
+use js_sys::Float32Array;
 
 pub mod layers;
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
@@ -17,7 +17,6 @@ pub struct WasmTensor {
 // -------------------------------------------------------------
 #[wasm_bindgen]
 pub struct TensorView {
-    // Simpan sebagai JsValue, bukan extern type
     sab: JsValue,
     shape: Vec<usize>,
 }
@@ -26,7 +25,6 @@ pub struct TensorView {
 impl TensorView {
     #[wasm_bindgen(constructor)]
     pub fn new(total_elements: usize) -> Self {
-        // Buat SharedArrayBuffer via JS Reflect
         let sab = js_sys::SharedArrayBuffer::new((total_elements * 4) as u32);
         TensorView { 
             sab: JsValue::from(sab), 
@@ -34,14 +32,9 @@ impl TensorView {
         }
     }
 
-    pub fn ptr(&self) -> *mut f32 {
-        let f32_array = Float32Array::new(&self.sab);
-        f32_array.as_mut_ptr()
-    }
-
     pub fn len(&self) -> usize {
-        let sab = js_sys::SharedArrayBuffer::from(self.sab.clone());
-        (sab.byte_length() / 4) as usize
+        let arr = Float32Array::new(&self.sab);
+        arr.length() as usize
     }
 
     #[wasm_bindgen(js_name = setShape)]
@@ -53,9 +46,20 @@ impl TensorView {
         self.shape.clone()
     }
     
-    // Helper untuk akses internal
     fn as_f32_array(&self) -> Float32Array {
         Float32Array::new(&self.sab)
+    }
+    
+    /// Copy data dari SAB ke slice Rust (Rust baca data JS)
+    pub fn read(&self, dst: &mut [f32]) {
+        let arr = self.as_f32_array();
+        arr.copy_to(dst);
+    }
+    
+    /// Copy data dari slice Rust ke SAB (Rust tulis data untuk JS)
+    pub fn write(&self, src: &[f32]) {
+        let arr = self.as_f32_array();
+        arr.copy_from(src);
     }
 }
 
@@ -76,6 +80,7 @@ impl WasmTensor {
         WasmTensor { inner: tensor }
     }
 
+    /// Rust baca dari SAB (JS tulis dulu ke SAB, lalu panggil ini)
     #[wasm_bindgen(js_name = fromTensorView)]
     pub fn from_tensor_view(view: &TensorView) -> WasmTensor {
         let device = Default::default();
@@ -84,23 +89,19 @@ impl WasmTensor {
             dims[i] = d;
         }
         
-        let f32_array = view.as_f32_array();
-        let slice = unsafe { 
-            std::slice::from_raw_parts(f32_array.as_ptr(), view.len()) 
-        };
+        let mut buf = vec![0f32; view.len()];
+        view.read(&mut buf);
         
-        let tensor_data = TensorData::new(slice.to_vec(), dims);
+        let tensor_data = TensorData::new(buf, dims);
         WasmTensor { inner: Tensor::from_data(tensor_data, &device) }
     }
 
+    /// Rust tulis ke SAB (JS baca hasil dari SAB setelah ini)
     #[wasm_bindgen(js_name = toTensorView)]
     pub fn to_tensor_view(&self, view: &mut TensorView) {
         let data = self.inner.to_data();
         let slice = data.as_slice::<f32>().unwrap();
-        
-        let f32_array = view.as_f32_array();
-        f32_array.copy_from(slice);
-        
+        view.write(slice);
         view.set_shape(self.inner.dims().into());
     }
 
