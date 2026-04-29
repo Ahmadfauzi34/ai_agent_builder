@@ -3,12 +3,12 @@ use burn::nn::{
     Gelu, HardSigmoid, HardSigmoidConfig, LeakyRelu, LeakyReluConfig, PRelu,
     PReluConfig, Relu, Sigmoid, Softplus, SoftplusConfig, SwiGlu, SwiGluConfig, Tanh,
 };
-// PERBAIKAN 1: Import HardSwish dari path yang benar
-use burn::nn::activation::HardSwish; 
+use burn::nn::activation::HardSwish;
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use wasm_bindgen::prelude::*;
+use crate::{WasmBackend, WasmTensor};
 
 // --- HELPER STRUCTS (SOLUSI ERROR DERIVE) ---
-// Kita bungkus usize ke dalam struct Module agar Enum Activation tidak panic.
-
 #[derive(Module, Debug, Clone)]
 pub struct StrictSoftmax {
     pub dim: usize,
@@ -60,8 +60,6 @@ pub enum ActivationConfig {
     SwiGlu(SwiGluConfig),
     HardSigmoid(HardSigmoidConfig),
     Softplus(SoftplusConfig),
-    
-    // Manual Ops Config
     Mish,
     Softmax { dim: usize },
     LogSoftmax { dim: usize },
@@ -76,14 +74,11 @@ impl ActivationConfig {
             ActivationConfig::Sigmoid => Activation::Sigmoid(Sigmoid::new()),
             ActivationConfig::Tanh => Activation::Tanh(Tanh::new()),
             ActivationConfig::HardSwish => Activation::HardSwish(HardSwish::new()),
-            
             ActivationConfig::LeakyRelu(c) => Activation::LeakyRelu(c.init()),
             ActivationConfig::PRelu(c) => Activation::PRelu(c.init(device)),
             ActivationConfig::SwiGlu(c) => Activation::SwiGlu(c.init(device)),
             ActivationConfig::HardSigmoid(c) => Activation::HardSigmoid(c.init()),
             ActivationConfig::Softplus(c) => Activation::Softplus(c.init()),
-
-            // PERBAIKAN 2: Init ke Struct Wrapper, bukan langsung enum variant
             ActivationConfig::Mish => Activation::Mish(StrictMish),
             ActivationConfig::Softmax { dim } => Activation::Softmax(StrictSoftmax { dim: *dim }),
             ActivationConfig::LogSoftmax { dim } => Activation::LogSoftmax(StrictLogSoftmax { dim: *dim }),
@@ -105,8 +100,6 @@ pub enum Activation<B: Backend> {
     SwiGlu(SwiGlu<B>),
     HardSigmoid(HardSigmoid),
     Softplus(Softplus),
-    
-    // PERBAIKAN 3: Varian sekarang berisi Struct Module, bukan usize
     Mish(StrictMish),
     Softmax(StrictSoftmax),
     LogSoftmax(StrictLogSoftmax),
@@ -126,12 +119,158 @@ impl<B: Backend> Activation<B> {
             Activation::SwiGlu(m) => m.forward(input),
             Activation::HardSigmoid(m) => m.forward(input),
             Activation::Softplus(m) => m.forward(input),
-            
-            // Panggil forward dari struct wrapper
             Activation::Mish(m) => m.forward(input),
             Activation::Softmax(m) => m.forward(input),
             Activation::LogSoftmax(m) => m.forward(input),
             Activation::Glu(m) => m.forward(input),
         }
+    }
+}
+
+// --- WASM WRAPPER ---
+#[wasm_bindgen]
+pub struct WasmActivation {
+    inner: Activation<WasmBackend>,
+}
+
+#[wasm_bindgen]
+impl WasmActivation {
+    #[wasm_bindgen(js_name = newGelu)]
+    pub fn new_gelu() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Gelu.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newRelu)]
+    pub fn new_relu() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Relu.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newSigmoid)]
+    pub fn new_sigmoid() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Sigmoid.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newTanh)]
+    pub fn new_tanh() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Tanh.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newHardSwish)]
+    pub fn new_hard_swish() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::HardSwish.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newLeakyRelu)]
+    pub fn new_leaky_relu(negative_slope: Option<f64>) -> WasmActivation {
+        let device = Default::default();
+        let mut config = LeakyReluConfig::new();
+        if let Some(s) = negative_slope {
+            config = config.with_negative_slope(s);
+        }
+        WasmActivation { inner: ActivationConfig::LeakyRelu(config).init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newPRelu)]
+    pub fn new_prelu(num_parameters: Option<usize>, alpha: Option<f64>) -> WasmActivation {
+        let device = Default::default();
+        let mut config = PReluConfig::new();
+        if let Some(n) = num_parameters {
+            config = config.with_num_parameters(n);
+        }
+        if let Some(a) = alpha {
+            config = config.with_alpha(a);
+        }
+        WasmActivation { inner: ActivationConfig::PRelu(config).init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newSwiGlu)]
+    pub fn new_swiglu(d_input: usize, d_output: usize, bias: Option<bool>) -> WasmActivation {
+        let device = Default::default();
+        let mut config = SwiGluConfig::new();
+        config.d_input = d_input;
+        config.d_output = d_output;
+        if let Some(b) = bias {
+            config = config.with_bias(b);
+        }
+        WasmActivation { inner: ActivationConfig::SwiGlu(config).init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newHardSigmoid)]
+    pub fn new_hard_sigmoid(alpha: Option<f64>, beta: Option<f64>) -> WasmActivation {
+        let device = Default::default();
+        let mut config = HardSigmoidConfig::new();
+        if let Some(a) = alpha {
+            config = config.with_alpha(a);
+        }
+        if let Some(b) = beta {
+            config = config.with_beta(b);
+        }
+        WasmActivation { inner: ActivationConfig::HardSigmoid(config).init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newSoftplus)]
+    pub fn new_softplus(beta: Option<f64>) -> WasmActivation {
+        let device = Default::default();
+        let mut config = SoftplusConfig::new();
+        if let Some(b) = beta {
+            config = config.with_beta(b);
+        }
+        WasmActivation { inner: ActivationConfig::Softplus(config).init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newMish)]
+    pub fn new_mish() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Mish.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newSoftmax)]
+    pub fn new_softmax(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Softmax { dim }.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newLogSoftmax)]
+    pub fn new_log_softmax(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::LogSoftmax { dim }.init(&device) }
+    }
+
+    #[wasm_bindgen(js_name = newGlu)]
+    pub fn new_glu(dim: usize) -> WasmActivation {
+        let device = Default::default();
+        WasmActivation { inner: ActivationConfig::Glu { dim }.init(&device) }
+    }
+
+    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
+        let x = input.inner.clone();
+        let out = self.inner.forward(x);
+        WasmTensor { inner: out }
+    }
+
+    pub fn num_params(&self) -> usize {
+        self.inner.num_params()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        let device = Default::default();
+        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .load(data.to_vec(), &device)
+            .map_err(|e| e.to_string())?;
+        self.inner = self.inner.clone().load_record(record);
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> Result<Vec<u8>, String> {
+        let record = self.inner.clone().into_record();
+        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .record(record, ())
+            .map_err(|e| e.to_string())?;
+        Ok(bytes)
     }
 }
