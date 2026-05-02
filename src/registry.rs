@@ -12,12 +12,6 @@ use crate::layers::custom::shift::WasmShift;
 use crate::layers::custom::ghost::WasmGhostModule;
 use crate::layers::custom::seblock::WasmSeBlock;
 
-// ============================================================
-// LAYER REGISTRY — Dispatcher untuk semua layer WASM
-// ============================================================
-// 1 file.rs = 1 engine = 1 HashMap di sini
-// ============================================================
-
 type LayerId = u32;
 
 #[wasm_bindgen]
@@ -50,9 +44,6 @@ impl LayerRegistry {
         }
     }
 
-    // ============================================================
-    // INIT — Parse packet, buat layer, simpan di registry
-    // ============================================================
     #[wasm_bindgen(js_name = initLayer)]
     pub fn init_layer(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         match header.layer_type {
@@ -69,9 +60,6 @@ impl LayerRegistry {
         }
     }
 
-    // ============================================================
-    // FORWARD — Dispatch ke layer yang sesuai
-    // ============================================================
     #[wasm_bindgen(js_name = forwardLayer)]
     pub fn forward_layer(&self, layer_id: LayerId, layer_type: u8, input: &WasmTensor) -> Result<WasmTensor, String> {
         match layer_type {
@@ -88,9 +76,6 @@ impl LayerRegistry {
         }
     }
 
-    // ============================================================
-    // GET/LOAD STATE — Serialize/deserialize weights
-    // ============================================================
     #[wasm_bindgen(js_name = getLayerState)]
     pub fn get_layer_state(&self, layer_id: LayerId, layer_type: u8) -> Result<Vec<u8>, String> {
         match layer_type {
@@ -101,7 +86,6 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            // Pool & Shift tidak punya state
             LAYER_POOL | LAYER_SHIFT => Ok(vec![]),
             _ => Err(format!("Unknown layer type for get_state: 0x{:02X}", layer_type)),
         }
@@ -117,14 +101,11 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get_mut(&layer_id).ok_or("Not found")?.load_state(data),
             LAYER_GHOST       => self.ghosts.get_mut(&layer_id).ok_or("Not found")?.load_state(data),
             LAYER_SEBLOCK     => self.seblocks.get_mut(&layer_id).ok_or("Not found")?.load_state(data),
-            LAYER_POOL | LAYER_SHIFT => Ok(()), // no-op
+            LAYER_POOL | LAYER_SHIFT => Ok(()),
             _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
         }
     }
 
-    // ============================================================
-    // DESTROY — Hapus layer dari registry (free memory)
-    // ============================================================
     #[wasm_bindgen(js_name = destroyLayer)]
     pub fn destroy_layer(&mut self, layer_id: LayerId, layer_type: u8) -> bool {
         match layer_type {
@@ -141,9 +122,6 @@ impl LayerRegistry {
         }
     }
 
-    // ============================================================
-    // PARAMS COUNT — Total params di semua layer
-    // ============================================================
     #[wasm_bindgen(js_name = totalParams)]
     pub fn total_params(&self) -> usize {
         let mut total = 0;
@@ -154,13 +132,8 @@ impl LayerRegistry {
         total += self.embeddings.values().map(|l| l.num_params()).sum::<usize>();
         total += self.ghosts.values().map(|l| l.num_params()).sum::<usize>();
         total += self.seblocks.values().map(|l| l.num_params()).sum::<usize>();
-        // Pool & Shift = 0
         total
     }
-
-    // ============================================================
-    // PRIVATE: Init helpers — parse payload per layer type
-    // ============================================================
 
     fn init_linear(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let id = read_u32(payload, 0)?;
@@ -180,7 +153,7 @@ impl LayerRegistry {
         let layer = match header.variant {
             NORM_BATCH     => WasmNorm::new_batch_norm(size, eps),
             NORM_GROUP     => {
-                let num_groups = read_usize(payload, 17)?; // offset setelah option_f64
+                let num_groups = read_usize(payload, 17)?;
                 let num_channels = read_usize(payload, 21)?;
                 WasmNorm::new_group_norm(num_groups, num_channels, eps)
             }
