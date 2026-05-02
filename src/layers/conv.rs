@@ -4,7 +4,6 @@ use burn::nn::conv::{
     Conv2d, Conv2dConfig,
     ConvTranspose2d, ConvTranspose2dConfig
 };
-use burn::nn::PaddingConfig2d;
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
@@ -97,7 +96,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];  // [usize; 2] untuk Conv2d
         }
         WasmConv {
             inner: ConvolutionConfig::Conv2d(config).init(&device),
@@ -121,7 +120,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];  // [usize; 2] untuk ConvTranspose2d
         }
         WasmConv {
             inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
