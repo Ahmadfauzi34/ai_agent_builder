@@ -70,7 +70,7 @@ impl WasmConv {
         let device = Default::default();
         let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
         if let Some(s) = stride {
-            config.stride = s;  // usize, bukan [usize; 1]
+            config.stride = s;
         }
         if let Some(p) = padding {
             config.padding = burn::nn::PaddingConfig1d::Explicit(p);
@@ -97,7 +97,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = [ph, pw];  // [usize; 2], bukan PaddingConfig2d
+            config.padding = PaddingConfig2d::Explicit(ph, pw);
         }
         WasmConv {
             inner: ConvolutionConfig::Conv2d(config).init(&device),
@@ -121,7 +121,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = [ph, pw];  // [usize; 2]
+            config.padding = PaddingConfig2d::Explicit(ph, pw);
         }
         WasmConv {
             inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
