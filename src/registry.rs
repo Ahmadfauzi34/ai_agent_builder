@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
+use crate::WasmTensor;
 use crate::protocol::*;
 use crate::layers::linear::WasmLinear;
 use crate::layers::norm::WasmNorm;
@@ -162,11 +162,11 @@ impl LayerRegistry {
     // PRIVATE: Init helpers — parse payload per layer type
     // ============================================================
 
-    fn init_linear(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+    fn init_linear(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let id = read_u32(payload, 0)?;
         let in_dim = read_usize(payload, 4)?;
         let out_dim = read_usize(payload, 8)?;
-        let bias = header.has_bias();
+        let bias = read_bool(payload, 12)?;
         let layer = WasmLinear::new(in_dim, out_dim, bias);
         self.linears.insert(id, layer);
         Ok(())
@@ -199,10 +199,10 @@ impl LayerRegistry {
         let out_ch = read_usize(payload, 8)?;
         let kh = read_usize(payload, 12)?;
         let kw = read_usize(payload, 16)?;
-        let sh = read_option_u32(payload, 20).map(|v| v as usize)?;
-        let sw = read_option_u32(payload, 25).map(|v| v as usize)?;
-        let ph = read_option_u32(payload, 30).map(|v| v as usize)?;
-        let pw = read_option_u32(payload, 35).map(|v| v as usize)?;
+        let sh = read_option_u32(payload, 20).map(|v| v as usize);
+        let sw = read_option_u32(payload, 25).map(|v| v as usize);
+        let ph = read_option_u32(payload, 30).map(|v| v as usize);
+        let pw = read_option_u32(payload, 35).map(|v| v as usize);
 
         let layer = match header.variant {
             CONV_CONV1D          => WasmConv::new_conv1d(in_ch, out_ch, kh, sh, ph),
@@ -214,8 +214,8 @@ impl LayerRegistry {
         Ok(())
     }
 
-    fn init_activation(&mut self, header: &PacketHeader, _payload: &[u8]) -> Result<(), String> {
-        let id = read_u32(_payload, 0)?;
+    fn init_activation(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        let id = read_u32(payload, 0)?;
 
         let layer = match header.variant {
             ACT_GELU        => WasmActivation::new_gelu(),
@@ -224,40 +224,40 @@ impl LayerRegistry {
             ACT_TANH        => WasmActivation::new_tanh(),
             ACT_HARDSWISH   => WasmActivation::new_hard_swish(),
             ACT_LEAKYRELU   => {
-                let slope = read_option_f64(_payload, 4)?;
+                let slope = read_option_f64(payload, 4)?;
                 WasmActivation::new_leaky_relu(slope)
             }
             ACT_PRELU => {
-                let num_params = read_option_u32(_payload, 4).map(|v| v as usize)?;
-                let alpha = read_option_f64(_payload, 9)?;
+                let num_params = read_option_u32(payload, 4).map(|v| v as usize);
+                let alpha = read_option_f64(payload, 9)?;
                 WasmActivation::new_prelu(num_params, alpha)
             }
             ACT_SWIGLU => {
-                let d_in = read_usize(_payload, 4)?;
-                let d_out = read_usize(_payload, 8)?;
-                let bias = read_option_u32(_payload, 12).map(|v| v != 0)?;
+                let d_in = read_usize(payload, 4)?;
+                let d_out = read_usize(payload, 8)?;
+                let bias = read_option_u32(payload, 12).map(|v| v != 0);
                 WasmActivation::new_swiglu(d_in, d_out, bias)
             }
             ACT_HARDSIGMOID => {
-                let alpha = read_option_f64(_payload, 4)?;
-                let beta = read_option_f64(_payload, 13)?;
+                let alpha = read_option_f64(payload, 4)?;
+                let beta = read_option_f64(payload, 13)?;
                 WasmActivation::new_hard_sigmoid(alpha, beta)
             }
             ACT_SOFTPLUS => {
-                let beta = read_option_f64(_payload, 4)?;
+                let beta = read_option_f64(payload, 4)?;
                 WasmActivation::new_softplus(beta)
             }
             ACT_MISH        => WasmActivation::new_mish(),
             ACT_SOFTMAX     => {
-                let dim = read_usize(_payload, 4)?;
+                let dim = read_usize(payload, 4)?;
                 WasmActivation::new_softmax(dim)
             }
             ACT_LOGSOFTMAX  => {
-                let dim = read_usize(_payload, 4)?;
+                let dim = read_usize(payload, 4)?;
                 WasmActivation::new_log_softmax(dim)
             }
             ACT_GLU         => {
-                let dim = read_usize(_payload, 4)?;
+                let dim = read_usize(payload, 4)?;
                 WasmActivation::new_glu(dim)
             }
             _ => return Err(format!("Unknown activation variant: 0x{:02X}", header.variant)),
@@ -277,32 +277,41 @@ impl LayerRegistry {
 
     fn init_pool(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let id = read_u32(payload, 0)?;
-        let k = read_usize(payload, 4)?;
-        let s = read_option_u32(payload, 8).map(|v| v as usize)?;
-        let p = read_option_u32(payload, 13).map(|v| v as usize)?;
 
         let layer = match header.variant {
-            POOL_MAXPOOL1D => WasmPool::new_max_pool1d(k, s, p),
-            POOL_AVGPOOL1D => WasmPool::new_avg_pool1d(k, s, p),
+            POOL_MAXPOOL1D => {
+                let k = read_usize(payload, 4)?;
+                let s = read_option_u32(payload, 8).map(|v| v as usize);
+                let p = read_option_u32(payload, 13).map(|v| v as usize);
+                WasmPool::new_max_pool1d(k, s, p)
+            }
+            POOL_AVGPOOL1D => {
+                let k = read_usize(payload, 4)?;
+                let s = read_option_u32(payload, 8).map(|v| v as usize);
+                let p = read_option_u32(payload, 13).map(|v| v as usize);
+                WasmPool::new_avg_pool1d(k, s, p)
+            }
             POOL_MAXPOOL2D => {
-                let kw = read_usize(payload, 18)?;
-                let sh = read_option_u32(payload, 22).map(|v| v as usize)?;
-                let sw = read_option_u32(payload, 27).map(|v| v as usize)?;
-                let ph = read_option_u32(payload, 32).map(|v| v as usize)?;
-                let pw = read_option_u32(payload, 37).map(|v| v as usize)?;
+                let k = read_usize(payload, 4)?;
+                let kw = read_usize(payload, 8)?;
+                let sh = read_option_u32(payload, 12).map(|v| v as usize);
+                let sw = read_option_u32(payload, 17).map(|v| v as usize);
+                let ph = read_option_u32(payload, 22).map(|v| v as usize);
+                let pw = read_option_u32(payload, 27).map(|v| v as usize);
                 WasmPool::new_max_pool2d(k, kw, sh, sw, ph, pw)
             }
             POOL_AVGPOOL2D => {
-                let kw = read_usize(payload, 18)?;
-                let sh = read_option_u32(payload, 22).map(|v| v as usize)?;
-                let sw = read_option_u32(payload, 27).map(|v| v as usize)?;
-                let ph = read_option_u32(payload, 32).map(|v| v as usize)?;
-                let pw = read_option_u32(payload, 37).map(|v| v as usize)?;
+                let k = read_usize(payload, 4)?;
+                let kw = read_usize(payload, 8)?;
+                let sh = read_option_u32(payload, 12).map(|v| v as usize);
+                let sw = read_option_u32(payload, 17).map(|v| v as usize);
+                let ph = read_option_u32(payload, 22).map(|v| v as usize);
+                let pw = read_option_u32(payload, 27).map(|v| v as usize);
                 WasmPool::new_avg_pool2d(k, kw, sh, sw, ph, pw)
             }
             POOL_ADAPTIVEAVGPOOL2D => {
-                let oh = read_usize(payload, 8)?;
-                let ow = read_usize(payload, 12)?;
+                let oh = read_usize(payload, 4)?;
+                let ow = read_usize(payload, 8)?;
                 WasmPool::new_adaptive_avg_pool2d(oh, ow)
             }
             _ => return Err(format!("Unknown pool variant: 0x{:02X}", header.variant)),
@@ -332,11 +341,11 @@ impl LayerRegistry {
         let out_ch = read_usize(payload, 8)?;
         let kh = read_usize(payload, 12)?;
         let kw = read_usize(payload, 16)?;
-        let ratio = read_option_u32(payload, 20).map(|v| v as usize)?;
-        let sh = read_option_u32(payload, 25).map(|v| v as usize)?;
-        let sw = read_option_u32(payload, 30).map(|v| v as usize)?;
-        let ph = read_option_u32(payload, 35).map(|v| v as usize)?;
-        let pw = read_option_u32(payload, 40).map(|v| v as usize)?;
+        let ratio = read_option_u32(payload, 20).map(|v| v as usize);
+        let sh = read_option_u32(payload, 25).map(|v| v as usize);
+        let sw = read_option_u32(payload, 30).map(|v| v as usize);
+        let ph = read_option_u32(payload, 35).map(|v| v as usize);
+        let pw = read_option_u32(payload, 40).map(|v| v as usize);
 
         let layer = WasmGhostModule::new(in_ch, out_ch, kh, kw, ratio, sh, sw, ph, pw);
         self.ghosts.insert(id, layer);
@@ -346,7 +355,7 @@ impl LayerRegistry {
     fn init_seblock(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let id = read_u32(payload, 0)?;
         let channels = read_usize(payload, 4)?;
-        let reduction = read_option_u32(payload, 8).map(|v| v as usize)?;
+        let reduction = read_option_u32(payload, 8).map(|v| v as usize);
 
         let layer = WasmSeBlock::new(channels, reduction);
         self.seblocks.insert(id, layer);
