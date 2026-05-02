@@ -36,15 +36,10 @@ pub enum Convolution<B: Backend> {
 }
 
 impl<B: Backend> Convolution<B> {
-    // Input selalu 4D [Batch, Channel, H, W] dari WasmTensor
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         match self {
-            // Conv2d & Transpose2d native support 4D
             Convolution::Conv2d(layer) => layer.forward(input),
             Convolution::ConvTranspose2d(layer) => layer.forward(input),
-
-            // Conv1d butuh 3D [Batch, Channel, Length]
-            // Squeeze dimensi terakhir (width), conv, unsqueeze balik
             Convolution::Conv1d(layer) => {
                 let [b, c, h, _w] = input.dims();
                 let x_3d = input.reshape([b, c, h]);
@@ -75,7 +70,7 @@ impl WasmConv {
         let device = Default::default();
         let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
         if let Some(s) = stride {
-            config.stride = [s];
+            config.stride = s;  // usize, bukan [usize; 1]
         }
         if let Some(p) = padding {
             config.padding = burn::nn::PaddingConfig1d::Explicit(p);
@@ -102,7 +97,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];  // [usize; 2], bukan PaddingConfig2d
         }
         WasmConv {
             inner: ConvolutionConfig::Conv2d(config).init(&device),
@@ -126,7 +121,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];  // [usize; 2]
         }
         WasmConv {
             inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
