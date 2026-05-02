@@ -96,7 +96,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];
         }
         WasmConv {
             inner: ConvolutionConfig::Conv2d(config).init(&device),
@@ -120,7 +120,7 @@ impl WasmConv {
             config.stride = [sh, sw];
         }
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
+            config.padding = [ph, pw];
         }
         WasmConv {
             inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
