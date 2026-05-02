@@ -4,7 +4,10 @@ use burn::nn::conv::{
     Conv2d, Conv2dConfig,
     ConvTranspose2d, ConvTranspose2dConfig
 };
-
+use burn::nn::PaddingConfig2d;
+use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use wasm_bindgen::prelude::*;
+use crate::{WasmBackend, WasmTensor};
 
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
@@ -33,26 +36,127 @@ pub enum Convolution<B: Backend> {
 }
 
 impl<B: Backend> Convolution<B> {
-    // Input kita selalu 4D [Batch, Channel, H, W] dari WasmTensor
+    // Input selalu 4D [Batch, Channel, H, W] dari WasmTensor
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         match self {
             // Conv2d & Transpose2d native support 4D
             Convolution::Conv2d(layer) => layer.forward(input),
             Convolution::ConvTranspose2d(layer) => layer.forward(input),
-            
+
             // Conv1d butuh 3D [Batch, Channel, Length]
-            // Kita lakukan Reshape otomatis (Squeeze dimensi terakhir)
+            // Squeeze dimensi terakhir (width), conv, unsqueeze balik
             Convolution::Conv1d(layer) => {
                 let [b, c, h, _w] = input.dims();
-                // Anggap Height sebagai Length, Width diabaikan (biasanya 1)
                 let x_3d = input.reshape([b, c, h]);
-                
                 let out = layer.forward(x_3d);
-                
-                // Kembalikan ke 4D [Batch, Channel, Length, 1]
                 let [b_out, c_out, l_out] = out.dims();
                 out.reshape([b_out, c_out, l_out, 1])
             }
         }
+    }
+}
+
+// --- WASM WRAPPER ---
+#[wasm_bindgen]
+pub struct WasmConv {
+    inner: Convolution<WasmBackend>,
+}
+
+#[wasm_bindgen]
+impl WasmConv {
+    #[wasm_bindgen(js_name = newConv1d)]
+    pub fn new_conv1d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: usize,
+        stride: Option<usize>,
+        padding: Option<usize>,
+    ) -> WasmConv {
+        let device = Default::default();
+        let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
+        if let Some(s) = stride {
+            config.stride = [s];
+        }
+        if let Some(p) = padding {
+            config.padding = burn::nn::PaddingConfig1d::Explicit(p);
+        }
+        WasmConv {
+            inner: ConvolutionConfig::Conv1d(config).init(&device),
+        }
+    }
+
+    #[wasm_bindgen(js_name = newConv2d)]
+    pub fn new_conv2d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
+    ) -> WasmConv {
+        let device = Default::default();
+        let mut config = Conv2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config.stride = [sh, sw];
+        }
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config.padding = PaddingConfig2d::Explicit(ph, pw);
+        }
+        WasmConv {
+            inner: ConvolutionConfig::Conv2d(config).init(&device),
+        }
+    }
+
+    #[wasm_bindgen(js_name = newConvTranspose2d)]
+    pub fn new_conv_transpose2d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
+    ) -> WasmConv {
+        let device = Default::default();
+        let mut config = ConvTranspose2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config.stride = [sh, sw];
+        }
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config.padding = PaddingConfig2d::Explicit(ph, pw);
+        }
+        WasmConv {
+            inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
+        }
+    }
+
+    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
+        let x = input.inner.clone();
+        let out = self.inner.forward(x);
+        WasmTensor { inner: out }
+    }
+
+    pub fn num_params(&self) -> usize {
+        self.inner.num_params()
+    }
+
+    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
+        let device = Default::default();
+        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .load(data.to_vec(), &device)
+            .map_err(|e| e.to_string())?;
+        self.inner = self.inner.clone().load_record(record);
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> Result<Vec<u8>, String> {
+        let record = self.inner.clone().into_record();
+        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
+            .record(record, ())
+            .map_err(|e| e.to_string())?;
+        Ok(bytes)
     }
 }
