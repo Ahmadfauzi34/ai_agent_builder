@@ -53,7 +53,7 @@ pub struct SeBlock<B: Backend> {
 
 impl<B: Backend> SeBlock<B> {
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
-        let [b, c, h, w] = input.dims();
+        let [b, c, _h, _w] = input.dims();
 
         // Squeeze: Global Average Pooling → [B, C, 1, 1]
         let pooled = self.squeeze.forward(input.clone());
@@ -124,4 +124,3 @@ impl WasmSeBlock {
         Ok(bytes)
     }
 }
-
