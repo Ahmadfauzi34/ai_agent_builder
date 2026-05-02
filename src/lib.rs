@@ -4,16 +4,50 @@ use burn::tensor::TensorData;
 use js_sys::Float32Array;
 
 pub mod layers;
+pub mod protocol;
+pub mod registry;
+
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
+// -------------------------------------------------------------
+// WASM TENSOR — 4D tensor bridge
+// -------------------------------------------------------------
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct WasmTensor {
     pub(crate) inner: Tensor<WasmBackend, 4>, 
 }
 
+#[wasm_bindgen]
+impl WasmTensor {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: &[f32], shape: &[usize]) -> WasmTensor {
+        let device = Default::default();
+        let mut dims = [1usize, 1, 1, 1];
+        for (i, &d) in shape.iter().enumerate().take(4) {
+            dims[i] = d;
+        }
+        let tensor_data = TensorData::new(data.to_vec(), dims);
+        let tensor = Tensor::from_data(tensor_data, &device);
+        WasmTensor { inner: tensor }
+    }
+
+    pub fn to_array(&self) -> Vec<f32> {
+        let data = self.inner.to_data();
+        data.as_slice::<f32>().unwrap().to_vec()
+    }
+
+    pub fn shape(&self) -> Vec<usize> {
+        self.inner.dims().into()
+    }
+
+    pub fn byte_length(&self) -> usize {
+        self.inner.dims().iter().product::<usize>() * 4 
+    }
+}
+
 // -------------------------------------------------------------
-// SHARED MEMORY BRIDGE
+// TENSOR VIEW — SharedArrayBuffer bridge (zero-copy JS side)
 // -------------------------------------------------------------
 #[wasm_bindgen]
 pub struct TensorView {
@@ -45,17 +79,17 @@ impl TensorView {
     pub fn shape(&self) -> Vec<usize> {
         self.shape.clone()
     }
-    
+
     fn as_f32_array(&self) -> Float32Array {
         Float32Array::new(&self.sab)
     }
-    
+
     /// Copy data dari SAB ke slice Rust (Rust baca data JS)
     pub fn read(&self, dst: &mut [f32]) {
         let arr = self.as_f32_array();
         arr.copy_to(dst);
     }
-    
+
     /// Copy data dari slice Rust ke SAB (Rust tulis data untuk JS)
     pub fn write(&self, src: &[f32]) {
         let arr = self.as_f32_array();
@@ -64,23 +98,10 @@ impl TensorView {
 }
 
 // -------------------------------------------------------------
-// WASM TENSOR
+// WASM TENSOR ↔ TENSOR VIEW
 // -------------------------------------------------------------
 #[wasm_bindgen]
 impl WasmTensor {
-    #[wasm_bindgen(constructor)]
-    pub fn new(data: &[f32], shape: &[usize]) -> WasmTensor {
-        let device = Default::default();
-        let mut dims = [1usize, 1, 1, 1];
-        for (i, &d) in shape.iter().enumerate().take(4) {
-            dims[i] = d;
-        }
-        let tensor_data = TensorData::new(data.to_vec(), dims);
-        let tensor = Tensor::from_data(tensor_data, &device);
-        WasmTensor { inner: tensor }
-    }
-
-    /// Rust baca dari SAB (JS tulis dulu ke SAB, lalu panggil ini)
     #[wasm_bindgen(js_name = fromTensorView)]
     pub fn from_tensor_view(view: &TensorView) -> WasmTensor {
         let device = Default::default();
@@ -88,15 +109,14 @@ impl WasmTensor {
         for (i, &d) in view.shape().iter().enumerate().take(4) {
             dims[i] = d;
         }
-        
+
         let mut buf = vec![0f32; view.len()];
         view.read(&mut buf);
-        
+
         let tensor_data = TensorData::new(buf, dims);
         WasmTensor { inner: Tensor::from_data(tensor_data, &device) }
     }
 
-    /// Rust tulis ke SAB (JS baca hasil dari SAB setelah ini)
     #[wasm_bindgen(js_name = toTensorView)]
     pub fn to_tensor_view(&self, view: &mut TensorView) {
         let data = self.inner.to_data();
@@ -104,17 +124,5 @@ impl WasmTensor {
         view.write(slice);
         view.set_shape(self.inner.dims().into());
     }
-
-    pub fn to_array(&self) -> Vec<f32> {
-        let data = self.inner.to_data();
-        data.as_slice::<f32>().unwrap().to_vec()
-    }
-    
-    pub fn shape(&self) -> Vec<usize> {
-        self.inner.dims().into()
-    }
-    
-    pub fn byte_length(&self) -> usize {
-        self.inner.dims().iter().product::<usize>() * 4 
-    }
 }
+
