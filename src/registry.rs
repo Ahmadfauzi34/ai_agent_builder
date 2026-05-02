@@ -201,14 +201,14 @@ impl LayerRegistry {
                 WasmActivation::new_leaky_relu(slope)
             }
             ACT_PRELU => {
-                let num_params = read_option_u32(payload, 4).map(|v| v as usize);
+                let num_params = read_option_u32(payload, 4)?.map(|v| v as usize);
                 let alpha = read_option_f64(payload, 9)?;
                 WasmActivation::new_prelu(num_params, alpha)
             }
             ACT_SWIGLU => {
                 let d_in = read_usize(payload, 4)?;
                 let d_out = read_usize(payload, 8)?;
-                let bias = read_option_u32(payload, 12).map(|v| v != 0);
+                let bias = read_option_u32(payload, 12)?.map(|v| v != 0);
                 WasmActivation::new_swiglu(d_in, d_out, bias)
             }
             ACT_HARDSIGMOID => {
@@ -335,4 +335,3 @@ impl LayerRegistry {
         Ok(())
     }
 }
-
