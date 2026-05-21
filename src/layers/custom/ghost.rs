@@ -142,3 +142,33 @@ impl WasmGhostModule {
         Ok(bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use burn_ndarray::NdArray;
+
+    type TestBackend = NdArray<f32>;
+
+    #[test]
+    fn test_ghost_module_config_init() {
+        let device = Default::default();
+        let config = GhostModuleConfig::new(16, 32, [3, 3])
+            .with_ratio(2)
+            .with_stride([1, 1])
+            .with_padding([1, 1]);
+
+        let module = config.init::<TestBackend>(&device);
+
+        assert_eq!(module.ratio, 2);
+        assert_eq!(module.primary_ch, 16);
+    }
+
+    #[test]
+    #[should_panic(expected = "out_channels must be divisible by ratio")]
+    fn test_ghost_module_config_init_panic() {
+        let device = Default::default();
+        let config = GhostModuleConfig::new(16, 33, [3, 3]).with_ratio(2);
+        config.init::<TestBackend>(&device);
+    }
+}
