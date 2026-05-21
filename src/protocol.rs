@@ -183,3 +183,40 @@ pub fn read_option_f64(payload: &[u8], offset: usize) -> Result<Option<f64>, Str
         read_f64(payload, offset + 1).map(Some)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_packet_header_from_bytes_valid() {
+        let bytes = vec![0x01, 0x02, 0x03, 0x01, 0x04, 0x00, 0x00, 0x00];
+        let header = PacketHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(header.opcode, 0x01);
+        assert_eq!(header.layer_type, 0x02);
+        assert_eq!(header.variant, 0x03);
+        assert_eq!(header.flags, 0x01);
+        assert_eq!(header.payload_len, 4);
+        assert_eq!(header.has_bias(), true);
+        assert_eq!(header.is_training(), false);
+    }
+
+    #[test]
+    fn test_packet_header_from_bytes_too_short() {
+        let bytes = vec![0x01, 0x02, 0x03, 0x01, 0x04, 0x00, 0x00];
+        let result = PacketHeader::from_bytes(&bytes);
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap(), "Header too short, need 8 bytes");
+    }
+
+    #[test]
+    fn test_packet_header_from_bytes_exact_length() {
+        let bytes = [0xFF, 0xAA, 0xBB, 0xCC, 0x10, 0x20, 0x30, 0x40];
+        let header = PacketHeader::from_bytes(&bytes).unwrap();
+        assert_eq!(header.opcode, 0xFF);
+        assert_eq!(header.layer_type, 0xAA);
+        assert_eq!(header.variant, 0xBB);
+        assert_eq!(header.flags, 0xCC);
+        assert_eq!(header.payload_len, 0x40302010);
+    }
+}
