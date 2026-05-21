@@ -219,4 +219,31 @@ mod tests {
         assert_eq!(header.flags, 0xCC);
         assert_eq!(header.payload_len, 0x40302010);
     }
+
+    #[test]
+    fn test_read_f64_valid() {
+        let val: f64 = 3.14159265359;
+        let bytes = val.to_le_bytes();
+
+        let mut payload = vec![0, 0];
+        payload.extend_from_slice(&bytes);
+        payload.push(0);
+
+        let result = read_f64(&payload, 2);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), val);
+    }
+
+    #[test]
+    fn test_read_f64_out_of_bounds() {
+        let payload = vec![1, 2, 3, 4, 5, 6, 7]; // 7 bytes, 8 bytes needed
+        let result = read_f64(&payload, 0);
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap(), "read_f64 out of bounds");
+
+        let payload = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let result = read_f64(&payload, 1); // 1 + 8 > 8
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap(), "read_f64 out of bounds");
+    }
 }
