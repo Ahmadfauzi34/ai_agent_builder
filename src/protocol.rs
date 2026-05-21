@@ -219,4 +219,17 @@ mod tests {
         assert_eq!(header.flags, 0xCC);
         assert_eq!(header.payload_len, 0x40302010);
     }
+
+    #[test]
+    fn test_read_u32_out_of_bounds() {
+        let payload = vec![0x01, 0x02, 0x03];
+        let result = read_u32(&payload, 0);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "read_u32 out of bounds");
+
+        let payload2 = vec![0x01, 0x02, 0x03, 0x04];
+        let result2 = read_u32(&payload2, 1);
+        assert!(result2.is_err());
+        assert_eq!(result2.unwrap_err(), "read_u32 out of bounds");
+    }
 }
