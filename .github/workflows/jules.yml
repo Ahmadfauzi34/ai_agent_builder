@@ -37,7 +37,7 @@ jobs:
           echo "✅ JULES_API_KEY tervalidasi"
 
       - name: Run Jules
-        uses: google-labs-code/jules-action@v1
+        uses: google-labs-code/jules-action@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           jules_api_key: ${{ secrets.JULES_API_KEY }}
