@@ -126,3 +126,17 @@ impl WasmTensor {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wasm_bindgen_test::wasm_bindgen_test;
+
+    #[wasm_bindgen_test]
+    fn test_tensorview_set_shape() {
+        let mut view = TensorView::new(10);
+        let test_shape = vec![2, 5];
+        view.set_shape(test_shape.clone());
+        assert_eq!(view.shape(), test_shape);
+    }
+}
