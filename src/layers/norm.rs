@@ -128,3 +128,19 @@ impl WasmNorm {
         Ok(bytes)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_layer_norm() {
+        // Test with default epsilon
+        let norm_default = WasmNorm::new_layer_norm(128, None);
+        assert_eq!(norm_default.num_params(), 256); // gamma and beta for size 128 (128 * 2)
+
+        // Test with custom epsilon
+        let norm_custom = WasmNorm::new_layer_norm(64, Some(1e-6));
+        assert_eq!(norm_custom.num_params(), 128);
+    }
+}
