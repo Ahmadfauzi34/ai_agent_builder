@@ -23,3 +23,6 @@ bincode = { version = "2.0.1", features = ["serde"] }
 
 # --- RANDOM ---
 getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3.71"
