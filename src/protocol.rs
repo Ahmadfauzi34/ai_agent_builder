@@ -107,12 +107,7 @@ impl PacketHeader {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = vec![0u8; 8];
-        buf[0] = self.opcode;
-        buf[1] = self.layer_type;
-        buf[2] = self.variant;
-        buf[3] = self.flags;
-        let len_bytes = self.payload_len.to_le_bytes();
-        buf[4..8].copy_from_slice(&len_bytes);
+        self.write_to_slice(&mut buf);
         buf
     }
 
@@ -122,6 +117,166 @@ impl PacketHeader {
 
     pub fn is_training(&self) -> bool {
         (self.flags & 0x02) != 0
+    }
+}
+
+// Non-wasm_bindgen implementations of helper functions so we don't hit wasm_bindgen limitations.
+impl PacketHeader {
+    /// Potong payload sesuai payload_len.
+    #[inline]
+    pub fn validate_payload<'a>(&self, payload: &'a [u8]) -> Result<&'a [u8], String> {
+        let expected = self.payload_len as usize;
+
+        if payload.len() < expected {
+            return Err(format!(
+                "payload shorter than payload_len: expected {}, got {}",
+                expected,
+                payload.len()
+            ));
+        }
+
+        Ok(&payload[..expected])
+    }
+
+    /// Tulis header ke buffer fixed 8 byte tanpa alokasi Vec.
+    #[inline]
+    pub fn write_to(&self, buf: &mut [u8; 8]) {
+        buf[0] = self.opcode;
+        buf[1] = self.layer_type;
+        buf[2] = self.variant;
+        buf[3] = self.flags;
+        buf[4..8].copy_from_slice(&self.payload_len.to_le_bytes());
+    }
+
+    /// Tulis header ke slice (min 8 byte).
+    #[inline]
+    pub fn write_to_slice(&self, buf: &mut [u8]) {
+        buf[0] = self.opcode;
+        buf[1] = self.layer_type;
+        buf[2] = self.variant;
+        buf[3] = self.flags;
+        buf[4..8].copy_from_slice(&self.payload_len.to_le_bytes());
+    }
+}
+
+pub const VARIANT_NONE: u8 = 0xFF;
+pub const FLAG_BIAS: u8 = 1 << 0;
+pub const FLAG_TRAINING: u8 = 1 << 1;
+
+pub struct PayloadCursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> PayloadCursor<'a> {
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    #[inline]
+    fn ensure(&self, n: usize) -> Result<(), String> {
+        let end = self
+            .pos
+            .checked_add(n)
+            .ok_or_else(|| "payload offset overflow".to_string())?;
+
+        if end > self.data.len() {
+            return Err(format!(
+                "payload out of bounds: need {} bytes at offset {}",
+                n, self.pos
+            ));
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn read_u8(&mut self) -> Result<u8, String> {
+        self.ensure(1)?;
+        let v = self.data[self.pos];
+        self.pos += 1;
+        Ok(v)
+    }
+
+    #[inline]
+    pub fn read_u32(&mut self) -> Result<u32, String> {
+        self.ensure(4)?;
+
+        let b = [
+            self.data[self.pos],
+            self.data[self.pos + 1],
+            self.data[self.pos + 2],
+            self.data[self.pos + 3],
+        ];
+
+        self.pos += 4;
+
+        Ok(u32::from_le_bytes(b))
+    }
+
+    #[inline]
+    pub fn read_f32(&mut self) -> Result<f32, String> {
+        self.ensure(4)?;
+
+        let mut b = [0u8; 4];
+        b.copy_from_slice(&self.data[self.pos..self.pos + 4]);
+
+        self.pos += 4;
+
+        Ok(f32::from_le_bytes(b))
+    }
+
+    #[inline]
+    pub fn read_f64(&mut self) -> Result<f64, String> {
+        self.ensure(8)?;
+
+        let mut b = [0u8; 8];
+        b.copy_from_slice(&self.data[self.pos..self.pos + 8]);
+
+        self.pos += 8;
+
+        Ok(f64::from_le_bytes(b))
+    }
+
+    #[inline]
+    pub fn read_bool(&mut self) -> Result<bool, String> {
+        self.read_u8().map(|v| v != 0)
+    }
+
+    #[inline]
+    pub fn read_usize(&mut self) -> Result<usize, String> {
+        self.read_u32().map(|v| v as usize)
+    }
+
+    /// Option<u32> fixed-size:
+    /// 1 byte tag + 4 byte value
+    #[inline]
+    pub fn read_option_u32(&mut self) -> Result<Option<u32>, String> {
+        let present = self.read_u8()? != 0;
+        let value = self.read_u32()?;
+
+        Ok(if present { Some(value) } else { None })
+    }
+
+    /// Option<f64> fixed-size:
+    /// 1 byte tag + 8 byte value
+    #[inline]
+    pub fn read_option_f64(&mut self) -> Result<Option<f64>, String> {
+        let present = self.read_u8()? != 0;
+        let value = self.read_f64()?;
+
+        Ok(if present { Some(value) } else { None })
+    }
+
+    #[inline]
+    pub fn read_option_usize(&mut self) -> Result<Option<usize>, String> {
+        Ok(self.read_option_u32()?.map(|v| v as usize))
+    }
+
+    #[inline]
+    pub fn remaining(&self) -> usize {
+        self.data.len().saturating_sub(self.pos)
     }
 }
 

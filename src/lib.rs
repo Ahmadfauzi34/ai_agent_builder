@@ -7,6 +7,9 @@ pub mod layers;
 pub mod protocol;
 pub mod registry;
 
+#[cfg(test)]
+mod tests;
+
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
 // -------------------------------------------------------------
