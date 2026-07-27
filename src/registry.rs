@@ -11,6 +11,8 @@ use crate::layers::pool::WasmPool;
 use crate::layers::custom::shift::WasmShift;
 use crate::layers::custom::ghost::WasmGhostModule;
 use crate::layers::custom::seblock::WasmSeBlock;
+use crate::layers::binary::WasmBinary;
+
 
 type LayerId = u32;
 
