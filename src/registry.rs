@@ -388,3 +388,137 @@ impl LayerRegistry {
         Ok(())
     }
 }
+
+// ============================================================
+// GRAPH EXECUTOR — jalankan rantai layer dalam 1 panggilan WASM.
+// Tensor intermediate TIDAK menyeberang boundary (kunci performa "Run").
+//
+// Wire format plan (little-endian):
+//   num_steps : u32
+//   num_slots : u32            // 1..=64 ; slot 0 = input eksternal
+//   steps     : ulang num_steps kali ->
+//               { layer_type: u8, layer_id: u32, in_slot: u8, out_slot: u8 }
+//   out_slot  : u8             // slot mana yang dikembalikan
+//
+// Aturan slot: slot 0 sudah terisi oleh `input`. Tiap langkah membaca
+// in_slot (harus sudah terisi) dan menulis hasil ke out_slot. Ini mendukung
+// rantai linear MAUPUN kipas-out (satu hasil dipakai banyak langkah).
+// ============================================================
+const MAX_SLOTS: u32 = 64;
+
+#[derive(Clone, Copy)]
+struct RunStep {
+    layer_type: u8,
+    layer_id: u32,
+    in_slot: u8,
+    out_slot: u8,
+}
+
+fn read_run_step(c: &mut PayloadCursor) -> Result<RunStep, String> {
+    Ok(RunStep {
+        layer_type: c.read_u8()?,
+        layer_id: c.read_u32()?,
+        in_slot: c.read_u8()?,
+        out_slot: c.read_u8()?,
+    })
+}
+
+fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
+    match layer_type {
+        LAYER_LINEAR     => reg.linears.contains_key(&layer_id),
+        LAYER_NORM       => reg.norms.contains_key(&layer_id),
+        LAYER_CONV       => reg.convs.contains_key(&layer_id),
+        LAYER_ACTIVATION => reg.activations.contains_key(&layer_id),
+        LAYER_EMBEDDING  => reg.embeddings.contains_key(&layer_id),
+        LAYER_POOL       => reg.pools.contains_key(&layer_id),
+        LAYER_SHIFT      => reg.shifts.contains_key(&layer_id),
+        LAYER_GHOST      => reg.ghosts.contains_key(&layer_id),
+        LAYER_SEBLOCK    => reg.seblocks.contains_key(&layer_id),
+        _ => false,
+    }
+}
+
+// Pass 1: validasi SEMUA hal (keberadaan layer + dataflow slot) TANPA eksekusi.
+// Mengembalikan (num_steps, num_slots, out_slot) untuk dipakai pass 2.
+fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), String> {
+    let mut c = PayloadCursor::new(plan);
+    let num_steps = c.read_u32()?;
+    let num_slots = c.read_u32()?;
+
+    if num_steps == 0 {
+        return Err("run_graph: plan has no steps".into());
+    }
+    if !(1..=MAX_SLOTS).contains(&num_slots) {
+        return Err(format!(
+            "run_graph: num_slots must be 1..={}, got {}",
+            MAX_SLOTS, num_slots
+        ));
+    }
+
+    let mut filled: u64 = 1; // bit 0 = slot 0 (input eksternal) sudah terisi
+    for _ in 0..num_steps {
+        let s = read_run_step(&mut c)?;
+        let in_slot = s.in_slot as u32;
+        let out_slot = s.out_slot as u32;
+
+        if in_slot >= num_slots || out_slot >= num_slots {
+            return Err(format!(
+                "run_graph: slot index out of range (num_slots={})",
+                num_slots
+            ));
+        }
+        if (filled >> in_slot) & 1 == 0 {
+            return Err(format!("run_graph: input slot {} is empty", in_slot));
+        }
+        if !contains_layer(reg, s.layer_type, s.layer_id) {
+            return Err(format!(
+                "run_graph: layer type 0x{:02X} id {} not found",
+                s.layer_type, s.layer_id
+            ));
+        }
+        filled |= 1u64 << out_slot; // out_slot < 64 dijamin di atas, shift aman
+    }
+
+    let out_slot = c.read_u8()? as u32;
+    if out_slot >= num_slots {
+        return Err(format!("run_graph: output slot {} out of range", out_slot));
+    }
+    if (filled >> out_slot) & 1 == 0 {
+        return Err(format!(
+            "run_graph: output slot {} is never written",
+            out_slot
+        ));
+    }
+    Ok((num_steps, num_slots, out_slot as u8))
+}
+
+#[wasm_bindgen]
+impl LayerRegistry {
+    #[wasm_bindgen(js_name = runGraph)]
+    pub fn run_graph(&self, plan: &[u8], input: &WasmTensor) -> Result<WasmTensor, String> {
+        // Pass 1: fail-fast, tidak ada eksekusi kalau plan tidak valid.
+        let (num_steps, num_slots, out_slot) = validate_plan(self, plan)?;
+
+        // Pass 2: eksekusi. Tensor intermediate hidup di Rust saja.
+        let mut c = PayloadCursor::new(plan);
+        let _ = c.read_u32()?; // num_steps (baca ulang)
+        let _ = c.read_u32()?; // num_slots (baca ulang)
+
+        let mut slots: Vec<Option<WasmTensor>> = (0..num_slots as usize).map(|_| None).collect();
+        slots[0] = Some(input.clone());
+
+        for _ in 0..num_steps {
+            let s = read_run_step(&mut c)?;
+            let inp = slots[s.in_slot as usize]
+                .as_ref()
+                .ok_or_else(|| format!("run_graph: runtime empty slot {}", s.in_slot))?;
+            // Pakai dispatch yang SUDAH ADA — tidak ada duplikasi 9 cabang.
+            let out = self.forward_layer(s.layer_id, s.layer_type, inp)?;
+            slots[s.out_slot as usize] = Some(out);
+        }
+
+        slots[out_slot as usize]
+            .take()
+            .ok_or_else(|| format!("run_graph: runtime empty output slot {}", out_slot))
+    }
+}
