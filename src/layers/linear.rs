@@ -1,4 +1,4 @@
-use burn::prelude::*;
+6use burn::prelude::*;
 use burn::nn::{Linear, LinearConfig};
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
@@ -122,11 +122,10 @@ impl WasmLinear {
         }
         Ok(out)
     }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
+#[wasm_bindgen(js_name = setWeightsFlat)]
     pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
         let mut rec = self.inner.inner.clone().into_record();
-        let wd = rec.weight.dims(); // [in, out]  (deref ke Tensor::dims)
+        let wd = rec.weight.dims(); // [in, out]
         let in_d = wd[0];
         let out_d = wd[1];
         let has_bias = rec.bias.is_some();
@@ -140,20 +139,16 @@ impl WasmLinear {
             ));
         }
         let device: <WasmBackend as Backend>::Device = Default::default();
-        // rec.weight: Param<Tensor<_,2>> -> bangun Tensor, lalu .into() jadi Param.
-        rec.weight = Tensor::from_data(
+        // rec.weight: Param<Tensor<_,2>> -> pakai constructor resmi 0.20 (bukan .into()).
+        rec.weight = burn::module::Param::from_data(
             burn::tensor::TensorData::new(data[..in_d * out_d].to_vec(), [in_d, out_d]),
             &device,
-        )
-        .into();
+        );
         if has_bias {
-            rec.bias = Some(
-                Tensor::from_data(
-                    burn::tensor::TensorData::new(data[in_d * out_d..].to_vec(), [out_d]),
-                    &device,
-                )
-                .into(),
-            );
+            rec.bias = Some(burn::module::Param::from_data(
+                burn::tensor::TensorData::new(data[in_d * out_d..].to_vec(), [out_d]),
+                &device,
+            ));
         }
         self.inner.inner = self.inner.inner.clone().load_record(rec);
         Ok(())
