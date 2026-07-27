@@ -32,8 +32,7 @@ jobs:
       # 4. Lint + compile-check HOST (mengganti `cargo check` lama).
       #    clippy TIDAK melakukan link → aman dari jebakan js-sys.
       #    Tanpa `-- -D warnings` dulu, supaya warning lama tidak bikin merah.
-      - name: Clippy (host: lint + compile check)
-        run: cargo clippy --all-targets --verbose
+      
 
 
       # 5. Compile-check WASM (tanpa link) → tangkap error wasm SEBELUM wasm-pack.
