@@ -27,6 +27,7 @@ pub struct LayerRegistry {
     shifts:      HashMap<LayerId, WasmShift>,
     ghosts:      HashMap<LayerId, WasmGhostModule>,
     seblocks:    HashMap<LayerId, WasmSeBlock>,
+    binaries:    HashMap<LayerId, WasmBinary>,
 
     cached_params: usize,
 }
@@ -91,6 +92,7 @@ impl LayerRegistry {
             shifts:      HashMap::new(),
             ghosts:      HashMap::new(),
             seblocks:    HashMap::new(),
+            binaries:    HashMap::new(),
 
             cached_params: 0,
         }
@@ -110,6 +112,7 @@ impl LayerRegistry {
             LAYER_SHIFT       => self.init_shift(header, payload),
             LAYER_GHOST       => self.init_ghost(header, payload),
             LAYER_SEBLOCK     => self.init_seblock(header, payload),
+            LAYER_BINARY      => self.init_binary(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
         }
     }
@@ -172,6 +175,7 @@ impl LayerRegistry {
             LAYER_SEBLOCK     => remove_layer!(self, seblocks, layer_id),
             LAYER_POOL        => self.pools.remove(&layer_id).is_some(),
             LAYER_SHIFT       => self.shifts.remove(&layer_id).is_some(),
+            LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),
             _ => false,
         }
     }
@@ -590,5 +594,44 @@ impl LayerRegistry {
                 layer_type
             )),
         }
+    }
+}
+// ============================================================
+// BINARY (A1) — layer stateless 2-input.
+// init lewat packet (LAYER_BINARY + variant); forward lewat method 2-input.
+// get/load state sengaja TIDAK didukung (stateless) -> jatuh ke `_ => Err`
+// di dispatch lama, yang benar secara semantik ("tidak ada bobot").
+// ============================================================
+#[wasm_bindgen]
+impl LayerRegistry {
+    /// forward 2-input. Hanya melayani LAYER_BINARY (satu-satunya op biner saat ini).
+    #[wasm_bindgen(js_name = forwardBinaryLayer)]
+    pub fn forward_binary_layer(
+        &self,
+        layer_id: LayerId,
+        a: &WasmTensor,
+        b: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        self.binaries
+            .get(&layer_id)
+            .ok_or_else(|| format!("Binary layer {} not found", layer_id))?
+            .forward_binary(a, b)
+    }
+
+    // (private) dipanggil dari init_layer match di atas.
+    fn init_binary(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        let mut c = PayloadCursor::new(payload);
+        let id = c.read_u32()?;
+        let dim = c.read_usize()?; // hanya bermakna untuk CONCAT; don't-care lainnya
+        let layer = match header.variant {
+            BINARY_ADD    => WasmBinary::new_add(),
+            BINARY_SUB    => WasmBinary::new_sub(),
+            BINARY_MUL    => WasmBinary::new_mul(),
+            BINARY_MATMUL => WasmBinary::new_matmul(),
+            BINARY_CONCAT => WasmBinary::new_concat(dim),
+            _ => return Err(format!("Unknown binary variant: 0x{:02X}", header.variant)),
+        };
+        self.binaries.insert(id, layer); // stateless: insert langsung, tanpa macro cache
+        Ok(())
     }
 }
