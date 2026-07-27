@@ -46,6 +46,9 @@ jobs:
       # 7. Build WASM (hanya jika 4 & 5 lolos)
       - name: Build WASM
         run: wasm-pack build --target web --out-dir pkg
+      
+      - name: Run host tests (executor contract)
+        run: cargo test --lib
 
       # 8. Laporan ukuran → pantau budget <100MB tiap run
       - name: Report artifact size
