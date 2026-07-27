@@ -102,8 +102,7 @@ impl WasmLinear {
         rec.weight.dims().to_vec()                                 // TITIK API #3 (field `weight`)
     }
 
-    /// Baca seluruh bobot sebagai flat f32: [weight..., bias...].
-    #[wasm_bindgen(js_name = getWeightsFlat)]
+#[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.inner.clone().into_record();
         // rec.weight: Param<Tensor<_,2>> -> clone via deref jadi Tensor owned, baru into_data.
