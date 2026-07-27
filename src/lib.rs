@@ -6,7 +6,7 @@ use js_sys::Float32Array;
 pub mod layers;
 pub mod protocol;
 pub mod registry;
-
+pub mod es;
 #[cfg(test)]
 mod tests;
 
