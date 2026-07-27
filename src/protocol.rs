@@ -9,6 +9,7 @@ pub const OP_GET_STATE:  u8 = 0x03;
 pub const OP_LOAD_STATE: u8 = 0x04;
 pub const OP_DESTROY:    u8 = 0x05;
 pub const OP_GET_PARAMS: u8 = 0x06;
+pub const OP_RUN_GRAPH:    u8 = 0x07;
 
 // ============================================================
 // LAYER TYPES — 1 file.rs = 1 engine = 1 byte
