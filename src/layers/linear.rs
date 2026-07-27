@@ -158,3 +158,4 @@ impl WasmLinear {
         self.inner.inner = self.inner.inner.clone().load_record(rec);
         Ok(())
     }
+}
