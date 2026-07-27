@@ -4,4 +4,5 @@ pub mod conv;
 pub mod norm;
 pub mod embedding;
 pub mod pool;
+pub mod binary;
 pub mod custom;
