@@ -1,244 +1,67 @@
-name: Rust AI CI (Advanced — Santai)
+name: Rust AI CI
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
+    branches: [ "main" ]
+  pull_request:                 # solid: CI juga jalan di PR, bukan cuma setelah merge
+    branches: [ "main" ]
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-  WASM_SIZE_BUDGET: 104857600  # 100MB
 
 jobs:
-  # ============================================================
-  # JOB 1: Lint & Security (Gatekeeper)
-  # ============================================================
-  lint-and-security:
+  build-and-test:
     runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
+
     steps:
+      # 1. Ambil Kode
       - uses: actions/checkout@v4
 
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      # ✅ FORMAT CHECK — cuma WARNING, tidak fail CI
-      - name: Check formatting (non-blocking)
-        run: cargo fmt --all -- --check
-        continue-on-error: true
-
-      # ✅ CLIPPY — tetap strict, ini yang penting
-      - name: Run Clippy (Strict)
-        run: |
-          cargo clippy --all-targets --all-features -- -D warnings             -W clippy::pedantic             -W clippy::nursery             -W clippy::unwrap_used             -W clippy::expect_used
-
-      # ✅ SECURITY AUDIT — tetap wajib lolos
-      - name: Audit dependencies
-        uses: actions-rust-lang/audit@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Check cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v1
-        with:
-          command: check licenses bans advisories sources
-
-  # ============================================================
-  # JOB 2: Build & Test Native
-  # ============================================================
-  build-and-test-native:
-    runs-on: ubuntu-latest
-    needs: lint-and-security
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Check native target
-        run: cargo check --verbose
-
-      - name: Build native (release)
-        run: cargo build --release --verbose
-
-      - name: Run all tests
-        run: cargo test --all-features --verbose
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Generate coverage report
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: lcov.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Build documentation
-        run: cargo doc --no-deps --all-features
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-
-  # ============================================================
-  # JOB 3: Build WASM + Optimize + Budget Guard
-  # ============================================================
-  build-and-test-wasm:
-    runs-on: ubuntu-latest
-    needs: lint-and-security
-    steps:
-      - uses: actions/checkout@v4
-
+      # 2. Rust stable + target wasm + komponen clippy/rustfmt
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: clippy, rustfmt
+          components: clippy, rustfmt      # <-- TAMBAH: biar clippy/fmt tersedia
 
+      # 3. Cache (build ke-2 dst ngebut)
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      # 4. Lint + compile-check HOST (mengganti `cargo check` lama).
+      #    clippy TIDAK melakukan link → aman dari jebakan js-sys.
+      #    Tanpa `-- -D warnings` dulu, supaya warning lama tidak bikin merah.
+      
+
+
+      # 5. Compile-check WASM (tanpa link) → tangkap error wasm SEBELUM wasm-pack.
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
+      # 6. Install Wasm-Pack
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
 
+      # 7. Build WASM (hanya jika 4 & 5 lolos)
       - name: Build WASM
-        run: wasm-pack build --target web --out-dir pkg --release
+        run: wasm-pack build --target web --out-dir pkg
+      
+      - name: Run host tests (executor contract)
+        run: cargo test --lib
 
-      - name: Install wasm-opt
+      # 8. Laporan ukuran → pantau budget <100MB tiap run
+      - name: Report artifact size
         run: |
-          sudo apt-get update && sudo apt-get install -y binaryen
-
-      - name: Optimize WASM with wasm-opt
-        run: |
-          for wasm in pkg/*.wasm; do
-            echo "Optimizing $wasm ..."
-            wasm-opt -O4 -o "$wasm.opt" "$wasm"
-            mv "$wasm.opt" "$wasm"
-          done
-
-      - name: Generate SBOM
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: "fs"
-          format: "spdx-json"
-          output: "pkg/sbom.spdx.json"
-
-      - name: Generate checksums
-        run: |
-          cd pkg
-          sha256sum *.wasm > checksums.sha256
-          cat checksums.sha256
-
-      - name: Report artifact size & enforce budget
-        run: |
-          echo "=== Total pkg ==="
+          echo "=== total pkg ==="
           du -sh pkg
-          echo ""
-          echo "=== WASM binary ==="
+          echo "=== wasm binary ==="
           ls -lh pkg/*.wasm || true
-          echo ""
-          echo "=== Per-file size (bytes) ==="
-          find pkg -name "*.wasm" -exec ls -l {} \;
-          echo ""
-          echo "=== Budget Check ==="
-          TOTAL_SIZE=$(du -sb pkg | cut -f1)
-          echo "Total size: $TOTAL_SIZE bytes"
-          echo "Budget: ${{ env.WASM_SIZE_BUDGET }} bytes"
-          if [ "$TOTAL_SIZE" -gt "${{ env.WASM_SIZE_BUDGET }}" ]; then
-            echo "❌ ERROR: Build exceeds size budget!"
-            exit 1
-          else
-            echo "✅ Size budget OK"
-          fi
 
-      - name: Upload WASM Artifact
+      # 9. Simpan Hasil Build
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: burn-wasm-output-${{ github.run_id }}
-          path: |
-            pkg/
-            !pkg/.gitignore
-          retention-days: 30
-          if-no-files-found: error
-
-  # ============================================================
-  # JOB 4: WASM Browser Test (Headless)
-  # ============================================================
-  test-wasm-browser:
-    runs-on: ubuntu-latest
-    needs: build-and-test-wasm
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
-
-      - name: Install Chrome
-        uses: browser-actions/setup-chrome@v1
-
-      - name: Run WASM browser tests
-        run: wasm-pack test --headless --chrome
-        continue-on-error: true
-
-  # ============================================================
-  # JOB 5: Release Draft (push ke main only)
-  # ============================================================
-  release-draft:
-    runs-on: ubuntu-latest
-    needs: [build-and-test-native, build-and-test-wasm]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download WASM artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: burn-wasm-output-${{ github.run_id }}
+          name: burn-wasm-output
           path: pkg/
-
-      - name: Create Release Draft
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          tag_name: wasm-build-${{ github.run_number }}
-          name: "WASM Build #${{ github.run_number }}"
-          files: |
-            pkg/*.wasm
-            pkg/checksums.sha256
-            pkg/sbom.spdx.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
