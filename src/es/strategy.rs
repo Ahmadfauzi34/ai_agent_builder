@@ -1,5 +1,3 @@
-// Strategi evolusi = bisa di-swap. Tambah strategi = tambah struct + 1 variant + 1 lengan match.
-// (Gaya dispatch tertutup yang sama dengan registry-mu; terisolasi di file ini, tidak menyentuh v1.)
 use super::rng::Rng;
 
 pub trait EsStrategy {
@@ -7,11 +5,8 @@ pub trait EsStrategy {
     fn dim(&self) -> usize;
     fn sigma(&self) -> f32;
     fn lr(&self) -> f32;
-    /// Hasilkan kandidat untuk generasi ini (urutan = urutan yang tell() terima).
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>>;
-    /// Terima fitness (sepanjang kandidat ask), update internal.
     fn tell(&mut self, fitness: &[f64]);
-    /// Rata-rata populasi (untuk logging / deploy mean-network).
     fn mean(&self) -> Vec<f32>;
 }
 
@@ -22,7 +17,7 @@ pub struct OpenEs {
     sigma: f32,
     lr: f32,
     mean: Vec<f32>,
-    eps: Vec<Vec<f32>>, // noise per pasangan, dipakai ulang di tell()
+    eps: Vec<Vec<f32>>,
 }
 
 impl OpenEs {
@@ -57,47 +52,42 @@ impl EsStrategy for OpenEs {
         let (m, s) = super::diag::mean_std(fitness);
         let std = if s > 1e-8 { s } else { 1e-8 };
         let centered: Vec<f64> = fitness.iter().map(|&r| (r - m) / std).collect();
-
-        let mut g = vec![0.0f64; self.dim];
         let denom = 2.0 * self.half as f64 * self.sigma as f64;
+        let mut g = vec![0.0f64; self.dim];
         for j in 0..self.half {
             let diff = centered[2 * j] - centered[2 * j + 1];
-            for d in 0..self.dim {
-                g[d] += diff * self.eps[j][d] as f64;
-            }
+            for d in 0..self.dim { g[d] += diff * self.eps[j][d] as f64; }
         }
-        for d in 0..self.dim {
-            self.mean[d] += (self.lr as f64) * (g[d] / denom) as f64;
-        }
+        for d in 0..self.dim { self.mean[d] += (self.lr as f64) * (g[d] / denom) as f64; }
     }
 
     fn mean(&self) -> Vec<f32> { self.mean.clone() }
 }
 
-// ---------------- (mu + lambda) elitist Gaussian mutation ----------------
-pub struct MuPlusLambda {
+// ---------------- (mu, lambda) elitist Gaussian mutation ----------------
+pub struct MuLambda {
     dim: usize,
     mu: usize,
     lambda: usize,
     sigma: f32,
-    lr: f32, // disimpan supaya laporan seragam (tidak dipakai untuk update mean)
     parents: Vec<Vec<f32>>,
+    last_children: Vec<Vec<f32>>,
 }
 
-impl MuPlusLambda {
+impl MuLambda {
     pub fn new(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut Rng) -> Self {
         let parents = (0..mu)
             .map(|_| (0..dim).map(|_| rng.gaussian() * 0.5).collect())
             .collect();
-        Self { dim, mu, lambda, sigma, lr: 0.0, parents }
+        Self { dim, mu, lambda, sigma, parents, last_children: Vec::new() }
     }
 }
 
-impl EsStrategy for MuPlusLambda {
-    fn name(&self) -> &'static str { "mu_plus_lambda" }
+impl EsStrategy for MuLambda {
+    fn name(&self) -> &'static str { "mu_lambda" }
     fn dim(&self) -> usize { self.dim }
     fn sigma(&self) -> f32 { self.sigma }
-    fn lr(&self) -> f32 { self.lr }
+    fn lr(&self) -> f32 { 0.0 } // tidak ada lr eksplisit; dilaporkan 0 supaya JSON seragam
 
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
         let mut cands = Vec::with_capacity(self.lambda);
@@ -106,27 +96,48 @@ impl EsStrategy for MuPlusLambda {
             let child: Vec<f32> = p.iter().map(|&v| v + rng.gaussian() * self.sigma).collect();
             cands.push(child);
         }
+        self.last_children = cands.clone();
         cands
     }
 
     fn tell(&mut self, fitness: &[f64]) {
         debug_assert_eq!(fitness.len(), self.lambda);
-        // ambil kandidat ask terakhir? -> optimizer yang pegang; di sini kita butuh children.
-        // Karena trait tidak membawa children, kita rekonstruksi pasangan via urutan:
-        // optimizer memanggil tell dengan fitness seurut ask, tapi children tidak sampai ke sini.
-        // SOLUSI: MuPlusLambda menyimpan children saat ask.
-        // (lihat field `last_children` di bawah via wrapper) -> kita simpan di ask.
-        // -> implementasi pakai self.last_children (ditambah di struct via Default trick):
-        self.select_from(fitness);
+        let mut pairs: Vec<(f64, Vec<f32>)> =
+            fitness.iter().copied().zip(self.last_children.iter().cloned()).collect();
+        pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(core::cmp::Ordering::Equal)); // desc
+        self.parents = pairs.into_iter().take(self.mu).map(|(_, c)| c).collect();
     }
 
     fn mean(&self) -> Vec<f32> {
         if self.parents.is_empty() { return vec![0.0; self.dim]; }
         let mut m = vec![0.0f64; self.dim];
-        for p in &self.parents {
-            for d in 0..self.dim { m[d] += p[d] as f64; }
-        }
+        for p in &self.parents { for d in 0..self.dim { m[d] += p[d] as f64; } }
         for d in 0..self.dim { m[d] /= self.parents.len() as f64; }
         m.into_iter().map(|v| v as f32).collect()
     }
-      }
+}
+
+// ---------------- enum dispatch (wasm-safe, tanpa dyn) ----------------
+pub enum Strategy {
+    OpenEs(OpenEs),
+    MuLambda(MuLambda),
+}
+
+impl Strategy {
+    pub fn openes(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut Rng) -> Self {
+        Strategy::OpenEs(OpenEs::new(dim, half, sigma, lr, rng))
+    }
+    pub fn mu_lambda(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut Rng) -> Self {
+        Strategy::MuLambda(MuLambda::new(dim, mu, lambda, sigma, rng))
+    }
+}
+
+impl EsStrategy for Strategy {
+    fn name(&self) -> &'static str { match self { Strategy::OpenEs(s) => s.name(), Strategy::MuLambda(s) => s.name() } }
+    fn dim(&self) -> usize { match self { Strategy::OpenEs(s) => s.dim(), Strategy::MuLambda(s) => s.dim() } }
+    fn sigma(&self) -> f32 { match self { Strategy::OpenEs(s) => s.sigma(), Strategy::MuLambda(s) => s.sigma() } }
+    fn lr(&self) -> f32 { match self { Strategy::OpenEs(s) => s.lr(), Strategy::MuLambda(s) => s.lr() } }
+    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> { match self { Strategy::OpenEs(s) => s.ask(rng), Strategy::MuLambda(s) => s.ask(rng) } }
+    fn tell(&mut self, fitness: &[f64]) { match self { Strategy::OpenEs(s) => s.tell(fitness), Strategy::MuLambda(s) => s.tell(fitness) } }
+    fn mean(&self) -> Vec<f32> { match self { Strategy::OpenEs(s) => s.mean(), Strategy::MuLambda(s) => s.mean() } }
+        }
