@@ -7,6 +7,7 @@ pub mod layers;
 pub mod protocol;
 pub mod registry;
 pub mod es;
+pub mod graph;
 #[cfg(test)]
 mod tests;
 
