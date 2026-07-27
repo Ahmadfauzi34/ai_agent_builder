@@ -58,7 +58,7 @@ impl EsStrategy for OpenEs {
             let diff = centered[2 * j] - centered[2 * j + 1];
             for d in 0..self.dim { g[d] += diff * self.eps[j][d] as f64; }
         }
-        for d in 0..self.dim { self.mean[d] += (self.lr as f64) * (g[d] / denom) as f64; }
+        for d in 0..self.dim { self.mean[d] += ((self.lr as f64) * (g[d] / denom)) as f32; }
     }
 
     fn mean(&self) -> Vec<f32> { self.mean.clone() }
