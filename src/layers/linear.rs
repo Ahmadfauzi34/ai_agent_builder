@@ -1,4 +1,4 @@
-6use burn::prelude::*;
+use burn::prelude::*;
 use burn::nn::{Linear, LinearConfig};
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
