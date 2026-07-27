@@ -522,3 +522,33 @@ impl LayerRegistry {
             .ok_or_else(|| format!("run_graph: runtime empty output slot {}", out_slot))
     }
 }
+// ============================================================
+// GRAPH ENTRY (①) — pintu compile-once; logika eksekusi di crate::graph
+// ============================================================
+#[wasm_bindgen]
+impl LayerRegistry {
+    /// Cek keberadaan layer. Dipakai compile_graph untuk fail-fast,
+    /// dan juga berguna langsung dari JS sebelum merakit plan.
+    #[wasm_bindgen(js_name = layerExists)]
+    pub fn layer_exists(&self, layer_type: u8, layer_id: LayerId) -> bool {
+        match layer_type {
+            LAYER_LINEAR     => self.linears.contains_key(&layer_id),
+            LAYER_NORM       => self.norms.contains_key(&layer_id),
+            LAYER_CONV       => self.convs.contains_key(&layer_id),
+            LAYER_ACTIVATION => self.activations.contains_key(&layer_id),
+            LAYER_EMBEDDING  => self.embeddings.contains_key(&layer_id),
+            LAYER_POOL       => self.pools.contains_key(&layer_id),
+            LAYER_SHIFT      => self.shifts.contains_key(&layer_id),
+            LAYER_GHOST      => self.ghosts.contains_key(&layer_id),
+            LAYER_SEBLOCK    => self.seblocks.contains_key(&layer_id),
+            _ => false,
+        }
+    }
+
+    /// Parse + validasi plan SEKALI → CompiledGraph yang dipegang JS.
+    /// Loop panas: compiled.run(registry, input) tanpa parse ulang.
+    #[wasm_bindgen(js_name = compileGraph)]
+    pub fn compile_graph(&self, plan: &[u8]) -> Result<crate::graph::CompiledGraph, String> {
+        crate::graph::CompiledGraph::build(self, plan)
+    }
+}
