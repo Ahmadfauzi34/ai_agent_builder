@@ -552,3 +552,41 @@ impl LayerRegistry {
         crate::graph::CompiledGraph::build(self, plan)
     }
 }
+// ============================================================
+// FLOAT-BRIDGE DISPATCH (B) — pintu per-layer untuk baca/tulis bobot.
+// Baru LINEAR yang didukung; tipe lain -> Err eksplisit (bukan panic).
+// Generalisasi ke norm/conv/embedding/ghost/seblock = langkah compose berikutnya.
+// ============================================================
+#[wasm_bindgen]
+impl LayerRegistry {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self, layer_id: LayerId, layer_type: u8) -> Result<Vec<f32>, String> {
+        match layer_type {
+            LAYER_LINEAR => self.linears.get(&layer_id).ok_or("Linear not found")?.get_weights_flat(),
+            _ => Err(format!(
+                "getWeightsFlat: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
+        }
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(
+        &mut self,
+        layer_id: LayerId,
+        layer_type: u8,
+        data: &[f32],
+    ) -> Result<(), String> {
+        match layer_type {
+            LAYER_LINEAR => self
+                .linears
+                .get_mut(&layer_id)
+                .ok_or("Linear not found")?
+                .set_weights_flat(data),
+            _ => Err(format!(
+                "setWeightsFlat: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
+        }
+    }
+}
