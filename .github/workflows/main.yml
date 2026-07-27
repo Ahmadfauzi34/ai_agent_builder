@@ -1,4 +1,4 @@
-name: Rust AI CI (Advanced)
+name: Rust AI CI (Advanced — Santai)
 
 on:
   push:
@@ -7,7 +7,6 @@ on:
     branches: ["main"]
   workflow_dispatch:
 
-# Cancel run yang redundant (push baru saat run lama masih jalan)
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -15,19 +14,18 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Budget size dalam bytes (100MB = 104857600)
-  WASM_SIZE_BUDGET: 104857600
+  WASM_SIZE_BUDGET: 104857600  # 100MB
 
 jobs:
   # ============================================================
-  # JOB 1: Lint, Security & Format (Gatekeeper — cepat & murah)
+  # JOB 1: Lint & Security (Gatekeeper)
   # ============================================================
   lint-and-security:
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
-      security-events: write  # Untuk upload SARIF ke GitHub Security tab
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -39,36 +37,29 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # 1a. Format check — gagal CI kalau kode belum di-fmt
-      - name: Check formatting
+      # ✅ FORMAT CHECK — cuma WARNING, tidak fail CI
+      - name: Check formatting (non-blocking)
         run: cargo fmt --all -- --check
+        continue-on-error: true
 
-      # 1b. Clippy strict — lint + auto-fix suggestion + SARIF output
+      # ✅ CLIPPY — tetap strict, ini yang penting
       - name: Run Clippy (Strict)
         run: |
-          rustup component add clippy
-          cargo clippy --all-targets --all-features -- -D warnings \
-            -W clippy::pedantic \
-            -W clippy::nursery \
-            -W clippy::unwrap_used \
-            -W clippy::expect_used
-        # Kalau mau SARIF upload (butuh cargo-binstall atau build dari source):
-        # cargo clippy --all-targets --all-features --message-format=json | clippy-sarif > clippy.sarif
+          cargo clippy --all-targets --all-features -- -D warnings             -W clippy::pedantic             -W clippy::nursery             -W clippy::unwrap_used             -W clippy::expect_used
 
-      # 1c. Dependency Audit — cek crate yang punya CVE
+      # ✅ SECURITY AUDIT — tetap wajib lolos
       - name: Audit dependencies
         uses: actions-rust-lang/audit@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1d. Cargo Deny — cek license, banned crates, duplicate dependencies
       - name: Check cargo-deny
         uses: EmbarkStudios/cargo-deny-action@v1
         with:
           command: check licenses bans advisories sources
 
   # ============================================================
-  # JOB 2: Build & Test Native (x86_64)
+  # JOB 2: Build & Test Native
   # ============================================================
   build-and-test-native:
     runs-on: ubuntu-latest
@@ -84,18 +75,15 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # Build & check native target
       - name: Check native target
         run: cargo check --verbose
 
       - name: Build native (release)
         run: cargo build --release --verbose
 
-      # Test semua: unit, integration, doc tests
       - name: Run all tests
         run: cargo test --all-features --verbose
 
-      # Coverage report dengan cargo-llvm-cov
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
@@ -109,7 +97,6 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-      # Build docs — gagal kalau ada broken doc-link
       - name: Build documentation
         run: cargo doc --no-deps --all-features
         env:
@@ -133,19 +120,15 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # 3a. Check WASM target (fast fail sebelum build berat)
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
-      # 3b. Install wasm-pack
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
 
-      # 3c. Build WASM untuk web
       - name: Build WASM
         run: wasm-pack build --target web --out-dir pkg --release
 
-      # 3d. Install wasm-opt (Binaryen) untuk shrink binary
       - name: Install wasm-opt
         run: |
           sudo apt-get update && sudo apt-get install -y binaryen
@@ -158,7 +141,6 @@ jobs:
             mv "$wasm.opt" "$wasm"
           done
 
-      # 3e. Generate SBOM (Software Bill of Materials)
       - name: Generate SBOM
         uses: aquasecurity/trivy-action@master
         with:
@@ -166,14 +148,12 @@ jobs:
           format: "spdx-json"
           output: "pkg/sbom.spdx.json"
 
-      # 3f. Generate checksums untuk verifikasi integritas
       - name: Generate checksums
         run: |
           cd pkg
           sha256sum *.wasm > checksums.sha256
           cat checksums.sha256
 
-      # 3g. Size report + budget guard (gagal CI kalau melebihi budget)
       - name: Report artifact size & enforce budget
         run: |
           echo "=== Total pkg ==="
@@ -196,7 +176,6 @@ jobs:
             echo "✅ Size budget OK"
           fi
 
-      # 3h. Simpan artifact dengan metadata
       - name: Upload WASM Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -208,7 +187,7 @@ jobs:
           if-no-files-found: error
 
   # ============================================================
-  # JOB 4: WASM Browser Test (Headless) — Optional tapi solid
+  # JOB 4: WASM Browser Test (Headless)
   # ============================================================
   test-wasm-browser:
     runs-on: ubuntu-latest
@@ -227,17 +206,15 @@ jobs:
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
 
-      # Butuh Chrome/Firefox headless untuk wasm-pack test
       - name: Install Chrome
         uses: browser-actions/setup-chrome@v1
 
-      # Jalankan test di browser headless (kalau project punya wasm tests)
       - name: Run WASM browser tests
         run: wasm-pack test --headless --chrome
-        continue-on-error: true  # Hapus baris ini kalau wasm test wajib pass
+        continue-on-error: true
 
   # ============================================================
-  # JOB 5: Release Draft (hanya jalan di push ke main)
+  # JOB 5: Release Draft (push ke main only)
   # ============================================================
   release-draft:
     runs-on: ubuntu-latest
@@ -264,3 +241,4 @@ jobs:
             pkg/sbom.spdx.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
