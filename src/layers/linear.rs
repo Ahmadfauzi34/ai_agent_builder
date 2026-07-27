@@ -105,14 +105,16 @@ impl WasmLinear {
     /// Baca seluruh bobot sebagai flat f32: [weight..., bias...].
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
-        let rec = self.inner.inner.clone().into_record();          // TITIK API #1
-        let w = rec.weight.into_data();                            // TITIK API #2
+        let rec = self.inner.inner.clone().into_record();
+        // rec.weight: Param<Tensor<_,2>> -> clone via deref jadi Tensor owned, baru into_data.
+        let w = <Tensor<WasmBackend, 2> as Clone>::clone(&rec.weight).into_data();
         let mut out = w
             .as_slice::<f32>()
             .map_err(|_| "getWeightsFlat: weight not f32".to_string())?
             .to_vec();
-        if let Some(b) = rec.bias {                                // TITIK API #3 (field `bias`)
-            let bv = b
+        if let Some(b) = &rec.bias {
+            // b: &Param<Tensor<_,1>> -> clone via deref.
+            let bv = <Tensor<WasmBackend, 1> as Clone>::clone(b)
                 .into_data()
                 .as_slice::<f32>()
                 .map_err(|_| "getWeightsFlat: bias not f32".to_string())?
@@ -122,12 +124,10 @@ impl WasmLinear {
         Ok(out)
     }
 
-    /// Tulis bobot dari flat f32. Panjang HARUS = in*out (+ out kalau bias).
-    /// Shape in/out & ada-tidaknya bias di-infer dari bobot yang sudah ada.
     #[wasm_bindgen(js_name = setWeightsFlat)]
     pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
-        let mut rec = self.inner.inner.clone().into_record();      // TITIK API #1
-        let wd = rec.weight.dims();                                // [in, out]  (TITIK API #3)
+        let mut rec = self.inner.inner.clone().into_record();
+        let wd = rec.weight.dims(); // [in, out]  (deref ke Tensor::dims)
         let in_d = wd[0];
         let out_d = wd[1];
         let has_bias = rec.bias.is_some();
@@ -141,18 +141,21 @@ impl WasmLinear {
             ));
         }
         let device: <WasmBackend as Backend>::Device = Default::default();
-        // TITIK API #4: assign field record dengan tensor baru (bobot jadi tensor plain di record).
+        // rec.weight: Param<Tensor<_,2>> -> bangun Tensor, lalu .into() jadi Param.
         rec.weight = Tensor::from_data(
             burn::tensor::TensorData::new(data[..in_d * out_d].to_vec(), [in_d, out_d]),
             &device,
-        );
+        )
+        .into();
         if has_bias {
-            rec.bias = Some(Tensor::from_data(
-                burn::tensor::TensorData::new(data[in_d * out_d..].to_vec(), [out_d]),
-                &device,
-            ));
+            rec.bias = Some(
+                Tensor::from_data(
+                    burn::tensor::TensorData::new(data[in_d * out_d..].to_vec(), [out_d]),
+                    &device,
+                )
+                .into(),
+            );
         }
-        self.inner.inner = self.inner.inner.clone().load_record(rec); // TITIK API #5
+        self.inner.inner = self.inner.inner.clone().load_record(rec);
         Ok(())
     }
-}
