@@ -522,3 +522,191 @@ impl LayerRegistry {
             .ok_or_else(|| format!("run_graph: runtime empty output slot {}", out_slot))
     }
 }
+
+// ============================================================
+// COMPILE-ONCE GRAPH EXECUTOR  (append-only, v1 tidak tersentuh)
+// ============================================================
+// Ide: parse + validasi plan DILAKUKAN SATU KALI di compile_graph(),
+// hasilnya disimpan sebagai objek CompiledGraph yang dipegang JS.
+// Loop panas (RL / inference berulang) memanggil compiled.run() yang
+// TIDAK mem-parse byte lagi — tensor intermediate tetap di dalam WASM.
+//
+// Ini komposisi penuh dari forward_layer() yang sudah ada, jadi 9 cabang
+// dispatch tidak diduplikasi and konsistensi shape/Result otomatis terwarisi.
+//
+// Wire format `plan` (little-endian) — SAMA dengan executor sebelumnya:
+//   num_steps : u32
+//   num_slots : u32            // 1..=64 ; slot 0 = input eksternal
+//   steps     : ulang num_steps kali ->
+//               { layer_type: u8, layer_id: u32, in_slot: u8, out_slot: u8 }
+//   out_slot  : u8             // slot mana yang dikembalikan
+//
+// ATURAN: steps HARUS urut topologis (sebuah langkah hanya boleh membaca
+// slot yang sudah diisi input atau oleh langkah sebelumnya). Kipas-out
+// (satu slot dibaca banyak langkah) boleh. Ini persis urutan yang dipakai
+// GraphRunner-mu di JS, jadi tinggal dipakai ulang.
+// ============================================================
+
+const CG_MAX_SLOTS: u32 = 64;
+
+#[derive(Clone, Copy)]
+struct CompiledStep {
+    layer_type: u8,
+    layer_id: u32,
+    in_slot: u8,
+    out_slot: u8,
+}
+
+/// Plan yang sudah di-parse + divalidasi. Hidup di heap Rust, JS pegang handle.
+/// BUKAN #[wasm_bindgen]-field: semua field private, tidak menyeberang boundary.
+#[wasm_bindgen]
+pub struct CompiledGraph {
+    steps: Vec<CompiledStep>,
+    num_slots: u32,
+    out_slot: u8,
+}
+
+// --- logika internal (bukan API JS) ---
+impl CompiledGraph {
+    /// Cermin dari forward_layer: "apakah (type,id) ada di registry ini?"
+    /// Same-module, jadi boleh baca laci private milik LayerRegistry.
+    fn layer_exists(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
+        match layer_type {
+            LAYER_LINEAR     => reg.linears.contains_key(&layer_id),
+            LAYER_NORM       => reg.norms.contains_key(&layer_id),
+            LAYER_CONV       => reg.convs.contains_key(&layer_id),
+            LAYER_ACTIVATION => reg.activations.contains_key(&layer_id),
+            LAYER_EMBEDDING  => reg.embeddings.contains_key(&layer_id),
+            LAYER_POOL       => reg.pools.contains_key(&layer_id),
+            LAYER_SHIFT      => reg.shifts.contains_key(&layer_id),
+            LAYER_GHOST      => reg.ghosts.contains_key(&layer_id),
+            LAYER_SEBLOCK    => reg.seblocks.contains_key(&layer_id),
+            _ => false,
+        }
+    }
+
+    fn read_step(c: &mut PayloadCursor) -> Result<CompiledStep, String> {
+        Ok(CompiledStep {
+            layer_type: c.read_u8()?,
+            layer_id: c.read_u32()?,
+            in_slot: c.read_u8()?,
+            out_slot: c.read_u8()?,
+        })
+    }
+
+    /// Parse + validasi SEMUA hal (format, rentang slot, dataflow, keberadaan
+    /// layer) TANPA eksekusi. Gagal = Result::Err rapi, bukan panic.
+    fn build(reg: &LayerRegistry, plan: &[u8]) -> Result<CompiledGraph, String> {
+        let mut c = PayloadCursor::new(plan);
+        let num_steps = c.read_u32()?;
+        let num_slots = c.read_u32()?;
+
+        if num_steps == 0 {
+            return Err("compile_graph: plan has no steps".into());
+        }
+        if !(1..=CG_MAX_SLOTS).contains(&num_slots) {
+            return Err(format!(
+                "compile_graph: num_slots must be 1..={}, got {}",
+                CG_MAX_SLOTS, num_slots
+            ));
+        }
+
+        let mut steps: Vec<CompiledStep> = Vec::with_capacity(num_steps as usize);
+        let mut filled: u64 = 1; // bit 0 = slot 0 (input) sudah terisi
+        for _ in 0..num_steps {
+            let s = Self::read_step(&mut c)?;
+            let in_slot = s.in_slot as u32;
+            let out_slot = s.out_slot as u32;
+
+            if in_slot >= num_slots || out_slot >= num_slots {
+                return Err(format!(
+                    "compile_graph: slot index out of range (num_slots={})",
+                    num_slots
+                ));
+            }
+            if (filled >> in_slot) & 1 == 0 {
+                return Err(format!("compile_graph: input slot {} is empty", in_slot));
+            }
+            if !Self::layer_exists(reg, s.layer_type, s.layer_id) {
+                return Err(format!(
+                    "compile_graph: layer type 0x{:02X} id {} not found",
+                    s.layer_type, s.layer_id
+                ));
+            }
+            filled |= 1u64 << out_slot; // out_slot < 64 dijamin, shift aman
+            steps.push(s);
+        }
+
+        let out_slot = c.read_u8()? as u32;
+        if out_slot >= num_slots {
+            return Err(format!("compile_graph: output slot {} out of range", out_slot));
+        }
+        if (filled >> out_slot) & 1 == 0 {
+            return Err(format!(
+                "compile_graph: output slot {} is never written",
+                out_slot
+            ));
+        }
+
+        Ok(CompiledGraph {
+            steps,
+            num_slots,
+            out_slot: out_slot as u8,
+        })
+    }
+}
+
+// --- API yang dilihat JS ---
+#[wasm_bindgen]
+impl CompiledGraph {
+    /// Jalankan plan yang sudah di-compile di atas `registry` dengan `input`
+    /// di slot 0. TIDAK ada parsing byte di sini — ini jalur panas.
+    /// Kalau sebuah layer di-destroy setelah compile, forward_layer() di bawah
+    /// mengembalikan Err rapi (bukan trap).
+    #[wasm_bindgen(js_name = run)]
+    pub fn run(
+        &self,
+        registry: &LayerRegistry,
+        input: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        // invariant: build() menjamin num_slots >= 1, jadi slots[0] aman.
+        let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
+        slots[0] = Some(input.clone());
+
+        for s in &self.steps {
+            let inp = slots[s.in_slot as usize]
+                .as_ref()
+                .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+            // dispatch yang SUDAH ADA — tidak ada duplikasi 9 cabang.
+            let out = registry.forward_layer(s.layer_id, s.layer_type, inp)?;
+            slots[s.out_slot as usize] = Some(out);
+        }
+
+        slots[self.out_slot as usize]
+            .take()
+            .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
+    }
+
+    // Introspeksi murah — berguna untuk assertion di test JS-mu.
+    #[wasm_bindgen(js_name = numSteps)]
+    pub fn step_count(&self) -> u32 {
+        self.steps.len() as u32
+    }
+    #[wasm_bindgen(js_name = numSlots)]
+    pub fn slot_count(&self) -> u32 {
+        self.num_slots
+    }
+    #[wasm_bindgen(js_name = outSlot)]
+    pub fn output_slot(&self) -> u8 {
+        self.out_slot
+    }
+}
+
+// --- pintu masuk: compile ada di registry, hasil (CompiledGraph) dipegang JS ---
+#[wasm_bindgen]
+impl LayerRegistry {
+    #[wasm_bindgen(js_name = compileGraph)]
+    pub fn compile_graph(&self, plan: &[u8]) -> Result<CompiledGraph, String> {
+        CompiledGraph::build(self, plan)
+    }
+}

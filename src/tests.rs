@@ -166,4 +166,46 @@ mod tests {
 
         assert!(reg.run_graph(&plan, &input).is_err());
     }
+
+    // ------------------------------------------------------------
+    // COMPILED GRAPH TESTS
+    // ------------------------------------------------------------
+    #[test]
+    fn test_compiled_graph_matches_manual_chain() {
+        let (reg, input) = build_linear_relu_registry();
+
+        // plan: slot0=input -> linear -> slot1 -> relu -> slot2 ; return slot2
+        let mut plan = Vec::new();
+        plan.extend_from_slice(&2u32.to_le_bytes()); // num_steps
+        plan.extend_from_slice(&3u32.to_le_bytes()); // num_slots
+        push_step(&mut plan, LAYER_LINEAR, 1, 0, 1);
+        push_step(&mut plan, LAYER_ACTIVATION, 2, 1, 2);
+        plan.push(2); // out_slot
+
+        let compiled = reg.compile_graph(&plan).unwrap();
+        assert_eq!(compiled.step_count(), 2);
+        assert_eq!(compiled.slot_count(), 3);
+        assert_eq!(compiled.output_slot(), 2);
+
+        let run = compiled.run(&reg, &input).unwrap();
+
+        // jalur manual lewat forward_layer
+        let t1 = reg.forward_layer(1, LAYER_LINEAR, &input).unwrap();
+        let t2 = reg.forward_layer(2, LAYER_ACTIVATION, &t1).unwrap();
+
+        assert_eq!(run.to_array(), t2.to_array());
+    }
+
+    #[test]
+    fn test_compiled_graph_rejects_empty_input_slot() {
+        let (reg, _input) = build_linear_relu_registry();
+
+        let mut plan = Vec::new();
+        plan.extend_from_slice(&1u32.to_le_bytes());
+        plan.extend_from_slice(&3u32.to_le_bytes());
+        push_step(&mut plan, LAYER_LINEAR, 1, 2, 1); // in_slot=2 belum terisi
+        plan.push(1);
+
+        assert!(reg.compile_graph(&plan).is_err());
+    }
 }
