@@ -154,3 +154,22 @@ impl WasmLinear {
         Ok(())
     }
 }
+
+// ============================================================
+// WEIGHT LAYOUT (M2) — linear. Mirror urutan getWeightsFlat.
+// ============================================================
+impl WasmLinear {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.inner.clone().into_record();
+        let wlen = rec.weight.dims().iter().product::<usize>();
+        let mut segs = vec![("weight", wlen)];
+        if let Some(b) = &rec.bias {
+            segs.push(("bias", b.dims().iter().product::<usize>()));
+        }
+        segs
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
