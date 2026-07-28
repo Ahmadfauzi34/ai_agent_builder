@@ -247,3 +247,40 @@ impl WasmConv {
         Ok(())
     }
 }
+
+// ============================================================
+// WEIGHT LAYOUT (M2) — conv. Mirror urutan getWeightsFlat per variant.
+// ============================================================
+fn push_conv_segs<B: Backend, const D: usize>(
+    weight: &burn::module::Param<Tensor<B, D>>,
+    bias: &Option<burn::module::Param<Tensor<B, 1>>>,
+    segs: &mut Vec<(&'static str, usize)>,
+) {
+    segs.push(("weight", weight.dims().iter().product::<usize>()));
+    if let Some(b) = bias {
+        segs.push(("bias", b.dims().iter().product::<usize>()));
+    }
+}
+
+impl WasmConv {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        let mut segs = Vec::new();
+        match rec {
+            ConvolutionRecord::Conv1d(r) => { // TITIK API (terbukti di M1)
+                push_conv_segs::<WasmBackend, 3>(&r.weight, &r.bias, &mut segs);
+            }
+            ConvolutionRecord::Conv2d(r) => {
+                push_conv_segs::<WasmBackend, 4>(&r.weight, &r.bias, &mut segs);
+            }
+            ConvolutionRecord::ConvTranspose2d(r) => {
+                push_conv_segs::<WasmBackend, 4>(&r.weight, &r.bias, &mut segs);
+            }
+        }
+        segs
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}

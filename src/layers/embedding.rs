@@ -143,3 +143,21 @@ impl WasmEmbedding {
         Ok(())
     }
 }
+
+// ============================================================
+// WEIGHT LAYOUT (M2) — embedding. Hanya weight (tanpa bias).
+// ============================================================
+impl WasmEmbedding {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            EmbeddingLayerRecord::Basic(r) => { // TITIK API (terbukti di M1)
+                vec![("weight", r.weight.dims().iter().product::<usize>())]
+            }
+        }
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}

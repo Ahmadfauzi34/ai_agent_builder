@@ -238,25 +238,21 @@ mod tests {
         assert!(reg.get_weights_flat(1, 0xFE).is_err());
         assert!(reg.set_weights_flat(1, 0xFE, &[]).is_err());
     }
-
-    // ---- JANGKAR M1 BARU: float-bridge embedding & conv ----
     #[test]
     fn float_bridge_embedding_roundtrip_and_affects_forward() {
         let mut reg = LayerRegistry::new();
         let mut p = Vec::new();
-        p.extend_from_slice(&1u32.to_le_bytes()); // id
-        p.extend_from_slice(&3u32.to_le_bytes()); // vocab
-        p.extend_from_slice(&2u32.to_le_bytes()); // d_model
+        p.extend_from_slice(&1u32.to_le_bytes());
+        p.extend_from_slice(&3u32.to_le_bytes());
+        p.extend_from_slice(&2u32.to_le_bytes());
         reg.init_layer(&mk_header(LAYER_EMBEDDING, VARIANT_NONE, p.len()), &p).unwrap();
-
         let w = reg.get_weights_flat(1, LAYER_EMBEDDING).unwrap();
-        assert_eq!(w.len(), 3 * 2); // vocab * d_model, tanpa bias
+        assert_eq!(w.len(), 3 * 2);
         reg.set_weights_flat(1, LAYER_EMBEDDING, &w).unwrap();
         assert_eq!(reg.get_weights_flat(1, LAYER_EMBEDDING).unwrap(), w);
-
         let input = WasmTensor::new(&[0.0, 1.0, 2.0, 0.0], &[1, 4, 1, 1]);
         let out1 = reg.forward_layer(1, LAYER_EMBEDDING, &input).unwrap().to_array();
-        assert_eq!(out1.len(), 4 * 2); // seq * d_model
+        assert_eq!(out1.len(), 4 * 2);
         let w2: Vec<f32> = w.iter().map(|v| v + 1.0).collect();
         reg.set_weights_flat(1, LAYER_EMBEDDING, &w2).unwrap();
         let out2 = reg.forward_layer(1, LAYER_EMBEDDING, &input).unwrap().to_array();
@@ -266,24 +262,64 @@ mod tests {
     fn float_bridge_conv_roundtrip_and_affects_forward() {
         let mut reg = LayerRegistry::new();
         let mut p = Vec::new();
-        p.extend_from_slice(&1u32.to_le_bytes()); // id
-        p.extend_from_slice(&1u32.to_le_bytes()); // in_ch
-        p.extend_from_slice(&1u32.to_le_bytes()); // out_ch
-        p.extend_from_slice(&1u32.to_le_bytes()); // kh
-        p.extend_from_slice(&1u32.to_le_bytes()); // kw
-        for _ in 0..4 { p.push(0); p.extend_from_slice(&0u32.to_le_bytes()); } // sh,sw,ph,pw = None
+        p.extend_from_slice(&1u32.to_le_bytes());
+        p.extend_from_slice(&1u32.to_le_bytes());
+        p.extend_from_slice(&1u32.to_le_bytes());
+        p.extend_from_slice(&1u32.to_le_bytes());
+        p.extend_from_slice(&1u32.to_le_bytes());
+        for _ in 0..4 { p.push(0); p.extend_from_slice(&0u32.to_le_bytes()); }
         reg.init_layer(&mk_header(LAYER_CONV, CONV_CONV2D, p.len()), &p).unwrap();
-
         let w = reg.get_weights_flat(1, LAYER_CONV).unwrap();
-        assert_eq!(w.len(), 1 * 1 * 1 * 1 + 1); // weight(1) + bias(1)
+        assert_eq!(w.len(), 1 * 1 * 1 * 1 + 1);
         reg.set_weights_flat(1, LAYER_CONV, &w).unwrap();
         assert_eq!(reg.get_weights_flat(1, LAYER_CONV).unwrap(), w);
-
         let input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 2, 2]);
         let out1 = reg.forward_layer(1, LAYER_CONV, &input).unwrap().to_array();
         let w2: Vec<f32> = w.iter().map(|v| v + 1.0).collect();
         reg.set_weights_flat(1, LAYER_CONV, &w2).unwrap();
         let out2 = reg.forward_layer(1, LAYER_CONV, &input).unwrap().to_array();
         assert_ne!(out1, out2);
+    }
+
+    // ---- JANGKAR M2 BARU: weightLayout konsisten dengan getWeightsFlat ----
+    #[test]
+    fn weight_layout_consistent_with_flat() {
+        use crate::layers::linear::WasmLinear;
+        use crate::layers::conv::WasmConv;
+        use crate::layers::embedding::WasmEmbedding;
+        use crate::layers::layout::segs_json;
+
+        fn check(segs: &[(&'static str, usize)], flat_len: usize, json: &str) {
+            let sum: usize = segs.iter().map(|s| s.1).sum();
+            assert_eq!(sum, flat_len, "Σ layout len != getWeightsFlat len");
+            assert!(segs.iter().any(|s| s.0 == "weight"), "wajib ada segmen weight");
+            let expected = segs_json(segs);
+            assert_eq!(json, expected.as_str(), "wrapper json != segs_json(segs)");
+            assert!(json.starts_with('[') && json.ends_with(']'), "json harus array");
+        }
+
+        // linear dengan bias
+        let lin = WasmLinear::new(3, 2, true);
+        let j = lin.weight_layout();
+        check(&lin.weight_segs(), lin.get_weights_flat().unwrap().len(), &j);
+
+        // linear tanpa bias -> segmen bias HARUS absen
+        let lin_nb = WasmLinear::new(3, 2, false);
+        let segs_nb = lin_nb.weight_segs();
+        assert!(!segs_nb.iter().any(|s| s.0 == "bias"), "linear no-bias: segmen bias harus absen");
+        let j_nb = lin_nb.weight_layout();
+        check(&segs_nb, lin_nb.get_weights_flat().unwrap().len(), &j_nb);
+
+        // embedding -> hanya weight
+        let emb = WasmEmbedding::new(3, 2);
+        let segs_e = emb.weight_segs();
+        assert!(!segs_e.iter().any(|s| s.0 == "bias"), "embedding: segmen bias harus absen");
+        let j_e = emb.weight_layout();
+        check(&segs_e, emb.get_weights_flat().unwrap().len(), &j_e);
+
+        // conv2d -> weight + bias
+        let conv = WasmConv::new_conv2d(1, 1, 1, 1, None, None, None, None);
+        let j_c = conv.weight_layout();
+        check(&conv.weight_segs(), conv.get_weights_flat().unwrap().len(), &j_c);
     }
 }

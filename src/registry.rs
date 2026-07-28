@@ -396,6 +396,24 @@ impl LayerRegistry {
 }
 
 // ============================================================
+// WEIGHT LAYOUT DISPATCH (M2) — mesin deskripsikan bentuk bobot per layer.
+// JS/ES pakai ini untuk susun vektor kandidat tanpa hardcode offset.
+// Baru LINEAR/CONV/EMBEDDING; tipe lain -> Err eksplisit (bukan panic).
+// ============================================================
+#[wasm_bindgen]
+impl LayerRegistry {
+    #[wasm_bindgen(js_name = weightLayout)]
+    pub fn weight_layout(&self, layer_id: LayerId, layer_type: u8) -> Result<String, String> {
+        match layer_type {
+            LAYER_LINEAR    => Ok(self.linears.get(&layer_id).ok_or("Linear not found")?.weight_layout()),
+            LAYER_CONV      => Ok(self.convs.get(&layer_id).ok_or("Conv not found")?.weight_layout()),
+            LAYER_EMBEDDING => Ok(self.embeddings.get(&layer_id).ok_or("Embedding not found")?.weight_layout()),
+            _ => Err(format!("weightLayout: not yet supported for type 0x{:02X}", layer_type)),
+        }
+    }
+}
+
+// ============================================================
 // GRAPH EXECUTOR — jalankan rantai layer dalam 1 panggilan WASM.
 // Tensor intermediate TIDAK menyeberang boundary (kunci performa "Run").
 //

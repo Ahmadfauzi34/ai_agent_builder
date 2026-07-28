@@ -6,3 +6,4 @@ pub mod embedding;
 pub mod pool;
 pub mod binary;
 pub mod custom;
+pub mod layout;
