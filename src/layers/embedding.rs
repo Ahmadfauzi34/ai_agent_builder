@@ -95,3 +95,51 @@ impl WasmEmbedding {
         Ok(bytes)
     }
 }
+
+// ============================================================
+// FLOAT-BRIDGE (M1) — embedding. Record = { weight: Param<T2> } (tanpa bias).
+// ============================================================
+#[wasm_bindgen]
+impl WasmEmbedding {
+    #[wasm_bindgen(js_name = weightDims)]
+    pub fn weight_dims(&self) -> Vec<usize> {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            EmbeddingLayerRecord::Basic(r) => r.weight.dims().to_vec(), // TITIK API: nama record + field
+        }
+    }
+
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            EmbeddingLayerRecord::Basic(r) => {
+                let w = <Tensor<WasmBackend, 2> as Clone>::clone(&r.weight).into_data();
+                w.as_slice::<f32>()
+                    .map_err(|_| "getWeightsFlat: embedding weight not f32".to_string())
+                    .map(|s| s.to_vec())
+            }
+        }
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        let mut rec = self.inner.clone().into_record();
+        match &mut rec {
+            EmbeddingLayerRecord::Basic(r) => {
+                let wd = r.weight.dims(); // [vocab, d_model]
+                let need = wd[0] * wd[1];
+                if data.len() != need {
+                    return Err(format!("setWeightsFlat: expected {} floats, got {}", need, data.len()));
+                }
+                let device: <WasmBackend as Backend>::Device = Default::default();
+                r.weight = burn::module::Param::from_data(
+                    burn::tensor::TensorData::new(data[..need].to_vec(), wd),
+                    &device,
+                );
+            }
+        }
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}

@@ -154,3 +154,96 @@ impl WasmConv {
         Ok(bytes)
     }
 }
+
+// ============================================================
+// FLOAT-BRIDGE (M1) — conv. Record per variant = { weight: Param<TD>, bias: Option<Param<T1>> }.
+// D = 3 (conv1d) atau 4 (conv2d / transpose2d). Helper generic supaya rank statis & aman.
+// ============================================================
+fn push_param<B: Backend, const D: usize>(
+    p: &burn::module::Param<Tensor<B, D>>,
+    out: &mut Vec<f32>,
+) -> Result<(), String> {
+    let t = <Tensor<B, D> as Clone>::clone(p).into_data();
+    out.extend(
+        t.as_slice::<f32>()
+            .map_err(|_| "getWeightsFlat: conv param not f32".to_string())?,
+    );
+    Ok(())
+}
+
+fn set_conv_param<B: Backend, const D: usize>(
+    weight: &mut burn::module::Param<Tensor<B, D>>,
+    bias: &mut Option<burn::module::Param<Tensor<B, 1>>>,
+    data: &[f32],
+) -> Result<(), String> {
+    let wd = weight.dims(); // [usize; D]
+    let wlen = wd.iter().product::<usize>();
+    let has_bias = bias.is_some();
+    let blen = if has_bias {
+        bias.as_ref().unwrap().dims().iter().product::<usize>()
+    } else {
+        0
+    };
+    if data.len() != wlen + blen {
+        return Err(format!(
+            "setWeightsFlat: conv expected {} floats (weight{}), got {}",
+            wlen + blen,
+            if has_bias { "+bias" } else { "" },
+            data.len()
+        ));
+    }
+    let device: <B as Backend>::Device = Default::default();
+    *weight = burn::module::Param::from_data(
+        burn::tensor::TensorData::new(data[..wlen].to_vec(), wd),
+        &device,
+    );
+    if has_bias {
+        *bias = Some(burn::module::Param::from_data(
+            burn::tensor::TensorData::new(data[wlen..].to_vec(), [blen]),
+            &device,
+        ));
+    }
+    Ok(())
+}
+
+#[wasm_bindgen]
+impl WasmConv {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        let mut out = Vec::new();
+        match rec {
+            ConvolutionRecord::Conv1d(r) => { // TITIK API: nama record
+                push_param::<WasmBackend, 3>(&r.weight, &mut out)?;
+                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
+            }
+            ConvolutionRecord::Conv2d(r) => {
+                push_param::<WasmBackend, 4>(&r.weight, &mut out)?;
+                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
+            }
+            ConvolutionRecord::ConvTranspose2d(r) => {
+                push_param::<WasmBackend, 4>(&r.weight, &mut out)?;
+                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
+            }
+        }
+        Ok(out)
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        let mut rec = self.inner.clone().into_record();
+        match &mut rec {
+            ConvolutionRecord::Conv1d(r) => {
+                set_conv_param::<WasmBackend, 3>(&mut r.weight, &mut r.bias, data)?;
+            }
+            ConvolutionRecord::Conv2d(r) => {
+                set_conv_param::<WasmBackend, 4>(&mut r.weight, &mut r.bias, data)?;
+            }
+            ConvolutionRecord::ConvTranspose2d(r) => {
+                set_conv_param::<WasmBackend, 4>(&mut r.weight, &mut r.bias, data)?;
+            }
+        }
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}
