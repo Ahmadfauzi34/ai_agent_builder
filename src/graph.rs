@@ -1,38 +1,36 @@
 use wasm_bindgen::prelude::*;
-use crate::protocol::PayloadCursor;
+use crate::protocol::{PayloadCursor, LAYER_BINARY};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
 
+// Arity = jumlah input sebuah langkah graph. Satu sumber untuk graph + registry.
+pub(crate) const ARITY_UNARY: u8 = 1;
+pub(crate) const ARITY_BINARY: u8 = 2;
+
 // ============================================================
-// COMPILE-ONCE GRAPH EXECUTOR
+// COMPILE-ONCE GRAPH EXECUTOR  (format plan v2: mendukung langkah binary)
 // ============================================================
-// parse + validasi plan DILAKUKAN SEKALI di registry.compileGraph();
-// hasilnya (CompiledGraph) dipegang JS. Loop panas memanggil
-// compiled.run(registry, input) yang TIDAK mem-parse byte lagi, dan
-// tensor intermediate TIDAK menyeberang boundary.
-//
-// run() komposisi penuh dari registry.forward_layer() → 9 cabang dispatch
-// tidak diduplikasi; konsistensi shape/Result otomatis terwarisi.
-//
-// Wire format `plan` (little-endian):
+// Wire format `plan` (little-endian), per langkah 9 byte (fixed stride):
 //   num_steps : u32
 //   num_slots : u32            // 1..=64 ; slot 0 = input eksternal
 //   steps     : ulang num_steps kali ->
-//               { layer_type: u8, layer_id: u32, in_slot: u8, out_slot: u8 }
-//   out_slot  : u8             // slot mana yang dikembalikan
-//
-// ATURAN: steps HARUS urut topologis (sebuah langkah hanya boleh membaca
-// slot yang sudah diisi input atau oleh langkah sebelumnya). Kipas-out
-// (satu slot dibaca banyak langkah) boleh.
+//               { arity:u8, layer_type:u8, layer_id:u32,
+//                 in_slot:u8, in_slot2:u8, out_slot:u8 }
+//   out_slot  : u8
+//   arity 1 -> registry.forward_layer        (in_slot2 = don't-care, tulis 0)
+//   arity 2 -> registry.forward_binary_layer (in_slot + in_slot2)
+// Aturan: steps urut topologis; kipas-out boleh; arity<->type harus cocok.
 // ============================================================
 
 const CG_MAX_SLOTS: u32 = 64;
 
 #[derive(Clone, Copy)]
 struct CompiledStep {
+    arity: u8,
     layer_type: u8,
     layer_id: u32,
     in_slot: u8,
+    in_slot2: u8,
     out_slot: u8,
 }
 
@@ -48,15 +46,16 @@ pub struct CompiledGraph {
 impl CompiledGraph {
     fn read_step(c: &mut PayloadCursor) -> Result<CompiledStep, String> {
         Ok(CompiledStep {
+            arity: c.read_u8()?,
             layer_type: c.read_u8()?,
             layer_id: c.read_u32()?,
             in_slot: c.read_u8()?,
+            in_slot2: c.read_u8()?,
             out_slot: c.read_u8()?,
         })
     }
 
-    /// Parse + validasi SEMUA hal (format, rentang slot, dataflow, keberadaan
-    /// layer) TANPA eksekusi. Gagal = Result::Err rapi, bukan panic.
+    /// Parse + validasi SEMUA hal TANPA eksekusi. Gagal = Result::Err rapi.
     pub(crate) fn build(reg: &LayerRegistry, plan: &[u8]) -> Result<CompiledGraph, String> {
         let mut c = PayloadCursor::new(plan);
         let num_steps = c.read_u32()?;
@@ -77,16 +76,37 @@ impl CompiledGraph {
         for _ in 0..num_steps {
             let s = Self::read_step(&mut c)?;
             let in_slot = s.in_slot as u32;
+            let in_slot2 = s.in_slot2 as u32;
             let out_slot = s.out_slot as u32;
 
-            if in_slot >= num_slots || out_slot >= num_slots {
+            if in_slot >= num_slots || in_slot2 >= num_slots || out_slot >= num_slots {
                 return Err(format!(
                     "compile_graph: slot index out of range (num_slots={})",
                     num_slots
                 ));
             }
-            if (filled >> in_slot) & 1 == 0 {
-                return Err(format!("compile_graph: input slot {} is empty", in_slot));
+            if s.arity == ARITY_BINARY {
+                if s.layer_type != LAYER_BINARY {
+                    return Err(format!(
+                        "compile_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}",
+                        s.layer_type
+                    ));
+                }
+                if (filled >> in_slot) & 1 == 0 {
+                    return Err(format!("compile_graph: input slot {} is empty", in_slot));
+                }
+                if (filled >> in_slot2) & 1 == 0 {
+                    return Err(format!("compile_graph: input slot {} is empty", in_slot2));
+                }
+            } else if s.arity == ARITY_UNARY {
+                if s.layer_type == LAYER_BINARY {
+                    return Err("compile_graph: arity 1 cannot use LAYER_BINARY (needs 2 inputs)".into());
+                }
+                if (filled >> in_slot) & 1 == 0 {
+                    return Err(format!("compile_graph: input slot {} is empty", in_slot));
+                }
+            } else {
+                return Err(format!("compile_graph: invalid arity {} (expected 1 or 2)", s.arity));
             }
             if !reg.layer_exists(s.layer_type, s.layer_id) {
                 return Err(format!(
@@ -113,26 +133,32 @@ impl CompiledGraph {
 // --- API yang dilihat JS ---
 #[wasm_bindgen]
 impl CompiledGraph {
-    /// Jalankan plan yang sudah di-compile di atas `registry` dengan `input`
-    /// di slot 0. TIDAK ada parsing byte di sini — ini jalur panas.
-    /// Kalau sebuah layer di-destroy setelah compile, forward_layer() di bawah
-    /// mengembalikan Err rapi (bukan trap).
+    /// Jalankan plan yang sudah di-compile. TIDAK ada parsing byte di sini.
+    /// Borrow aman: ambil ref input, hasil owned, baru assign ke slot.
     #[wasm_bindgen(js_name = run)]
     pub fn run(
         &self,
         registry: &LayerRegistry,
         input: &WasmTensor,
     ) -> Result<WasmTensor, String> {
-        // invariant: build() menjamin num_slots >= 1 → slots[0] aman.
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         slots[0] = Some(input.clone());
 
         for s in &self.steps {
-            let inp = slots[s.in_slot as usize]
-                .as_ref()
-                .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
-            // dispatch yang SUDAH ADA — tidak ada duplikasi 9 cabang.
-            let out = registry.forward_layer(s.layer_id, s.layer_type, inp)?;
+            let out = if s.arity == ARITY_BINARY {
+                let a = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                let b = slots[s.in_slot2 as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot2))?;
+                registry.forward_binary_layer(s.layer_id, a, b)?
+            } else {
+                let inp = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                registry.forward_layer(s.layer_id, s.layer_type, inp)?
+            };
             slots[s.out_slot as usize] = Some(out);
         }
 
@@ -141,11 +167,10 @@ impl CompiledGraph {
             .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
     }
 
-    // Introspeksi murah — berguna untuk assertion di test JS-mu.
     #[wasm_bindgen(js_name = numSteps)]
     pub fn step_count(&self) -> u32 { self.steps.len() as u32 }
     #[wasm_bindgen(js_name = numSlots)]
     pub fn slot_count(&self) -> u32 { self.num_slots }
     #[wasm_bindgen(js_name = outSlot)]
     pub fn output_slot(&self) -> u8 { self.out_slot }
-      }
+}

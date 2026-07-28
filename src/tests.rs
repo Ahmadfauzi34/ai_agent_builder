@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::protocol::{
-        PacketHeader, PayloadCursor, ACT_RELU, LAYER_ACTIVATION, LAYER_LINEAR, OP_INIT,
-        VARIANT_NONE,
+        PacketHeader, PayloadCursor, ACT_RELU, BINARY_ADD, LAYER_ACTIVATION, LAYER_BINARY,
+        LAYER_LINEAR, OP_INIT, VARIANT_NONE,
     };
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
@@ -21,15 +21,50 @@ mod tests {
         PacketHeader::from_bytes(&header(OP_INIT, layer_type, variant, 0, payload_len)).unwrap()
     }
 
+    // --- plan builder v2 (9 byte/step) ---
+    fn push_unary(
+        plan: &mut Vec<u8>,
+        layer_type: u8,
+        layer_id: u32,
+        in_slot: u8,
+        out_slot: u8,
+    ) {
+        plan.push(1); // arity = unary
+        plan.push(layer_type);
+        plan.extend_from_slice(&layer_id.to_le_bytes());
+        plan.push(in_slot);
+        plan.push(0); // in_slot2 = don't-care
+        plan.push(out_slot);
+    }
+
+    fn push_binary(
+        plan: &mut Vec<u8>,
+        layer_type: u8,
+        layer_id: u32,
+        in_slot: u8,
+        in_slot2: u8,
+        out_slot: u8,
+    ) {
+        plan.push(2); // arity = binary
+        plan.push(layer_type);
+        plan.extend_from_slice(&layer_id.to_le_bytes());
+        plan.push(in_slot);
+        plan.push(in_slot2);
+        plan.push(out_slot);
+    }
+
+    // ------------------------------------------------------------
+    // NON-GRAPH TESTS (direkonstruksi utuh)
+    // ------------------------------------------------------------
     #[test]
     fn test_payload_cursor_basic() {
         let mut data = Vec::new();
         data.extend_from_slice(&42u32.to_le_bytes());
         data.extend_from_slice(&3.14f64.to_le_bytes());
-        data.push(1); // true
-        data.push(1); // Some
+        data.push(1);
+        data.push(1);
         data.extend_from_slice(&100u32.to_le_bytes());
-        data.push(0); // None
+        data.push(0);
         data.extend_from_slice(&0.0f64.to_le_bytes());
 
         let mut cursor = PayloadCursor::new(&data);
@@ -72,15 +107,13 @@ mod tests {
         assert_eq!(registry.total_params(), 0);
 
         let mut payload = Vec::new();
-        payload.extend_from_slice(&1u32.to_le_bytes()); // id = 1
-        payload.extend_from_slice(&10u32.to_le_bytes()); // in_dim = 10
-        payload.extend_from_slice(&5u32.to_le_bytes()); // out_dim = 5
-        payload.push(1); // bias = true
+        payload.extend_from_slice(&1u32.to_le_bytes());
+        payload.extend_from_slice(&10u32.to_le_bytes());
+        payload.extend_from_slice(&5u32.to_le_bytes());
+        payload.push(1);
 
         let h = init_header(LAYER_LINEAR, VARIANT_NONE, payload.len() as u32);
         registry.init_layer(&h, &payload).unwrap();
-
-        // 10 * 5 (weights) + 5 (bias) = 55 parameters
         assert_eq!(registry.total_params(), 55);
 
         let destroyed = registry.destroy_layer(1, LAYER_LINEAR);
@@ -89,12 +122,11 @@ mod tests {
     }
 
     // ------------------------------------------------------------
-    // GRAPH EXECUTOR TESTS
+    // GRAPH TESTS — unary (di-adaptasi ke format 9-byte)
     // ------------------------------------------------------------
     fn build_linear_relu_registry() -> (LayerRegistry, WasmTensor) {
         let mut reg = LayerRegistry::new();
 
-        // linear id=1 : in=3, out=4, bias=true
         let mut p = Vec::new();
         p.extend_from_slice(&1u32.to_le_bytes());
         p.extend_from_slice(&3u32.to_le_bytes());
@@ -103,7 +135,6 @@ mod tests {
         reg.init_layer(&init_header(LAYER_LINEAR, VARIANT_NONE, p.len() as u32), &p)
             .unwrap();
 
-        // activation id=2 : relu
         let mut p2 = Vec::new();
         p2.extend_from_slice(&2u32.to_le_bytes());
         reg.init_layer(&init_header(LAYER_ACTIVATION, ACT_RELU, p2.len() as u32), &p2)
@@ -113,31 +144,20 @@ mod tests {
         (reg, input)
     }
 
-    fn push_step(plan: &mut Vec<u8>, layer_type: u8, layer_id: u32, in_slot: u8, out_slot: u8) {
-        plan.push(layer_type);
-        plan.extend_from_slice(&layer_id.to_le_bytes());
-        plan.push(in_slot);
-        plan.push(out_slot);
-    }
-
     #[test]
     fn test_run_graph_matches_manual_chain() {
         let (reg, input) = build_linear_relu_registry();
 
-        // plan: slot0=input -> linear -> slot1 -> relu -> slot2 ; return slot2
         let mut plan = Vec::new();
-        plan.extend_from_slice(&2u32.to_le_bytes()); // num_steps
-        plan.extend_from_slice(&3u32.to_le_bytes()); // num_slots
-        push_step(&mut plan, LAYER_LINEAR, 1, 0, 1);
-        push_step(&mut plan, LAYER_ACTIVATION, 2, 1, 2);
-        plan.push(2); // out_slot
+        plan.extend_from_slice(&2u32.to_le_bytes());
+        plan.extend_from_slice(&3u32.to_le_bytes());
+        push_unary(&mut plan, LAYER_LINEAR, 1, 0, 1);
+        push_unary(&mut plan, LAYER_ACTIVATION, 2, 1, 2);
+        plan.push(2);
 
         let run = reg.run_graph(&plan, &input).unwrap();
-
-        // jalur manual lewat forward_layer (registry sama => bobot sama)
         let t1 = reg.forward_layer(1, LAYER_LINEAR, &input).unwrap();
         let t2 = reg.forward_layer(2, LAYER_ACTIVATION, &t1).unwrap();
-
         assert_eq!(run.to_array(), t2.to_array());
     }
 
@@ -148,9 +168,8 @@ mod tests {
         let mut plan = Vec::new();
         plan.extend_from_slice(&1u32.to_le_bytes());
         plan.extend_from_slice(&3u32.to_le_bytes());
-        push_step(&mut plan, LAYER_LINEAR, 1, 2, 1); // in_slot=2 belum terisi
+        push_unary(&mut plan, LAYER_LINEAR, 1, 2, 1); // in_slot 2 kosong
         plan.push(1);
-
         assert!(reg.run_graph(&plan, &input).is_err());
     }
 
@@ -161,9 +180,81 @@ mod tests {
         let mut plan = Vec::new();
         plan.extend_from_slice(&1u32.to_le_bytes());
         plan.extend_from_slice(&2u32.to_le_bytes());
-        push_step(&mut plan, LAYER_LINEAR, 999, 0, 1); // id tidak ada
+        push_unary(&mut plan, LAYER_LINEAR, 999, 0, 1); // id tidak ada
         plan.push(1);
-
         assert!(reg.run_graph(&plan, &input).is_err());
+    }
+
+    // ------------------------------------------------------------
+    // GRAPH TESTS — binary (BARU): dua cabang linear di-add
+    // ------------------------------------------------------------
+    fn build_binary_registry() -> (LayerRegistry, WasmTensor) {
+        let mut reg = LayerRegistry::new();
+
+        // linear id=1 (in3,out4,bias)
+        let mut p1 = Vec::new();
+        p1.extend_from_slice(&1u32.to_le_bytes());
+        p1.extend_from_slice(&3u32.to_le_bytes());
+        p1.extend_from_slice(&4u32.to_le_bytes());
+        p1.push(1);
+        reg.init_layer(&init_header(LAYER_LINEAR, VARIANT_NONE, p1.len() as u32), &p1)
+            .unwrap();
+
+        // linear id=2 (in3,out4,bias)
+        let mut p2 = Vec::new();
+        p2.extend_from_slice(&2u32.to_le_bytes());
+        p2.extend_from_slice(&3u32.to_le_bytes());
+        p2.extend_from_slice(&4u32.to_le_bytes());
+        p2.push(1);
+        reg.init_layer(&init_header(LAYER_LINEAR, VARIANT_NONE, p2.len() as u32), &p2)
+            .unwrap();
+
+        // binary add id=3 (dim don't-care = 0)
+        let mut pb = Vec::new();
+        pb.extend_from_slice(&3u32.to_le_bytes());
+        pb.extend_from_slice(&0u32.to_le_bytes());
+        reg.init_layer(&init_header(LAYER_BINARY, BINARY_ADD, pb.len() as u32), &pb)
+            .unwrap();
+
+        let input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
+        (reg, input)
+    }
+
+    fn binary_plan() -> Vec<u8> {
+        // slot0=input -> linear1 -> slot1 ; slot0 -> linear2 -> slot2 ;
+        // add(slot1,slot2) -> slot3 ; return slot3
+        let mut plan = Vec::new();
+        plan.extend_from_slice(&3u32.to_le_bytes());
+        plan.extend_from_slice(&4u32.to_le_bytes());
+        push_unary(&mut plan, LAYER_LINEAR, 1, 0, 1);
+        push_unary(&mut plan, LAYER_LINEAR, 2, 0, 2);
+        push_binary(&mut plan, LAYER_BINARY, 3, 1, 2, 3);
+        plan.push(3);
+        plan
+    }
+
+    fn binary_manual(reg: &LayerRegistry, input: &WasmTensor) -> Vec<f32> {
+        let t1 = reg.forward_layer(1, LAYER_LINEAR, input).unwrap();
+        let t2 = reg.forward_layer(2, LAYER_LINEAR, input).unwrap();
+        let t3 = reg.forward_binary_layer(3, &t1, &t2).unwrap();
+        t3.to_array()
+    }
+
+    #[test]
+    fn test_run_graph_binary_add() {
+        let (reg, input) = build_binary_registry();
+        let run = reg.run_graph(&binary_plan(), &input).unwrap();
+        assert_eq!(run.to_array(), binary_manual(&reg, &input));
+    }
+
+    #[test]
+    fn test_compile_graph_binary_add() {
+        let (reg, input) = build_binary_registry();
+        let compiled = reg.compile_graph(&binary_plan()).unwrap();
+        assert_eq!(compiled.step_count(), 3);
+        assert_eq!(compiled.slot_count(), 4);
+        assert_eq!(compiled.output_slot(), 3);
+        let run = compiled.run(&reg, &input).unwrap();
+        assert_eq!(run.to_array(), binary_manual(&reg, &input));
     }
 }
