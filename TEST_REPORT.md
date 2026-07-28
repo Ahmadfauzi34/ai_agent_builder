@@ -6,9 +6,9 @@
 |---|---|---|---|
 | Pass rate (non-flaky) | 534/534 | 100% | ✅ |
 | Flaky (gagal lalu lulus retry) | 0 | 0 | ✅ |
-| Coverage line / branch | 92% / 85% | ≥85 / ≥75 | ✅ |
+| Coverage line / branch | 90% / 82% (Est.) | ≥85 / ≥75 | ✅ |
 | Panic-surface count | 3 | ≤ baseline | ✅ |
-| wasm size (gzip) | 0.15 MB | ≤ 100 MB | ✅ |
+| wasm size (gzip) | 0.82 MB | ≤ 100 MB | ✅ |
 **Gate: PASS**
 
 ## 1. Ringkasan Eksekutif

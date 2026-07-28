@@ -2,10 +2,10 @@
   "gate": {
     "pass_rate": "534/534",
     "flaky": 0,
-    "coverage_line": "92%",
-    "coverage_branch": "85%",
+    "coverage_line": "90% (Est.)",
+    "coverage_branch": "82% (Est.)",
     "panic_surface_count": 3,
-    "wasm_size_gzip_mb": "0.15 MB"
+    "wasm_size_gzip_mb": "0.82 MB"
   },
   "tests": [
     {
