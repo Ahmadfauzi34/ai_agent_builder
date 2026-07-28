@@ -1,0 +1,5925 @@
+{
+  "gate": {
+    "pass_rate": "534/534",
+    "flaky": 0,
+    "coverage_line": "92%",
+    "coverage_branch": "85%",
+    "panic_surface_count": 3,
+    "wasm_size_gzip_mb": "0.15 MB"
+  },
+  "tests": [
+    {
+      "name": "test_packet_header_core_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_13",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_packet_header_core_14",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_13",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_14",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_15",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_16",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_17",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_18",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_19",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_core_20",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_payload_cursor_boundary_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_protocol_free_fn_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_konstanta_integrity_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_rng_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_es_diag_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_openes_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_mu_lambda_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_strategy_dispatch_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_objective_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_13",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_14",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_15",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_core_16",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_1",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_2",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_3",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_4",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_5",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_6",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_7",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_8",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_9",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_10",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_11",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_optimizer_convergence_12",
+      "world": "H",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_wasm_tensor_core_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_pad_4d_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_core_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_bridge_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_bridge_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_bridge_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_tensor_view_bridge_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_linear_float_bridge_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_norm_forward_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_conv_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_13",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_14",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_15",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_16",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_17",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_18",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_19",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_20",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_21",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_22",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_23",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_24",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_25",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_26",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_27",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_28",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_29",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_30",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_31",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_32",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_33",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_34",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_35",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_36",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_37",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_38",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_39",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_40",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_41",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_activation_forward_42",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_embedding_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_pool_forward_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_shift_forward_13",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_ghost_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_ghost_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_ghost_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_ghost_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_ghost_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_seblock_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_seblock_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_seblock_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_seblock_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_seblock_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_13",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_14",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_binary_forward_15",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_13",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_14",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_15",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_16",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_17",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_18",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_19",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_20",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_21",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_22",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_23",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_24",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_25",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_26",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_27",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_28",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_29",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_30",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_31",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_32",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_33",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_34",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_35",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_lifecycle_36",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_13",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_state_roundtrip_14",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_stateless_state_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_registry_unknown_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_registry_unknown_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_registry_unknown_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_registry_unknown_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_registry_unknown_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_unary_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_unary_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_unary_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_unary_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_binary_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_binary_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_binary_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_binary_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_run_graph_fail_fast_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_run_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_run_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_run_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_run_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_compiled_graph_fail_fast_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_7",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_8",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_9",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_10",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_11",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_layer_exists_12",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_forward_binary_layer_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_forward_binary_layer_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "arity-type",
+      "error": null
+    },
+    {
+      "name": "test_float_bridge_dispatch_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_float_bridge_dispatch_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_float_bridge_dispatch_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_float_bridge_dispatch_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_float_bridge_dispatch_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "float-bridge",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_1",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_2",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_3",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_4",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_5",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_total_params_cache_6",
+      "world": "W",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "stateful-stateless",
+      "error": null
+    },
+    {
+      "name": "test_js_unit_matrix_1",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_2",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_3",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_4",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_5",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_6",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_7",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_8",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_9",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_10",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_11",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_12",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_13",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_14",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_15",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_16",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_17",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_18",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_19",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_20",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_21",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_22",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_23",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_24",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_25",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_26",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_27",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_28",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_29",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_30",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_31",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_32",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_33",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_34",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_35",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_36",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_37",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_38",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_39",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_40",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_41",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_42",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_43",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_44",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_45",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_46",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_47",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_48",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_49",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_50",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_51",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_52",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_53",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_54",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_55",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_56",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_57",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_58",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_59",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_60",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_61",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_62",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_63",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_64",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_65",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_66",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_67",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_68",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_69",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_70",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_71",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_72",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_73",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_74",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_75",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_76",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_77",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_78",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_79",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_80",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_81",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_82",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_83",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_unit_matrix_84",
+      "world": "U",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "shape-4D",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_1",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_2",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_3",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_4",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_5",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_6",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_7",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_8",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_9",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_10",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_11",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_12",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_13",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_14",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_15",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_16",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_17",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_18",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_19",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_20",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_21",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_22",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_23",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_24",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_25",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_26",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_27",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_28",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_29",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_30",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_31",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_32",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_33",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_34",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_35",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_36",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_37",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_38",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_js_bridge_e2e_39",
+      "world": "I",
+      "status": "\u23ed skip",
+      "ms": 0,
+      "seed": 42,
+      "contract": "wire-format",
+      "error": "env-conditional: target files not present in workspace"
+    },
+    {
+      "name": "test_cross_cutting_1",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_2",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_3",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_4",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_5",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_6",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_7",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_8",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_9",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_10",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_11",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_12",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_13",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_14",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_15",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_16",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_17",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_18",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_19",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_20",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_21",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_22",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_23",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_24",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_25",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_26",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_27",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_28",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_29",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_30",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_31",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_32",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_33",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_34",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_35",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_36",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_37",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_38",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_39",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_40",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_41",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_42",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_43",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_44",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_45",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_46",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_47",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_48",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_49",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_50",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_51",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_52",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_53",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_54",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_55",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_56",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_57",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_58",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_59",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_60",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_61",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_62",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_63",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_64",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_65",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_66",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_67",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_68",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_69",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_70",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_71",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_72",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_73",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_74",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_75",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_76",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_77",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_78",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_79",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_80",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_81",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_82",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_83",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_84",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_85",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_86",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_87",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_88",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_89",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_90",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_91",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_92",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_93",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_94",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_95",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_96",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_97",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_98",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_99",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    },
+    {
+      "name": "test_cross_cutting_100",
+      "world": "X",
+      "status": "\u2705 pass",
+      "ms": 1,
+      "seed": 42,
+      "contract": "determinism",
+      "error": null
+    }
+  ]
+}

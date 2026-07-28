@@ -414,17 +414,21 @@ const MAX_SLOTS: u32 = 64;
 
 #[derive(Clone, Copy)]
 struct RunStep {
+    arity: u8,        // 1 = unary, 2 = binary
     layer_type: u8,
     layer_id: u32,
     in_slot: u8,
+    in_slot2: u8,     // hanya untuk arity 2
     out_slot: u8,
 }
-
+// 9 byte/step (fixed stride): arity, type, id, in, in2, out
 fn read_run_step(c: &mut PayloadCursor) -> Result<RunStep, String> {
     Ok(RunStep {
+        arity: c.read_u8()?,
         layer_type: c.read_u8()?,
         layer_id: c.read_u32()?,
         in_slot: c.read_u8()?,
+        in_slot2: c.read_u8()?,
         out_slot: c.read_u8()?,
     })
 }
@@ -440,6 +444,7 @@ fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
         LAYER_SHIFT      => reg.shifts.contains_key(&layer_id),
         LAYER_GHOST      => reg.ghosts.contains_key(&layer_id),
         LAYER_SEBLOCK    => reg.seblocks.contains_key(&layer_id),
+        LAYER_BINARY     => reg.binaries.contains_key(&layer_id),
         _ => false,
     }
 }
@@ -450,7 +455,6 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
     let mut c = PayloadCursor::new(plan);
     let num_steps = c.read_u32()?;
     let num_slots = c.read_u32()?;
-
     if num_steps == 0 {
         return Err("run_graph: plan has no steps".into());
     }
@@ -460,21 +464,40 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
             MAX_SLOTS, num_slots
         ));
     }
-
     let mut filled: u64 = 1; // bit 0 = slot 0 (input eksternal) sudah terisi
     for _ in 0..num_steps {
         let s = read_run_step(&mut c)?;
         let in_slot = s.in_slot as u32;
+        let in_slot2 = s.in_slot2 as u32;
         let out_slot = s.out_slot as u32;
-
-        if in_slot >= num_slots || out_slot >= num_slots {
+        if in_slot >= num_slots || in_slot2 >= num_slots || out_slot >= num_slots {
             return Err(format!(
                 "run_graph: slot index out of range (num_slots={})",
                 num_slots
             ));
         }
-        if (filled >> in_slot) & 1 == 0 {
-            return Err(format!("run_graph: input slot {} is empty", in_slot));
+        if s.arity == crate::graph::ARITY_BINARY {
+            if s.layer_type != LAYER_BINARY {
+                return Err(format!(
+                    "run_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}",
+                    s.layer_type
+                ));
+            }
+            if (filled >> in_slot) & 1 == 0 {
+                return Err(format!("run_graph: input slot {} is empty", in_slot));
+            }
+            if (filled >> in_slot2) & 1 == 0 {
+                return Err(format!("run_graph: input slot {} is empty", in_slot2));
+            }
+        } else if s.arity == crate::graph::ARITY_UNARY {
+            if s.layer_type == LAYER_BINARY {
+                return Err("run_graph: arity 1 cannot use LAYER_BINARY (needs 2 inputs)".into());
+            }
+            if (filled >> in_slot) & 1 == 0 {
+                return Err(format!("run_graph: input slot {} is empty", in_slot));
+            }
+        } else {
+            return Err(format!("run_graph: invalid arity {} (expected 1 or 2)", s.arity));
         }
         if !contains_layer(reg, s.layer_type, s.layer_id) {
             return Err(format!(
@@ -482,18 +505,14 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
                 s.layer_type, s.layer_id
             ));
         }
-        filled |= 1u64 << out_slot; // out_slot < 64 dijamin di atas, shift aman
+        filled |= 1u64 << out_slot; // out_slot < 64 dijamin → shift aman
     }
-
     let out_slot = c.read_u8()? as u32;
     if out_slot >= num_slots {
         return Err(format!("run_graph: output slot {} out of range", out_slot));
     }
     if (filled >> out_slot) & 1 == 0 {
-        return Err(format!(
-            "run_graph: output slot {} is never written",
-            out_slot
-        ));
+        return Err(format!("run_graph: output slot {} is never written", out_slot));
     }
     Ok((num_steps, num_slots, out_slot as u8))
 }
@@ -504,25 +523,30 @@ impl LayerRegistry {
     pub fn run_graph(&self, plan: &[u8], input: &WasmTensor) -> Result<WasmTensor, String> {
         // Pass 1: fail-fast, tidak ada eksekusi kalau plan tidak valid.
         let (num_steps, num_slots, out_slot) = validate_plan(self, plan)?;
-
         // Pass 2: eksekusi. Tensor intermediate hidup di Rust saja.
         let mut c = PayloadCursor::new(plan);
         let _ = c.read_u32()?; // num_steps (baca ulang)
         let _ = c.read_u32()?; // num_slots (baca ulang)
-
         let mut slots: Vec<Option<WasmTensor>> = (0..num_slots as usize).map(|_| None).collect();
         slots[0] = Some(input.clone());
-
         for _ in 0..num_steps {
             let s = read_run_step(&mut c)?;
-            let inp = slots[s.in_slot as usize]
-                .as_ref()
-                .ok_or_else(|| format!("run_graph: runtime empty slot {}", s.in_slot))?;
-            // Pakai dispatch yang SUDAH ADA — tidak ada duplikasi 9 cabang.
-            let out = self.forward_layer(s.layer_id, s.layer_type, inp)?;
+            let out = if s.arity == crate::graph::ARITY_BINARY {
+                let a = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run_graph: runtime empty slot {}", s.in_slot))?;
+                let b = slots[s.in_slot2 as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run_graph: runtime empty slot {}", s.in_slot2))?;
+                self.forward_binary_layer(s.layer_id, a, b)?
+            } else {
+                let inp = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run_graph: runtime empty slot {}", s.in_slot))?;
+                self.forward_layer(s.layer_id, s.layer_type, inp)?
+            };
             slots[s.out_slot as usize] = Some(out);
         }
-
         slots[out_slot as usize]
             .take()
             .ok_or_else(|| format!("run_graph: runtime empty output slot {}", out_slot))
@@ -547,6 +571,7 @@ impl LayerRegistry {
             LAYER_SHIFT      => self.shifts.contains_key(&layer_id),
             LAYER_GHOST      => self.ghosts.contains_key(&layer_id),
             LAYER_SEBLOCK    => self.seblocks.contains_key(&layer_id),
+            LAYER_BINARY     => self.binaries.contains_key(&layer_id),
             _ => false,
         }
     }
