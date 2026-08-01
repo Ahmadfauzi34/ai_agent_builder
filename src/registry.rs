@@ -637,7 +637,7 @@ impl LayerRegistry {
             LAYER_NORM      => Ok(self.norms.get(&layer_id).ok_or("Norm not found")?.weight_layout()),
             _ => Err(format!("weightLayout: not yet supported for type 0x{:02X}", layer_type)),
         }
-            }
+     }
 // ============================================================
 // BINARY (A1) — layer stateless 2-input.
 // init lewat packet (LAYER_BINARY + variant); forward lewat method 2-input.
