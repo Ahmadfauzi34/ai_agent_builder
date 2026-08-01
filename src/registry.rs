@@ -601,19 +601,13 @@ impl LayerRegistry {
         crate::graph::CompiledGraph::build(self, plan)
     }
 }
-// ============================================================
-// FLOAT-BRIDGE DISPATCH (B) — pintu per-layer untuk baca/tulis bobot.
-// Baru LINEAR yang didukung; tipe lain -> Err eksplisit (bukan panic).
-// Generalisasi ke norm/conv/embedding/ghost/seblock = langkah compose berikutnya.
-// ============================================================
-#[wasm_bindgen]
-impl LayerRegistry {
-    #[wasm_bindgen(js_name = getWeightsFlat)]
+#[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self, layer_id: LayerId, layer_type: u8) -> Result<Vec<f32>, String> {
         match layer_type {
             LAYER_LINEAR    => self.linears.get(&layer_id).ok_or("Linear not found")?.get_weights_flat(),
             LAYER_CONV      => self.convs.get(&layer_id).ok_or("Conv not found")?.get_weights_flat(),
             LAYER_EMBEDDING => self.embeddings.get(&layer_id).ok_or("Embedding not found")?.get_weights_flat(),
+            LAYER_NORM      => self.norms.get(&layer_id).ok_or("Norm not found")?.get_weights_flat(),
             _ => Err(format!("getWeightsFlat: not yet supported for type 0x{:02X}", layer_type)),
         }
     }
@@ -629,10 +623,21 @@ impl LayerRegistry {
             LAYER_LINEAR    => self.linears.get_mut(&layer_id).ok_or("Linear not found")?.set_weights_flat(data),
             LAYER_CONV      => self.convs.get_mut(&layer_id).ok_or("Conv not found")?.set_weights_flat(data),
             LAYER_EMBEDDING => self.embeddings.get_mut(&layer_id).ok_or("Embedding not found")?.set_weights_flat(data),
+            LAYER_NORM      => self.norms.get_mut(&layer_id).ok_or("Norm not found")?.set_weights_flat(data),
             _ => Err(format!("setWeightsFlat: not yet supported for type 0x{:02X}", layer_type)),
         }
     }
-}
+
+    #[wasm_bindgen(js_name = weightLayout)]
+    pub fn weight_layout(&self, layer_id: LayerId, layer_type: u8) -> Result<String, String> {
+        match layer_type {
+            LAYER_LINEAR    => Ok(self.linears.get(&layer_id).ok_or("Linear not found")?.weight_layout()),
+            LAYER_CONV      => Ok(self.convs.get(&layer_id).ok_or("Conv not found")?.weight_layout()),
+            LAYER_EMBEDDING => Ok(self.embeddings.get(&layer_id).ok_or("Embedding not found")?.weight_layout()),
+            LAYER_NORM      => Ok(self.norms.get(&layer_id).ok_or("Norm not found")?.weight_layout()),
+            _ => Err(format!("weightLayout: not yet supported for type 0x{:02X}", layer_type)),
+        }
+            }
 // ============================================================
 // BINARY (A1) — layer stateless 2-input.
 // init lewat packet (LAYER_BINARY + variant); forward lewat method 2-input.
