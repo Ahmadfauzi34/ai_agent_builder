@@ -177,15 +177,15 @@ fn set_norm_param(
 fn norm_trainable_refs(
     rec: &NormalizationRecord<WasmBackend>,
 ) -> (
-    &burn::module::Param<Tensor<WasmBackend, 1>>,
+    Option<&burn::module::Param<Tensor<WasmBackend, 1>>>,
     Option<&burn::module::Param<Tensor<WasmBackend, 1>>>,
 ) {
     match rec {
-        NormalizationRecord::Batch(r) => (&r.gamma, Some(&r.beta)),
-        NormalizationRecord::Group(r) => (&r.gamma, Some(&r.beta)),
-        NormalizationRecord::Instance(r) => (&r.gamma, Some(&r.beta)),
-        NormalizationRecord::Layer(r) => (&r.gamma, Some(&r.beta)),
-        NormalizationRecord::Rms(r) => (&r.gamma, None),
+        NormalizationRecord::Batch(r) => (Some(&r.gamma), Some(&r.beta)),
+        NormalizationRecord::Group(r) => (r.gamma.as_ref(), r.beta.as_ref()),
+        NormalizationRecord::Instance(r) => (r.gamma.as_ref(), r.beta.as_ref()),
+        NormalizationRecord::Layer(r) => (Some(&r.gamma), r.beta.as_ref()),
+        NormalizationRecord::Rms(r) => (Some(&r.gamma), None),
     }
 }
 
@@ -196,7 +196,9 @@ impl WasmNorm {
         let rec = self.inner.clone().into_record();
         let (gamma, beta) = norm_trainable_refs(&rec);
         let mut out = Vec::new();
-        push_norm_param(gamma, &mut out)?;
+        if let Some(g) = gamma {
+            push_norm_param(g, &mut out)?;
+        }
         if let Some(b) = beta {
             push_norm_param(b, &mut out)?;
         }
@@ -209,13 +211,17 @@ impl WasmNorm {
         // panjang trainable: pinjam immut, lalu lepas (blok tersendiri)
         let (gl, bl) = {
             let (g, b) = norm_trainable_refs(&rec);
-            (norm_param_len(g), b.map(norm_param_len).unwrap_or(0))
+            (
+                g.map(norm_param_len).unwrap_or(0),
+                b.map(norm_param_len).unwrap_or(0)
+            )
         };
         let total = gl + bl;
         if data.len() != total {
             return Err(format!(
-                "setWeightsFlat: norm expected {} floats (gamma{}), got {}",
+                "setWeightsFlat: norm expected {} floats ({}{}), got {}",
                 total,
+                if gl > 0 { "gamma" } else { "" },
                 if bl > 0 { "+beta" } else { "" },
                 data.len()
             ));
@@ -227,16 +233,26 @@ impl WasmNorm {
                 set_norm_param(&mut r.beta, &data[gl..])?;
             }
             NormalizationRecord::Group(r) => {
-                set_norm_param(&mut r.gamma, &data[..gl])?;
-                set_norm_param(&mut r.beta, &data[gl..])?;
+                if let Some(ref mut g) = r.gamma {
+                    set_norm_param(g, &data[..gl])?;
+                }
+                if let Some(ref mut b) = r.beta {
+                    set_norm_param(b, &data[gl..])?;
+                }
             }
             NormalizationRecord::Instance(r) => {
-                set_norm_param(&mut r.gamma, &data[..gl])?;
-                set_norm_param(&mut r.beta, &data[gl..])?;
+                if let Some(ref mut g) = r.gamma {
+                    set_norm_param(g, &data[..gl])?;
+                }
+                if let Some(ref mut b) = r.beta {
+                    set_norm_param(b, &data[gl..])?;
+                }
             }
             NormalizationRecord::Layer(r) => {
                 set_norm_param(&mut r.gamma, &data[..gl])?;
-                set_norm_param(&mut r.beta, &data[gl..])?;
+                if let Some(ref mut b) = r.beta {
+                    set_norm_param(b, &data[gl..])?;
+                }
             }
             NormalizationRecord::Rms(r) => {
                 set_norm_param(&mut r.gamma, &data[..gl])?;
@@ -251,7 +267,10 @@ impl WasmNorm {
     pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
         let rec = self.inner.clone().into_record();
         let (gamma, beta) = norm_trainable_refs(&rec);
-        let mut segs = vec![("gamma", norm_param_len(gamma))];
+        let mut segs = Vec::new();
+        if let Some(g) = gamma {
+            segs.push(("gamma", norm_param_len(g)));
+        }
         if let Some(b) = beta {
             segs.push(("beta", norm_param_len(b)));
         }

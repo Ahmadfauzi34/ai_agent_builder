@@ -354,7 +354,8 @@ mod tests {
         let mut p = Vec::new();
         p.extend_from_slice(&1u32.to_le_bytes()); // id
         p.extend_from_slice(&4u32.to_le_bytes()); // size
-        p.push(0); // eps = None
+        p.push(0); // eps = None (tag)
+        p.extend_from_slice(&0.0f64.to_le_bytes()); // eps dummy value
         reg.init_layer(&mk_header(LAYER_NORM, NORM_LAYER, p.len()), &p).unwrap();
         let w = reg.get_weights_flat(1, LAYER_NORM).unwrap();
         assert_eq!(w.len(), 8);
