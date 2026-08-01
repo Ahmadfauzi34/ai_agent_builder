@@ -128,3 +128,137 @@ impl WasmNorm {
         Ok(bytes)
     }
 }
+// ============================================================
+// FLOAT-BRIDGE + WEIGHT LAYOUT (M1b) — norm.
+// KONTRAK TRAINABLE-ONLY: hanya gamma (+ beta kalau ada) yang diekspos.
+// running_mean / running_var (BatchNorm) TIDAK disentuh -> mustahil di-perturb
+// ES (aman-by-construction: kita hanya menyebut field trainable secara eksplisit).
+// RmsNorm = gamma saja (tanpa beta).
+// ============================================================
+
+fn norm_param_len(p: &burn::module::Param<Tensor<WasmBackend, 1>>) -> usize {
+    p.dims().iter().product::<usize>()
+}
+
+fn push_norm_param(
+    p: &burn::module::Param<Tensor<WasmBackend, 1>>,
+    out: &mut Vec<f32>,
+) -> Result<(), String> {
+    let t = <Tensor<WasmBackend, 1> as Clone>::clone(p).into_data();
+    out.extend(
+        t.as_slice::<f32>()
+            .map_err(|_| "getWeightsFlat: norm param not f32".to_string())?,
+    );
+    Ok(())
+}
+
+fn set_norm_param(
+    p: &mut burn::module::Param<Tensor<WasmBackend, 1>>,
+    data: &[f32],
+) -> Result<(), String> {
+    let n = p.dims().iter().product::<usize>();
+    if data.len() != n {
+        return Err(format!(
+            "setWeightsFlat: norm segment expected {} floats, got {}",
+            n,
+            data.len()
+        ));
+    }
+    let device: <WasmBackend as Backend>::Device = Default::default();
+    *p = burn::module::Param::from_data(
+        burn::tensor::TensorData::new(data.to_vec(), [n]),
+        &device,
+    );
+    Ok(())
+}
+
+// Seragamkan ekstraksi trainable: gamma selalu ada, beta kecuali Rms.
+// TITIK API: nama variant record + field (gamma/beta) mengikuti Burn 0.20.
+fn norm_trainable_refs(
+    rec: &NormalizationRecord<WasmBackend>,
+) -> (
+    &burn::module::Param<Tensor<WasmBackend, 1>>,
+    Option<&burn::module::Param<Tensor<WasmBackend, 1>>>,
+) {
+    match rec {
+        NormalizationRecord::Batch(r) => (&r.gamma, Some(&r.beta)),
+        NormalizationRecord::Group(r) => (&r.gamma, Some(&r.beta)),
+        NormalizationRecord::Instance(r) => (&r.gamma, Some(&r.beta)),
+        NormalizationRecord::Layer(r) => (&r.gamma, Some(&r.beta)),
+        NormalizationRecord::Rms(r) => (&r.gamma, None),
+    }
+}
+
+#[wasm_bindgen]
+impl WasmNorm {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        let (gamma, beta) = norm_trainable_refs(&rec);
+        let mut out = Vec::new();
+        push_norm_param(gamma, &mut out)?;
+        if let Some(b) = beta {
+            push_norm_param(b, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        let mut rec = self.inner.clone().into_record();
+        // panjang trainable: pinjam immut, lalu lepas (blok tersendiri)
+        let (gl, bl) = {
+            let (g, b) = norm_trainable_refs(&rec);
+            (norm_param_len(g), b.map(norm_param_len).unwrap_or(0))
+        };
+        let total = gl + bl;
+        if data.len() != total {
+            return Err(format!(
+                "setWeightsFlat: norm expected {} floats (gamma{}), got {}",
+                total,
+                if bl > 0 { "+beta" } else { "" },
+                data.len()
+            ));
+        }
+        // tulis per-field sekuensial (tanpa pinjam-mut bersamaan)
+        match &mut rec {
+            NormalizationRecord::Batch(r) => {
+                set_norm_param(&mut r.gamma, &data[..gl])?;
+                set_norm_param(&mut r.beta, &data[gl..])?;
+            }
+            NormalizationRecord::Group(r) => {
+                set_norm_param(&mut r.gamma, &data[..gl])?;
+                set_norm_param(&mut r.beta, &data[gl..])?;
+            }
+            NormalizationRecord::Instance(r) => {
+                set_norm_param(&mut r.gamma, &data[..gl])?;
+                set_norm_param(&mut r.beta, &data[gl..])?;
+            }
+            NormalizationRecord::Layer(r) => {
+                set_norm_param(&mut r.gamma, &data[..gl])?;
+                set_norm_param(&mut r.beta, &data[gl..])?;
+            }
+            NormalizationRecord::Rms(r) => {
+                set_norm_param(&mut r.gamma, &data[..gl])?;
+            }
+        }
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}
+
+impl WasmNorm {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        let (gamma, beta) = norm_trainable_refs(&rec);
+        let mut segs = vec![("gamma", norm_param_len(gamma))];
+        if let Some(b) = beta {
+            segs.push(("beta", norm_param_len(b)));
+        }
+        segs
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
