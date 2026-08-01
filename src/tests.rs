@@ -3,6 +3,7 @@ mod tests {
     use crate::protocol::{
         PacketHeader, PayloadCursor, OP_INIT, VARIANT_NONE, LAYER_LINEAR, LAYER_ACTIVATION,
         ACT_RELU, LAYER_BINARY, BINARY_ADD, LAYER_EMBEDDING, LAYER_CONV, CONV_CONV2D,
+        LAYER_NORM, NORM_LAYER,
     };
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
@@ -280,46 +281,85 @@ mod tests {
         let out2 = reg.forward_layer(1, LAYER_CONV, &input).unwrap().to_array();
         assert_ne!(out1, out2);
     }
-
-    // ---- JANGKAR M2 BARU: weightLayout konsisten dengan getWeightsFlat ----
     #[test]
     fn weight_layout_consistent_with_flat() {
         use crate::layers::linear::WasmLinear;
         use crate::layers::conv::WasmConv;
         use crate::layers::embedding::WasmEmbedding;
         use crate::layers::layout::segs_json;
-
         fn check(segs: &[(&'static str, usize)], flat_len: usize, json: &str) {
             let sum: usize = segs.iter().map(|s| s.1).sum();
             assert_eq!(sum, flat_len, "Σ layout len != getWeightsFlat len");
             assert!(segs.iter().any(|s| s.0 == "weight"), "wajib ada segmen weight");
-            let expected = segs_json(segs);
-            assert_eq!(json, expected.as_str(), "wrapper json != segs_json(segs)");
+            assert_eq!(json, segs_json(segs).as_str(), "wrapper json != segs_json(segs)");
             assert!(json.starts_with('[') && json.ends_with(']'), "json harus array");
         }
-
-        // linear dengan bias
         let lin = WasmLinear::new(3, 2, true);
-        let j = lin.weight_layout();
-        check(&lin.weight_segs(), lin.get_weights_flat().unwrap().len(), &j);
-
-        // linear tanpa bias -> segmen bias HARUS absen
+        check(&lin.weight_segs(), lin.get_weights_flat().unwrap().len(), &lin.weight_layout());
         let lin_nb = WasmLinear::new(3, 2, false);
         let segs_nb = lin_nb.weight_segs();
         assert!(!segs_nb.iter().any(|s| s.0 == "bias"), "linear no-bias: segmen bias harus absen");
-        let j_nb = lin_nb.weight_layout();
-        check(&segs_nb, lin_nb.get_weights_flat().unwrap().len(), &j_nb);
-
-        // embedding -> hanya weight
+        check(&segs_nb, lin_nb.get_weights_flat().unwrap().len(), &lin_nb.weight_layout());
         let emb = WasmEmbedding::new(3, 2);
         let segs_e = emb.weight_segs();
         assert!(!segs_e.iter().any(|s| s.0 == "bias"), "embedding: segmen bias harus absen");
-        let j_e = emb.weight_layout();
-        check(&segs_e, emb.get_weights_flat().unwrap().len(), &j_e);
-
-        // conv2d -> weight + bias
+        check(&segs_e, emb.get_weights_flat().unwrap().len(), &emb.weight_layout());
         let conv = WasmConv::new_conv2d(1, 1, 1, 1, None, None, None, None);
-        let j_c = conv.weight_layout();
-        check(&conv.weight_segs(), conv.get_weights_flat().unwrap().len(), &j_c);
+        check(&conv.weight_segs(), conv.get_weights_flat().unwrap().len(), &conv.weight_layout());
     }
-}
+
+    // ---- JANGKAR M1b BARU: float-bridge + layout norm (trainable-only) ----
+    #[test]
+    fn float_bridge_norm_layernorm_roundtrip_and_affects_forward() {
+        use crate::layers::norm::WasmNorm;
+        let mut n = WasmNorm::new_layer_norm(4, None);
+        let w = n.get_weights_flat().unwrap();
+        assert_eq!(w.len(), 8); // gamma(4) + beta(4)
+        n.set_weights_flat(&w).unwrap();
+        assert_eq!(n.get_weights_flat().unwrap(), w);
+        let segs = n.weight_segs();
+        let sum: usize = segs.iter().map(|s| s.1).sum();
+        assert_eq!(sum, 8);
+        assert!(segs.iter().any(|s| s.0 == "gamma"));
+        assert!(segs.iter().any(|s| s.0 == "beta"));
+        let input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 1, 4]);
+        let out1 = n.forward(&input).to_array();
+        let w2: Vec<f32> = w.iter().map(|v| v * 2.0).collect(); // gamma*2, beta*2
+        n.set_weights_flat(&w2).unwrap();
+        let out2 = n.forward(&input).to_array();
+        assert_ne!(out1, out2);
+    }
+    #[test]
+    fn weight_layout_norm_trainable_only_contract() {
+        use crate::layers::norm::WasmNorm;
+        // BatchNorm: trainable = gamma+beta = 2*size; running_mean/var EXCLUDED.
+        let mut bn = WasmNorm::new_batch_norm(4, None);
+        let w = bn.get_weights_flat().unwrap();
+        assert_eq!(w.len(), 8, "batch norm harus ekspos hanya gamma+beta (2*size); running stats excluded");
+        let segs = bn.weight_segs();
+        assert_eq!(segs.len(), 2);
+        bn.set_weights_flat(&w).unwrap();
+        assert_eq!(bn.get_weights_flat().unwrap().len(), 8);
+        // RmsNorm: gamma only (tanpa beta)
+        let rms = WasmNorm::new_rms_norm(4, None);
+        let segs_r = rms.weight_segs();
+        assert_eq!(segs_r.len(), 1);
+        assert_eq!(segs_r[0].0, "gamma");
+        assert!(!segs_r.iter().any(|s| s.0 == "beta"));
+        assert_eq!(rms.get_weights_flat().unwrap().len(), 4);
+    }
+    #[test]
+    fn float_bridge_norm_via_registry_dispatch() {
+        let mut reg = LayerRegistry::new();
+        let mut p = Vec::new();
+        p.extend_from_slice(&1u32.to_le_bytes()); // id
+        p.extend_from_slice(&4u32.to_le_bytes()); // size
+        p.push(0); // eps = None
+        reg.init_layer(&mk_header(LAYER_NORM, NORM_LAYER, p.len()), &p).unwrap();
+        let w = reg.get_weights_flat(1, LAYER_NORM).unwrap();
+        assert_eq!(w.len(), 8);
+        let layout = reg.weight_layout(1, LAYER_NORM).unwrap();
+        assert!(layout.contains("\"name\":\"gamma\""));
+        assert!(layout.contains("\"name\":\"beta\""));
+    }
+                   }
