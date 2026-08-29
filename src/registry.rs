@@ -135,7 +135,13 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(vec![]), // stateless
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+                if self.layer_exists(layer_type, layer_id) {
+                    Ok(vec![])
+                } else {
+                    Err("Not found".into())
+                }
+            }
             _ => Err(format!("Unknown layer type for get_state: 0x{:02X}", layer_type)),
         }
     }
@@ -150,7 +156,13 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => load_layer_state!(self, embeddings, layer_id, data),
             LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(()), // stateless
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+                if self.layer_exists(layer_type, layer_id) {
+                    Ok(())
+                } else {
+                    Err("Not found".into())
+                }
+            }
             _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
         }
     }
