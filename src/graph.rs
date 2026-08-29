@@ -8,6 +8,17 @@ pub(crate) const ARITY_UNARY: u8 = 1;
 pub(crate) const ARITY_BINARY: u8 = 2;
 
 const CG_MAX_SLOTS: u32 = 64;
+const PLAN_HEADER_BYTES: usize = 8; // num_steps:u32 + num_slots:u32
+const PLAN_STEP_BYTES: usize = 9;
+const PLAN_OUTPUT_BYTES: usize = 1;
+
+fn expected_plan_len(num_steps: u32) -> Result<usize, String> {
+    (num_steps as usize)
+        .checked_mul(PLAN_STEP_BYTES)
+        .and_then(|steps| PLAN_HEADER_BYTES.checked_add(steps))
+        .and_then(|bytes| bytes.checked_add(PLAN_OUTPUT_BYTES))
+        .ok_or_else(|| "plan length overflow".to_string())
+}
 
 #[derive(Clone, Copy)]
 struct CompiledStep {
@@ -48,6 +59,21 @@ impl CompiledGraph {
         if !(1..=CG_MAX_SLOTS).contains(&num_slots) {
             return Err(format!("compile_graph: num_slots must be 1..={}, got {}", CG_MAX_SLOTS, num_slots));
         }
+
+        // Validate the complete binary envelope before reserving memory from an
+        // untrusted num_steps field. This also gives the plan a canonical size:
+        // 8-byte header + 9 bytes per step + 1-byte output slot.
+        let expected_len = expected_plan_len(num_steps)
+            .map_err(|e| format!("compile_graph: {}", e))?;
+        if plan.len() != expected_len {
+            return Err(format!(
+                "compile_graph: malformed plan length: expected {} bytes for {} steps, got {}",
+                expected_len,
+                num_steps,
+                plan.len()
+            ));
+        }
+
         let mut steps: Vec<CompiledStep> = Vec::with_capacity(num_steps as usize);
         let mut filled: u64 = 1;
         for _ in 0..num_steps {
