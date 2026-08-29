@@ -9,6 +9,7 @@ use burn::nn::pool::{
 use burn::nn::{PaddingConfig1d, PaddingConfig2d};
 use wasm_bindgen::prelude::*;
 use crate::WasmTensor;
+use crate::layers::shape_contract::require_singleton_axis;
 
 // --- CONFIGURATION ENUM ---
 #[derive(Debug)]
@@ -172,13 +173,22 @@ impl WasmPool {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        self.try_forward(input)
+            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
     }
 
     // Pooling tidak punya trainable params
     pub fn num_params(&self) -> usize {
         0
+    }
+}
+
+impl WasmPool {
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        if matches!(&self.inner, Pooling::MaxPool1d(_) | Pooling::AvgPool1d(_)) {
+            require_singleton_axis(input.inner.dims(), 3, "Pool1d forward")?;
+        }
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
     }
 }

@@ -3,6 +3,7 @@ use burn::nn::{Embedding, EmbeddingConfig};
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
+use crate::layers::shape_contract::require_singleton_spatial;
 
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
@@ -69,9 +70,8 @@ impl WasmEmbedding {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        self.try_forward(input)
+            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
     }
 
     pub fn num_params(&self) -> usize {
@@ -96,6 +96,14 @@ impl WasmEmbedding {
     }
 }
 
+impl WasmEmbedding {
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        require_singleton_spatial(input.inner.dims(), "Embedding forward")?;
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
+    }
+}
+
 // ============================================================
 // FLOAT-BRIDGE (M1) — embedding. Record = { weight: Param<T2> } (tanpa bias).
 // ============================================================
@@ -105,7 +113,7 @@ impl WasmEmbedding {
     pub fn weight_dims(&self) -> Vec<usize> {
         let rec = self.inner.clone().into_record();
         match rec {
-            EmbeddingLayerRecord::Basic(r) => r.weight.dims().to_vec(), // TITIK API: nama record + field
+            EmbeddingLayerRecord::Basic(r) => r.weight.dims().to_vec(),
         }
     }
 
@@ -151,7 +159,7 @@ impl WasmEmbedding {
     pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
         let rec = self.inner.clone().into_record();
         match rec {
-            EmbeddingLayerRecord::Basic(r) => { // TITIK API (terbukti di M1)
+            EmbeddingLayerRecord::Basic(r) => {
                 vec![("weight", r.weight.dims().iter().product::<usize>())]
             }
         }
