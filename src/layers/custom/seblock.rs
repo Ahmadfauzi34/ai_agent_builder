@@ -14,8 +14,33 @@ pub struct SeBlockConfig {
 }
 
 impl SeBlockConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.channels == 0 {
+            return Err("SeBlock: channels must be > 0".into());
+        }
+        if self.reduction == 0 {
+            return Err("SeBlock: reduction must be > 0".into());
+        }
+        if self.channels < self.reduction {
+            return Err(format!(
+                "SeBlock: channels ({}) must be >= reduction ({})",
+                self.channels, self.reduction
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn try_init<B: Backend>(&self, device: &B::Device) -> Result<SeBlock<B>, String> {
+        self.validate()?;
+        Ok(self.init_unchecked(device))
+    }
+
     pub fn init<B: Backend>(&self, device: &B::Device) -> SeBlock<B> {
-        assert!(self.channels >= self.reduction, "channels must be >= reduction");
+        self.try_init(device)
+            .expect("invalid SeBlock configuration")
+    }
+
+    fn init_unchecked<B: Backend>(&self, device: &B::Device) -> SeBlock<B> {
         let reduced = self.channels / self.reduction;
 
         // Squeeze: Global Average Pooling (AdaptiveAvgPool2d to [1,1])
@@ -86,15 +111,15 @@ pub struct WasmSeBlock {
 #[wasm_bindgen]
 impl WasmSeBlock {
     #[wasm_bindgen(constructor)]
-    pub fn new(channels: usize, reduction: Option<usize>) -> WasmSeBlock {
+    pub fn new(channels: usize, reduction: Option<usize>) -> Result<WasmSeBlock, String> {
         let device = Default::default();
         let mut config = SeBlockConfig::new(channels);
         if let Some(r) = reduction {
             config.reduction = r;
         }
-        WasmSeBlock {
-            inner: config.init(&device),
-        }
+        Ok(WasmSeBlock {
+            inner: config.try_init(&device)?,
+        })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
