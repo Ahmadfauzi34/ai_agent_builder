@@ -8,6 +8,42 @@ use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
+fn validate_conv1d_stride(stride: Option<usize>, context: &str) -> Result<(), String> {
+    if stride == Some(0) {
+        return Err(format!("{context}: stride must be greater than 0"));
+    }
+    Ok(())
+}
+
+fn validate_conv2d_stride(
+    stride_h: Option<usize>,
+    stride_w: Option<usize>,
+    context: &str,
+) -> Result<(), String> {
+    // Preserve the existing wrapper contract: a custom 2D stride is applied only when both
+    // components are present. A partial pair is ignored and leaves Burn's [1, 1] default intact.
+    if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+        if sh == 0 || sw == 0 {
+            return Err(format!(
+                "{context}: strides must be greater than 0, got [{sh}, {sw}]"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn conv_fail<T>(message: String) -> T {
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen::throw_str(&message)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("{message}")
+    }
+}
+
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
 pub enum ConvolutionConfig {
@@ -66,17 +102,8 @@ impl WasmConv {
         stride: Option<usize>,
         padding: Option<usize>,
     ) -> WasmConv {
-        let device = Default::default();
-        let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
-        if let Some(s) = stride {
-            config.stride = s;
-        }
-        if let Some(p) = padding {
-            config.padding = burn::nn::PaddingConfig1d::Explicit(p);
-        }
-        WasmConv {
-            inner: ConvolutionConfig::Conv1d(config).init(&device),
-        }
+        Self::try_new_conv1d(in_channels, out_channels, kernel_size, stride, padding)
+            .unwrap_or_else(conv_fail)
     }
 
     #[wasm_bindgen(js_name = newConv2d)]
@@ -90,17 +117,17 @@ impl WasmConv {
         padding_h: Option<usize>,
         padding_w: Option<usize>,
     ) -> WasmConv {
-        let device = Default::default();
-        let mut config = Conv2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config.stride = [sh, sw];
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
-        }
-        WasmConv {
-            inner: ConvolutionConfig::Conv2d(config).init(&device),
-        }
+        Self::try_new_conv2d(
+            in_channels,
+            out_channels,
+            kernel_size_h,
+            kernel_size_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        )
+        .unwrap_or_else(conv_fail)
     }
 
     #[wasm_bindgen(js_name = newConvTranspose2d)]
@@ -114,17 +141,17 @@ impl WasmConv {
         padding_h: Option<usize>,
         padding_w: Option<usize>,
     ) -> WasmConv {
-        let device = Default::default();
-        let mut config = ConvTranspose2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config.stride = [sh, sw];
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = [ph, pw];
-        }
-        WasmConv {
-            inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
-        }
+        Self::try_new_conv_transpose2d(
+            in_channels,
+            out_channels,
+            kernel_size_h,
+            kernel_size_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        )
+        .unwrap_or_else(conv_fail)
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
@@ -152,6 +179,79 @@ impl WasmConv {
             .record(record, ())
             .map_err(|e| e.to_string())?;
         Ok(bytes)
+    }
+}
+
+impl WasmConv {
+    pub(crate) fn try_new_conv1d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size: usize,
+        stride: Option<usize>,
+        padding: Option<usize>,
+    ) -> Result<Self, String> {
+        validate_conv1d_stride(stride, "Conv1d")?;
+        let device = Default::default();
+        let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
+        if let Some(s) = stride {
+            config.stride = s;
+        }
+        if let Some(p) = padding {
+            config.padding = burn::nn::PaddingConfig1d::Explicit(p);
+        }
+        Ok(WasmConv {
+            inner: ConvolutionConfig::Conv1d(config).init(&device),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_new_conv2d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
+    ) -> Result<Self, String> {
+        validate_conv2d_stride(stride_h, stride_w, "Conv2d")?;
+        let device = Default::default();
+        let mut config = Conv2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config.stride = [sh, sw];
+        }
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
+        }
+        Ok(WasmConv {
+            inner: ConvolutionConfig::Conv2d(config).init(&device),
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn try_new_conv_transpose2d(
+        in_channels: usize,
+        out_channels: usize,
+        kernel_size_h: usize,
+        kernel_size_w: usize,
+        stride_h: Option<usize>,
+        stride_w: Option<usize>,
+        padding_h: Option<usize>,
+        padding_w: Option<usize>,
+    ) -> Result<Self, String> {
+        validate_conv2d_stride(stride_h, stride_w, "ConvTranspose2d")?;
+        let device = Default::default();
+        let mut config = ConvTranspose2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
+        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
+            config.stride = [sh, sw];
+        }
+        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
+            config.padding = [ph, pw];
+        }
+        Ok(WasmConv {
+            inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
+        })
     }
 }
 
@@ -213,7 +313,7 @@ impl WasmConv {
         let rec = self.inner.clone().into_record();
         let mut out = Vec::new();
         match rec {
-            ConvolutionRecord::Conv1d(r) => { // TITIK API: nama record
+            ConvolutionRecord::Conv1d(r) => {
                 push_param::<WasmBackend, 3>(&r.weight, &mut out)?;
                 if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
             }
@@ -267,7 +367,7 @@ impl WasmConv {
         let rec = self.inner.clone().into_record();
         let mut segs = Vec::new();
         match rec {
-            ConvolutionRecord::Conv1d(r) => { // TITIK API (terbukti di M1)
+            ConvolutionRecord::Conv1d(r) => {
                 push_conv_segs::<WasmBackend, 3>(&r.weight, &r.bias, &mut segs);
             }
             ConvolutionRecord::Conv2d(r) => {
@@ -282,5 +382,39 @@ impl WasmConv {
 
     pub fn weight_layout(&self) -> String {
         crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_conv1d_stride, validate_conv2d_stride};
+
+    #[test]
+    fn conv1d_rejects_zero_explicit_stride() {
+        assert!(validate_conv1d_stride(Some(0), "Conv1d").is_err());
+    }
+
+    #[test]
+    fn conv1d_accepts_default_and_positive_stride() {
+        assert!(validate_conv1d_stride(None, "Conv1d").is_ok());
+        assert!(validate_conv1d_stride(Some(2), "Conv1d").is_ok());
+    }
+
+    #[test]
+    fn conv2d_rejects_zero_paired_stride_axis() {
+        assert!(validate_conv2d_stride(Some(0), Some(1), "Conv2d").is_err());
+        assert!(validate_conv2d_stride(Some(1), Some(0), "Conv2d").is_err());
+    }
+
+    #[test]
+    fn conv2d_preserves_partial_stride_behavior() {
+        assert!(validate_conv2d_stride(Some(0), None, "Conv2d").is_ok());
+        assert!(validate_conv2d_stride(None, Some(0), "Conv2d").is_ok());
+    }
+
+    #[test]
+    fn conv2d_accepts_default_and_positive_stride() {
+        assert!(validate_conv2d_stride(None, None, "Conv2d").is_ok());
+        assert!(validate_conv2d_stride(Some(2), Some(3), "Conv2d").is_ok());
     }
 }
