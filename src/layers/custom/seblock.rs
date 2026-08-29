@@ -1,8 +1,9 @@
-use burn::prelude::*;
-use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
 use burn::nn::pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig};
+use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
+use burn::prelude::*;
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
+
 use crate::{WasmBackend, WasmTensor};
 
 // --- CONFIGURATION ---
@@ -14,8 +15,26 @@ pub struct SeBlockConfig {
 }
 
 impl SeBlockConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.channels == 0 {
+            return Err("SeBlock: channels must be > 0".into());
+        }
+        if self.reduction == 0 {
+            return Err("SeBlock: reduction must be > 0".into());
+        }
+        if self.channels < self.reduction {
+            return Err(format!(
+                "SeBlock: channels ({}) must be >= reduction ({})",
+                self.channels, self.reduction
+            ));
+        }
+        Ok(())
+    }
+
     pub fn init<B: Backend>(&self, device: &B::Device) -> SeBlock<B> {
-        assert!(self.channels >= self.reduction, "channels must be >= reduction");
+        // Keep direct Rust construction fail-fast, but exported WASM entry points
+        // validate first and surface bad caller input as Result::Err.
+        self.validate().expect("invalid SeBlock configuration");
         let reduced = self.channels / self.reduction;
 
         // Squeeze: Global Average Pooling (AdaptiveAvgPool2d to [1,1])
@@ -86,15 +105,16 @@ pub struct WasmSeBlock {
 #[wasm_bindgen]
 impl WasmSeBlock {
     #[wasm_bindgen(constructor)]
-    pub fn new(channels: usize, reduction: Option<usize>) -> WasmSeBlock {
+    pub fn new(channels: usize, reduction: Option<usize>) -> Result<WasmSeBlock, String> {
         let device = Default::default();
         let mut config = SeBlockConfig::new(channels);
         if let Some(r) = reduction {
             config.reduction = r;
         }
-        WasmSeBlock {
+        config.validate()?;
+        Ok(WasmSeBlock {
             inner: config.init(&device),
-        }
+        })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
