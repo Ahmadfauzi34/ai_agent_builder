@@ -39,6 +39,7 @@ macro_rules! insert_layer {
         $self.cached_params = $self.cached_params.saturating_add(new_params);
     }};
 }
+
 macro_rules! remove_layer {
     ($self:ident, $map:ident, $id:expr) => {{
         if let Some(old) = $self.$map.remove(&$id) {
@@ -49,6 +50,7 @@ macro_rules! remove_layer {
         }
     }};
 }
+
 macro_rules! load_layer_state {
     ($self:ident, $map:ident, $id:expr, $data:expr) => {{
         match $self.$map.get_mut(&$id) {
@@ -69,9 +71,6 @@ macro_rules! load_layer_state {
     }};
 }
 
-// ============================================================
-// IMPL #1 — lifecycle + init per tipe
-// ============================================================
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(constructor)]
@@ -110,17 +109,58 @@ impl LayerRegistry {
     }
 
     #[wasm_bindgen(js_name = forwardLayer)]
-    pub fn forward_layer(&self, layer_id: LayerId, layer_type: u8, input: &WasmTensor) -> Result<WasmTensor, String> {
+    pub fn forward_layer(
+        &self,
+        layer_id: LayerId,
+        layer_type: u8,
+        input: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
         match layer_type {
-            LAYER_LINEAR      => self.linears.get(&layer_id).map(|l| l.forward(input)).ok_or("Linear not found".into()),
-            LAYER_NORM        => self.norms.get(&layer_id).map(|l| l.forward(input)).ok_or("Norm not found".into()),
-            LAYER_CONV        => self.convs.get(&layer_id).map(|l| l.forward(input)).ok_or("Conv not found".into()),
-            LAYER_ACTIVATION  => self.activations.get(&layer_id).map(|l| l.forward(input)).ok_or("Activation not found".into()),
-            LAYER_EMBEDDING   => self.embeddings.get(&layer_id).map(|l| l.forward(input)).ok_or("Embedding not found".into()),
-            LAYER_POOL        => self.pools.get(&layer_id).map(|l| l.forward(input)).ok_or("Pool not found".into()),
-            LAYER_SHIFT       => self.shifts.get(&layer_id).map(|l| l.forward(input)).ok_or("Shift not found".into()),
-            LAYER_GHOST       => self.ghosts.get(&layer_id).map(|l| l.forward(input)).ok_or("Ghost not found".into()),
-            LAYER_SEBLOCK     => self.seblocks.get(&layer_id).map(|l| l.forward(input)).ok_or("SEBlock not found".into()),
+            LAYER_LINEAR => Ok(self
+                .linears
+                .get(&layer_id)
+                .ok_or_else(|| "Linear not found".to_string())?
+                .forward(input)),
+            LAYER_NORM => Ok(self
+                .norms
+                .get(&layer_id)
+                .ok_or_else(|| "Norm not found".to_string())?
+                .forward(input)),
+            LAYER_CONV => Ok(self
+                .convs
+                .get(&layer_id)
+                .ok_or_else(|| "Conv not found".to_string())?
+                .forward(input)),
+            LAYER_ACTIVATION => self
+                .activations
+                .get(&layer_id)
+                .ok_or_else(|| "Activation not found".to_string())?
+                .try_forward(input),
+            LAYER_EMBEDDING => Ok(self
+                .embeddings
+                .get(&layer_id)
+                .ok_or_else(|| "Embedding not found".to_string())?
+                .forward(input)),
+            LAYER_POOL => Ok(self
+                .pools
+                .get(&layer_id)
+                .ok_or_else(|| "Pool not found".to_string())?
+                .forward(input)),
+            LAYER_SHIFT => Ok(self
+                .shifts
+                .get(&layer_id)
+                .ok_or_else(|| "Shift not found".to_string())?
+                .forward(input)),
+            LAYER_GHOST => Ok(self
+                .ghosts
+                .get(&layer_id)
+                .ok_or_else(|| "Ghost not found".to_string())?
+                .forward(input)),
+            LAYER_SEBLOCK => Ok(self
+                .seblocks
+                .get(&layer_id)
+                .ok_or_else(|| "SEBlock not found".to_string())?
+                .forward(input)),
             _ => Err(format!("Unknown layer type for forward: 0x{:02X}", layer_type)),
         }
     }
@@ -135,7 +175,7 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(vec![]), // stateless
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(vec![]),
             _ => Err(format!("Unknown layer type for get_state: 0x{:02X}", layer_type)),
         }
     }
@@ -150,7 +190,7 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => load_layer_state!(self, embeddings, layer_id, data),
             LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(()), // stateless
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(()),
             _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
         }
     }
@@ -177,7 +217,6 @@ impl LayerRegistry {
         self.cached_params
     }
 
-    // ---- init per tipe ----
     fn init_linear(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -188,6 +227,7 @@ impl LayerRegistry {
         insert_layer!(self, linears, id, layer);
         Ok(())
     }
+
     fn init_norm(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -208,6 +248,7 @@ impl LayerRegistry {
         insert_layer!(self, norms, id, layer);
         Ok(())
     }
+
     fn init_conv(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -228,6 +269,7 @@ impl LayerRegistry {
         insert_layer!(self, convs, id, layer);
         Ok(())
     }
+
     fn init_activation(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -279,6 +321,7 @@ impl LayerRegistry {
         insert_layer!(self, activations, id, layer);
         Ok(())
     }
+
     fn init_embedding(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -288,6 +331,7 @@ impl LayerRegistry {
         insert_layer!(self, embeddings, id, layer);
         Ok(())
     }
+
     fn init_pool(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -332,6 +376,7 @@ impl LayerRegistry {
         self.pools.insert(id, layer);
         Ok(())
     }
+
     fn init_shift(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -346,6 +391,7 @@ impl LayerRegistry {
         self.shifts.insert(id, layer);
         Ok(())
     }
+
     fn init_ghost(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -362,6 +408,7 @@ impl LayerRegistry {
         insert_layer!(self, ghosts, id, layer);
         Ok(())
     }
+
     fn init_seblock(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
@@ -373,10 +420,6 @@ impl LayerRegistry {
     }
 }
 
-// ============================================================
-// IMPL #2 — FLOAT-BRIDGE + WEIGHT LAYOUT (LINEAR/CONV/EMBEDDING/NORM)
-// Satu-satunya tempat ketiga method ini didefinisikan (TIDAK ada duplikat).
-// ============================================================
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(js_name = getWeightsFlat)]
@@ -418,9 +461,6 @@ impl LayerRegistry {
     }
 }
 
-// ============================================================
-// IMPL #3 — BINARY (stateless 2-input)
-// ============================================================
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(js_name = forwardBinaryLayer)]
@@ -439,7 +479,7 @@ impl LayerRegistry {
     fn init_binary(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let dim = c.read_usize()?; // hanya bermakna untuk CONCAT
+        let dim = c.read_usize()?;
         let layer = match header.variant {
             BINARY_ADD    => WasmBinary::new_add(),
             BINARY_SUB    => WasmBinary::new_sub(),
@@ -448,23 +488,20 @@ impl LayerRegistry {
             BINARY_CONCAT => WasmBinary::new_concat(dim),
             _ => return Err(format!("Unknown binary variant: 0x{:02X}", header.variant)),
         };
-        self.binaries.insert(id, layer); // stateless: tanpa macro cache
+        self.binaries.insert(id, layer);
         Ok(())
     }
 }
 
-// ============================================================
-// GRAPH EXECUTOR — plan 9 byte/step (unary + binary)
-// ============================================================
 const MAX_SLOTS: u32 = 64;
 
 #[derive(Clone, Copy)]
 struct RunStep {
-    arity: u8,        // 1 = unary, 2 = binary
+    arity: u8,
     layer_type: u8,
     layer_id: u32,
     in_slot: u8,
-    in_slot2: u8,     // hanya untuk arity 2
+    in_slot2: u8,
     out_slot: u8,
 }
 
@@ -505,7 +542,7 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
     if !(1..=MAX_SLOTS).contains(&num_slots) {
         return Err(format!("run_graph: num_slots must be 1..={}, got {}", MAX_SLOTS, num_slots));
     }
-    let mut filled: u64 = 1; // bit 0 = slot 0 (input eksternal)
+    let mut filled: u64 = 1;
     for _ in 0..num_steps {
         let s = read_run_step(&mut c)?;
         let in_slot = s.in_slot as u32;
@@ -583,9 +620,6 @@ impl LayerRegistry {
     }
 }
 
-// ============================================================
-// GRAPH ENTRY — compile-once + layerExists
-// ============================================================
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(js_name = layerExists)]
@@ -609,4 +643,4 @@ impl LayerRegistry {
     pub fn compile_graph(&self, plan: &[u8]) -> Result<crate::graph::CompiledGraph, String> {
         crate::graph::CompiledGraph::build(self, plan)
     }
-            }
+}
