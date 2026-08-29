@@ -113,7 +113,7 @@ impl LayerRegistry {
     pub fn forward_layer(&self, layer_id: LayerId, layer_type: u8, input: &WasmTensor) -> Result<WasmTensor, String> {
         match layer_type {
             LAYER_LINEAR      => self.linears.get(&layer_id).map(|l| l.forward(input)).ok_or("Linear not found".into()),
-            LAYER_NORM        => self.norms.get(&layer_id).map(|l| l.forward(input)).ok_or("Norm not found".into()),
+            LAYER_NORM        => self.norms.get(&layer_id).ok_or_else(|| "Norm not found".to_string())?.try_forward(input),
             LAYER_CONV        => self.convs.get(&layer_id).map(|l| l.forward(input)).ok_or("Conv not found".into()),
             LAYER_ACTIVATION  => self.activations.get(&layer_id).map(|l| l.forward(input)).ok_or("Activation not found".into()),
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).map(|l| l.forward(input)).ok_or("Embedding not found".into()),
@@ -198,11 +198,11 @@ impl LayerRegistry {
             NORM_GROUP     => {
                 let num_groups = c.read_usize()?;
                 let num_channels = c.read_usize()?;
-                WasmNorm::new_group_norm(num_groups, num_channels, eps)
+                WasmNorm::try_new_group_norm(num_groups, num_channels, eps)?
             }
             NORM_INSTANCE  => WasmNorm::new_instance_norm(size, eps),
             NORM_LAYER     => WasmNorm::new_layer_norm(size, eps),
-            NORM_RMS       => WasmNorm::new_rms_norm(size, eps),
+            NORM_RMS       => WasmNorm::try_new_rms_norm(size, eps)?,
             _ => return Err(format!("Unknown norm variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, norms, id, layer);
