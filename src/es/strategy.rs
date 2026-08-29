@@ -49,7 +49,8 @@ impl EsStrategy for OpenEs {
 
     fn tell(&mut self, fitness: &[f64]) {
         let expected = self.half.saturating_mul(2);
-        if fitness.len() != expected
+        if self.half == 0
+            || fitness.len() != expected
             || self.eps.len() != self.half
             || self.eps.iter().any(|e| e.len() != self.dim)
             || fitness.iter().any(|v| !v.is_finite())
@@ -211,8 +212,18 @@ mod tests {
     }
 
     #[test]
-    fn mu_lambda_tell_before_ask_is_noop() {
+    fn openes_zero_half_tell_is_noop() {
         let mut rng = Rng::new(10);
+        let mut strategy = OpenEs::new(2, 0, 0.2, 0.1, &mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[]);
+        assert_eq!(strategy.mean(), before);
+        assert!(strategy.mean().iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn mu_lambda_tell_before_ask_is_noop() {
+        let mut rng = Rng::new(11);
         let mut strategy = MuLambda::new(3, 2, 4, 0.2, &mut rng);
         let before = strategy.mean();
         strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
@@ -221,7 +232,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_non_finite_fitness_does_not_mutate_or_consume_batch() {
-        let mut rng = Rng::new(11);
+        let mut rng = Rng::new(12);
         let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
         let _ = strategy.ask(&mut rng);
         let before = strategy.mean();
@@ -235,7 +246,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_valid_batch_is_single_use() {
-        let mut rng = Rng::new(12);
+        let mut rng = Rng::new(13);
         let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
         let _ = strategy.ask(&mut rng);
         strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
@@ -246,7 +257,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_zero_parent_configuration_does_not_panic_on_ask() {
-        let mut rng = Rng::new(13);
+        let mut rng = Rng::new(14);
         let mut strategy = MuLambda::new(2, 0, 4, 0.2, &mut rng);
         assert!(strategy.ask(&mut rng).is_empty());
     }
