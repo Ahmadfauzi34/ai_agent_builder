@@ -6,33 +6,58 @@ pub fn mean_std(v: &[f64]) -> (f64, f64) {
         return (f64::NAN, f64::NAN);
     }
     let mut s = 0.0f64;
-    for &x in v { s += x; }
+    for &x in v {
+        s += x;
+    }
     let m = s / n as f64;
     let mut var = 0.0f64;
-    for &x in v { let d = x - m; var += d * d; }
+    for &x in v {
+        let d = x - m;
+        var += d * d;
+    }
     (m, (var / n as f64).sqrt())
 }
 
 /// Rata-rata std per-dimensi antar kandidat. Mengukur "collapse" populasi.
+///
+/// Populasi ragged bukan state yang valid untuk ES. Alih-alih indexing panic,
+/// kembalikan NaN agar lapisan laporan dapat merepresentasikannya sebagai null.
 pub fn diversity(cands: &[Vec<f32>]) -> f64 {
     let n = cands.len();
-    if n < 2 { return 0.0; }
+    if n < 2 {
+        return 0.0;
+    }
     let dim = cands[0].len();
-    if dim == 0 { return 0.0; }
+    if dim == 0 {
+        return 0.0;
+    }
+    if cands.iter().any(|c| c.len() != dim) {
+        return f64::NAN;
+    }
+
     let mut sum_std = 0.0f64;
     for d in 0..dim {
         let mut s = 0.0f64;
-        for c in cands { s += c[d] as f64; }
+        for c in cands {
+            s += c[d] as f64;
+        }
         let m = s / n as f64;
         let mut var = 0.0f64;
-        for c in cands { let diff = c[d] as f64 - m; var += diff * diff; }
+        for c in cands {
+            let diff = c[d] as f64 - m;
+            var += diff * diff;
+        }
         sum_std += (var / n as f64).sqrt();
     }
     sum_std / dim as f64
 }
 
 fn fjson(f: f64) -> String {
-    if f.is_finite() { format!("{f}") } else { "null".into() }
+    if f.is_finite() {
+        format!("{f}")
+    } else {
+        "null".into()
+    }
 }
 
 pub struct EsReport {
@@ -76,10 +101,14 @@ impl EsReport {
         s.push_str(&format!("\"best_norm\":{},", fjson(self.best_norm)));
         s.push_str("\"flags\":[");
         for (i, f) in self.flags.iter().enumerate() {
-            if i > 0 { s.push(','); }
-            s.push('"'); s.push_str(f); s.push('"');
+            if i > 0 {
+                s.push(',');
+            }
+            s.push('"');
+            s.push_str(f);
+            s.push('"');
         }
         s.push_str("]}");
         s
     }
-                   }
+}
