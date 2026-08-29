@@ -1,8 +1,9 @@
-use burn::prelude::*;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::PaddingConfig2d;
+use burn::prelude::*;
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
+
 use crate::{WasmBackend, WasmTensor};
 
 // --- CONFIGURATION ---
@@ -20,30 +21,49 @@ pub struct GhostModuleConfig {
 }
 
 impl GhostModuleConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.in_channels == 0 {
+            return Err("GhostModule: in_channels must be > 0".into());
+        }
+        if self.out_channels == 0 {
+            return Err("GhostModule: out_channels must be > 0".into());
+        }
+        if self.kernel_size.iter().any(|&v| v == 0) {
+            return Err("GhostModule: kernel dimensions must be > 0".into());
+        }
+        if self.stride.iter().any(|&v| v == 0) {
+            return Err("GhostModule: stride dimensions must be > 0".into());
+        }
+        if self.ratio == 0 {
+            return Err("GhostModule: ratio must be > 0".into());
+        }
+        if self.out_channels % self.ratio != 0 {
+            return Err(format!(
+                "GhostModule: out_channels ({}) must be divisible by ratio ({})",
+                self.out_channels, self.ratio
+            ));
+        }
+        Ok(())
+    }
+
     pub fn init<B: Backend>(&self, device: &B::Device) -> GhostModule<B> {
-        assert!(
-            self.out_channels % self.ratio == 0,
-            "out_channels must be divisible by ratio"
-        );
+        // Rust callers that bypass the WASM boundary still get the same fail-fast
+        // contract, while exported constructors validate and return Result::Err first.
+        self.validate().expect("invalid GhostModule configuration");
 
         let primary_ch = self.out_channels / self.ratio;
 
         // Primary conv: full Conv2d biasa
         // Conv2dConfig::new(channels, kernel_size) — channels = [in, out]
-        let mut primary_cfg = Conv2dConfig::new(
-            [self.in_channels, primary_ch],
-            self.kernel_size,
-        );
+        let mut primary_cfg =
+            Conv2dConfig::new([self.in_channels, primary_ch], self.kernel_size);
         primary_cfg.stride = self.stride;
         primary_cfg.padding = PaddingConfig2d::Explicit(self.padding[0], self.padding[1]);
         let primary = primary_cfg.init(device);
 
         // Cheap conv: depthwise (groups = primary_ch) pada output primary
         // Kernel 1x1 untuk efisiensi maksimal, no bias
-        let mut cheap_cfg = Conv2dConfig::new(
-            [primary_ch, primary_ch],
-            [1, 1],
-        );
+        let mut cheap_cfg = Conv2dConfig::new([primary_ch, primary_ch], [1, 1]);
         cheap_cfg.groups = primary_ch;
         cheap_cfg.bias = false;
         let cheap = cheap_cfg.init(device);
@@ -98,9 +118,10 @@ impl WasmGhostModule {
         stride_w: Option<usize>,
         padding_h: Option<usize>,
         padding_w: Option<usize>,
-    ) -> WasmGhostModule {
+    ) -> Result<WasmGhostModule, String> {
         let device = Default::default();
-        let mut config = GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
+        let mut config =
+            GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
         if let Some(r) = ratio {
             config.ratio = r;
         }
@@ -110,9 +131,10 @@ impl WasmGhostModule {
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
             config.padding = [ph, pw];
         }
-        WasmGhostModule {
+        config.validate()?;
+        Ok(WasmGhostModule {
             inner: config.init(&device),
-        }
+        })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
