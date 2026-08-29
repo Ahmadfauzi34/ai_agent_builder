@@ -358,7 +358,7 @@ impl LayerRegistry {
         let sw = c.read_option_usize()?;
         let ph = c.read_option_usize()?;
         let pw = c.read_option_usize()?;
-        let layer = WasmGhostModule::new(in_ch, out_ch, kh, kw, ratio, sh, sw, ph, pw);
+        let layer = WasmGhostModule::new(in_ch, out_ch, kh, kw, ratio, sh, sw, ph, pw)?;
         insert_layer!(self, ghosts, id, layer);
         Ok(())
     }
@@ -367,7 +367,7 @@ impl LayerRegistry {
         let id = c.read_u32()?;
         let channels = c.read_usize()?;
         let reduction = c.read_option_usize()?;
-        let layer = WasmSeBlock::new(channels, reduction);
+        let layer = WasmSeBlock::new(channels, reduction)?;
         insert_layer!(self, seblocks, id, layer);
         Ok(())
     }
