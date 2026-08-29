@@ -1,9 +1,23 @@
-use burn::prelude::*;
-use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
 use burn::nn::pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig};
+use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
+use burn::prelude::*;
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
+
 use crate::{WasmBackend, WasmTensor};
+
+#[inline]
+fn reject_invalid_config<T>(message: String) -> T {
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen::throw_str(&message)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("{message}")
+    }
+}
 
 // --- CONFIGURATION ---
 #[derive(Config, Debug)]
@@ -14,29 +28,44 @@ pub struct SeBlockConfig {
 }
 
 impl SeBlockConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> SeBlock<B> {
-        assert!(self.channels >= self.reduction, "channels must be >= reduction");
+    pub fn validate(&self) -> Result<(), String> {
+        if self.channels == 0 {
+            return Err("seblock: channels must be > 0".into());
+        }
+        if self.reduction == 0 {
+            return Err("seblock: reduction must be > 0".into());
+        }
+        if self.channels < self.reduction {
+            return Err(format!(
+                "seblock: channels ({}) must be >= reduction ({})",
+                self.channels, self.reduction
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn try_init<B: Backend>(&self, device: &B::Device) -> Result<SeBlock<B>, String> {
+        self.validate()?;
         let reduced = self.channels / self.reduction;
 
-        // Squeeze: Global Average Pooling (AdaptiveAvgPool2d to [1,1])
         let squeeze = AdaptiveAvgPool2dConfig::new([1, 1]).init();
-
-        // Excitation: FC1 (channels → channels/reduction) + ReLU
         let fc1 = LinearConfig::new(self.channels, reduced).init(device);
         let relu = Relu::new();
-
-        // Excitation: FC2 (channels/reduction → channels) + Sigmoid
         let fc2 = LinearConfig::new(reduced, self.channels).init(device);
         let sigmoid = Sigmoid::new();
 
-        SeBlock {
+        Ok(SeBlock {
             squeeze,
             fc1,
             relu,
             fc2,
             sigmoid,
             channels: self.channels,
-        }
+        })
+    }
+
+    pub fn init<B: Backend>(&self, device: &B::Device) -> SeBlock<B> {
+        self.try_init(device).unwrap_or_else(|e| panic!("{e}"))
     }
 }
 
@@ -54,25 +83,13 @@ pub struct SeBlock<B: Backend> {
 impl<B: Backend> SeBlock<B> {
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         let [b, c, _h, _w] = input.dims();
-
-        // Squeeze: Global Average Pooling → [B, C, 1, 1]
         let pooled = self.squeeze.forward(input.clone());
-
-        // Flatten → [B, C]
         let flat = pooled.reshape([b, c]);
-
-        // Excitation: FC1 + ReLU → [B, C/r]
         let x = self.fc1.forward(flat);
         let x = self.relu.forward(x);
-
-        // Excitation: FC2 + Sigmoid → [B, C]
         let x = self.fc2.forward(x);
         let weights = self.sigmoid.forward(x);
-
-        // Reshape weights → [B, C, 1, 1] untuk broadcast multiply
         let weights_4d = weights.reshape([b, c, 1, 1]);
-
-        // Scale: input * weights (broadcast)
         input * weights_4d
     }
 }
@@ -92,9 +109,8 @@ impl WasmSeBlock {
         if let Some(r) = reduction {
             config.reduction = r;
         }
-        WasmSeBlock {
-            inner: config.init(&device),
-        }
+        let inner = config.try_init(&device).unwrap_or_else(reject_invalid_config);
+        WasmSeBlock { inner }
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
@@ -122,5 +138,39 @@ impl WasmSeBlock {
             .record(record, ())
             .map_err(|e| e.to_string())?;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SeBlockConfig;
+
+    #[test]
+    fn validation_rejects_zero_reduction_before_division() {
+        let mut cfg = SeBlockConfig::new(16);
+        cfg.reduction = 0;
+        assert!(cfg
+            .validate()
+            .unwrap_err()
+            .contains("reduction must be > 0"));
+    }
+
+    #[test]
+    fn validation_rejects_reduction_larger_than_channels() {
+        let mut cfg = SeBlockConfig::new(8);
+        cfg.reduction = 16;
+        assert!(cfg.validate().unwrap_err().contains("must be >= reduction"));
+    }
+
+    #[test]
+    fn validation_rejects_zero_channels() {
+        let cfg = SeBlockConfig::new(0);
+        assert!(cfg.validate().unwrap_err().contains("channels must be > 0"));
+    }
+
+    #[test]
+    fn validation_accepts_existing_valid_contract() {
+        let cfg = SeBlockConfig::new(16);
+        assert!(cfg.validate().is_ok());
     }
 }
