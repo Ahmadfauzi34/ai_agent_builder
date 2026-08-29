@@ -20,12 +20,42 @@ pub struct GhostModuleConfig {
 }
 
 impl GhostModuleConfig {
-    pub fn init<B: Backend>(&self, device: &B::Device) -> GhostModule<B> {
-        assert!(
-            self.out_channels % self.ratio == 0,
-            "out_channels must be divisible by ratio"
-        );
+    pub fn validate(&self) -> Result<(), String> {
+        if self.in_channels == 0 {
+            return Err("GhostModule: in_channels must be > 0".into());
+        }
+        if self.out_channels == 0 {
+            return Err("GhostModule: out_channels must be > 0".into());
+        }
+        if self.kernel_size.iter().any(|&d| d == 0) {
+            return Err("GhostModule: kernel dimensions must be > 0".into());
+        }
+        if self.stride.iter().any(|&d| d == 0) {
+            return Err("GhostModule: stride dimensions must be > 0".into());
+        }
+        if self.ratio == 0 {
+            return Err("GhostModule: ratio must be > 0".into());
+        }
+        if self.out_channels % self.ratio != 0 {
+            return Err(format!(
+                "GhostModule: out_channels ({}) must be divisible by ratio ({})",
+                self.out_channels, self.ratio
+            ));
+        }
+        Ok(())
+    }
 
+    pub fn try_init<B: Backend>(&self, device: &B::Device) -> Result<GhostModule<B>, String> {
+        self.validate()?;
+        Ok(self.init_unchecked(device))
+    }
+
+    pub fn init<B: Backend>(&self, device: &B::Device) -> GhostModule<B> {
+        self.try_init(device)
+            .expect("invalid GhostModule configuration")
+    }
+
+    fn init_unchecked<B: Backend>(&self, device: &B::Device) -> GhostModule<B> {
         let primary_ch = self.out_channels / self.ratio;
 
         // Primary conv: full Conv2d biasa
@@ -98,7 +128,7 @@ impl WasmGhostModule {
         stride_w: Option<usize>,
         padding_h: Option<usize>,
         padding_w: Option<usize>,
-    ) -> WasmGhostModule {
+    ) -> Result<WasmGhostModule, String> {
         let device = Default::default();
         let mut config = GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
         if let Some(r) = ratio {
@@ -110,9 +140,9 @@ impl WasmGhostModule {
         if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
             config.padding = [ph, pw];
         }
-        WasmGhostModule {
-            inner: config.init(&device),
-        }
+        Ok(WasmGhostModule {
+            inner: config.try_init(&device)?,
+        })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
