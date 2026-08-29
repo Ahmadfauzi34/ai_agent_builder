@@ -296,13 +296,13 @@ impl LayerRegistry {
                 let k = c.read_usize()?;
                 let s = c.read_option_usize()?;
                 let p = c.read_option_usize()?;
-                WasmPool::new_max_pool1d(k, s, p)
+                WasmPool::try_new_max_pool1d(k, s, p)?
             }
             POOL_AVGPOOL1D => {
                 let k = c.read_usize()?;
                 let s = c.read_option_usize()?;
                 let p = c.read_option_usize()?;
-                WasmPool::new_avg_pool1d(k, s, p)
+                WasmPool::try_new_avg_pool1d(k, s, p)?
             }
             POOL_MAXPOOL2D => {
                 let k = c.read_usize()?;
@@ -311,7 +311,7 @@ impl LayerRegistry {
                 let sw = c.read_option_usize()?;
                 let ph = c.read_option_usize()?;
                 let pw = c.read_option_usize()?;
-                WasmPool::new_max_pool2d(k, kw, sh, sw, ph, pw)
+                WasmPool::try_new_max_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_AVGPOOL2D => {
                 let k = c.read_usize()?;
@@ -320,7 +320,7 @@ impl LayerRegistry {
                 let sw = c.read_option_usize()?;
                 let ph = c.read_option_usize()?;
                 let pw = c.read_option_usize()?;
-                WasmPool::new_avg_pool2d(k, kw, sh, sw, ph, pw)
+                WasmPool::try_new_avg_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_ADAPTIVEAVGPOOL2D => {
                 let oh = c.read_usize()?;
