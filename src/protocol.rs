@@ -291,8 +291,16 @@ impl<'a> PayloadCursor<'a> {
 // HELPER: read/write multi-byte dari payload
 // ============================================================
 
+#[inline]
+fn checked_end(offset: usize, width: usize, label: &str) -> Result<usize, String> {
+    offset
+        .checked_add(width)
+        .ok_or_else(|| format!("{} offset overflow", label))
+}
+
 pub fn read_u32(payload: &[u8], offset: usize) -> Result<u32, String> {
-    if offset + 4 > payload.len() {
+    let end = checked_end(offset, 4, "read_u32")?;
+    if end > payload.len() {
         return Err("read_u32 out of bounds".into());
     }
     Ok(u32::from_le_bytes([
@@ -304,7 +312,8 @@ pub fn read_u32(payload: &[u8], offset: usize) -> Result<u32, String> {
 }
 
 pub fn read_f64(payload: &[u8], offset: usize) -> Result<f64, String> {
-    if offset + 8 > payload.len() {
+    let end = checked_end(offset, 8, "read_f64")?;
+    if end > payload.len() {
         return Err("read_f64 out of bounds".into());
     }
     Ok(f64::from_le_bytes([
@@ -325,23 +334,21 @@ pub fn read_bool(payload: &[u8], offset: usize) -> Result<bool, String> {
 }
 
 pub fn read_option_u32(payload: &[u8], offset: usize) -> Result<Option<u32>, String> {
-    if offset >= payload.len() {
-        return Err("read_option out of bounds".into());
+    let end = checked_end(offset, 5, "read_option_u32")?;
+    if end > payload.len() {
+        return Err("read_option_u32 out of bounds".into());
     }
-    if payload[offset] == 0 {
-        Ok(None)
-    } else {
-        read_u32(payload, offset + 1).map(Some)
-    }
+    let present = payload[offset] != 0;
+    let value = read_u32(payload, offset + 1)?;
+    Ok(if present { Some(value) } else { None })
 }
 
 pub fn read_option_f64(payload: &[u8], offset: usize) -> Result<Option<f64>, String> {
-    if offset >= payload.len() {
-        return Err("read_option out of bounds".into());
+    let end = checked_end(offset, 9, "read_option_f64")?;
+    if end > payload.len() {
+        return Err("read_option_f64 out of bounds".into());
     }
-    if payload[offset] == 0 {
-        Ok(None)
-    } else {
-        read_f64(payload, offset + 1).map(Some)
-    }
+    let present = payload[offset] != 0;
+    let value = read_f64(payload, offset + 1)?;
+    Ok(if present { Some(value) } else { None })
 }
