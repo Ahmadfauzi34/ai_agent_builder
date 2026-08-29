@@ -7,6 +7,7 @@ use burn::nn::conv::{
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
+use crate::layers::shape_contract::require_singleton_axis;
 
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
@@ -128,9 +129,8 @@ impl WasmConv {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        self.try_forward(input)
+            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
     }
 
     pub fn num_params(&self) -> usize {
@@ -152,6 +152,16 @@ impl WasmConv {
             .record(record, ())
             .map_err(|e| e.to_string())?;
         Ok(bytes)
+    }
+}
+
+impl WasmConv {
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        if matches!(&self.inner, Convolution::Conv1d(_)) {
+            require_singleton_axis(input.inner.dims(), 3, "Conv1d forward")?;
+        }
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
     }
 }
 
@@ -213,7 +223,7 @@ impl WasmConv {
         let rec = self.inner.clone().into_record();
         let mut out = Vec::new();
         match rec {
-            ConvolutionRecord::Conv1d(r) => { // TITIK API: nama record
+            ConvolutionRecord::Conv1d(r) => {
                 push_param::<WasmBackend, 3>(&r.weight, &mut out)?;
                 if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
             }
@@ -267,7 +277,7 @@ impl WasmConv {
         let rec = self.inner.clone().into_record();
         let mut segs = Vec::new();
         match rec {
-            ConvolutionRecord::Conv1d(r) => { // TITIK API (terbukti di M1)
+            ConvolutionRecord::Conv1d(r) => {
                 push_conv_segs::<WasmBackend, 3>(&r.weight, &r.bias, &mut segs);
             }
             ConvolutionRecord::Conv2d(r) => {
