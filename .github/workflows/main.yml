@@ -3,7 +3,7 @@ name: Rust AI CI
 on:
   push:
     branches: [ "main" ]
-  pull_request:                 # solid: CI juga jalan di PR, bukan cuma setelah merge
+  pull_request:
     branches: [ "main" ]
   workflow_dispatch:
 
@@ -15,42 +15,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Ambil Kode
       - uses: actions/checkout@v4
 
-      # 2. Rust stable + target wasm + komponen clippy/rustfmt
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: clippy, rustfmt      # <-- TAMBAH: biar clippy/fmt tersedia
+          components: clippy, rustfmt
 
-      # 3. Cache (build ke-2 dst ngebut)
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      # 4. Lint + compile-check HOST (mengganti `cargo check` lama).
-      #    clippy TIDAK melakukan link → aman dari jebakan js-sys.
-      #    Tanpa `-- -D warnings` dulu, supaya warning lama tidak bikin merah.
-      
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
+      - name: Check host target
+        run: cargo check --lib --verbose
 
-      # 5. Compile-check WASM (tanpa link) → tangkap error wasm SEBELUM wasm-pack.
+      - name: Clippy host library
+        run: cargo clippy --lib --all-targets
+
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
-      # 6. Install Wasm-Pack
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
 
-      # 7. Build WASM (hanya jika 4 & 5 lolos)
       - name: Build WASM
         run: wasm-pack build --target web --out-dir pkg
-      
-      - name: Run host tests (executor contract)
+
+      - name: Run host tests
         run: cargo test --lib
 
-      # 8. Laporan ukuran → pantau budget <100MB tiap run
       - name: Report artifact size
         run: |
           echo "=== total pkg ==="
@@ -58,10 +54,8 @@ jobs:
           echo "=== wasm binary ==="
           ls -lh pkg/*.wasm || true
 
-      # 9. Simpan Hasil Build
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: burn-wasm-output
           path: pkg/
-
