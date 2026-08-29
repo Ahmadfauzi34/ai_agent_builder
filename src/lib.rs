@@ -10,6 +10,8 @@ pub mod es;
 pub mod graph;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hardening_tests;
 
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
