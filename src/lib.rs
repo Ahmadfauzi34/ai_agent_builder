@@ -147,7 +147,7 @@ impl TensorView {
     /// Copy data dari SAB ke slice Rust (Rust baca data JS)
     pub fn read(&self, dst: &mut [f32]) {
         if dst.len() != self.len() {
-            bridge_fail(format!(
+            bridge_fail::<()>(format!(
                 "TensorView read length mismatch: view has {}, destination has {}",
                 self.len(),
                 dst.len()
@@ -160,7 +160,7 @@ impl TensorView {
     /// Copy data dari slice Rust ke SAB (Rust tulis data untuk JS)
     pub fn write(&self, src: &[f32]) {
         if src.len() != self.len() {
-            bridge_fail(format!(
+            bridge_fail::<()>(format!(
                 "TensorView write length mismatch: view has {}, source has {}",
                 self.len(),
                 src.len()
