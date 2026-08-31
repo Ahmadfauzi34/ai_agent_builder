@@ -333,38 +333,27 @@ pub fn read_bool(payload: &[u8], offset: usize) -> Result<bool, String> {
 }
 
 pub fn read_option_u32(payload: &[u8], offset: usize) -> Result<Option<u32>, String> {
-    let present = payload
-        .get(offset)
-        .copied()
-        .ok_or_else(|| "read_option out of bounds".to_string())?;
-    if present == 0 {
-        Ok(None)
-    } else {
-        let value_offset = offset
-            .checked_add(1)
-            .ok_or_else(|| "read_option offset overflow".to_string())?;
-        read_u32(payload, value_offset).map(Some)
-    }
+    let bytes = checked_read_range(payload, offset, 5, "read_option_u32")?;
+    let present = bytes[0] != 0;
+    let value = u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
+    Ok(if present { Some(value) } else { None })
 }
 
 pub fn read_option_f64(payload: &[u8], offset: usize) -> Result<Option<f64>, String> {
-    let present = payload
-        .get(offset)
-        .copied()
-        .ok_or_else(|| "read_option out of bounds".to_string())?;
-    if present == 0 {
-        Ok(None)
-    } else {
-        let value_offset = offset
-            .checked_add(1)
-            .ok_or_else(|| "read_option offset overflow".to_string())?;
-        read_f64(payload, value_offset).map(Some)
-    }
+    let bytes = checked_read_range(payload, offset, 9, "read_option_f64")?;
+    let present = bytes[0] != 0;
+    let value = f64::from_le_bytes([
+        bytes[1], bytes[2], bytes[3], bytes[4],
+        bytes[5], bytes[6], bytes[7], bytes[8],
+    ]);
+    Ok(if present { Some(value) } else { None })
 }
 
 #[cfg(test)]
 mod offset_tests {
-    use super::{read_f64, read_option_f64, read_option_u32, read_u32};
+    use super::{
+        read_f64, read_option_f64, read_option_u32, read_u32, PayloadCursor,
+    };
 
     #[test]
     fn read_u32_rejects_offset_overflow_without_panicking() {
@@ -385,14 +374,39 @@ mod offset_tests {
     }
 
     #[test]
-    fn option_readers_preserve_none_without_value_bytes() {
-        assert_eq!(read_option_u32(&[0], 0).unwrap(), None);
-        assert_eq!(read_option_f64(&[0], 0).unwrap(), None);
+    fn option_u32_matches_cursor_fixed_width_none() {
+        assert!(read_option_u32(&[0], 0).is_err());
+        let bytes = [0, 0, 0, 0, 0];
+        assert_eq!(read_option_u32(&bytes, 0).unwrap(), None);
+        let mut cursor = PayloadCursor::new(&bytes);
+        assert_eq!(cursor.read_option_u32().unwrap(), None);
+        assert_eq!(cursor.remaining(), 0);
     }
 
     #[test]
-    fn option_readers_reject_present_value_when_truncated() {
-        assert!(read_option_u32(&[1, 0, 0], 0).is_err());
-        assert!(read_option_f64(&[1, 0, 0, 0], 0).is_err());
+    fn option_f64_matches_cursor_fixed_width_none() {
+        assert!(read_option_f64(&[0], 0).is_err());
+        let bytes = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+        assert_eq!(read_option_f64(&bytes, 0).unwrap(), None);
+        let mut cursor = PayloadCursor::new(&bytes);
+        assert_eq!(cursor.read_option_f64().unwrap(), None);
+        assert_eq!(cursor.remaining(), 0);
+    }
+
+    #[test]
+    fn option_readers_decode_present_values() {
+        let mut u32_bytes = vec![1];
+        u32_bytes.extend_from_slice(&42u32.to_le_bytes());
+        assert_eq!(read_option_u32(&u32_bytes, 0).unwrap(), Some(42));
+
+        let mut f64_bytes = vec![1];
+        f64_bytes.extend_from_slice(&3.5f64.to_le_bytes());
+        assert_eq!(read_option_f64(&f64_bytes, 0).unwrap(), Some(3.5));
+    }
+
+    #[test]
+    fn option_readers_reject_offset_overflow() {
+        assert!(read_option_u32(&[0u8; 5], usize::MAX).is_err());
+        assert!(read_option_f64(&[0u8; 9], usize::MAX).is_err());
     }
 }
