@@ -220,9 +220,9 @@ impl LayerRegistry {
         let ph = c.read_option_usize()?;
         let pw = c.read_option_usize()?;
         let layer = match header.variant {
-            CONV_CONV1D          => WasmConv::new_conv1d(in_ch, out_ch, kh, sh, ph),
-            CONV_CONV2D          => WasmConv::new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw),
-            CONV_CONVTRANSPOSE2D => WasmConv::new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw),
+            CONV_CONV1D          => WasmConv::try_new_conv1d(in_ch, out_ch, kh, sh, ph)?,
+            CONV_CONV2D          => WasmConv::try_new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
+            CONV_CONVTRANSPOSE2D => WasmConv::try_new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
             _ => return Err(format!("Unknown conv variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, convs, id, layer);
