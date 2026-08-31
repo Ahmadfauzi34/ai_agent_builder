@@ -291,25 +291,32 @@ impl<'a> PayloadCursor<'a> {
 // HELPER: read/write multi-byte dari payload
 // ============================================================
 
+fn checked_read_range<'a>(
+    payload: &'a [u8],
+    offset: usize,
+    width: usize,
+    context: &str,
+) -> Result<&'a [u8], String> {
+    let end = offset
+        .checked_add(width)
+        .ok_or_else(|| format!("{context} offset overflow"))?;
+    payload
+        .get(offset..end)
+        .ok_or_else(|| format!("{context} out of bounds"))
+}
+
 pub fn read_u32(payload: &[u8], offset: usize) -> Result<u32, String> {
-    if offset + 4 > payload.len() {
-        return Err("read_u32 out of bounds".into());
-    }
+    let bytes = checked_read_range(payload, offset, 4, "read_u32")?;
     Ok(u32::from_le_bytes([
-        payload[offset],
-        payload[offset + 1],
-        payload[offset + 2],
-        payload[offset + 3],
+        bytes[0], bytes[1], bytes[2], bytes[3],
     ]))
 }
 
 pub fn read_f64(payload: &[u8], offset: usize) -> Result<f64, String> {
-    if offset + 8 > payload.len() {
-        return Err("read_f64 out of bounds".into());
-    }
+    let bytes = checked_read_range(payload, offset, 8, "read_f64")?;
     Ok(f64::from_le_bytes([
-        payload[offset], payload[offset + 1], payload[offset + 2], payload[offset + 3],
-        payload[offset + 4], payload[offset + 5], payload[offset + 6], payload[offset + 7],
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
     ]))
 }
 
@@ -318,30 +325,74 @@ pub fn read_usize(payload: &[u8], offset: usize) -> Result<usize, String> {
 }
 
 pub fn read_bool(payload: &[u8], offset: usize) -> Result<bool, String> {
-    if offset >= payload.len() {
-        return Err("read_bool out of bounds".into());
-    }
-    Ok(payload[offset] != 0)
+    payload
+        .get(offset)
+        .copied()
+        .map(|v| v != 0)
+        .ok_or_else(|| "read_bool out of bounds".into())
 }
 
 pub fn read_option_u32(payload: &[u8], offset: usize) -> Result<Option<u32>, String> {
-    if offset >= payload.len() {
-        return Err("read_option out of bounds".into());
-    }
-    if payload[offset] == 0 {
+    let present = payload
+        .get(offset)
+        .copied()
+        .ok_or_else(|| "read_option out of bounds".to_string())?;
+    if present == 0 {
         Ok(None)
     } else {
-        read_u32(payload, offset + 1).map(Some)
+        let value_offset = offset
+            .checked_add(1)
+            .ok_or_else(|| "read_option offset overflow".to_string())?;
+        read_u32(payload, value_offset).map(Some)
     }
 }
 
 pub fn read_option_f64(payload: &[u8], offset: usize) -> Result<Option<f64>, String> {
-    if offset >= payload.len() {
-        return Err("read_option out of bounds".into());
-    }
-    if payload[offset] == 0 {
+    let present = payload
+        .get(offset)
+        .copied()
+        .ok_or_else(|| "read_option out of bounds".to_string())?;
+    if present == 0 {
         Ok(None)
     } else {
-        read_f64(payload, offset + 1).map(Some)
+        let value_offset = offset
+            .checked_add(1)
+            .ok_or_else(|| "read_option offset overflow".to_string())?;
+        read_f64(payload, value_offset).map(Some)
+    }
+}
+
+#[cfg(test)]
+mod offset_tests {
+    use super::{read_f64, read_option_f64, read_option_u32, read_u32};
+
+    #[test]
+    fn read_u32_rejects_offset_overflow_without_panicking() {
+        let err = read_u32(&[0u8; 8], usize::MAX).unwrap_err();
+        assert!(err.contains("offset overflow"));
+    }
+
+    #[test]
+    fn read_f64_rejects_offset_overflow_without_panicking() {
+        let err = read_f64(&[0u8; 8], usize::MAX).unwrap_err();
+        assert!(err.contains("offset overflow"));
+    }
+
+    #[test]
+    fn fixed_width_reader_rejects_truncated_range() {
+        assert!(read_u32(&[1, 2, 3], 0).is_err());
+        assert!(read_f64(&[0u8; 7], 0).is_err());
+    }
+
+    #[test]
+    fn option_readers_preserve_none_without_value_bytes() {
+        assert_eq!(read_option_u32(&[0], 0).unwrap(), None);
+        assert_eq!(read_option_f64(&[0], 0).unwrap(), None);
+    }
+
+    #[test]
+    fn option_readers_reject_present_value_when_truncated() {
+        assert!(read_option_u32(&[1, 0, 0], 0).is_err());
+        assert!(read_option_f64(&[1, 0, 0, 0], 0).is_err());
     }
 }
