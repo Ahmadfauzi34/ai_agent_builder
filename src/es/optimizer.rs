@@ -15,6 +15,7 @@ pub struct EsOptimizer {
     best_fitness: f64,
     best_params: Vec<f32>,
     stagnation: u32,
+    awaiting_fitness: bool,
 }
 
 #[wasm_bindgen]
@@ -49,6 +50,7 @@ impl EsOptimizer {
             best_fitness: f64::NEG_INFINITY,
             best_params: Vec::new(),
             stagnation: 0,
+            awaiting_fitness: false,
         }
     }
 
@@ -63,19 +65,45 @@ impl EsOptimizer {
 
     /// Minta kandidat generasi ini. Mengembalikan Float32Array flat (n_kandidat * dim).
     /// JS slice per `dim()`. Panggil `tell()` sesudahnya dengan fitness seurut kandidat.
+    /// Memanggil ask lagi sebelum tell diperbolehkan: batch sebelumnya dianggap dibatalkan.
     pub fn ask(&mut self) -> Vec<f32> {
         let cands = self.strategy.ask(&mut self.rng);
         let mut flat = Vec::with_capacity(cands.len() * self.dim);
         for c in &cands { flat.extend_from_slice(c); }
         self.last_candidates = cands;
+        self.awaiting_fitness = true;
         flat
     }
 
     /// Serahkan fitness (seurut kandidat ask). Mengembalikan laporan JSON generasi ini.
-    pub fn tell(&mut self, fitnesses: &[f32]) -> String {
+    /// Boundary contract: tell hanya sah setelah ask, cardinality harus tepat, dan semua fitness finite.
+    pub fn tell(&mut self, fitnesses: &[f32]) -> Result<String, String> {
+        if !self.awaiting_fitness {
+            return Err("tell: no pending candidate batch; call ask() first".into());
+        }
+        let expected = self.last_candidates.len();
+        if fitnesses.len() != expected {
+            return Err(format!(
+                "tell: fitness length mismatch: expected {}, got {}",
+                expected,
+                fitnesses.len()
+            ));
+        }
+        if let Some((index, value)) = fitnesses
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, value)| !value.is_finite())
+        {
+            return Err(format!(
+                "tell: non-finite fitness at index {}: {}",
+                index, value
+            ));
+        }
+
         let f64s: Vec<f64> = fitnesses.iter().map(|&v| v as f64).collect();
 
-        // update strategi
+        // Update strategy only after the public contract is fully validated.
         self.strategy.tell(&f64s);
 
         // statistik fitness
@@ -88,7 +116,7 @@ impl EsOptimizer {
         let mut gen_best = f64::NEG_INFINITY;
         let mut gen_best_params: Vec<f32> = Vec::new();
         for (c, &v) in self.last_candidates.iter().zip(f64s.iter()) {
-            if v.is_finite() && v > gen_best { gen_best = v; gen_best_params = c.clone(); }
+            if v > gen_best { gen_best = v; gen_best_params = c.clone(); }
         }
         let prev_best = self.best_fitness;
         if gen_best > self.best_fitness + 1e-8 {
@@ -108,12 +136,12 @@ impl EsOptimizer {
 
         // flags
         let mut flags: Vec<String> = Vec::new();
-        if f64s.iter().any(|v| !v.is_finite()) { flags.push("FITNESS_NON_FINITE".into()); }
         if div < 1e-6 { flags.push("DIVERSITY_COLLAPSE".into()); }
         if improvement <= 1e-8 { flags.push("NO_IMPROVEMENT".into()); }
         if std < 1e-9 { flags.push("ALL_FITNESS_EQUAL".into()); }
 
         self.gen = self.gen.saturating_add(1);
+        self.awaiting_fitness = false;
 
         let rep = EsReport {
             gen: self.gen,
@@ -132,7 +160,7 @@ impl EsOptimizer {
         };
         let json = rep.to_json();
         self.last_report = json.clone();
-        json
+        Ok(json)
     }
 
     /// Vektor terbaik sepanjang pelatihan (Float32Array).
@@ -175,8 +203,9 @@ impl EsOptimizer {
                 let cand = &flat[i * self.dim..(i + 1) * self.dim];
                 f.push(obj.fitness(cand) as f32);
             }
+            // Internal demo always evaluates exactly the batch returned by ask().
             let _ = self.tell(&f);
         }
         self.report()
     }
-      }
+}
