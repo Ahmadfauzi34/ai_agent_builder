@@ -13,7 +13,7 @@ mod tests;
 
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
-fn boundary_fail<T>(message: String) -> T {
+fn boundary_fail(message: String) -> ! {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -89,8 +89,10 @@ pub struct WasmTensor {
 impl WasmTensor {
     #[wasm_bindgen(constructor)]
     pub fn new(data: &[f32], shape: &[usize]) -> WasmTensor {
-        let dims = normalize_rank4_shape(shape, "WasmTensor::new").unwrap_or_else(boundary_fail);
-        validate_element_count(dims, data.len(), "WasmTensor::new").unwrap_or_else(boundary_fail);
+        let dims = normalize_rank4_shape(shape, "WasmTensor::new")
+            .unwrap_or_else(|err| boundary_fail(err));
+        validate_element_count(dims, data.len(), "WasmTensor::new")
+            .unwrap_or_else(|err| boundary_fail(err));
 
         let device = Default::default();
         let tensor_data = TensorData::new(data.to_vec(), dims);
@@ -114,7 +116,7 @@ impl WasmTensor {
                     .checked_mul(std::mem::size_of::<f32>())
                     .ok_or_else(|| "WasmTensor::byte_length: byte length overflow".to_string())
             })
-            .unwrap_or_else(boundary_fail)
+            .unwrap_or_else(|err| boundary_fail(err))
     }
 }
 
@@ -131,7 +133,8 @@ pub struct TensorView {
 impl TensorView {
     #[wasm_bindgen(constructor)]
     pub fn new(total_elements: usize) -> Self {
-        let byte_length = checked_sab_byte_length(total_elements).unwrap_or_else(boundary_fail);
+        let byte_length = checked_sab_byte_length(total_elements)
+            .unwrap_or_else(|err| boundary_fail(err));
         let sab = js_sys::SharedArrayBuffer::new(byte_length);
         TensorView {
             sab: JsValue::from(sab),
@@ -146,8 +149,10 @@ impl TensorView {
 
     #[wasm_bindgen(js_name = setShape)]
     pub fn set_shape(&mut self, shape: Vec<usize>) {
-        let dims = normalize_rank4_shape(&shape, "TensorView::setShape").unwrap_or_else(boundary_fail);
-        validate_element_count(dims, self.len(), "TensorView::setShape").unwrap_or_else(boundary_fail);
+        let dims = normalize_rank4_shape(&shape, "TensorView::setShape")
+            .unwrap_or_else(|err| boundary_fail(err));
+        validate_element_count(dims, self.len(), "TensorView::setShape")
+            .unwrap_or_else(|err| boundary_fail(err));
         self.shape = dims.to_vec();
     }
 
@@ -194,9 +199,9 @@ impl WasmTensor {
     #[wasm_bindgen(js_name = fromTensorView)]
     pub fn from_tensor_view(view: &TensorView) -> WasmTensor {
         let dims = normalize_rank4_shape(&view.shape, "WasmTensor::fromTensorView")
-            .unwrap_or_else(boundary_fail);
+            .unwrap_or_else(|err| boundary_fail(err));
         validate_element_count(dims, view.len(), "WasmTensor::fromTensorView")
-            .unwrap_or_else(boundary_fail);
+            .unwrap_or_else(|err| boundary_fail(err));
 
         let mut buf = vec![0f32; view.len()];
         view.read(&mut buf);
@@ -212,7 +217,7 @@ impl WasmTensor {
     pub fn to_tensor_view(&self, view: &mut TensorView) {
         let dims = self.inner.dims();
         validate_element_count(dims, view.len(), "WasmTensor::toTensorView")
-            .unwrap_or_else(boundary_fail);
+            .unwrap_or_else(|err| boundary_fail(err));
 
         let data = self.inner.to_data();
         let slice = data.as_slice::<f32>().unwrap();
