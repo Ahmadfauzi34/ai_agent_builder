@@ -76,7 +76,7 @@ impl EsOptimizer {
     }
 
     /// Serahkan fitness (seurut kandidat ask). Mengembalikan laporan JSON generasi ini.
-    /// Boundary contract: tell hanya sah setelah ask dan jumlah fitness harus tepat sama.
+    /// Boundary contract: tell hanya sah setelah ask, cardinality harus tepat, dan semua fitness finite.
     pub fn tell(&mut self, fitnesses: &[f32]) -> Result<String, String> {
         if !self.awaiting_fitness {
             return Err("tell: no pending candidate batch; call ask() first".into());
@@ -89,10 +89,21 @@ impl EsOptimizer {
                 fitnesses.len()
             ));
         }
+        if let Some((index, value)) = fitnesses
+            .iter()
+            .copied()
+            .enumerate()
+            .find(|(_, value)| !value.is_finite())
+        {
+            return Err(format!(
+                "tell: non-finite fitness at index {}: {}",
+                index, value
+            ));
+        }
 
         let f64s: Vec<f64> = fitnesses.iter().map(|&v| v as f64).collect();
 
-        // update strategi only after the public contract is fully validated.
+        // Update strategy only after the public contract is fully validated.
         self.strategy.tell(&f64s);
 
         // statistik fitness
@@ -105,7 +116,7 @@ impl EsOptimizer {
         let mut gen_best = f64::NEG_INFINITY;
         let mut gen_best_params: Vec<f32> = Vec::new();
         for (c, &v) in self.last_candidates.iter().zip(f64s.iter()) {
-            if v.is_finite() && v > gen_best { gen_best = v; gen_best_params = c.clone(); }
+            if v > gen_best { gen_best = v; gen_best_params = c.clone(); }
         }
         let prev_best = self.best_fitness;
         if gen_best > self.best_fitness + 1e-8 {
@@ -125,7 +136,6 @@ impl EsOptimizer {
 
         // flags
         let mut flags: Vec<String> = Vec::new();
-        if f64s.iter().any(|v| !v.is_finite()) { flags.push("FITNESS_NON_FINITE".into()); }
         if div < 1e-6 { flags.push("DIVERSITY_COLLAPSE".into()); }
         if improvement <= 1e-8 { flags.push("NO_IMPROVEMENT".into()); }
         if std < 1e-9 { flags.push("ALL_FITNESS_EQUAL".into()); }
