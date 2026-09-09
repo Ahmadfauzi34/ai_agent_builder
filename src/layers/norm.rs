@@ -7,6 +7,52 @@ use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
+fn validate_group_config(num_groups: usize, num_channels: usize) -> Result<(), String> {
+    if num_groups == 0 {
+        return Err("GroupNorm: num_groups must be greater than 0".to_string());
+    }
+    if num_channels % num_groups != 0 {
+        return Err(format!(
+            "GroupNorm: num_channels ({num_channels}) must be divisible by num_groups ({num_groups})"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_rms_epsilon(epsilon: f64) -> Result<(), String> {
+    if !(epsilon > 0.0) {
+        return Err(format!("RMSNorm: epsilon must be positive, got {epsilon}"));
+    }
+    Ok(())
+}
+
+fn validate_norm_axis(
+    shape: [usize; 4],
+    axis: usize,
+    expected: usize,
+    context: &str,
+) -> Result<(), String> {
+    if shape[axis] != expected {
+        return Err(format!(
+            "{context}: expected axis {axis} size {expected}, got {} for shape {:?}",
+            shape[axis], shape
+        ));
+    }
+    Ok(())
+}
+
+fn norm_fail<T>(message: String) -> T {
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen::throw_str(&message)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("{message}")
+    }
+}
+
 // --- CONFIG ENUM ---
 #[derive(Config, Debug)]
 pub enum NormalizationConfig {
@@ -61,10 +107,7 @@ pub struct WasmNorm {
 impl WasmNorm {
     #[wasm_bindgen]
     pub fn new_rms_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Rms(RmsNormConfig::new(size).with_epsilon(eps));
-        WasmNorm { inner: config.init(&device) }
+        Self::try_new_rms_norm(size, epsilon).unwrap_or_else(norm_fail)
     }
 
     #[wasm_bindgen]
@@ -85,10 +128,7 @@ impl WasmNorm {
 
     #[wasm_bindgen]
     pub fn new_group_norm(num_groups: usize, num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Group(GroupNormConfig::new(num_groups, num_channels).with_epsilon(eps));
-        WasmNorm { inner: config.init(&device) }
+        Self::try_new_group_norm(num_groups, num_channels, epsilon).unwrap_or_else(norm_fail)
     }
 
     #[wasm_bindgen]
@@ -100,9 +140,7 @@ impl WasmNorm {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        self.try_forward(input).unwrap_or_else(norm_fail)
     }
 
     pub fn num_params(&self) -> usize {
@@ -128,6 +166,55 @@ impl WasmNorm {
         Ok(bytes)
     }
 }
+
+impl WasmNorm {
+    pub(crate) fn try_new_rms_norm(size: usize, epsilon: Option<f64>) -> Result<Self, String> {
+        let device = Default::default();
+        let eps = epsilon.unwrap_or(1e-5);
+        validate_rms_epsilon(eps)?;
+        let config = NormalizationConfig::Rms(RmsNormConfig::new(size).with_epsilon(eps));
+        Ok(WasmNorm { inner: config.init(&device) })
+    }
+
+    pub(crate) fn try_new_group_norm(
+        num_groups: usize,
+        num_channels: usize,
+        epsilon: Option<f64>,
+    ) -> Result<Self, String> {
+        validate_group_config(num_groups, num_channels)?;
+        let device = Default::default();
+        let eps = epsilon.unwrap_or(1e-5);
+        let config = NormalizationConfig::Group(
+            GroupNormConfig::new(num_groups, num_channels).with_epsilon(eps),
+        );
+        Ok(WasmNorm { inner: config.init(&device) })
+    }
+
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        let shape = input.inner.dims();
+        match &self.inner {
+            Normalization::Batch(norm) => {
+                validate_norm_axis(shape, 1, norm.gamma.dims()[0], "BatchNorm forward")?;
+            }
+            Normalization::Group(norm) => {
+                validate_norm_axis(shape, 1, norm.num_channels, "GroupNorm forward")?;
+            }
+            Normalization::Instance(norm) => {
+                validate_norm_axis(shape, 1, norm.num_channels, "InstanceNorm forward")?;
+            }
+            Normalization::Layer(norm) => {
+                validate_norm_axis(shape, 3, norm.gamma.dims()[0], "LayerNorm forward")?;
+            }
+            Normalization::Rms(norm) => {
+                validate_norm_axis(shape, 3, norm.gamma.dims()[0], "RMSNorm forward")?;
+            }
+        }
+
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
+    }
+}
+
 // ============================================================
 // FLOAT-BRIDGE + WEIGHT LAYOUT (M1b) — norm.
 // KONTRAK TRAINABLE-ONLY: hanya gamma (+ beta kalau ada) yang diekspos.
@@ -279,5 +366,49 @@ impl WasmNorm {
 
     pub fn weight_layout(&self) -> String {
         crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_group_config, validate_norm_axis, validate_rms_epsilon};
+
+    #[test]
+    fn group_config_rejects_zero_groups_before_modulo() {
+        assert!(validate_group_config(0, 8).is_err());
+    }
+
+    #[test]
+    fn group_config_rejects_non_divisible_channels() {
+        assert!(validate_group_config(3, 8).is_err());
+    }
+
+    #[test]
+    fn group_config_accepts_divisible_channels() {
+        assert!(validate_group_config(4, 8).is_ok());
+    }
+
+    #[test]
+    fn rms_epsilon_rejects_non_positive_and_nan() {
+        assert!(validate_rms_epsilon(0.0).is_err());
+        assert!(validate_rms_epsilon(-1e-5).is_err());
+        assert!(validate_rms_epsilon(f64::NAN).is_err());
+    }
+
+    #[test]
+    fn rms_epsilon_accepts_positive_value() {
+        assert!(validate_rms_epsilon(1e-5).is_ok());
+    }
+
+    #[test]
+    fn norm_axis_rejects_feature_mismatch() {
+        let err = validate_norm_axis([2, 7, 4, 4], 1, 8, "GroupNorm forward").unwrap_err();
+        assert!(err.contains("size 8"));
+    }
+
+    #[test]
+    fn norm_axis_accepts_matching_feature_count() {
+        assert!(validate_norm_axis([2, 8, 4, 4], 1, 8, "GroupNorm forward").is_ok());
+        assert!(validate_norm_axis([2, 3, 4, 8], 3, 8, "RMSNorm forward").is_ok());
     }
 }

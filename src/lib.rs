@@ -9,6 +9,8 @@ pub mod layers;
 pub mod protocol;
 pub mod registry;
 #[cfg(test)]
+mod stateless_lifecycle_tests;
+#[cfg(test)]
 mod tests;
 
 pub type WasmBackend = burn_ndarray::NdArray<f32>;

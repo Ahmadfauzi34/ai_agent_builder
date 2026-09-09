@@ -8,6 +8,37 @@ use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
+fn validate_rank4_axis(dim: usize, context: &str) -> Result<(), String> {
+    if dim >= 4 {
+        return Err(format!("{context}: dim must be in 0..4, got {dim}"));
+    }
+    Ok(())
+}
+
+fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), String> {
+    validate_rank4_axis(dim, "GLU forward")?;
+    let n = shape[dim];
+    if n % 2 != 0 {
+        return Err(format!(
+            "GLU forward: axis {dim} size must be divisible by 2, got {n} for shape {:?}",
+            shape
+        ));
+    }
+    Ok(())
+}
+
+fn activation_forward_fail<T>(message: String) -> T {
+    #[cfg(target_arch = "wasm32")]
+    {
+        wasm_bindgen::throw_str(&message)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        panic!("{message}")
+    }
+}
+
 // --- HELPER STRUCTS (SOLUSI ERROR DERIVE) ---
 #[derive(Module, Debug, Clone)]
 pub struct StrictSoftmax {
@@ -246,9 +277,7 @@ impl WasmActivation {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
+        self.try_forward(input).unwrap_or_else(activation_forward_fail)
     }
 
     pub fn num_params(&self) -> usize {
@@ -270,5 +299,54 @@ impl WasmActivation {
             .record(record, ())
             .map_err(|e| e.to_string())?;
         Ok(bytes)
+    }
+}
+
+impl WasmActivation {
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        let shape = input.inner.dims();
+        match &self.inner {
+            Activation::Softmax(m) => validate_rank4_axis(m.dim, "Softmax forward")?,
+            Activation::LogSoftmax(m) => validate_rank4_axis(m.dim, "LogSoftmax forward")?,
+            Activation::Glu(m) => validate_glu_shape(shape, m.dim)?,
+            _ => {}
+        }
+
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{validate_glu_shape, validate_rank4_axis};
+
+    #[test]
+    fn rank4_axis_accepts_valid_dimensions() {
+        for dim in 0..4 {
+            assert!(validate_rank4_axis(dim, "test").is_ok());
+        }
+    }
+
+    #[test]
+    fn rank4_axis_rejects_out_of_range_dimension() {
+        let err = validate_rank4_axis(4, "Softmax forward").unwrap_err();
+        assert!(err.contains("0..4"));
+    }
+
+    #[test]
+    fn glu_accepts_even_axis_size() {
+        assert!(validate_glu_shape([2, 8, 3, 1], 1).is_ok());
+    }
+
+    #[test]
+    fn glu_rejects_odd_axis_size() {
+        let err = validate_glu_shape([2, 7, 3, 1], 1).unwrap_err();
+        assert!(err.contains("divisible by 2"));
+    }
+
+    #[test]
+    fn glu_rejects_out_of_range_axis() {
+        assert!(validate_glu_shape([2, 8, 3, 1], 4).is_err());
     }
 }
