@@ -11,6 +11,7 @@ pub mod layers;
 pub mod protocol;
 pub mod registry;
 pub mod session;
+pub mod workspace;
 #[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
