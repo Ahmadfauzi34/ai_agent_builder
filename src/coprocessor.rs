@@ -29,6 +29,9 @@ pub(crate) fn verify_vectors_report(
             candidate.len()
         ));
     }
+    if reference.is_empty() {
+        return Err("mathVerifyVectors: empty reference proof is not allowed".into());
+    }
 
     let mut max_abs_error = 0.0f64;
     let mut max_rel_error = 0.0f64;
@@ -68,11 +71,7 @@ pub(crate) fn verify_vectors_report(
         }
     }
 
-    let rmse = if reference.is_empty() {
-        0.0
-    } else {
-        (sum_sq_error / reference.len() as f64).sqrt()
-    };
+    let rmse = (sum_sq_error / reference.len() as f64).sqrt();
     let passed = first_failure.is_none();
     let first_failure_json = first_failure
         .map(|index| index.to_string())
@@ -130,6 +129,7 @@ mod tests {
     #[test]
     fn malformed_inputs_fail_before_comparison() {
         assert!(verify_vectors_report(&[1.0], &[], 0.0, 0.0).is_err());
+        assert!(verify_vectors_report(&[], &[], 0.0, 0.0).is_err());
         assert!(verify_vectors_report(&[1.0], &[f32::NAN], 0.0, 0.0).is_err());
         assert!(verify_vectors_report(&[1.0], &[1.0], -1.0, 0.0).is_err());
     }
