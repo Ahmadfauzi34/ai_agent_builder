@@ -41,16 +41,16 @@ impl GhostModuleConfig {
         if self.out_channels == 0 {
             return Err("ghost: out_channels must be > 0".into());
         }
-        if self.kernel_size.iter().any(|&v| v == 0) {
+        if self.kernel_size.contains(&0) {
             return Err("ghost: kernel dimensions must be > 0".into());
         }
-        if self.stride.iter().any(|&v| v == 0) {
+        if self.stride.contains(&0) {
             return Err("ghost: stride dimensions must be > 0".into());
         }
         if self.ratio == 0 {
             return Err("ghost: ratio must be > 0".into());
         }
-        if self.out_channels % self.ratio != 0 {
+        if !self.out_channels.is_multiple_of(self.ratio) {
             return Err(format!(
                 "ghost: out_channels ({}) must be divisible by ratio ({})",
                 self.out_channels, self.ratio
