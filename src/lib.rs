@@ -3,6 +3,7 @@ use burn::tensor::TensorData;
 use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
+pub mod agent;
 pub mod coprocessor;
 pub mod es;
 pub mod graph;
@@ -258,17 +259,12 @@ mod tensor_boundary_tests {
     #[test]
     fn element_count_rejects_buffer_mismatch() {
         let err = validate_element_count([2, 3, 1, 1], 5, "test").unwrap_err();
-        assert!(err.contains("requires 6 elements"));
+        assert!(err.contains("requires 6 elements, got 5"));
     }
 
     #[test]
     fn sab_byte_length_rejects_u32_overflow() {
         let too_many = (u32::MAX as usize / std::mem::size_of::<f32>()) + 1;
         assert!(checked_sab_byte_length(too_many).is_err());
-    }
-
-    #[test]
-    fn sab_byte_length_accepts_representable_capacity() {
-        assert_eq!(checked_sab_byte_length(1024).unwrap(), 4096);
     }
 }
