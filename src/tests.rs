@@ -32,14 +32,14 @@ mod tests {
     fn test_payload_cursor_basic() {
         let mut data = Vec::new();
         data.extend_from_slice(&42u32.to_le_bytes());
-        data.extend_from_slice(&3.14f64.to_le_bytes());
+        data.extend_from_slice(&3.125f64.to_le_bytes());
         data.push(1); data.push(1);
         data.extend_from_slice(&100u32.to_le_bytes());
         data.push(0);
         data.extend_from_slice(&0.0f64.to_le_bytes());
         let mut c = PayloadCursor::new(&data);
         assert_eq!(c.read_u32().unwrap(), 42);
-        assert_eq!(c.read_f64().unwrap(), 3.14);
+        assert_eq!(c.read_f64().unwrap(), 3.125);
         assert!(c.read_bool().unwrap());
         assert_eq!(c.read_option_u32().unwrap(), Some(100));
         assert_eq!(c.read_option_f64().unwrap(), None);
