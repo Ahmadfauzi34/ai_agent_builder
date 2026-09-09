@@ -9,8 +9,8 @@ pub trait Objective {
 
 /// y = X * W ; fitness = -mean((pred - y)^2). Plain Rust, deterministik, tanpa burn.
 pub struct LinearMseObjective {
-    pub x: Vec<f32>,          // [n * in_dim]
-    pub y: Vec<f32>,          // [n * out_dim]
+    pub x: Vec<f32>, // [n * in_dim]
+    pub y: Vec<f32>, // [n * out_dim]
     pub n: usize,
     pub in_dim: usize,
     pub out_dim: usize,
@@ -18,30 +18,54 @@ pub struct LinearMseObjective {
 
 impl LinearMseObjective {
     pub fn new(x: Vec<f32>, y: Vec<f32>, n: usize, in_dim: usize, out_dim: usize) -> Self {
-        Self { x, y, n, in_dim, out_dim }
+        Self {
+            x,
+            y,
+            n,
+            in_dim,
+            out_dim,
+        }
+    }
+
+    fn expected_lengths(&self) -> Option<(usize, usize, usize)> {
+        let x_len = self.n.checked_mul(self.in_dim)?;
+        let y_len = self.n.checked_mul(self.out_dim)?;
+        let w_len = self.in_dim.checked_mul(self.out_dim)?;
+        Some((x_len, y_len, w_len))
     }
 }
 
 impl Objective for LinearMseObjective {
     fn fitness(&self, w: &[f32]) -> f64 {
-        if w.len() != self.in_dim * self.out_dim {
+        let Some((expected_x, expected_y, expected_w)) = self.expected_lengths() else {
+            return f64::NEG_INFINITY;
+        };
+
+        if self.x.len() != expected_x || self.y.len() != expected_y || w.len() != expected_w {
             return f64::NEG_INFINITY;
         }
+
+        let Some(count) = self.n.checked_mul(self.out_dim) else {
+            return f64::NEG_INFINITY;
+        };
+        if count == 0 {
+            return f64::NEG_INFINITY;
+        }
+
         let mut mse = 0.0f64;
-        let mut count = 0usize;
         for i in 0..self.n {
             for o in 0..self.out_dim {
                 let mut pred = 0.0f64;
                 for k in 0..self.in_dim {
-                    pred += self.x[i * self.in_dim + k] as f64 * w[k * self.out_dim + o] as f64;
+                    pred += self.x[i * self.in_dim + k] as f64
+                        * w[k * self.out_dim + o] as f64;
                 }
                 let target = self.y[i * self.out_dim + o] as f64;
                 let err = pred - target;
                 mse += err * err;
-                count += 1;
             }
         }
-        if count == 0 { return f64::NEG_INFINITY; }
+
         -(mse / count as f64) // negasi: ES memaksimalkan
     }
-              }
+}
