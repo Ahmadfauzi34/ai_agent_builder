@@ -110,7 +110,10 @@ impl EsOptimizer {
         let (mean, std) = mean_std(&f64s);
         let mut best = f64::NEG_INFINITY;
         let mut worst = f64::INFINITY;
-        for &v in &f64s { if v > best { best = v; } if v < worst { worst = v; } }
+        for &v in &f64s {
+            if v > best { best = v; }
+            if v < worst { worst = v; }
+        }
 
         // global best + stagnation (scan kandidat vs fitness)
         let mut gen_best = f64::NEG_INFINITY;
