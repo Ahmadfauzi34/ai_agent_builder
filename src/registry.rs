@@ -124,21 +124,21 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "Linear not found".to_string())?
                 .try_forward(input),
-            LAYER_NORM => Ok(self
+            LAYER_NORM => self
                 .norms
                 .get(&layer_id)
                 .ok_or_else(|| "Norm not found".to_string())?
-                .forward(input)),
+                .try_forward(input),
             LAYER_CONV => self
                 .convs
                 .get(&layer_id)
                 .ok_or_else(|| "Conv not found".to_string())?
                 .try_forward(input),
-            LAYER_ACTIVATION => Ok(self
+            LAYER_ACTIVATION => self
                 .activations
                 .get(&layer_id)
                 .ok_or_else(|| "Activation not found".to_string())?
-                .forward(input)),
+                .try_forward(input),
             LAYER_EMBEDDING => self
                 .embeddings
                 .get(&layer_id)
@@ -178,7 +178,13 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(vec![]),
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+                if self.layer_exists(layer_type, layer_id) {
+                    Ok(vec![])
+                } else {
+                    Err("Not found".into())
+                }
+            }
             _ => Err(format!("Unknown layer type for get_state: 0x{:02X}", layer_type)),
         }
     }
@@ -193,7 +199,13 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => load_layer_state!(self, embeddings, layer_id, data),
             LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => Ok(()),
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+                if self.layer_exists(layer_type, layer_id) {
+                    Ok(())
+                } else {
+                    Err("Not found".into())
+                }
+            }
             _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
         }
     }
@@ -241,11 +253,11 @@ impl LayerRegistry {
             NORM_GROUP     => {
                 let num_groups = c.read_usize()?;
                 let num_channels = c.read_usize()?;
-                WasmNorm::new_group_norm(num_groups, num_channels, eps)
+                WasmNorm::try_new_group_norm(num_groups, num_channels, eps)?
             }
             NORM_INSTANCE  => WasmNorm::new_instance_norm(size, eps),
             NORM_LAYER     => WasmNorm::new_layer_norm(size, eps),
-            NORM_RMS       => WasmNorm::new_rms_norm(size, eps),
+            NORM_RMS       => WasmNorm::try_new_rms_norm(size, eps)?,
             _ => return Err(format!("Unknown norm variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, norms, id, layer);
@@ -264,9 +276,9 @@ impl LayerRegistry {
         let ph = c.read_option_usize()?;
         let pw = c.read_option_usize()?;
         let layer = match header.variant {
-            CONV_CONV1D          => WasmConv::new_conv1d(in_ch, out_ch, kh, sh, ph),
-            CONV_CONV2D          => WasmConv::new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw),
-            CONV_CONVTRANSPOSE2D => WasmConv::new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw),
+            CONV_CONV1D          => WasmConv::try_new_conv1d(in_ch, out_ch, kh, sh, ph)?,
+            CONV_CONV2D          => WasmConv::try_new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
+            CONV_CONVTRANSPOSE2D => WasmConv::try_new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
             _ => return Err(format!("Unknown conv variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, convs, id, layer);
@@ -343,13 +355,13 @@ impl LayerRegistry {
                 let k = c.read_usize()?;
                 let s = c.read_option_usize()?;
                 let p = c.read_option_usize()?;
-                WasmPool::new_max_pool1d(k, s, p)
+                WasmPool::try_new_max_pool1d(k, s, p)?
             }
             POOL_AVGPOOL1D => {
                 let k = c.read_usize()?;
                 let s = c.read_option_usize()?;
                 let p = c.read_option_usize()?;
-                WasmPool::new_avg_pool1d(k, s, p)
+                WasmPool::try_new_avg_pool1d(k, s, p)?
             }
             POOL_MAXPOOL2D => {
                 let k = c.read_usize()?;
@@ -358,7 +370,7 @@ impl LayerRegistry {
                 let sw = c.read_option_usize()?;
                 let ph = c.read_option_usize()?;
                 let pw = c.read_option_usize()?;
-                WasmPool::new_max_pool2d(k, kw, sh, sw, ph, pw)
+                WasmPool::try_new_max_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_AVGPOOL2D => {
                 let k = c.read_usize()?;
@@ -367,7 +379,7 @@ impl LayerRegistry {
                 let sw = c.read_option_usize()?;
                 let ph = c.read_option_usize()?;
                 let pw = c.read_option_usize()?;
-                WasmPool::new_avg_pool2d(k, kw, sh, sw, ph, pw)
+                WasmPool::try_new_avg_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_ADAPTIVEAVGPOOL2D => {
                 let oh = c.read_usize()?;
