@@ -18,7 +18,7 @@ fn validate_rank4_axis(dim: usize, context: &str) -> Result<(), String> {
 fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), String> {
     validate_rank4_axis(dim, "GLU forward")?;
     let n = shape[dim];
-    if n % 2 != 0 {
+    if !n.is_multiple_of(2) {
         return Err(format!(
             "GLU forward: axis {dim} size must be divisible by 2, got {n} for shape {:?}",
             shape
