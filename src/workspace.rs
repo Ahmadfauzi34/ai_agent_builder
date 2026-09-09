@@ -13,6 +13,14 @@ const TABLE_LAYERS: &str = "_layers";
 const TABLE_PROOFS: &str = "_proofs";
 const TABLE_EVENTS: &str = "_events";
 
+// Working-memory quotas. These bound metadata growth without constraining Burn tensor/math capacity.
+const MAX_ROWS: usize = 1024;
+const MAX_TABLE_BYTES: usize = 64;
+const MAX_KEY_BYTES: usize = 128;
+const MAX_KIND_BYTES: usize = 64;
+const MAX_STATE_BYTES: usize = 64;
+const MAX_VALUE_BYTES: usize = 4096;
+
 const KNOWN_LAYER_TYPES: [u8; 10] = [
     LAYER_LINEAR,
     LAYER_NORM,
@@ -33,6 +41,40 @@ struct WorkspaceRow {
     kind: String,
     state: String,
     value: String,
+}
+
+fn validate_text(
+    value: &str,
+    max_bytes: usize,
+    context: &str,
+    allow_empty: bool,
+) -> Result<(), String> {
+    if !allow_empty && value.is_empty() {
+        return Err(format!("{context}: value must be non-empty"));
+    }
+    if value.len() > max_bytes {
+        return Err(format!(
+            "{context}: {} bytes exceeds limit {max_bytes}",
+            value.len()
+        ));
+    }
+    Ok(())
+}
+
+fn validate_row_fields(
+    table: &str,
+    key: &str,
+    kind: &str,
+    state: &str,
+    value: &str,
+    context: &str,
+) -> Result<(), String> {
+    validate_text(table, MAX_TABLE_BYTES, &format!("{context}.table"), false)?;
+    validate_text(key, MAX_KEY_BYTES, &format!("{context}.key"), false)?;
+    validate_text(kind, MAX_KIND_BYTES, &format!("{context}.kind"), true)?;
+    validate_text(state, MAX_STATE_BYTES, &format!("{context}.state"), true)?;
+    validate_text(value, MAX_VALUE_BYTES, &format!("{context}.value"), true)?;
+    Ok(())
 }
 
 fn json_escape(value: &str) -> String {
@@ -67,7 +109,7 @@ pub struct AgentWorkspace {
     num_slots: u32,
     next_layer_id: u32,
     next_proof_id: u32,
-    next_event_id: u64,
+    next_event_id: u32,
     rows: Vec<WorkspaceRow>,
 }
 
@@ -78,6 +120,15 @@ impl AgentWorkspace {
             .position(|row| row.table == table && row.key == key)
     }
 
+    fn ensure_insert_capacity(&self, table: &str, key: &str) -> Result<(), String> {
+        if self.find_row_index(table, key).is_none() && self.rows.len() >= MAX_ROWS {
+            return Err(format!(
+                "AgentWorkspace: row limit {MAX_ROWS} reached; remove or reuse rows before inserting"
+            ));
+        }
+        Ok(())
+    }
+
     fn upsert_internal(
         &mut self,
         table: &str,
@@ -85,7 +136,10 @@ impl AgentWorkspace {
         kind: String,
         state: String,
         value: String,
-    ) {
+    ) -> Result<(), String> {
+        validate_row_fields(table, &key, &kind, &state, &value, "AgentWorkspace")?;
+        self.ensure_insert_capacity(table, &key)?;
+
         if let Some(index) = self.find_row_index(table, &key) {
             self.rows[index] = WorkspaceRow {
                 table: table.to_string(),
@@ -103,6 +157,7 @@ impl AgentWorkspace {
                 value,
             });
         }
+        Ok(())
     }
 
     fn layer_id_in_use(registry: &LayerRegistry, layer_id: u32) -> bool {
@@ -126,8 +181,8 @@ impl AgentWorkspace {
             .rows
             .iter()
             .filter(|row| row.table == table)
-            .filter(|row| kind.map_or(true, |expected| row.kind == expected))
-            .filter(|row| state.map_or(true, |expected| row.state == expected))
+            .filter(|row| kind.is_none_or(|expected| row.kind == expected))
+            .filter(|row| state.is_none_or(|expected| row.state == expected))
             .map(row_json)
             .collect::<Vec<_>>()
             .join(",");
@@ -179,16 +234,14 @@ impl AgentWorkspace {
         state: String,
         value: String,
     ) -> Result<(), String> {
-        if table.is_empty() || key.is_empty() {
-            return Err("AgentWorkspace.put: table and key must be non-empty".into());
-        }
         if table.starts_with(INTERNAL_PREFIX) {
             return Err(format!(
                 "AgentWorkspace.put: table {table} is reserved for internal state"
             ));
         }
-        self.upsert_internal(&table, key, kind, state, value);
-        Ok(())
+        validate_row_fields(&table, &key, &kind, &state, &value, "AgentWorkspace.put")?;
+        self.ensure_insert_capacity(&table, &key)?;
+        self.upsert_internal(&table, key, kind, state, value)
     }
 
     /// Query any table, including read-only inspection of internal tables.
@@ -234,11 +287,21 @@ impl AgentWorkspace {
         format!("[{}]", body)
     }
 
+    /// Return the explicit metadata quotas for agent planning.
+    pub fn limits(&self) -> String {
+        format!(
+            "{{\"max_rows\":{MAX_ROWS},\"max_table_bytes\":{MAX_TABLE_BYTES},\"max_key_bytes\":{MAX_KEY_BYTES},\"max_kind_bytes\":{MAX_KIND_BYTES},\"max_state_bytes\":{MAX_STATE_BYTES},\"max_value_bytes\":{MAX_VALUE_BYTES}}}"
+        )
+    }
+
     #[wasm_bindgen(js_name = reserveSlot)]
     pub fn reserve_slot(&mut self, owner: String) -> Result<u8, String> {
-        if owner.is_empty() {
-            return Err("AgentWorkspace.reserveSlot: owner must be non-empty".into());
-        }
+        validate_text(
+            &owner,
+            MAX_VALUE_BYTES,
+            "AgentWorkspace.reserveSlot.owner",
+            false,
+        )?;
         let index = self
             .rows
             .iter()
@@ -276,21 +339,27 @@ impl AgentWorkspace {
         registry: &LayerRegistry,
         label: String,
     ) -> Result<u32, String> {
+        validate_text(
+            &label,
+            MAX_VALUE_BYTES,
+            "AgentWorkspace.reserveLayerId.label",
+            true,
+        )?;
         let mut candidate = self.next_layer_id;
         loop {
             if !Self::layer_id_in_use(registry, candidate)
                 && !self.workspace_layer_id_reserved(candidate)
             {
-                self.next_layer_id = candidate
-                    .checked_add(1)
-                    .ok_or_else(|| "AgentWorkspace.reserveLayerId: allocator exhausted".to_string())?;
                 self.upsert_internal(
                     TABLE_LAYERS,
                     candidate.to_string(),
                     "layer".into(),
                     "reserved".into(),
                     label,
-                );
+                )?;
+                self.next_layer_id = candidate
+                    .checked_add(1)
+                    .ok_or_else(|| "AgentWorkspace.reserveLayerId: allocator exhausted".to_string())?;
                 return Ok(candidate);
             }
             candidate = candidate
@@ -326,8 +395,7 @@ impl AgentWorkspace {
             "layer".into(),
             "initialized".into(),
             value,
-        );
-        Ok(())
+        )
     }
 
     /// Forget only workspace metadata. This never mutates LayerRegistry.
@@ -356,16 +424,17 @@ impl AgentWorkspace {
             ));
         }
         let proof_id = self.next_proof_id;
-        self.next_proof_id = proof_id
-            .checked_add(1)
-            .ok_or_else(|| "AgentWorkspace.recordProof: id allocator exhausted".to_string())?;
+        let value = format!("max_error={max_error};{detail}");
         self.upsert_internal(
             TABLE_PROOFS,
             proof_id.to_string(),
             label,
             if passed { "passed" } else { "failed" }.into(),
-            format!("max_error={max_error};{detail}"),
-        );
+            value,
+        )?;
+        self.next_proof_id = proof_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.recordProof: id allocator exhausted".to_string())?;
         Ok(proof_id)
     }
 
@@ -375,21 +444,25 @@ impl AgentWorkspace {
         kind: String,
         reference: String,
         detail: String,
-    ) -> Result<u64, String> {
-        if kind.is_empty() {
-            return Err("AgentWorkspace.recordEvent: kind must be non-empty".into());
-        }
+    ) -> Result<u32, String> {
+        validate_text(
+            &kind,
+            MAX_KIND_BYTES,
+            "AgentWorkspace.recordEvent.kind",
+            false,
+        )?;
         let event_id = self.next_event_id;
-        self.next_event_id = event_id
-            .checked_add(1)
-            .ok_or_else(|| "AgentWorkspace.recordEvent: id allocator exhausted".to_string())?;
+        let value = format!("ref={reference};{detail}");
         self.upsert_internal(
             TABLE_EVENTS,
             event_id.to_string(),
             kind,
             "recorded".into(),
-            format!("ref={reference};{detail}"),
-        );
+            value,
+        )?;
+        self.next_event_id = event_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.recordEvent: id allocator exhausted".to_string())?;
         Ok(event_id)
     }
 
@@ -408,20 +481,21 @@ impl AgentWorkspace {
             .filter(|row| row.table == TABLE_SLOTS && row.state == "free")
             .count();
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
             count(TABLE_PROOFS),
             count(TABLE_EVENTS),
             custom_tables,
+            self.rows.len(),
         )
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::AgentWorkspace;
+    use super::{AgentWorkspace, MAX_VALUE_BYTES};
     use crate::agent::AgentLayerSpec;
     use crate::protocol::LAYER_ACTIVATION;
     use crate::registry::LayerRegistry;
@@ -459,6 +533,22 @@ mod tests {
     }
 
     #[test]
+    fn oversized_value_is_rejected_without_mutation() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+        let oversized = "x".repeat(MAX_VALUE_BYTES + 1);
+        assert!(workspace
+            .put(
+                "memory".into(),
+                "large".into(),
+                "probe".into(),
+                "stored".into(),
+                oversized,
+            )
+            .is_err());
+        assert_eq!(workspace.get("memory".into(), "large".into()), "null");
+    }
+
+    #[test]
     fn slot_state_is_relational_and_reusable() {
         let mut workspace = AgentWorkspace::new(3).unwrap();
         let first = workspace.reserve_slot("relu-output".into()).unwrap();
@@ -488,13 +578,10 @@ mod tests {
         let mut registry = LayerRegistry::new();
         let spec = AgentLayerSpec::relu(7);
         assert!(workspace.sync_layer(&registry, &spec, "relu".into()).is_err());
-        assert_eq!(workspace.query("_layers".into(), None, None), "{\"table\":\"_layers\",\"rows\":[]}");
+        assert_eq!(workspace.get("_layers".into(), "7".into()), "null");
 
         registry.init_agent_layer(&spec).unwrap();
         workspace.sync_layer(&registry, &spec, "relu".into()).unwrap();
-        assert!(workspace
-            .query("_layers".into(), Some("layer".into()), Some("initialized".into()))
-            .contains("id=7") == false);
         assert!(workspace.get("_layers".into(), "7".into()).contains("initialized"));
         assert!(registry.layer_exists(LAYER_ACTIVATION, 7));
     }
@@ -511,14 +598,31 @@ mod tests {
     }
 
     #[test]
+    fn invalid_proof_does_not_consume_proof_id() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+        assert!(workspace
+            .record_proof("bad".into(), false, f64::NAN, "bad".into())
+            .is_err());
+        assert_eq!(
+            workspace
+                .record_proof("good".into(), true, 0.0, "exact".into())
+                .unwrap(),
+            1
+        );
+    }
+
+    #[test]
     fn proofs_and_events_are_queryable_state() {
         let mut workspace = AgentWorkspace::new(4).unwrap();
         workspace
             .record_proof("python-vs-burn".into(), false, 0.25, "first_failure=3".into())
             .unwrap();
-        workspace
-            .record_event("candidate".into(), "python-a".into(), "generated".into())
-            .unwrap();
+        assert_eq!(
+            workspace
+                .record_event("candidate".into(), "python-a".into(), "generated".into())
+                .unwrap(),
+            1
+        );
         assert!(workspace.query("_proofs".into(), None, Some("failed".into())).contains("0.25"));
         assert!(workspace.query("_events".into(), Some("candidate".into()), None).contains("python-a"));
     }
