@@ -3,6 +3,7 @@ use burn::nn::{Linear, LinearConfig};
 use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
+use crate::layers::shape_contract::{require_axis_size, require_singleton_spatial};
 
 // --- CONFIG & MODULE ---
 #[derive(Config, Debug)]
@@ -53,13 +54,8 @@ impl WasmLinear {
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let [b, d, _, _] = x.dims(); 
-        let x_2d = x.reshape([b, d]); 
-        let out = self.inner.forward(x_2d);
-        let [b_out, d_out] = out.dims();
-        let out_4d = out.reshape([b_out, d_out, 1, 1]);
-        WasmTensor { inner: out_4d }
+        self.try_forward(input)
+            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
     }
 
     pub fn num_params(&self) -> usize {
@@ -84,7 +80,25 @@ impl WasmLinear {
             .map_err(|e| e.to_string())?;
         Ok(bytes)
     }
-            }
+}
+
+impl WasmLinear {
+    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        let x = input.inner.clone();
+        let shape = x.dims();
+        require_singleton_spatial(shape, "Linear forward")?;
+        let expected_features = self.weight_dims()[0];
+        require_axis_size(shape, 1, expected_features, "Linear forward")?;
+
+        let [b, d, _, _] = shape;
+        let x_2d = x.reshape([b, d]);
+        let out = self.inner.forward(x_2d);
+        let [b_out, d_out] = out.dims();
+        let out_4d = out.reshape([b_out, d_out, 1, 1]);
+        Ok(WasmTensor { inner: out_4d })
+    }
+}
+
 // ============================================================
 // FLOAT-BRIDGE (B) — baca/tulis bobot sebagai Vec<f32> flat.
 // Ini kabel yang membuat ES (gradient-free) bisa menyentuh bobot,
@@ -98,21 +112,19 @@ impl WasmLinear {
     /// [in_dim, out_dim] — supaya JS tahu cara memotong vektor flat.
     #[wasm_bindgen(js_name = weightDims)]
     pub fn weight_dims(&self) -> Vec<usize> {
-        let rec = self.inner.inner.clone().into_record();          // TITIK API #1
-        rec.weight.dims().to_vec()                                 // TITIK API #3 (field `weight`)
+        let rec = self.inner.inner.clone().into_record();
+        rec.weight.dims().to_vec()
     }
 
-#[wasm_bindgen(js_name = getWeightsFlat)]
+    #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.inner.clone().into_record();
-        // rec.weight: Param<Tensor<_,2>> -> clone via deref jadi Tensor owned, baru into_data.
         let w = <Tensor<WasmBackend, 2> as Clone>::clone(&rec.weight).into_data();
         let mut out = w
             .as_slice::<f32>()
             .map_err(|_| "getWeightsFlat: weight not f32".to_string())?
             .to_vec();
         if let Some(b) = &rec.bias {
-            // b: &Param<Tensor<_,1>> -> clone via deref.
             let bv = <Tensor<WasmBackend, 1> as Clone>::clone(b)
                 .into_data()
                 .as_slice::<f32>()
@@ -122,7 +134,8 @@ impl WasmLinear {
         }
         Ok(out)
     }
-#[wasm_bindgen(js_name = setWeightsFlat)]
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
     pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
         let mut rec = self.inner.inner.clone().into_record();
         let wd = rec.weight.dims(); // [in, out]
@@ -139,7 +152,6 @@ impl WasmLinear {
             ));
         }
         let device: <WasmBackend as Backend>::Device = Default::default();
-        // rec.weight: Param<Tensor<_,2>> -> pakai constructor resmi 0.20 (bukan .into()).
         rec.weight = burn::module::Param::from_data(
             burn::tensor::TensorData::new(data[..in_d * out_d].to_vec(), [in_d, out_d]),
             &device,

@@ -7,3 +7,4 @@ pub mod pool;
 pub mod binary;
 pub mod custom;
 pub mod layout;
+pub(crate) mod shape_contract;
