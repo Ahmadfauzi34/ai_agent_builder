@@ -41,7 +41,7 @@ The helper layer is optional. Callers can freely mix:
 workspace helper -> typed API -> raw registry/graph API -> workspace helper
 ```
 
-There is no helper object to synchronize or preserve.
+There is no helper object to synchronize or preserve. Runtime proof should therefore succeed without constructing `AgentReferenceSession` at all.
 
 ## Failure boundary
 
