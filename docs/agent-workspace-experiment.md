@@ -37,3 +37,7 @@ The workspace stores metadata only. Tensor data stays in Burn/WASM tensor object
 
 Compare this data-driven working-memory model with `AgentReferenceSession`.
 If adding a new agent workflow can be represented as new rows/tables instead of adding Rust methods, the workspace model has stronger long-term flexibility.
+
+## Status
+
+Experimental only. Do not promote to the stable capability manifest until CI and runtime artifact tests prove the model useful and safe.
