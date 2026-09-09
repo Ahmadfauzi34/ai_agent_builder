@@ -39,6 +39,20 @@ impl AgentReferenceSession {
         Ok(())
     }
 
+    fn validate_input_slot(
+        builder: &AgentGraphBuilder,
+        slot: u8,
+        context: &str,
+    ) -> Result<(), String> {
+        if u32::from(slot) >= builder.num_slots() {
+            return Err(format!(
+                "{context}: slot {slot} is outside builder num_slots {}",
+                builder.num_slots()
+            ));
+        }
+        Ok(())
+    }
+
     fn allocate_output_slot(&self) -> Result<u8, String> {
         if self.next_slot >= self.num_slots {
             return Err(format!(
@@ -134,8 +148,7 @@ impl AgentReferenceSession {
 
     #[wasm_bindgen(js_name = reserveLayerId)]
     pub fn reserve_layer_id(&mut self, registry: &LayerRegistry) -> Result<u32, String> {
-        let start = self.next_layer_id;
-        let mut candidate = start;
+        let mut candidate = self.next_layer_id;
         loop {
             if !Self::layer_id_in_use(registry, candidate) {
                 self.next_layer_id = candidate
@@ -146,9 +159,6 @@ impl AgentReferenceSession {
             candidate = candidate
                 .checked_add(1)
                 .ok_or_else(|| "AgentReferenceSession: layer id allocator exhausted".to_string())?;
-            if candidate == start {
-                return Err("AgentReferenceSession: no free layer id available".into());
-            }
         }
     }
 
@@ -193,6 +203,7 @@ impl AgentReferenceSession {
         if spec.layer_type() == LAYER_BINARY {
             return Err("AgentReferenceSession.initUnary: binary spec requires initBinary".into());
         }
+        Self::validate_input_slot(builder, input_slot, "AgentReferenceSession.initUnary")?;
         Self::validate_spec_is_new(registry, spec)?;
         let output_slot = self.allocate_output_slot()?;
         registry.init_agent_layer(spec)?;
@@ -214,6 +225,8 @@ impl AgentReferenceSession {
         if spec.layer_type() != LAYER_BINARY {
             return Err("AgentReferenceSession.initBinary: spec is not binary".into());
         }
+        Self::validate_input_slot(builder, left_slot, "AgentReferenceSession.initBinary")?;
+        Self::validate_input_slot(builder, right_slot, "AgentReferenceSession.initBinary")?;
         Self::validate_spec_is_new(registry, spec)?;
         let output_slot = self.allocate_output_slot()?;
         registry.init_agent_layer(spec)?;
@@ -298,6 +311,21 @@ mod tests {
             .is_err());
         assert_eq!(session.next_slot(), before);
         assert!(!registry.layer_exists(LAYER_BINARY, 9));
+    }
+
+    #[test]
+    fn invalid_input_slot_does_not_initialize_layer_or_consume_slot() {
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(3).unwrap();
+        let mut session = AgentReferenceSession::new(3).unwrap();
+        let before = session.next_slot();
+        let relu = AgentLayerSpec::relu(44);
+
+        assert!(session
+            .init_unary(&mut builder, &mut registry, &relu, 3)
+            .is_err());
+        assert_eq!(session.next_slot(), before);
+        assert!(!registry.layer_exists(LAYER_ACTIVATION, 44));
     }
 
     #[test]
