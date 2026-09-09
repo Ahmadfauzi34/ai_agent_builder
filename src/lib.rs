@@ -3,6 +3,7 @@ use burn::tensor::TensorData;
 use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
+pub mod coprocessor;
 pub mod es;
 pub mod graph;
 pub mod layers;
