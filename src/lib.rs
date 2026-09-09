@@ -153,12 +153,11 @@ impl TensorView {
     }
 
     #[wasm_bindgen(js_name = setShape)]
-    pub fn set_shape(&mut self, shape: Vec<usize>) {
-        let dims = normalize_rank4_shape(&shape, "TensorView::setShape")
-            .unwrap_or_else(|err| boundary_fail(err));
-        validate_element_count(dims, self.len(), "TensorView::setShape")
-            .unwrap_or_else(|err| boundary_fail(err));
+    pub fn set_shape(&mut self, shape: Vec<usize>) -> Result<(), String> {
+        let dims = normalize_rank4_shape(&shape, "TensorView::setShape")?;
+        validate_element_count(dims, self.len(), "TensorView::setShape")?;
         self.shape = dims.to_vec();
+        Ok(())
     }
 
     pub fn shape(&self) -> Vec<usize> {
@@ -219,15 +218,15 @@ impl WasmTensor {
     }
 
     #[wasm_bindgen(js_name = toTensorView)]
-    pub fn to_tensor_view(&self, view: &mut TensorView) {
+    pub fn to_tensor_view(&self, view: &mut TensorView) -> Result<(), String> {
         let dims = self.inner.dims();
-        validate_element_count(dims, view.len(), "WasmTensor::toTensorView")
-            .unwrap_or_else(|err| boundary_fail(err));
+        validate_element_count(dims, view.len(), "WasmTensor::toTensorView")?;
 
         let data = self.inner.to_data();
         let slice = data.as_slice::<f32>().unwrap();
         view.write(slice);
-        view.set_shape(dims.into());
+        view.set_shape(dims.into())?;
+        Ok(())
     }
 }
 
