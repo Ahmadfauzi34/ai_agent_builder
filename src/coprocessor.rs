@@ -101,6 +101,10 @@ pub fn math_verify_vectors(
 #[cfg(test)]
 mod tests {
     use super::verify_vectors_report;
+    use crate::graph::CompiledGraph;
+    use crate::protocol::{ACT_RELU, LAYER_ACTIVATION, OP_INIT, PacketHeader};
+    use crate::registry::LayerRegistry;
+    use crate::WasmTensor;
 
     #[test]
     fn exact_match_passes() {
@@ -128,5 +132,45 @@ mod tests {
         assert!(verify_vectors_report(&[1.0], &[], 0.0, 0.0).is_err());
         assert!(verify_vectors_report(&[1.0], &[f32::NAN], 0.0, 0.0).is_err());
         assert!(verify_vectors_report(&[1.0], &[1.0], -1.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn compiled_graph_is_a_burn_backed_reference_oracle() {
+        let mut registry = LayerRegistry::new();
+        let layer_id = 7u32;
+        let payload = layer_id.to_le_bytes();
+        let header = PacketHeader {
+            opcode: OP_INIT,
+            layer_type: LAYER_ACTIVATION,
+            variant: ACT_RELU,
+            flags: 0,
+            payload_len: payload.len() as u32,
+        };
+        registry.init_layer(&header, &payload).unwrap();
+
+        let mut plan = Vec::new();
+        plan.extend_from_slice(&1u32.to_le_bytes());
+        plan.extend_from_slice(&2u32.to_le_bytes());
+        plan.push(1);
+        plan.push(LAYER_ACTIVATION);
+        plan.extend_from_slice(&layer_id.to_le_bytes());
+        plan.push(0);
+        plan.push(0);
+        plan.push(1);
+        plan.push(1);
+
+        let graph = CompiledGraph::build(&registry, &plan).unwrap();
+        let input = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
+
+        let pass = graph
+            .verify_flat(&registry, &input, &[0.0, 2.0], 0.0, 0.0)
+            .unwrap();
+        assert!(pass.contains("\"passed\":true"));
+
+        let fail = graph
+            .verify_flat(&registry, &input, &[0.0, 2.25], 0.01, 0.0)
+            .unwrap();
+        assert!(fail.contains("\"passed\":false"));
+        assert!(fail.contains("\"first_failure\":1"));
     }
 }
