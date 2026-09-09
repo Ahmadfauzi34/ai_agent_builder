@@ -122,19 +122,29 @@ impl AgentLayerSpec {
     }
 
     #[wasm_bindgen(js_name = linear)]
-    pub fn linear(layer_id: u32, in_dim: u32, out_dim: u32, bias: bool) -> AgentLayerSpec {
+    pub fn linear(
+        layer_id: u32,
+        in_dim: u32,
+        out_dim: u32,
+        bias: bool,
+    ) -> Result<AgentLayerSpec, String> {
+        if in_dim == 0 || out_dim == 0 {
+            return Err(format!(
+                "AgentLayerSpec.linear: in_dim and out_dim must be > 0, got {in_dim} and {out_dim}"
+            ));
+        }
         let mut payload = Vec::with_capacity(13);
         push_u32(&mut payload, layer_id);
         push_u32(&mut payload, in_dim);
         push_u32(&mut payload, out_dim);
         payload.push(u8::from(bias));
-        Self::from_payload(
+        Ok(Self::from_payload(
             layer_id,
             LAYER_LINEAR,
             VARIANT_NONE,
             if bias { FLAG_BIAS } else { 0 },
             payload,
-        )
+        ))
     }
 
     #[wasm_bindgen(js_name = add)]
@@ -340,7 +350,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
-            "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",\"graph_builder\":\"AgentGraphBuilder\",\"graph_compile\":\"AgentGraphBuilder.compile\"}},",
+            "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\"]}},",
             "\"optimizer\":{{\"entry\":\"EsOptimizer\",\"strategies\":{{\"openes\":0,\"mu_lambda\":1}},\"lifecycle\":\"ask->tell\"}},",
             "\"recommended_flow\":[\"discover\",\"construct_reference\",\"run_external_candidate\",\"verify\",\"revise_or_accept\"],",
             "\"layers\":{{",
@@ -431,6 +441,7 @@ mod tests {
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
+        assert!(manifest.contains("\"constructors\":[\"relu\""));
         assert!(manifest.contains("\"lifecycle\":\"ask->tell\""));
     }
 
@@ -456,6 +467,17 @@ mod tests {
             .forward_layer(7, LAYER_ACTIVATION, &input)
             .unwrap();
         assert_eq!(output.to_array(), vec![0.0, 2.0]);
+    }
+
+    #[test]
+    fn typed_linear_spec_rejects_zero_dimensions_before_backend_init() {
+        assert!(AgentLayerSpec::linear(1, 0, 2, true).is_err());
+        assert!(AgentLayerSpec::linear(1, 2, 0, true).is_err());
+
+        let mut registry = LayerRegistry::new();
+        let spec = AgentLayerSpec::linear(2, 3, 2, true).unwrap();
+        registry.init_agent_layer(&spec).unwrap();
+        assert_eq!(registry.total_params(), 8);
     }
 
     #[test]
