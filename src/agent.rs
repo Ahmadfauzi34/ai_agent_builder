@@ -18,6 +18,66 @@ fn push_u32(payload: &mut Vec<u8>, value: u32) {
     payload.extend_from_slice(&value.to_le_bytes());
 }
 
+fn push_option_u32(payload: &mut Vec<u8>, value: Option<u32>) {
+    payload.push(u8::from(value.is_some()));
+    push_u32(payload, value.unwrap_or(0));
+}
+
+fn push_option_f64(payload: &mut Vec<u8>, value: Option<f64>) {
+    payload.push(u8::from(value.is_some()));
+    payload.extend_from_slice(&value.unwrap_or(0.0).to_le_bytes());
+}
+
+fn validate_positive(value: u32, context: &str) -> Result<(), String> {
+    if value == 0 {
+        return Err(format!("{context}: value must be > 0"));
+    }
+    Ok(())
+}
+
+fn validate_optional_positive(value: Option<u32>, context: &str) -> Result<(), String> {
+    if value == Some(0) {
+        return Err(format!("{context}: value must be > 0 when provided"));
+    }
+    Ok(())
+}
+
+fn validate_pair_presence(
+    first: Option<u32>,
+    second: Option<u32>,
+    context: &str,
+) -> Result<(), String> {
+    if first.is_some() != second.is_some() {
+        return Err(format!(
+            "{context}: both components must be provided together or both omitted"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_finite(value: f64, context: &str) -> Result<(), String> {
+    if !value.is_finite() {
+        return Err(format!("{context}: value must be finite, got {value}"));
+    }
+    Ok(())
+}
+
+fn validate_positive_f64(value: f64, context: &str) -> Result<(), String> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(format!(
+            "{context}: value must be finite and > 0, got {value}"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_optional_epsilon(value: Option<f64>, context: &str) -> Result<(), String> {
+    if let Some(value) = value {
+        validate_positive_f64(value, context)?;
+    }
+    Ok(())
+}
+
 #[wasm_bindgen]
 pub struct AgentLayerSpec {
     layer_id: u32,
@@ -68,6 +128,94 @@ impl AgentLayerSpec {
         Self::from_payload(layer_id, LAYER_BINARY, variant, 0, payload)
     }
 
+    fn norm_spec(
+        layer_id: u32,
+        variant: u8,
+        size: u32,
+        epsilon: Option<f64>,
+        group: Option<(u32, u32)>,
+    ) -> Self {
+        let mut payload = Vec::with_capacity(if group.is_some() { 25 } else { 17 });
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, size);
+        push_option_f64(&mut payload, epsilon);
+        if let Some((groups, channels)) = group {
+            push_u32(&mut payload, groups);
+            push_u32(&mut payload, channels);
+        }
+        Self::from_payload(layer_id, LAYER_NORM, variant, 0, payload)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn conv_spec(
+        layer_id: u32,
+        variant: u8,
+        in_channels: u32,
+        out_channels: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Self {
+        let mut payload = Vec::with_capacity(40);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, in_channels);
+        push_u32(&mut payload, out_channels);
+        push_u32(&mut payload, kernel_h);
+        push_u32(&mut payload, kernel_w);
+        push_option_u32(&mut payload, stride_h);
+        push_option_u32(&mut payload, stride_w);
+        push_option_u32(&mut payload, padding_h);
+        push_option_u32(&mut payload, padding_w);
+        Self::from_payload(layer_id, LAYER_CONV, variant, 0, payload)
+    }
+
+    fn pool1d_spec(
+        layer_id: u32,
+        variant: u8,
+        kernel: u32,
+        stride: Option<u32>,
+        padding: Option<u32>,
+    ) -> Self {
+        let mut payload = Vec::with_capacity(18);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, kernel);
+        push_option_u32(&mut payload, stride);
+        push_option_u32(&mut payload, padding);
+        Self::from_payload(layer_id, LAYER_POOL, variant, 0, payload)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn pool2d_spec(
+        layer_id: u32,
+        variant: u8,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Self {
+        let mut payload = Vec::with_capacity(32);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, kernel_h);
+        push_u32(&mut payload, kernel_w);
+        push_option_u32(&mut payload, stride_h);
+        push_option_u32(&mut payload, stride_w);
+        push_option_u32(&mut payload, padding_h);
+        push_option_u32(&mut payload, padding_w);
+        Self::from_payload(layer_id, LAYER_POOL, variant, 0, payload)
+    }
+
+    fn shift_spec(layer_id: u32, variant: u8, shift_size: u32) -> Self {
+        let mut payload = Vec::with_capacity(8);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, shift_size);
+        Self::from_payload(layer_id, LAYER_SHIFT, variant, 0, payload)
+    }
+
     pub(crate) fn header(&self) -> PacketHeader {
         PacketHeader {
             opcode: OP_INIT,
@@ -101,6 +249,111 @@ impl AgentLayerSpec {
         Self::id_only(layer_id, LAYER_ACTIVATION, ACT_TANH)
     }
 
+    #[wasm_bindgen(js_name = hardSwish)]
+    pub fn hard_swish(layer_id: u32) -> AgentLayerSpec {
+        Self::id_only(layer_id, LAYER_ACTIVATION, ACT_HARDSWISH)
+    }
+
+    #[wasm_bindgen(js_name = leakyRelu)]
+    pub fn leaky_relu(layer_id: u32, negative_slope: f64) -> Result<AgentLayerSpec, String> {
+        validate_finite(negative_slope, "AgentLayerSpec.leakyRelu")?;
+        if negative_slope < 0.0 {
+            return Err(format!(
+                "AgentLayerSpec.leakyRelu: negative_slope must be >= 0, got {negative_slope}"
+            ));
+        }
+        let mut payload = Vec::with_capacity(13);
+        push_u32(&mut payload, layer_id);
+        push_option_f64(&mut payload, Some(negative_slope));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_ACTIVATION,
+            ACT_LEAKYRELU,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = prelu)]
+    pub fn prelu(
+        layer_id: u32,
+        num_parameters: u32,
+        alpha: f64,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(num_parameters, "AgentLayerSpec.prelu.num_parameters")?;
+        validate_finite(alpha, "AgentLayerSpec.prelu.alpha")?;
+        let mut payload = Vec::with_capacity(18);
+        push_u32(&mut payload, layer_id);
+        push_option_u32(&mut payload, Some(num_parameters));
+        push_option_f64(&mut payload, Some(alpha));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_ACTIVATION,
+            ACT_PRELU,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = swiGlu)]
+    pub fn swi_glu(
+        layer_id: u32,
+        d_input: u32,
+        d_output: u32,
+        bias: bool,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(d_input, "AgentLayerSpec.swiGlu.d_input")?;
+        validate_positive(d_output, "AgentLayerSpec.swiGlu.d_output")?;
+        let mut payload = Vec::with_capacity(17);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, d_input);
+        push_u32(&mut payload, d_output);
+        push_option_u32(&mut payload, Some(u32::from(bias)));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_ACTIVATION,
+            ACT_SWIGLU,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = hardSigmoid)]
+    pub fn hard_sigmoid(
+        layer_id: u32,
+        alpha: f64,
+        beta: f64,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_finite(alpha, "AgentLayerSpec.hardSigmoid.alpha")?;
+        validate_finite(beta, "AgentLayerSpec.hardSigmoid.beta")?;
+        let mut payload = Vec::with_capacity(22);
+        push_u32(&mut payload, layer_id);
+        push_option_f64(&mut payload, Some(alpha));
+        push_option_f64(&mut payload, Some(beta));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_ACTIVATION,
+            ACT_HARDSIGMOID,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = softplus)]
+    pub fn softplus(layer_id: u32, beta: f64) -> Result<AgentLayerSpec, String> {
+        validate_positive_f64(beta, "AgentLayerSpec.softplus.beta")?;
+        let mut payload = Vec::with_capacity(13);
+        push_u32(&mut payload, layer_id);
+        push_option_f64(&mut payload, Some(beta));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_ACTIVATION,
+            ACT_SOFTPLUS,
+            0,
+            payload,
+        ))
+    }
+
     #[wasm_bindgen(js_name = mish)]
     pub fn mish(layer_id: u32) -> AgentLayerSpec {
         Self::id_only(layer_id, LAYER_ACTIVATION, ACT_MISH)
@@ -128,11 +381,8 @@ impl AgentLayerSpec {
         out_dim: u32,
         bias: bool,
     ) -> Result<AgentLayerSpec, String> {
-        if in_dim == 0 || out_dim == 0 {
-            return Err(format!(
-                "AgentLayerSpec.linear: in_dim and out_dim must be > 0, got {in_dim} and {out_dim}"
-            ));
-        }
+        validate_positive(in_dim, "AgentLayerSpec.linear.in_dim")?;
+        validate_positive(out_dim, "AgentLayerSpec.linear.out_dim")?;
         let mut payload = Vec::with_capacity(13);
         push_u32(&mut payload, layer_id);
         push_u32(&mut payload, in_dim);
@@ -143,6 +393,434 @@ impl AgentLayerSpec {
             LAYER_LINEAR,
             VARIANT_NONE,
             if bias { FLAG_BIAS } else { 0 },
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = batchNorm)]
+    pub fn batch_norm(
+        layer_id: u32,
+        num_features: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(num_features, "AgentLayerSpec.batchNorm.num_features")?;
+        validate_optional_epsilon(epsilon, "AgentLayerSpec.batchNorm.epsilon")?;
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_BATCH,
+            num_features,
+            epsilon,
+            None,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = groupNorm)]
+    pub fn group_norm(
+        layer_id: u32,
+        num_groups: u32,
+        num_channels: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(num_groups, "AgentLayerSpec.groupNorm.num_groups")?;
+        validate_positive(num_channels, "AgentLayerSpec.groupNorm.num_channels")?;
+        if !num_channels.is_multiple_of(num_groups) {
+            return Err(format!(
+                "AgentLayerSpec.groupNorm: num_channels ({num_channels}) must be divisible by num_groups ({num_groups})"
+            ));
+        }
+        validate_optional_epsilon(epsilon, "AgentLayerSpec.groupNorm.epsilon")?;
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_GROUP,
+            num_channels,
+            epsilon,
+            Some((num_groups, num_channels)),
+        ))
+    }
+
+    #[wasm_bindgen(js_name = instanceNorm)]
+    pub fn instance_norm(
+        layer_id: u32,
+        num_channels: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(num_channels, "AgentLayerSpec.instanceNorm.num_channels")?;
+        validate_optional_epsilon(epsilon, "AgentLayerSpec.instanceNorm.epsilon")?;
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_INSTANCE,
+            num_channels,
+            epsilon,
+            None,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = layerNorm)]
+    pub fn layer_norm(
+        layer_id: u32,
+        size: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(size, "AgentLayerSpec.layerNorm.size")?;
+        validate_optional_epsilon(epsilon, "AgentLayerSpec.layerNorm.epsilon")?;
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_LAYER,
+            size,
+            epsilon,
+            None,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = rmsNorm)]
+    pub fn rms_norm(
+        layer_id: u32,
+        size: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(size, "AgentLayerSpec.rmsNorm.size")?;
+        validate_optional_epsilon(epsilon, "AgentLayerSpec.rmsNorm.epsilon")?;
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_RMS,
+            size,
+            epsilon,
+            None,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = conv1d)]
+    pub fn conv1d(
+        layer_id: u32,
+        in_channels: u32,
+        out_channels: u32,
+        kernel_size: u32,
+        stride: Option<u32>,
+        padding: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(in_channels, "AgentLayerSpec.conv1d.in_channels")?;
+        validate_positive(out_channels, "AgentLayerSpec.conv1d.out_channels")?;
+        validate_positive(kernel_size, "AgentLayerSpec.conv1d.kernel_size")?;
+        validate_optional_positive(stride, "AgentLayerSpec.conv1d.stride")?;
+        Ok(Self::conv_spec(
+            layer_id,
+            CONV_CONV1D,
+            in_channels,
+            out_channels,
+            kernel_size,
+            1,
+            stride,
+            None,
+            padding,
+            None,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = conv2d)]
+    pub fn conv2d(
+        layer_id: u32,
+        in_channels: u32,
+        out_channels: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(in_channels, "AgentLayerSpec.conv2d.in_channels")?;
+        validate_positive(out_channels, "AgentLayerSpec.conv2d.out_channels")?;
+        validate_positive(kernel_h, "AgentLayerSpec.conv2d.kernel_h")?;
+        validate_positive(kernel_w, "AgentLayerSpec.conv2d.kernel_w")?;
+        validate_pair_presence(stride_h, stride_w, "AgentLayerSpec.conv2d.stride")?;
+        validate_optional_positive(stride_h, "AgentLayerSpec.conv2d.stride_h")?;
+        validate_optional_positive(stride_w, "AgentLayerSpec.conv2d.stride_w")?;
+        validate_pair_presence(padding_h, padding_w, "AgentLayerSpec.conv2d.padding")?;
+        Ok(Self::conv_spec(
+            layer_id,
+            CONV_CONV2D,
+            in_channels,
+            out_channels,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = convTranspose2d)]
+    pub fn conv_transpose2d(
+        layer_id: u32,
+        in_channels: u32,
+        out_channels: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(in_channels, "AgentLayerSpec.convTranspose2d.in_channels")?;
+        validate_positive(out_channels, "AgentLayerSpec.convTranspose2d.out_channels")?;
+        validate_positive(kernel_h, "AgentLayerSpec.convTranspose2d.kernel_h")?;
+        validate_positive(kernel_w, "AgentLayerSpec.convTranspose2d.kernel_w")?;
+        validate_pair_presence(
+            stride_h,
+            stride_w,
+            "AgentLayerSpec.convTranspose2d.stride",
+        )?;
+        validate_optional_positive(stride_h, "AgentLayerSpec.convTranspose2d.stride_h")?;
+        validate_optional_positive(stride_w, "AgentLayerSpec.convTranspose2d.stride_w")?;
+        validate_pair_presence(
+            padding_h,
+            padding_w,
+            "AgentLayerSpec.convTranspose2d.padding",
+        )?;
+        Ok(Self::conv_spec(
+            layer_id,
+            CONV_CONVTRANSPOSE2D,
+            in_channels,
+            out_channels,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = embedding)]
+    pub fn embedding(
+        layer_id: u32,
+        vocab_size: u32,
+        d_model: u32,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(vocab_size, "AgentLayerSpec.embedding.vocab_size")?;
+        validate_positive(d_model, "AgentLayerSpec.embedding.d_model")?;
+        let mut payload = Vec::with_capacity(12);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, vocab_size);
+        push_u32(&mut payload, d_model);
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_EMBEDDING,
+            VARIANT_NONE,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = maxPool1d)]
+    pub fn max_pool1d(
+        layer_id: u32,
+        kernel: u32,
+        stride: Option<u32>,
+        padding: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(kernel, "AgentLayerSpec.maxPool1d.kernel")?;
+        validate_optional_positive(stride, "AgentLayerSpec.maxPool1d.stride")?;
+        Ok(Self::pool1d_spec(
+            layer_id,
+            POOL_MAXPOOL1D,
+            kernel,
+            stride,
+            padding,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = maxPool2d)]
+    pub fn max_pool2d(
+        layer_id: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(kernel_h, "AgentLayerSpec.maxPool2d.kernel_h")?;
+        validate_positive(kernel_w, "AgentLayerSpec.maxPool2d.kernel_w")?;
+        validate_pair_presence(stride_h, stride_w, "AgentLayerSpec.maxPool2d.stride")?;
+        validate_optional_positive(stride_h, "AgentLayerSpec.maxPool2d.stride_h")?;
+        validate_optional_positive(stride_w, "AgentLayerSpec.maxPool2d.stride_w")?;
+        validate_pair_presence(padding_h, padding_w, "AgentLayerSpec.maxPool2d.padding")?;
+        Ok(Self::pool2d_spec(
+            layer_id,
+            POOL_MAXPOOL2D,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = avgPool1d)]
+    pub fn avg_pool1d(
+        layer_id: u32,
+        kernel: u32,
+        stride: Option<u32>,
+        padding: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(kernel, "AgentLayerSpec.avgPool1d.kernel")?;
+        validate_optional_positive(stride, "AgentLayerSpec.avgPool1d.stride")?;
+        Ok(Self::pool1d_spec(
+            layer_id,
+            POOL_AVGPOOL1D,
+            kernel,
+            stride,
+            padding,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = avgPool2d)]
+    pub fn avg_pool2d(
+        layer_id: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(kernel_h, "AgentLayerSpec.avgPool2d.kernel_h")?;
+        validate_positive(kernel_w, "AgentLayerSpec.avgPool2d.kernel_w")?;
+        validate_pair_presence(stride_h, stride_w, "AgentLayerSpec.avgPool2d.stride")?;
+        validate_optional_positive(stride_h, "AgentLayerSpec.avgPool2d.stride_h")?;
+        validate_optional_positive(stride_w, "AgentLayerSpec.avgPool2d.stride_w")?;
+        validate_pair_presence(padding_h, padding_w, "AgentLayerSpec.avgPool2d.padding")?;
+        Ok(Self::pool2d_spec(
+            layer_id,
+            POOL_AVGPOOL2D,
+            kernel_h,
+            kernel_w,
+            stride_h,
+            stride_w,
+            padding_h,
+            padding_w,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = adaptiveAvgPool2d)]
+    pub fn adaptive_avg_pool2d(
+        layer_id: u32,
+        output_h: u32,
+        output_w: u32,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(output_h, "AgentLayerSpec.adaptiveAvgPool2d.output_h")?;
+        validate_positive(output_w, "AgentLayerSpec.adaptiveAvgPool2d.output_w")?;
+        let mut payload = Vec::with_capacity(12);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, output_h);
+        push_u32(&mut payload, output_w);
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_POOL,
+            POOL_ADAPTIVEAVGPOOL2D,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = shiftUp)]
+    pub fn shift_up(layer_id: u32, shift_size: u32) -> AgentLayerSpec {
+        Self::shift_spec(layer_id, SHIFT_UP, shift_size)
+    }
+
+    #[wasm_bindgen(js_name = shiftDown)]
+    pub fn shift_down(layer_id: u32, shift_size: u32) -> AgentLayerSpec {
+        Self::shift_spec(layer_id, SHIFT_DOWN, shift_size)
+    }
+
+    #[wasm_bindgen(js_name = shiftLeft)]
+    pub fn shift_left(layer_id: u32, shift_size: u32) -> AgentLayerSpec {
+        Self::shift_spec(layer_id, SHIFT_LEFT, shift_size)
+    }
+
+    #[wasm_bindgen(js_name = shiftRight)]
+    pub fn shift_right(layer_id: u32, shift_size: u32) -> AgentLayerSpec {
+        Self::shift_spec(layer_id, SHIFT_RIGHT, shift_size)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = ghost)]
+    pub fn ghost(
+        layer_id: u32,
+        in_channels: u32,
+        out_channels: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        ratio: u32,
+        stride_h: Option<u32>,
+        stride_w: Option<u32>,
+        padding_h: Option<u32>,
+        padding_w: Option<u32>,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(in_channels, "AgentLayerSpec.ghost.in_channels")?;
+        validate_positive(out_channels, "AgentLayerSpec.ghost.out_channels")?;
+        validate_positive(kernel_h, "AgentLayerSpec.ghost.kernel_h")?;
+        validate_positive(kernel_w, "AgentLayerSpec.ghost.kernel_w")?;
+        validate_positive(ratio, "AgentLayerSpec.ghost.ratio")?;
+        if !out_channels.is_multiple_of(ratio) {
+            return Err(format!(
+                "AgentLayerSpec.ghost: out_channels ({out_channels}) must be divisible by ratio ({ratio})"
+            ));
+        }
+        validate_pair_presence(stride_h, stride_w, "AgentLayerSpec.ghost.stride")?;
+        validate_optional_positive(stride_h, "AgentLayerSpec.ghost.stride_h")?;
+        validate_optional_positive(stride_w, "AgentLayerSpec.ghost.stride_w")?;
+        validate_pair_presence(padding_h, padding_w, "AgentLayerSpec.ghost.padding")?;
+
+        let mut payload = Vec::with_capacity(45);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, in_channels);
+        push_u32(&mut payload, out_channels);
+        push_u32(&mut payload, kernel_h);
+        push_u32(&mut payload, kernel_w);
+        push_option_u32(&mut payload, Some(ratio));
+        push_option_u32(&mut payload, stride_h);
+        push_option_u32(&mut payload, stride_w);
+        push_option_u32(&mut payload, padding_h);
+        push_option_u32(&mut payload, padding_w);
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_GHOST,
+            VARIANT_NONE,
+            0,
+            payload,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = seBlock)]
+    pub fn se_block(
+        layer_id: u32,
+        channels: u32,
+        reduction: u32,
+    ) -> Result<AgentLayerSpec, String> {
+        validate_positive(channels, "AgentLayerSpec.seBlock.channels")?;
+        validate_positive(reduction, "AgentLayerSpec.seBlock.reduction")?;
+        if channels < reduction {
+            return Err(format!(
+                "AgentLayerSpec.seBlock: channels ({channels}) must be >= reduction ({reduction})"
+            ));
+        }
+        let mut payload = Vec::with_capacity(13);
+        push_u32(&mut payload, layer_id);
+        push_u32(&mut payload, channels);
+        push_option_u32(&mut payload, Some(reduction));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_SEBLOCK,
+            VARIANT_NONE,
+            0,
             payload,
         ))
     }
@@ -350,7 +1028,20 @@ pub(crate) fn capability_manifest() -> String {
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
-            "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\"]}},",
+            "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
+            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
+            "\"constructor_signatures\":{{",
+            "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
+            "\"batchNorm\":\"batchNorm(id,num_features,epsilon?)\",",
+            "\"groupNorm\":\"groupNorm(id,num_groups,num_channels,epsilon?)\",",
+            "\"conv1d\":\"conv1d(id,in_ch,out_ch,kernel,stride?,padding?)\",",
+            "\"conv2d\":\"conv2d(id,in_ch,out_ch,kh,kw,sh?,sw?,ph?,pw?)\",",
+            "\"embedding\":\"embedding(id,vocab_size,d_model)\",",
+            "\"maxPool2d\":\"maxPool2d(id,kh,kw,sh?,sw?,ph?,pw?)\",",
+            "\"ghost\":\"ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)\",",
+            "\"seBlock\":\"seBlock(id,channels,reduction)\",",
+            "\"swiGlu\":\"swiGlu(id,d_input,d_output,bias)\"}},",
+            "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\"]}},",
             "\"optimizer\":{{\"entry\":\"EsOptimizer\",\"strategies\":{{\"openes\":0,\"mu_lambda\":1}},\"lifecycle\":\"ask->tell\"}},",
             "\"recommended_flow\":[\"discover\",\"construct_reference\",\"run_external_candidate\",\"verify\",\"revise_or_accept\"],",
             "\"layers\":{{",
@@ -427,7 +1118,10 @@ pub fn agent_capabilities() -> String {
 #[cfg(test)]
 mod tests {
     use super::{AgentGraphBuilder, AgentLayerSpec, capability_manifest};
-    use crate::protocol::{LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_NORM};
+    use crate::protocol::{
+        LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST,
+        LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
+    };
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
 
@@ -442,6 +1136,8 @@ mod tests {
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));
+        assert!(manifest.contains("\"constructor_signatures\":{\"linear\""));
+        assert!(manifest.contains("\"ghost\":\"ghost(id,in_ch,out_ch"));
         assert!(manifest.contains("\"lifecycle\":\"ask->tell\""));
     }
 
@@ -489,6 +1185,74 @@ mod tests {
         let b = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
         let output = registry.forward_binary_layer(9, &a, &b).unwrap();
         assert_eq!(output.to_array(), vec![4.0, 6.0]);
+    }
+
+    #[test]
+    fn extended_typed_specs_initialize_all_layer_families() {
+        let mut registry = LayerRegistry::new();
+        let specs = vec![
+            AgentLayerSpec::hard_swish(20),
+            AgentLayerSpec::leaky_relu(21, 0.01).unwrap(),
+            AgentLayerSpec::prelu(22, 1, 0.25).unwrap(),
+            AgentLayerSpec::swi_glu(23, 2, 2, true).unwrap(),
+            AgentLayerSpec::hard_sigmoid(24, 0.2, 0.5).unwrap(),
+            AgentLayerSpec::softplus(25, 1.0).unwrap(),
+            AgentLayerSpec::batch_norm(30, 2, Some(1e-5)).unwrap(),
+            AgentLayerSpec::group_norm(31, 1, 2, Some(1e-5)).unwrap(),
+            AgentLayerSpec::instance_norm(32, 2, Some(1e-5)).unwrap(),
+            AgentLayerSpec::layer_norm(33, 2, Some(1e-5)).unwrap(),
+            AgentLayerSpec::rms_norm(34, 2, Some(1e-5)).unwrap(),
+            AgentLayerSpec::conv1d(40, 1, 1, 1, None, None).unwrap(),
+            AgentLayerSpec::conv2d(41, 1, 1, 1, 1, None, None, None, None).unwrap(),
+            AgentLayerSpec::conv_transpose2d(42, 1, 1, 1, 1, None, None, None, None)
+                .unwrap(),
+            AgentLayerSpec::embedding(50, 4, 2).unwrap(),
+            AgentLayerSpec::max_pool1d(60, 1, None, None).unwrap(),
+            AgentLayerSpec::max_pool2d(61, 1, 1, None, None, None, None).unwrap(),
+            AgentLayerSpec::avg_pool1d(62, 1, None, None).unwrap(),
+            AgentLayerSpec::avg_pool2d(63, 1, 1, None, None, None, None).unwrap(),
+            AgentLayerSpec::adaptive_avg_pool2d(64, 1, 1).unwrap(),
+            AgentLayerSpec::shift_up(70, 1),
+            AgentLayerSpec::shift_down(71, 1),
+            AgentLayerSpec::shift_left(72, 1),
+            AgentLayerSpec::shift_right(73, 1),
+            AgentLayerSpec::ghost(80, 1, 2, 1, 1, 2, None, None, None, None).unwrap(),
+            AgentLayerSpec::se_block(81, 2, 1).unwrap(),
+        ];
+
+        for spec in &specs {
+            registry.init_agent_layer(spec).unwrap();
+            assert!(registry.layer_exists(spec.layer_type(), spec.layer_id()));
+        }
+
+        assert!(registry.layer_exists(LAYER_NORM, 30));
+        assert!(registry.layer_exists(LAYER_CONV, 41));
+        assert!(registry.layer_exists(LAYER_EMBEDDING, 50));
+        assert!(registry.layer_exists(LAYER_POOL, 61));
+        assert!(registry.layer_exists(LAYER_SHIFT, 70));
+        assert!(registry.layer_exists(LAYER_GHOST, 80));
+        assert!(registry.layer_exists(LAYER_SEBLOCK, 81));
+    }
+
+    #[test]
+    fn extended_facade_rejects_invalid_configs_before_registry_init() {
+        assert!(AgentLayerSpec::prelu(1, 0, 0.25).is_err());
+        assert!(AgentLayerSpec::swi_glu(1, 0, 2, true).is_err());
+        assert!(AgentLayerSpec::softplus(1, 0.0).is_err());
+        assert!(AgentLayerSpec::batch_norm(1, 0, None).is_err());
+        assert!(AgentLayerSpec::group_norm(1, 0, 4, None).is_err());
+        assert!(AgentLayerSpec::group_norm(1, 3, 4, None).is_err());
+        assert!(AgentLayerSpec::rms_norm(1, 4, Some(f64::NAN)).is_err());
+        assert!(AgentLayerSpec::conv1d(1, 0, 1, 3, None, None).is_err());
+        assert!(
+            AgentLayerSpec::conv2d(1, 1, 1, 3, 3, Some(1), None, None, None).is_err()
+        );
+        assert!(AgentLayerSpec::embedding(1, 0, 4).is_err());
+        assert!(AgentLayerSpec::max_pool1d(1, 0, None, None).is_err());
+        assert!(AgentLayerSpec::adaptive_avg_pool2d(1, 0, 1).is_err());
+        assert!(AgentLayerSpec::ghost(1, 1, 4, 3, 3, 0, None, None, None, None).is_err());
+        assert!(AgentLayerSpec::ghost(1, 1, 5, 3, 3, 2, None, None, None, None).is_err());
+        assert!(AgentLayerSpec::se_block(1, 4, 8).is_err());
     }
 
     #[test]
