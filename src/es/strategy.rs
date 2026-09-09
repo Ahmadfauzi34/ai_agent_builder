@@ -48,7 +48,19 @@ impl EsStrategy for OpenEs {
     }
 
     fn tell(&mut self, fitness: &[f64]) {
-        debug_assert_eq!(fitness.len(), self.half * 2);
+        let expected = self.half.saturating_mul(2);
+        if self.half == 0
+            || fitness.len() != expected
+            || self.eps.len() != self.half
+            || self.eps.iter().any(|e| e.len() != self.dim)
+            || fitness.iter().any(|v| !v.is_finite())
+            || !self.sigma.is_finite()
+            || self.sigma <= 0.0
+            || !self.lr.is_finite()
+        {
+            return;
+        }
+
         let (m, s) = super::diag::mean_std(fitness);
         let std = if s > 1e-8 { s } else { 1e-8 };
         let centered: Vec<f64> = fitness.iter().map(|&r| (r - m) / std).collect();
@@ -59,6 +71,10 @@ impl EsStrategy for OpenEs {
             for d in 0..self.dim { g[d] += diff * self.eps[j][d] as f64; }
         }
         for d in 0..self.dim { self.mean[d] += ((self.lr as f64) * (g[d] / denom)) as f32; }
+
+        // One ask batch may be consumed only once. Invalid tell calls above do not consume it,
+        // so callers can correct the fitness vector and retry safely.
+        self.eps.clear();
     }
 
     fn mean(&self) -> Vec<f32> { self.mean.clone() }
@@ -90,6 +106,11 @@ impl EsStrategy for MuLambda {
     fn lr(&self) -> f32 { 0.0 } // tidak ada lr eksplisit; dilaporkan 0 supaya JSON seragam
 
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
+        if self.mu == 0 || self.parents.len() != self.mu || !self.sigma.is_finite() {
+            self.last_children.clear();
+            return Vec::new();
+        }
+
         let mut cands = Vec::with_capacity(self.lambda);
         for i in 0..self.lambda {
             let p = &self.parents[i % self.mu];
@@ -101,11 +122,19 @@ impl EsStrategy for MuLambda {
     }
 
     fn tell(&mut self, fitness: &[f64]) {
-        debug_assert_eq!(fitness.len(), self.lambda);
+        if fitness.len() != self.lambda
+            || self.last_children.len() != self.lambda
+            || self.last_children.iter().any(|c| c.len() != self.dim)
+            || fitness.iter().any(|v| !v.is_finite())
+        {
+            return;
+        }
+
         let mut pairs: Vec<(f64, Vec<f32>)> =
             fitness.iter().copied().zip(self.last_children.iter().cloned()).collect();
         pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(core::cmp::Ordering::Equal)); // desc
         self.parents = pairs.into_iter().take(self.mu).map(|(_, c)| c).collect();
+        self.last_children.clear();
     }
 
     fn mean(&self) -> Vec<f32> {
@@ -140,4 +169,96 @@ impl EsStrategy for Strategy {
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> { match self { Strategy::OpenEs(s) => s.ask(rng), Strategy::MuLambda(s) => s.ask(rng) } }
     fn tell(&mut self, fitness: &[f64]) { match self { Strategy::OpenEs(s) => s.tell(fitness), Strategy::MuLambda(s) => s.tell(fitness) } }
     fn mean(&self) -> Vec<f32> { match self { Strategy::OpenEs(s) => s.mean(), Strategy::MuLambda(s) => s.mean() } }
-        }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EsStrategy, MuLambda, OpenEs};
+    use crate::es::rng::Rng;
+
+    #[test]
+    fn openes_tell_before_ask_is_noop() {
+        let mut rng = Rng::new(7);
+        let mut strategy = OpenEs::new(3, 2, 0.2, 0.1, &mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[1.0, 0.0, -1.0, -2.0]);
+        assert_eq!(strategy.mean(), before);
+    }
+
+    #[test]
+    fn openes_non_finite_fitness_does_not_mutate_or_consume_batch() {
+        let mut rng = Rng::new(8);
+        let mut strategy = OpenEs::new(2, 2, 0.2, 0.1, &mut rng);
+        let _ = strategy.ask(&mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[1.0, f64::NAN, 0.0, -1.0]);
+        assert_eq!(strategy.mean(), before);
+        assert_eq!(strategy.eps.len(), 2);
+
+        strategy.tell(&[2.0, -2.0, 1.0, -1.0]);
+        assert_ne!(strategy.mean(), before);
+        assert!(strategy.eps.is_empty());
+    }
+
+    #[test]
+    fn openes_valid_batch_is_single_use() {
+        let mut rng = Rng::new(9);
+        let mut strategy = OpenEs::new(2, 2, 0.2, 0.1, &mut rng);
+        let _ = strategy.ask(&mut rng);
+        strategy.tell(&[2.0, -2.0, 1.0, -1.0]);
+        let after_first = strategy.mean();
+        strategy.tell(&[2.0, -2.0, 1.0, -1.0]);
+        assert_eq!(strategy.mean(), after_first);
+    }
+
+    #[test]
+    fn openes_zero_half_tell_is_noop() {
+        let mut rng = Rng::new(10);
+        let mut strategy = OpenEs::new(2, 0, 0.2, 0.1, &mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[]);
+        assert_eq!(strategy.mean(), before);
+        assert!(strategy.mean().iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn mu_lambda_tell_before_ask_is_noop() {
+        let mut rng = Rng::new(11);
+        let mut strategy = MuLambda::new(3, 2, 4, 0.2, &mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
+        assert_eq!(strategy.mean(), before);
+    }
+
+    #[test]
+    fn mu_lambda_non_finite_fitness_does_not_mutate_or_consume_batch() {
+        let mut rng = Rng::new(12);
+        let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
+        let _ = strategy.ask(&mut rng);
+        let before = strategy.mean();
+        strategy.tell(&[4.0, f64::INFINITY, 2.0, 1.0]);
+        assert_eq!(strategy.mean(), before);
+        assert_eq!(strategy.last_children.len(), 4);
+
+        strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
+        assert!(strategy.last_children.is_empty());
+    }
+
+    #[test]
+    fn mu_lambda_valid_batch_is_single_use() {
+        let mut rng = Rng::new(13);
+        let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
+        let _ = strategy.ask(&mut rng);
+        strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
+        let after_first = strategy.mean();
+        strategy.tell(&[1.0, 2.0, 3.0, 4.0]);
+        assert_eq!(strategy.mean(), after_first);
+    }
+
+    #[test]
+    fn mu_lambda_zero_parent_configuration_does_not_panic_on_ask() {
+        let mut rng = Rng::new(14);
+        let mut strategy = MuLambda::new(2, 0, 4, 0.2, &mut rng);
+        assert!(strategy.ask(&mut rng).is_empty());
+    }
+}
