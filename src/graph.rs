@@ -1,4 +1,5 @@
 use wasm_bindgen::prelude::*;
+use crate::coprocessor::verify_vectors_report;
 use crate::protocol::{PayloadCursor, LAYER_BINARY};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
@@ -151,6 +152,21 @@ impl CompiledGraph {
         slots[self.out_slot as usize]
             .take()
             .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
+    }
+
+    /// Run the graph inside the Burn-backed WASM runtime and compare that trusted
+    /// reference with a flat result produced by an external implementation.
+    #[wasm_bindgen(js_name = verifyFlat)]
+    pub fn verify_flat(
+        &self,
+        registry: &LayerRegistry,
+        input: &WasmTensor,
+        candidate: &[f32],
+        abs_tol: f64,
+        rel_tol: f64,
+    ) -> Result<String, String> {
+        let reference = self.run(registry, input)?.to_array();
+        verify_vectors_report(&reference, candidate, abs_tol, rel_tol)
     }
 
     #[wasm_bindgen(js_name = numSteps)]
