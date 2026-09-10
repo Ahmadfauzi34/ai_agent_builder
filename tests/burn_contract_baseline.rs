@@ -6,9 +6,8 @@ use burn_research::{WasmBackend, WasmTensor};
 
 #[test]
 fn ndarray_backend_is_explicitly_non_autodiff() {
-    let device = <WasmBackend as Backend>::Device::default();
     assert!(
-        !<WasmBackend as Backend>::ad_enabled(&device),
+        !<WasmBackend as Backend>::ad_enabled(),
         "NdArray baseline must remain non-autodiff; enabling AD changes Burn module semantics and requires a contract audit"
     );
 }
@@ -41,9 +40,10 @@ fn rejected_batch_norm_shape_does_not_mutate_module_state() {
     let state_before = registry.get_layer_state(8, LAYER_NORM).unwrap();
     let wrong_channels = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
 
-    let err = registry
-        .forward_layer(8, LAYER_NORM, &wrong_channels)
-        .unwrap_err();
+    let err = match registry.forward_layer(8, LAYER_NORM, &wrong_channels) {
+        Ok(_) => panic!("BatchNorm unexpectedly accepted a channel-mismatched input"),
+        Err(err) => err,
+    };
     assert!(err.contains("expected axis 1 size 2"));
 
     let state_after = registry.get_layer_state(8, LAYER_NORM).unwrap();
