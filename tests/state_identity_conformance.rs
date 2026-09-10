@@ -1,7 +1,8 @@
 use burn_research::agent::AgentLayerSpec;
 use burn_research::layers::linear::WasmLinear;
+use burn_research::layers::norm::WasmNorm;
 use burn_research::protocol::{
-    LAYER_BINARY, LAYER_LINEAR, LAYER_POOL, LAYER_SHIFT,
+    LAYER_BINARY, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SHIFT,
 };
 use burn_research::registry::LayerRegistry;
 use burn_research::WasmTensor;
@@ -79,6 +80,76 @@ fn same_config_linear_state_load_preserves_init_identity_and_structure() {
 
     let input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
     assert!(registry.forward_layer(71, LAYER_LINEAR, &input).is_ok());
+}
+
+#[test]
+fn cross_variant_norm_state_must_fail_closed_without_panicking_or_mutating() {
+    let foreign = WasmNorm::new_batch_norm(2, None);
+    let foreign_state = foreign.get_state().unwrap();
+
+    let spec = AgentLayerSpec::layer_norm(72, 2, None).unwrap();
+    let mut registry = LayerRegistry::new();
+    registry.init_agent_layer(&spec).unwrap();
+
+    let fingerprint_before = registry.layer_init_fingerprint(LAYER_NORM, 72).unwrap();
+    let state_before = registry.get_layer_state(72, LAYER_NORM).unwrap();
+    let layout_before = registry.weight_layout(72, LAYER_NORM).unwrap();
+    let params_before = registry.total_params();
+
+    let call = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        registry.load_layer_state(72, LAYER_NORM, &foreign_state)
+    }));
+    assert!(call.is_ok(), "foreign valid Norm record must not panic");
+    assert!(
+        call.unwrap().is_err(),
+        "BatchNorm state must not load into a live LayerNorm"
+    );
+    assert_eq!(
+        registry.layer_init_fingerprint(LAYER_NORM, 72).unwrap(),
+        fingerprint_before
+    );
+    assert_eq!(registry.get_layer_state(72, LAYER_NORM).unwrap(), state_before);
+    assert_eq!(registry.weight_layout(72, LAYER_NORM).unwrap(), layout_before);
+    assert_eq!(registry.total_params(), params_before);
+
+    registry
+        .load_layer_state(72, LAYER_NORM, &state_before)
+        .unwrap();
+}
+
+#[test]
+fn state_decoder_rejects_trailing_bytes_without_mutating_live_layer() {
+    let spec = AgentLayerSpec::linear(73, 3, 2, true).unwrap();
+    let mut registry = LayerRegistry::new();
+    registry.init_agent_layer(&spec).unwrap();
+
+    let fingerprint_before = registry
+        .layer_init_fingerprint(LAYER_LINEAR, 73)
+        .unwrap();
+    let state_before = registry.get_layer_state(73, LAYER_LINEAR).unwrap();
+    let layout_before = registry.weight_layout(73, LAYER_LINEAR).unwrap();
+    let params_before = registry.total_params();
+
+    let mut tainted = state_before.clone();
+    tainted.extend_from_slice(&[0xAA, 0x55, 0x01]);
+
+    assert!(
+        registry
+            .load_layer_state(73, LAYER_LINEAR, &tainted)
+            .is_err(),
+        "a canonical Burn state followed by trailing bytes must be rejected"
+    );
+    assert_eq!(
+        registry.layer_init_fingerprint(LAYER_LINEAR, 73).unwrap(),
+        fingerprint_before
+    );
+    assert_eq!(registry.get_layer_state(73, LAYER_LINEAR).unwrap(), state_before);
+    assert_eq!(registry.weight_layout(73, LAYER_LINEAR).unwrap(), layout_before);
+    assert_eq!(registry.total_params(), params_before);
+
+    registry
+        .load_layer_state(73, LAYER_LINEAR, &state_before)
+        .unwrap();
 }
 
 #[test]
