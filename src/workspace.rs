@@ -176,6 +176,27 @@ impl AgentWorkspace {
         })
     }
 
+    pub(crate) fn ensure_slot_readable(&self, slot: u8, context: &str) -> Result<(), String> {
+        if u32::from(slot) >= self.num_slots {
+            return Err(format!(
+                "{context}: slot {slot} is outside workspace num_slots {}",
+                self.num_slots
+            ));
+        }
+        let key = slot.to_string();
+        let index = self
+            .find_row_index(TABLE_SLOTS, &key)
+            .ok_or_else(|| format!("{context}: slot {slot} not found"))?;
+        let state = self.rows[index].state.as_str();
+        if matches!(state, "input" | "reserved") {
+            Ok(())
+        } else {
+            Err(format!(
+                "{context}: slot {slot} is not readable while state is {state}"
+            ))
+        }
+    }
+
     fn query_rows(&self, table: &str, kind: Option<&str>, state: Option<&str>) -> String {
         let rows = self
             .rows
@@ -328,6 +349,12 @@ impl AgentWorkspace {
         let index = self
             .find_row_index(TABLE_SLOTS, &key)
             .ok_or_else(|| format!("AgentWorkspace.releaseSlot: slot {slot} not found"))?;
+        let state = self.rows[index].state.as_str();
+        if state != "reserved" {
+            return Err(format!(
+                "AgentWorkspace.releaseSlot: slot {slot} cannot transition {state}->free; expected reserved->free"
+            ));
+        }
         self.rows[index].state = "free".to_string();
         self.rows[index].value.clear();
         Ok(())
@@ -557,6 +584,50 @@ mod tests {
         workspace.release_slot(first).unwrap();
         assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
         assert_eq!(workspace.reserve_slot("other".into()).unwrap(), 1);
+    }
+
+    #[test]
+    fn double_release_is_rejected_without_mutation() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let slot = workspace.reserve_slot("temporary".into()).unwrap();
+        workspace.release_slot(slot).unwrap();
+        let before = workspace.snapshot();
+
+        let err = workspace.release_slot(slot).unwrap_err();
+        assert!(err.contains("free->free"));
+        assert_eq!(workspace.snapshot(), before);
+        assert_eq!(workspace.reserve_slot("reused".into()).unwrap(), slot);
+    }
+
+    #[test]
+    fn slot_readability_tracks_lifecycle_state() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        assert!(workspace.ensure_slot_readable(0, "test").is_ok());
+        assert!(workspace.ensure_slot_readable(1, "test").is_err());
+
+        let slot = workspace.reserve_slot("producer".into()).unwrap();
+        assert_eq!(slot, 1);
+        assert!(workspace.ensure_slot_readable(slot, "test").is_ok());
+
+        workspace.release_slot(slot).unwrap();
+        let err = workspace.ensure_slot_readable(slot, "test").unwrap_err();
+        assert!(err.contains("state is free"));
+    }
+
+    #[test]
+    fn repeated_reserve_release_has_no_capacity_drift() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+        for cycle in 0..1000 {
+            let slot = workspace.reserve_slot(format!("cycle-{cycle}")).unwrap();
+            assert_eq!(slot, 1);
+            workspace.release_slot(slot).unwrap();
+        }
+
+        assert!(workspace.snapshot().contains("\"free_slots\":3"));
+        assert_eq!(workspace.reserve_slot("a".into()).unwrap(), 1);
+        assert_eq!(workspace.reserve_slot("b".into()).unwrap(), 2);
+        assert_eq!(workspace.reserve_slot("c".into()).unwrap(), 3);
+        assert!(workspace.reserve_slot("overflow".into()).is_err());
     }
 
     #[test]
