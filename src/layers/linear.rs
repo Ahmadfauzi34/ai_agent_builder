@@ -64,11 +64,11 @@ impl WasmLinear {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .load(data.to_vec(), &device)
-            .map_err(|e| e.to_string())?;
-            
-        // PERBAIKAN: Clone dulu sebelum load_record
+        let record = crate::layers::state_record::decode_bin_record(
+            data,
+            &device,
+            "Linear loadState",
+        )?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
