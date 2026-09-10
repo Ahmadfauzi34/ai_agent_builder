@@ -105,6 +105,7 @@ fn row_json(row: &WorkspaceRow) -> String {
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct AgentWorkspace {
     num_slots: u32,
     next_layer_id: u32,
