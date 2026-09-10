@@ -30,9 +30,6 @@ jobs:
           targets: wasm32-unknown-unknown
           components: clippy
 
-      - name: Rust Cache
-        uses: Swatin/rust-cache@v2
-
       - name: Check host target
         run: cargo check --lib --verbose
 
