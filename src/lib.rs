@@ -14,6 +14,8 @@ pub mod registry;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]
+mod contract_matrix_tests;
+#[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
 mod tests;
