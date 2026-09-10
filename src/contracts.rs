@@ -16,6 +16,8 @@ pub fn agent_contract_schema_version() -> u32 {
 
 #[cfg(test)]
 mod late_failure_contract_tests;
+#[cfg(test)]
+mod transactional_init_contract_tests;
 
 #[cfg(test)]
 mod tests {
@@ -45,6 +47,14 @@ mod tests {
         ] {
             assert!(schema.contains(required), "missing contract marker: {required}");
         }
+    }
+
+    #[test]
+    fn schema_exposes_transactional_init_guarantee() {
+        let schema = agent_contract_schema();
+        assert!(schema.contains("restore_pre_call_workspace"));
+        assert!(schema.contains("destroy_newly_initialized_layer"));
+        assert!(!schema.contains("registry_post_init_rollback\":\"not_guaranteed"));
     }
 
     #[test]
