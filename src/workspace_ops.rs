@@ -77,6 +77,30 @@ fn ensure_registry_has_spec(
     Ok(())
 }
 
+fn ensure_registry_matches_spec(
+    registry: &LayerRegistry,
+    spec: &AgentLayerSpec,
+    context: &str,
+) -> Result<(), String> {
+    ensure_registry_has_spec(registry, spec, context)?;
+    let actual = registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+
+    // Build the canonical expected identity through the same registry init boundary.
+    // This avoids duplicating or exposing AgentLayerSpec's raw payload representation.
+    let mut expected_registry = LayerRegistry::new();
+    expected_registry.init_agent_layer(spec)?;
+    let expected = expected_registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+
+    if actual != expected {
+        return Err(format!(
+            "{context}: registry init identity mismatch for layer type 0x{:02X} id {}; supplied AgentLayerSpec does not match the live layer",
+            spec.layer_type(),
+            spec.layer_id()
+        ));
+    }
+    Ok(())
+}
+
 fn reserve_workspace_output_slot(
     workspace: &mut AgentWorkspace,
     builder: &AgentGraphBuilder,
@@ -100,8 +124,9 @@ pub fn workspace_capabilities() -> String {
         "\"ownership\":\"metadata_only\",",
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
+        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"metadata_only_not_canonical_orchestration\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
-        "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
+        "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"recommended_flow\":[\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"compile\",\"run\",\"verify\"]",
         "}"
@@ -110,6 +135,7 @@ pub fn workspace_capabilities() -> String {
 }
 
 /// Reconcile an already initialized unary layer into workspace metadata and graph wiring.
+/// The supplied spec must exactly match the live registry layer's validated init identity.
 #[wasm_bindgen(js_name = workspaceWireUnary)]
 pub fn workspace_wire_unary(
     workspace: &mut AgentWorkspace,
@@ -123,10 +149,10 @@ pub fn workspace_wire_unary(
         return Err("workspaceWireUnary: binary spec requires workspaceWireBinary".into());
     }
     validate_builder_slot(builder, input_slot, "workspaceWireUnary")?;
-    ensure_registry_has_spec(registry, spec, "workspaceWireUnary")?;
+    ensure_registry_matches_spec(registry, spec, "workspaceWireUnary")?;
     validate_workspace_op_label(&label, "workspaceWireUnary")?;
 
-    // Metadata reconciliation happens before graph mutation. The registry remains execution truth.
+    // Metadata reconciliation happens only after exact registry/spec identity proof.
     workspace.sync_layer(registry, spec, label)?;
     let output_slot = reserve_workspace_output_slot(
         workspace,
@@ -142,6 +168,7 @@ pub fn workspace_wire_unary(
 }
 
 /// Reconcile an already initialized binary layer into workspace metadata and graph wiring.
+/// The supplied spec must exactly match the live registry layer's validated init identity.
 #[wasm_bindgen(js_name = workspaceWireBinary)]
 pub fn workspace_wire_binary(
     workspace: &mut AgentWorkspace,
@@ -157,7 +184,7 @@ pub fn workspace_wire_binary(
     }
     validate_builder_slot(builder, left_slot, "workspaceWireBinary")?;
     validate_builder_slot(builder, right_slot, "workspaceWireBinary")?;
-    ensure_registry_has_spec(registry, spec, "workspaceWireBinary")?;
+    ensure_registry_matches_spec(registry, spec, "workspaceWireBinary")?;
     validate_workspace_op_label(&label, "workspaceWireBinary")?;
 
     workspace.sync_layer(registry, spec, label)?;
@@ -205,9 +232,9 @@ pub fn workspace_init_unary(
         return Err(err);
     }
 
-    // The reserved layer row already exists, so sync is an in-place state transition.
+    // Prove that the registry persisted the exact init identity we just supplied.
+    ensure_registry_matches_spec(registry, spec, "workspaceInitUnary")?;
     workspace.sync_layer(registry, spec, label)?;
-    // Arity/input/output are fully preflighted above; add_unary has no remaining expected failure.
     builder.add_unary(spec, input_slot, output_slot)?;
     Ok(output_slot)
 }
@@ -244,6 +271,7 @@ pub fn workspace_init_binary(
         return Err(err);
     }
 
+    ensure_registry_matches_spec(registry, spec, "workspaceInitBinary")?;
     workspace.sync_layer(registry, spec, label)?;
     builder.add_binary(spec, left_slot, right_slot, output_slot)?;
     Ok(output_slot)
@@ -278,6 +306,7 @@ mod tests {
         let manifest = workspace_capabilities();
         assert!(manifest.contains("\"state\":\"AgentWorkspace\""));
         assert!(manifest.contains("\"execution_truth\":\"LayerRegistry\""));
+        assert!(manifest.contains("exact_validated_init_fingerprint"));
         assert!(manifest.contains("workspaceInitUnary"));
         assert!(manifest.contains("raw_protocol"));
     }
@@ -363,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn manual_layer_can_reconcile_without_helper_state() {
+    fn manual_layer_can_reconcile_without_helper_state_when_identity_matches() {
         let mut workspace = AgentWorkspace::new(3).unwrap();
         let mut registry = LayerRegistry::new();
         let mut builder = AgentGraphBuilder::new(3).unwrap();
@@ -383,5 +412,53 @@ mod tests {
         let input = WasmTensor::new(&[-1.0, 4.0], &[1, 2, 1, 1]);
         assert_eq!(graph.run(&registry, &input).unwrap().to_array(), vec![0.0, 4.0]);
         assert!(workspace.get("_layers".into(), "42".into()).contains("manual-relu"));
+    }
+
+    #[test]
+    fn wire_rejects_same_id_and_type_with_different_variant() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(3).unwrap();
+        let relu = AgentLayerSpec::relu(1);
+        let sigmoid = AgentLayerSpec::sigmoid(1);
+        registry.init_agent_layer(&relu).unwrap();
+
+        let err = workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &sigmoid,
+            0,
+            "wrong-spec".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("init identity mismatch"));
+        assert_eq!(workspace.get("_layers".into(), "1".into()), "null");
+        assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
+        assert_eq!(builder.num_steps(), 0);
+    }
+
+    #[test]
+    fn wire_rejects_same_variant_with_different_config_payload() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(3).unwrap();
+        let softmax_dim_1 = AgentLayerSpec::softmax(9, 1);
+        let softmax_dim_2 = AgentLayerSpec::softmax(9, 2);
+        registry.init_agent_layer(&softmax_dim_1).unwrap();
+
+        let err = workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &softmax_dim_2,
+            0,
+            "wrong-config".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("init identity mismatch"));
+        assert_eq!(workspace.get("_layers".into(), "9".into()), "null");
+        assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
+        assert_eq!(builder.num_steps(), 0);
     }
 }
