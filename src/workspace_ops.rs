@@ -252,11 +252,11 @@ pub fn workspace_capabilities() -> String {
         "\"ownership\":\"metadata_only\",",
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
-        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"metadata_only_not_canonical_orchestration\"},",
+        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"exact_identity_metadata_only_not_canonical_orchestration\"},",
         "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
         "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
-        "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
+        "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"recommended_flow\":[\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"compile\",\"run\",\"verify\"]",
         "}"
@@ -481,12 +481,16 @@ mod tests {
         assert!(manifest.contains("\"state\":\"AgentWorkspace\""));
         assert!(manifest.contains("\"execution_truth\":\"LayerRegistry\""));
         assert!(manifest.contains("exact_validated_init_fingerprint"));
+        assert!(manifest.contains("exact_identity_metadata_only_not_canonical_orchestration"));
         assert!(manifest.contains("non_mutating_output_override"));
         assert!(manifest.contains("transactional_post_registry_rollback"));
         assert!(manifest.contains("\"slot_lifecycle\""));
         assert!(manifest.contains("reserved->free"));
         assert!(manifest.contains("error_no_mutation"));
         assert!(manifest.contains("workspaceInitUnary"));
+        assert!(manifest.contains("syncLayer"));
+        assert!(manifest.contains("forgetLayer"));
+        assert!(manifest.contains("tableNames"));
         assert!(manifest.contains("raw_protocol"));
     }
 
