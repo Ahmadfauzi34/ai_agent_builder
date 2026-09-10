@@ -8,3 +8,4 @@ pub mod binary;
 pub mod custom;
 pub mod layout;
 pub(crate) mod shape_contract;
+pub(crate) mod state_record;
