@@ -22,6 +22,16 @@ fn validate_builder_slot(
     Ok(())
 }
 
+fn validate_workspace_input_slot(
+    workspace: &AgentWorkspace,
+    builder: &AgentGraphBuilder,
+    slot: u8,
+    context: &str,
+) -> Result<(), String> {
+    validate_builder_slot(builder, slot, context)?;
+    workspace.ensure_slot_readable(slot, context)
+}
+
 fn validate_spec_is_new(
     registry: &LayerRegistry,
     spec: &AgentLayerSpec,
@@ -126,6 +136,7 @@ pub fn workspace_capabilities() -> String {
         "\"graph\":\"AgentGraphBuilder\",",
         "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"metadata_only_not_canonical_orchestration\"},",
         "\"atomicity\":{\"compile\":\"non_mutating_output_override\"},",
+        "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
@@ -149,18 +160,21 @@ pub fn workspace_wire_unary(
     if spec.layer_type() == LAYER_BINARY {
         return Err("workspaceWireUnary: binary spec requires workspaceWireBinary".into());
     }
-    validate_builder_slot(builder, input_slot, "workspaceWireUnary")?;
+    validate_workspace_input_slot(workspace, builder, input_slot, "workspaceWireUnary")?;
     ensure_registry_matches_spec(registry, spec, "workspaceWireUnary")?;
     validate_workspace_op_label(&label, "workspaceWireUnary")?;
 
-    // Metadata reconciliation happens only after exact registry/spec identity proof.
-    workspace.sync_layer(registry, spec, label)?;
     let output_slot = reserve_workspace_output_slot(
         workspace,
         builder,
         format!("layer:{}", spec.layer_id()),
         "workspaceWireUnary",
     )?;
+    // Metadata reconciliation happens only after identity proof and output reservation succeed.
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
     if let Err(err) = builder.add_unary(spec, input_slot, output_slot) {
         let _ = workspace.release_slot(output_slot);
         return Err(err);
@@ -183,18 +197,21 @@ pub fn workspace_wire_binary(
     if spec.layer_type() != LAYER_BINARY {
         return Err("workspaceWireBinary: spec is not binary".into());
     }
-    validate_builder_slot(builder, left_slot, "workspaceWireBinary")?;
-    validate_builder_slot(builder, right_slot, "workspaceWireBinary")?;
+    validate_workspace_input_slot(workspace, builder, left_slot, "workspaceWireBinary.left")?;
+    validate_workspace_input_slot(workspace, builder, right_slot, "workspaceWireBinary.right")?;
     ensure_registry_matches_spec(registry, spec, "workspaceWireBinary")?;
     validate_workspace_op_label(&label, "workspaceWireBinary")?;
 
-    workspace.sync_layer(registry, spec, label)?;
     let output_slot = reserve_workspace_output_slot(
         workspace,
         builder,
         format!("layer:{}", spec.layer_id()),
         "workspaceWireBinary",
     )?;
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
     if let Err(err) = builder.add_binary(spec, left_slot, right_slot, output_slot) {
         let _ = workspace.release_slot(output_slot);
         return Err(err);
@@ -216,7 +233,7 @@ pub fn workspace_init_unary(
     if spec.layer_type() == LAYER_BINARY {
         return Err("workspaceInitUnary: binary spec requires workspaceInitBinary".into());
     }
-    validate_builder_slot(builder, input_slot, "workspaceInitUnary")?;
+    validate_workspace_input_slot(workspace, builder, input_slot, "workspaceInitUnary")?;
     validate_spec_is_new(registry, spec, "workspaceInitUnary")?;
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitUnary")?;
     validate_workspace_op_label(&label, "workspaceInitUnary")?;
@@ -234,9 +251,18 @@ pub fn workspace_init_unary(
     }
 
     // Prove that the registry persisted the exact init identity we just supplied.
-    ensure_registry_matches_spec(registry, spec, "workspaceInitUnary")?;
-    workspace.sync_layer(registry, spec, label)?;
-    builder.add_unary(spec, input_slot, output_slot)?;
+    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitUnary") {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
+    if let Err(err) = builder.add_unary(spec, input_slot, output_slot) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
     Ok(output_slot)
 }
 
@@ -254,8 +280,8 @@ pub fn workspace_init_binary(
     if spec.layer_type() != LAYER_BINARY {
         return Err("workspaceInitBinary: spec is not binary".into());
     }
-    validate_builder_slot(builder, left_slot, "workspaceInitBinary")?;
-    validate_builder_slot(builder, right_slot, "workspaceInitBinary")?;
+    validate_workspace_input_slot(workspace, builder, left_slot, "workspaceInitBinary.left")?;
+    validate_workspace_input_slot(workspace, builder, right_slot, "workspaceInitBinary.right")?;
     validate_spec_is_new(registry, spec, "workspaceInitBinary")?;
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitBinary")?;
     validate_workspace_op_label(&label, "workspaceInitBinary")?;
@@ -272,9 +298,18 @@ pub fn workspace_init_binary(
         return Err(err);
     }
 
-    ensure_registry_matches_spec(registry, spec, "workspaceInitBinary")?;
-    workspace.sync_layer(registry, spec, label)?;
-    builder.add_binary(spec, left_slot, right_slot, output_slot)?;
+    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitBinary") {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
+    if let Err(err) = builder.add_binary(spec, left_slot, right_slot, output_slot) {
+        let _ = workspace.release_slot(output_slot);
+        return Err(err);
+    }
     Ok(output_slot)
 }
 
@@ -308,6 +343,9 @@ mod tests {
         assert!(manifest.contains("\"execution_truth\":\"LayerRegistry\""));
         assert!(manifest.contains("exact_validated_init_fingerprint"));
         assert!(manifest.contains("non_mutating_output_override"));
+        assert!(manifest.contains("\"slot_lifecycle\""));
+        assert!(manifest.contains("reserved->free"));
+        assert!(manifest.contains("error_no_mutation"));
         assert!(manifest.contains("workspaceInitUnary"));
         assert!(manifest.contains("raw_protocol"));
     }
@@ -460,6 +498,92 @@ mod tests {
         assert!(err.contains("init identity mismatch"));
         assert_eq!(workspace.get("_layers".into(), "9".into()), "null");
         assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
+        assert_eq!(builder.num_steps(), 0);
+    }
+
+    #[test]
+    fn free_input_slot_is_rejected_without_mutation() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(4).unwrap();
+        let relu = AgentLayerSpec::relu(42);
+        registry.init_agent_layer(&relu).unwrap();
+        let before = workspace.snapshot();
+
+        let err = workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &relu,
+            2,
+            "invalid-input".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("slot 2 is not readable while state is free"));
+        assert_eq!(workspace.snapshot(), before);
+        assert_eq!(workspace.get("_layers".into(), "42".into()), "null");
+        assert_eq!(builder.num_steps(), 0);
+    }
+
+    #[test]
+    fn released_input_slot_is_rejected_then_valid_retry_succeeds() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(4).unwrap();
+        let relu = AgentLayerSpec::relu(43);
+        registry.init_agent_layer(&relu).unwrap();
+
+        let released = workspace.reserve_slot("temporary".into()).unwrap();
+        workspace.release_slot(released).unwrap();
+        let before = workspace.snapshot();
+
+        assert!(workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &relu,
+            released,
+            "released-input".into(),
+        )
+        .is_err());
+        assert_eq!(workspace.snapshot(), before);
+        assert_eq!(builder.num_steps(), 0);
+
+        let out = workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &relu,
+            0,
+            "valid-retry".into(),
+        )
+        .unwrap();
+        assert_eq!(out, 1);
+        assert_eq!(builder.num_steps(), 1);
+    }
+
+    #[test]
+    fn no_free_output_slot_does_not_reconcile_manual_layer_metadata() {
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+        let mut registry = LayerRegistry::new();
+        let mut builder = AgentGraphBuilder::new(2).unwrap();
+        let relu = AgentLayerSpec::relu(44);
+        registry.init_agent_layer(&relu).unwrap();
+        let blocker = workspace.reserve_slot("blocker".into()).unwrap();
+        assert_eq!(blocker, 1);
+
+        let err = workspace_wire_unary(
+            &mut workspace,
+            &mut builder,
+            &registry,
+            &relu,
+            0,
+            "manual-relu".into(),
+        )
+        .unwrap_err();
+        assert!(err.contains("no free slot available"));
+        assert_eq!(workspace.get("_layers".into(), "44".into()), "null");
+        assert!(workspace.get("_slots".into(), "1".into()).contains("blocker"));
         assert_eq!(builder.num_steps(), 0);
     }
 
