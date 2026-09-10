@@ -97,6 +97,32 @@ impl<B: Backend> Normalization<B> {
     }
 }
 
+fn validate_norm_state_structure(
+    current: &NormalizationRecord<WasmBackend>,
+    incoming: &NormalizationRecord<WasmBackend>,
+) -> Result<(), String> {
+    if std::mem::discriminant(current) != std::mem::discriminant(incoming) {
+        return Err("Norm loadState: normalization variant mismatch".to_string());
+    }
+
+    let param_shapes = |record: &NormalizationRecord<WasmBackend>| {
+        let (gamma, beta) = norm_trainable_refs(record);
+        (
+            gamma.map(|param| param.dims().to_vec()),
+            beta.map(|param| param.dims().to_vec()),
+        )
+    };
+    let expected = param_shapes(current);
+    let actual = param_shapes(incoming);
+    if expected != actual {
+        return Err(format!(
+            "Norm loadState: parameter structure mismatch: expected {:?}, got {:?}",
+            expected, actual
+        ));
+    }
+    Ok(())
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmNorm {
@@ -149,11 +175,13 @@ impl WasmNorm {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: NormalizationRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "Norm loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_norm_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
