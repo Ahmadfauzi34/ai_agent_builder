@@ -1,8 +1,13 @@
 use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_report;
-use crate::protocol::{PayloadCursor, LAYER_BINARY};
+use crate::protocol::{
+    PayloadCursor, LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK,
+};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
+
+#[path = "registry/runtime_contract.rs"]
+mod runtime_contract;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
@@ -145,6 +150,17 @@ impl CompiledGraph {
                 let inp = slots[s.in_slot as usize]
                     .as_ref()
                     .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                if matches!(
+                    s.layer_type,
+                    LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
+                ) {
+                    runtime_contract::validate_registry_unary_contract(
+                        registry,
+                        s.layer_type,
+                        s.layer_id,
+                        inp.inner.dims(),
+                    )?;
+                }
                 registry.forward_layer(s.layer_id, s.layer_type, inp)?
             };
             slots[s.out_slot as usize] = Some(out);
