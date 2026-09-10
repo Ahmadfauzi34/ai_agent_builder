@@ -1,4 +1,9 @@
 use burn_research::agent::AgentLayerSpec;
+use burn_research::layers::activation::WasmActivation;
+use burn_research::layers::conv::WasmConv;
+use burn_research::layers::custom::ghost::WasmGhostModule;
+use burn_research::layers::custom::seblock::WasmSeBlock;
+use burn_research::layers::embedding::WasmEmbedding;
 use burn_research::layers::linear::WasmLinear;
 use burn_research::layers::norm::WasmNorm;
 use burn_research::protocol::{
@@ -224,4 +229,112 @@ fn valid_same_length_weight_mutation_preserves_structural_identity() {
     assert_eq!(registry.weight_layout(90, LAYER_LINEAR).unwrap(), layout_before);
     assert_eq!(registry.total_params(), params_before);
     assert_eq!(registry.get_weights_flat(90, LAYER_LINEAR).unwrap(), replacement);
+}
+
+#[test]
+fn direct_conv_rejects_cross_variant_state_without_panicking_or_mutating() {
+    let foreign = WasmConv::new_conv2d(3, 4, 3, 3, None, None, None, None);
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmConv::new_conv1d(3, 4, 3, None, None);
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    let call = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        target.load_state(&foreign_state)
+    }));
+    assert!(call.is_ok(), "foreign valid Conv record must not panic");
+    assert!(call.unwrap().is_err(), "Conv2d state must not load into Conv1d");
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_conv_rejects_same_variant_shape_mismatch_without_mutating() {
+    let foreign = WasmConv::new_conv2d(5, 4, 3, 3, None, None, None, None);
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmConv::new_conv2d(3, 4, 3, 3, None, None, None, None);
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    assert!(target.load_state(&foreign_state).is_err());
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_embedding_rejects_shape_mismatch_without_mutating() {
+    let foreign = WasmEmbedding::new(11, 4);
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmEmbedding::new(10, 4);
+    let before = target.get_state().unwrap();
+    let dims_before = target.weight_dims();
+    let params_before = target.num_params();
+
+    assert!(target.load_state(&foreign_state).is_err());
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.weight_dims(), dims_before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_activation_rejects_cross_variant_state_without_panicking_or_mutating() {
+    let foreign = WasmActivation::new_relu();
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmActivation::new_prelu(Some(3), None);
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    let call = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        target.load_state(&foreign_state)
+    }));
+    assert!(call.is_ok(), "foreign valid Activation record must not panic");
+    assert!(call.unwrap().is_err(), "Relu state must not load into PRelu");
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_activation_rejects_prelu_shape_mismatch_without_mutating() {
+    let foreign = WasmActivation::new_prelu(Some(4), None);
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmActivation::new_prelu(Some(3), None);
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    assert!(target.load_state(&foreign_state).is_err());
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_ghost_rejects_structural_state_mismatch_without_mutating() {
+    let foreign = WasmGhostModule::new(6, 8, 3, 3, Some(2), None, None, None, None);
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmGhostModule::new(4, 8, 3, 3, Some(2), None, None, None, None);
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    assert!(target.load_state(&foreign_state).is_err());
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
+}
+
+#[test]
+fn direct_seblock_rejects_structural_state_mismatch_without_mutating() {
+    let foreign = WasmSeBlock::new(20, Some(4));
+    let foreign_state = foreign.get_state().unwrap();
+    let mut target = WasmSeBlock::new(16, Some(4));
+    let before = target.get_state().unwrap();
+    let params_before = target.num_params();
+
+    assert!(target.load_state(&foreign_state).is_err());
+    assert_eq!(target.get_state().unwrap(), before);
+    assert_eq!(target.num_params(), params_before);
+    target.load_state(&before).unwrap();
 }
