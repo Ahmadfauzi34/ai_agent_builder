@@ -7,6 +7,82 @@ use super::strategy::{EsStrategy, Strategy};
 const LINEAR_DEMO_IN_DIM: usize = 3;
 const LINEAR_DEMO_OUT_DIM: usize = 2;
 const LINEAR_DEMO_PARAM_DIM: usize = LINEAR_DEMO_IN_DIM * LINEAR_DEMO_OUT_DIM;
+const DEFAULT_POP: u32 = 64;
+const DEFAULT_SIGMA: f32 = 0.1;
+const DEFAULT_LR: f32 = 0.05;
+
+fn strict_config(
+    dim: u32,
+    strategy: u8,
+    pop: Option<u32>,
+    sigma: Option<f32>,
+    lr: Option<f32>,
+) -> Result<(u32, f32, Option<f32>), String> {
+    if dim == 0 {
+        return Err("EsOptimizer.strict: dim must be > 0".into());
+    }
+    if strategy > 1 {
+        return Err(format!(
+            "EsOptimizer.strict: strategy must be 0 (OpenES) or 1 (mu,lambda), got {strategy}"
+        ));
+    }
+
+    let pop = pop.unwrap_or(DEFAULT_POP);
+    if pop < 2 {
+        return Err(format!(
+            "EsOptimizer.strict: pop must be >= 2, got {pop}"
+        ));
+    }
+    if strategy == 0 && !pop.is_multiple_of(2) {
+        return Err(format!(
+            "EsOptimizer.strict: OpenES pop must be even for antithetic pairs, got {pop}"
+        ));
+    }
+
+    let sigma = sigma.unwrap_or(DEFAULT_SIGMA);
+    if !sigma.is_finite() || sigma <= 0.0 {
+        return Err(format!(
+            "EsOptimizer.strict: sigma must be finite and > 0, got {sigma}"
+        ));
+    }
+
+    if strategy == 0 {
+        let lr = lr.unwrap_or(DEFAULT_LR);
+        if !lr.is_finite() || lr <= 0.0 {
+            return Err(format!(
+                "EsOptimizer.strict: OpenES lr must be finite and > 0, got {lr}"
+            ));
+        }
+        Ok((pop, sigma, Some(lr)))
+    } else {
+        if lr.is_some() {
+            return Err(
+                "EsOptimizer.strict: lr is not used by mu_lambda; omit the lr argument".into(),
+            );
+        }
+        Ok((pop, sigma, None))
+    }
+}
+
+/// Machine-readable ES contracts for agent planning.
+#[wasm_bindgen(js_name = esCapabilities)]
+pub fn es_capabilities() -> String {
+    concat!(
+        "{",
+        "\"entry\":\"EsOptimizer\",",
+        "\"constructor\":{\"mode\":\"legacy_forgiving\",\"coercions\":[\"dim_zero_to_one\",\"pop_below_two_to_two\",\"unknown_strategy_to_openes\",\"openes_odd_pop_truncates_to_pairs\"]},",
+        "\"strict_factory\":\"EsOptimizer.strict\",",
+        "\"strategies\":{\"openes\":0,\"mu_lambda\":1},",
+        "\"strict_contract\":{",
+        "\"dim\":{\"min\":1},",
+        "\"openes\":{\"pop_min\":2,\"pop_even\":true,\"sigma\":\"finite>0\",\"lr\":\"finite>0\"},",
+        "\"mu_lambda\":{\"pop_min\":2,\"sigma\":\"finite>0\",\"lr\":\"omit\"}},",
+        "\"lifecycle\":\"ask->tell\",",
+        "\"linear_demo\":{\"method\":\"runLinearDemo\",\"optimizer_dim\":6,\"gens_min\":1}",
+        "}"
+    )
+    .to_string()
+}
 
 #[wasm_bindgen]
 pub struct EsOptimizer {
@@ -24,8 +100,10 @@ pub struct EsOptimizer {
 
 #[wasm_bindgen]
 impl EsOptimizer {
-    /// strategy: 0 = OpenEs antithetic, 1 = (mu,lambda).
-    /// `pop` = jumlah pasangan (OpenEs) ATAU lambda (MuLambda); mu = pop/2 untuk MuLambda.
+    /// Legacy forgiving constructor retained for compatibility.
+    ///
+    /// It clamps dim/pop and falls back unknown strategies to OpenES. Agent/proof workflows
+    /// should prefer `EsOptimizer.strict(...)`, whose invalid configurations are controlled errors.
     #[wasm_bindgen(constructor)]
     pub fn new(
         dim: u32,
@@ -36,9 +114,9 @@ impl EsOptimizer {
         lr: Option<f32>,
     ) -> EsOptimizer {
         let dim = dim.max(1) as usize;
-        let pop = pop.unwrap_or(64).max(2) as usize;
-        let sigma = sigma.unwrap_or(0.1);
-        let lr = lr.unwrap_or(0.05);
+        let pop = pop.unwrap_or(DEFAULT_POP).max(2) as usize;
+        let sigma = sigma.unwrap_or(DEFAULT_SIGMA);
+        let lr = lr.unwrap_or(DEFAULT_LR);
         let mut rng = Rng::new(seed);
         let strat = match strategy {
             1 => Strategy::mu_lambda(dim, (pop / 2).max(1), pop, sigma, &mut rng),
@@ -56,6 +134,29 @@ impl EsOptimizer {
             stagnation: 0,
             awaiting_fitness: false,
         }
+    }
+
+    /// Strict proof-boundary factory. Unlike the legacy constructor, this never silently
+    /// repairs dimensions/population, never falls back an unknown strategy, and rejects
+    /// non-finite/non-positive numerical hyperparameters before optimizer state is created.
+    #[wasm_bindgen(js_name = strict)]
+    pub fn strict(
+        dim: u32,
+        strategy: u8,
+        seed: u32,
+        pop: Option<u32>,
+        sigma: Option<f32>,
+        lr: Option<f32>,
+    ) -> Result<EsOptimizer, String> {
+        let (pop, sigma, strict_lr) = strict_config(dim, strategy, pop, sigma, lr)?;
+        Ok(EsOptimizer::new(
+            dim,
+            strategy,
+            seed,
+            Some(pop),
+            Some(sigma),
+            strict_lr,
+        ))
     }
 
     #[wasm_bindgen(js_name = dim)]
@@ -232,10 +333,56 @@ impl EsOptimizer {
 
 #[cfg(test)]
 mod tests {
-    use super::EsOptimizer;
+    use super::{es_capabilities, EsOptimizer};
 
     fn optimizer(dim: u32) -> EsOptimizer {
         EsOptimizer::new(dim, 0, 123, Some(8), Some(0.1), Some(0.05))
+    }
+
+    #[test]
+    fn strict_factory_rejects_legacy_coercions_and_invalid_hyperparameters() {
+        assert!(EsOptimizer::strict(0, 0, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 9, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(1), Some(0.1), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(3), Some(0.1), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.0), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(f32::NAN), Some(0.05)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(0.0)).is_err());
+        assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(f32::INFINITY)).is_err());
+        assert!(EsOptimizer::strict(2, 1, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+    }
+
+    #[test]
+    fn strict_openes_preserves_requested_dimension_and_population() {
+        let mut opt = EsOptimizer::strict(3, 0, 7, Some(8), Some(0.2), Some(0.1)).unwrap();
+        assert_eq!(opt.dim(), 3);
+        let flat = opt.ask();
+        assert_eq!(opt.batch_size(), 8);
+        assert_eq!(flat.len(), 24);
+    }
+
+    #[test]
+    fn strict_mu_lambda_accepts_odd_lambda_but_requires_lr_omitted() {
+        let mut opt = EsOptimizer::strict(3, 1, 7, Some(5), Some(0.2), None).unwrap();
+        assert_eq!(opt.dim(), 3);
+        let flat = opt.ask();
+        assert_eq!(opt.batch_size(), 5);
+        assert_eq!(flat.len(), 15);
+    }
+
+    #[test]
+    fn legacy_constructor_remains_forgiving_for_compatibility() {
+        let opt = EsOptimizer::new(0, 99, 7, Some(1), Some(0.1), Some(0.05));
+        assert_eq!(opt.dim(), 1);
+    }
+
+    #[test]
+    fn es_capabilities_exposes_strict_and_legacy_modes() {
+        let manifest = es_capabilities();
+        assert!(manifest.contains("\"strict_factory\":\"EsOptimizer.strict\""));
+        assert!(manifest.contains("legacy_forgiving"));
+        assert!(manifest.contains("openes_odd_pop_truncates_to_pairs"));
+        assert!(manifest.contains("\"optimizer_dim\":6"));
     }
 
     #[test]
