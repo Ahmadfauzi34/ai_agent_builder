@@ -20,16 +20,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate agent contract schema
-        run: python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
+        run: |
+          python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
+          python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: clippy
-
-      - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
 
       - name: Check host target
         run: cargo check --lib --verbose
@@ -76,6 +75,9 @@ jobs:
 
       - name: Build WASM
         run: wasm-pack build --target web --out-dir pkg
+
+      - name: Audit packaged WASM surface
+        run: python3 scripts/check_wasm_surface.py
 
       - name: Run host tests
         run: cargo test --lib
