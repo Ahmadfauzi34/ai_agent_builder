@@ -265,11 +265,15 @@ impl LayerRegistry {
             LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
             LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
-                if self.layer_exists(layer_type, layer_id) {
-                    Ok(())
-                } else {
-                    Err("Not found".into())
+                if !self.layer_exists(layer_type, layer_id) {
+                    return Err("Not found".into());
                 }
+                if !data.is_empty() {
+                    return Err(format!(
+                        "loadLayerState: stateless layer type 0x{layer_type:02X} requires empty state"
+                    ));
+                }
+                Ok(())
             }
             _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
         }
