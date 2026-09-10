@@ -1,7 +1,8 @@
 use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
 use burn_research::layers::linear::WasmLinear;
 use burn_research::protocol::{
-    LAYER_CONV, LAYER_EMBEDDING, LAYER_LINEAR, LAYER_NORM, LAYER_POOL,
+    LAYER_ACTIVATION, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,
+    LAYER_POOL, LAYER_SEBLOCK,
 };
 use burn_research::registry::LayerRegistry;
 use burn_research::WasmTensor;
@@ -72,6 +73,48 @@ fn malformed_record_load_is_no_mutation_and_registry_remains_retryable() {
         .unwrap();
     let input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
     assert!(registry.forward_layer(12, LAYER_LINEAR, &input).is_ok());
+}
+
+#[test]
+fn malformed_record_bytes_fail_closed_for_every_stateful_layer_family() {
+    let cases = vec![
+        (AgentLayerSpec::linear(40, 3, 2, true).unwrap(), LAYER_LINEAR),
+        (AgentLayerSpec::batch_norm(41, 2, None).unwrap(), LAYER_NORM),
+        (AgentLayerSpec::conv1d(42, 1, 2, 3, None, None).unwrap(), LAYER_CONV),
+        (AgentLayerSpec::embedding(43, 4, 3).unwrap(), LAYER_EMBEDDING),
+        (AgentLayerSpec::prelu(44, 1, 0.25).unwrap(), LAYER_ACTIVATION),
+        (
+            AgentLayerSpec::ghost(45, 2, 4, 1, 1, 2, None, None, None, None).unwrap(),
+            LAYER_GHOST,
+        ),
+        (AgentLayerSpec::se_block(46, 4, 2).unwrap(), LAYER_SEBLOCK),
+    ];
+
+    let mut registry = LayerRegistry::new();
+    for (spec, layer_type) in cases {
+        registry.init_agent_layer(&spec).unwrap();
+        let layer_id = spec.layer_id();
+        let state_before = registry.get_layer_state(layer_id, layer_type).unwrap();
+        let params_before = registry.total_params();
+
+        let error = registry
+            .load_layer_state(layer_id, layer_type, &[0xde, 0xad, 0xbe, 0xef])
+            .expect_err("malformed Burn record must be rejected");
+        assert!(
+            error.contains("invalid Burn bincode record"),
+            "unexpected malformed-state error for type 0x{layer_type:02X}: {error}"
+        );
+        assert_eq!(
+            registry.get_layer_state(layer_id, layer_type).unwrap(),
+            state_before,
+            "malformed state mutated layer type 0x{layer_type:02X} id {layer_id}"
+        );
+        assert_eq!(registry.total_params(), params_before);
+
+        registry
+            .load_layer_state(layer_id, layer_type, &state_before)
+            .unwrap();
+    }
 }
 
 #[test]
@@ -175,6 +218,28 @@ fn one_dimensional_conv_and_pool_reject_hidden_width_then_accept_canonical_rank4
     assert_eq!(conv_out.shape()[3], 1);
     let pool_out = registry.forward_layer(33, LAYER_POOL, &valid).unwrap();
     assert_eq!(pool_out.shape()[3], 1);
+}
+
+#[test]
+fn conv2d_adapter_preserves_canonical_rank4_spatial_semantics() {
+    let spec = AgentLayerSpec::conv2d(
+        35,
+        1,
+        2,
+        3,
+        3,
+        None,
+        None,
+        Some(1),
+        Some(1),
+    )
+    .unwrap();
+    let mut registry = LayerRegistry::new();
+    registry.init_agent_layer(&spec).unwrap();
+
+    let input = WasmTensor::new(&[1.0; 16], &[1, 1, 4, 4]);
+    let output = registry.forward_layer(35, LAYER_CONV, &input).unwrap();
+    assert_eq!(output.shape(), vec![1, 2, 4, 4]);
 }
 
 #[test]
