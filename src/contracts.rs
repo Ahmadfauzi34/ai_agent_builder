@@ -15,6 +15,9 @@ pub fn agent_contract_schema_version() -> u32 {
 }
 
 #[cfg(test)]
+mod late_failure_contract_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{agent_contract_schema, agent_contract_schema_version, AGENT_CONTRACT_SCHEMA_V1};
 
