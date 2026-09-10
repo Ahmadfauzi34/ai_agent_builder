@@ -125,6 +125,124 @@ fn reserve_workspace_output_slot(
     Ok(slot)
 }
 
+fn rollback_init_transaction(
+    workspace: &mut AgentWorkspace,
+    workspace_checkpoint: &AgentWorkspace,
+    registry: &mut LayerRegistry,
+    spec: &AgentLayerSpec,
+    context: &str,
+    cause: String,
+) -> String {
+    let had_layer = registry.layer_exists(spec.layer_type(), spec.layer_id());
+    let removed = !had_layer || registry.destroy_layer(spec.layer_id(), spec.layer_type());
+
+    // Workspace is metadata/control state, so restoring the clone also restores
+    // temporary slot reservations and the exact pre-call layer reservation row.
+    *workspace = workspace_checkpoint.clone();
+
+    let registry_clean = !registry.layer_exists(spec.layer_type(), spec.layer_id())
+        && registry
+            .layer_init_fingerprint(spec.layer_type(), spec.layer_id())
+            .is_err();
+
+    if removed && registry_clean {
+        format!("{cause}; {context}: transaction rolled back to pre-call state")
+    } else {
+        format!(
+            "{cause}; {context}: TRANSACTION_ROLLBACK_FAILED for layer type 0x{:02X} id {}",
+            spec.layer_type(),
+            spec.layer_id()
+        )
+    }
+}
+
+pub(crate) fn finalize_initialized_unary(
+    workspace: &mut AgentWorkspace,
+    workspace_checkpoint: &AgentWorkspace,
+    builder: &mut AgentGraphBuilder,
+    registry: &mut LayerRegistry,
+    spec: &AgentLayerSpec,
+    input_slot: u8,
+    output_slot: u8,
+    label: String,
+) -> Result<u8, String> {
+    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitUnary") {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitUnary",
+            err,
+        ));
+    }
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitUnary",
+            err,
+        ));
+    }
+    if let Err(err) = builder.add_unary(spec, input_slot, output_slot) {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitUnary",
+            err,
+        ));
+    }
+    Ok(output_slot)
+}
+
+pub(crate) fn finalize_initialized_binary(
+    workspace: &mut AgentWorkspace,
+    workspace_checkpoint: &AgentWorkspace,
+    builder: &mut AgentGraphBuilder,
+    registry: &mut LayerRegistry,
+    spec: &AgentLayerSpec,
+    left_slot: u8,
+    right_slot: u8,
+    output_slot: u8,
+    label: String,
+) -> Result<u8, String> {
+    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitBinary") {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitBinary",
+            err,
+        ));
+    }
+    if let Err(err) = workspace.sync_layer(registry, spec, label) {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitBinary",
+            err,
+        ));
+    }
+    if let Err(err) = builder.add_binary(spec, left_slot, right_slot, output_slot) {
+        return Err(rollback_init_transaction(
+            workspace,
+            workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitBinary",
+            err,
+        ));
+    }
+    Ok(output_slot)
+}
+
 /// Discover the canonical agent-facing workspace/control-plane API.
 #[wasm_bindgen(js_name = workspaceCapabilities)]
 pub fn workspace_capabilities() -> String {
@@ -135,7 +253,7 @@ pub fn workspace_capabilities() -> String {
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
         "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"metadata_only_not_canonical_orchestration\"},",
-        "\"atomicity\":{\"compile\":\"non_mutating_output_override\"},",
+        "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
         "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
@@ -220,7 +338,7 @@ pub fn workspace_wire_binary(
 }
 
 /// Initialize a reserved unary layer and wire it into the graph.
-/// All allocation/state truth remains in AgentWorkspace; this function retains no state.
+/// A workspace checkpoint protects the entire control state until graph commit succeeds.
 #[wasm_bindgen(js_name = workspaceInitUnary)]
 pub fn workspace_init_unary(
     workspace: &mut AgentWorkspace,
@@ -238,35 +356,45 @@ pub fn workspace_init_unary(
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitUnary")?;
     validate_workspace_op_label(&label, "workspaceInitUnary")?;
 
-    let output_slot = reserve_workspace_output_slot(
+    let workspace_checkpoint = workspace.clone();
+    let output_slot = match reserve_workspace_output_slot(
         workspace,
         builder,
         format!("layer:{}", spec.layer_id()),
         "workspaceInitUnary",
-    )?;
+    ) {
+        Ok(slot) => slot,
+        Err(err) => {
+            *workspace = workspace_checkpoint;
+            return Err(err);
+        }
+    };
 
     if let Err(err) = registry.init_agent_layer(spec) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
+        return Err(rollback_init_transaction(
+            workspace,
+            &workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitUnary",
+            err,
+        ));
     }
 
-    // Prove that the registry persisted the exact init identity we just supplied.
-    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitUnary") {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = workspace.sync_layer(registry, spec, label) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = builder.add_unary(spec, input_slot, output_slot) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    Ok(output_slot)
+    finalize_initialized_unary(
+        workspace,
+        &workspace_checkpoint,
+        builder,
+        registry,
+        spec,
+        input_slot,
+        output_slot,
+        label,
+    )
 }
 
 /// Initialize a reserved binary layer and wire it into the graph.
+/// A workspace checkpoint protects the entire control state until graph commit succeeds.
 #[wasm_bindgen(js_name = workspaceInitBinary)]
 pub fn workspace_init_binary(
     workspace: &mut AgentWorkspace,
@@ -286,31 +414,42 @@ pub fn workspace_init_binary(
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitBinary")?;
     validate_workspace_op_label(&label, "workspaceInitBinary")?;
 
-    let output_slot = reserve_workspace_output_slot(
+    let workspace_checkpoint = workspace.clone();
+    let output_slot = match reserve_workspace_output_slot(
         workspace,
         builder,
         format!("layer:{}", spec.layer_id()),
         "workspaceInitBinary",
-    )?;
+    ) {
+        Ok(slot) => slot,
+        Err(err) => {
+            *workspace = workspace_checkpoint;
+            return Err(err);
+        }
+    };
 
     if let Err(err) = registry.init_agent_layer(spec) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
+        return Err(rollback_init_transaction(
+            workspace,
+            &workspace_checkpoint,
+            registry,
+            spec,
+            "workspaceInitBinary",
+            err,
+        ));
     }
 
-    if let Err(err) = ensure_registry_matches_spec(registry, spec, "workspaceInitBinary") {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = workspace.sync_layer(registry, spec, label) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = builder.add_binary(spec, left_slot, right_slot, output_slot) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    Ok(output_slot)
+    finalize_initialized_binary(
+        workspace,
+        &workspace_checkpoint,
+        builder,
+        registry,
+        spec,
+        left_slot,
+        right_slot,
+        output_slot,
+        label,
+    )
 }
 
 /// Compile using a temporary output selection without mutating builder state.
@@ -343,6 +482,7 @@ mod tests {
         assert!(manifest.contains("\"execution_truth\":\"LayerRegistry\""));
         assert!(manifest.contains("exact_validated_init_fingerprint"));
         assert!(manifest.contains("non_mutating_output_override"));
+        assert!(manifest.contains("transactional_post_registry_rollback"));
         assert!(manifest.contains("\"slot_lifecycle\""));
         assert!(manifest.contains("reserved->free"));
         assert!(manifest.contains("error_no_mutation"));
