@@ -893,13 +893,10 @@ impl AgentGraphBuilder {
         Ok(())
     }
 
-    fn plan_bytes(&self) -> Result<Vec<u8>, String> {
+    fn plan_bytes_with_output(&self, output_slot: u8) -> Result<Vec<u8>, String> {
         if self.steps.is_empty() {
             return Err("AgentGraphBuilder.compile: graph has no steps".into());
         }
-        let output_slot = self
-            .output_slot
-            .ok_or_else(|| "AgentGraphBuilder.compile: output slot is not set".to_string())?;
         let num_steps = u32::try_from(self.steps.len())
             .map_err(|_| "AgentGraphBuilder.compile: too many steps".to_string())?;
         let capacity = self
@@ -921,6 +918,13 @@ impl AgentGraphBuilder {
         }
         plan.push(output_slot);
         Ok(plan)
+    }
+
+    fn plan_bytes(&self) -> Result<Vec<u8>, String> {
+        let output_slot = self
+            .output_slot
+            .ok_or_else(|| "AgentGraphBuilder.compile: output slot is not set".to_string())?;
+        self.plan_bytes_with_output(output_slot)
     }
 }
 
@@ -1008,6 +1012,18 @@ impl AgentGraphBuilder {
     pub fn compile(&self, registry: &LayerRegistry) -> Result<CompiledGraph, String> {
         registry.compile_graph(&self.plan_bytes()?)
     }
+
+    /// Compile using a temporary output selection without mutating the builder's configured output.
+    /// This is the canonical path for stateless workspace orchestration.
+    #[wasm_bindgen(js_name = compileWithOutput)]
+    pub fn compile_with_output(
+        &self,
+        registry: &LayerRegistry,
+        output_slot: u8,
+    ) -> Result<CompiledGraph, String> {
+        self.validate_slot(output_slot, "AgentGraphBuilder.compileWithOutput")?;
+        registry.compile_graph(&self.plan_bytes_with_output(output_slot)?)
+    }
 }
 
 #[wasm_bindgen]
@@ -1041,7 +1057,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"ghost\":\"ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)\",",
             "\"seBlock\":\"seBlock(id,channels,reduction)\",",
             "\"swiGlu\":\"swiGlu(id,d_input,d_output,bias)\"}},",
-            "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\"]}},",
+            "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\",\"compileWithOutput\"]}},",
             "\"optimizer\":{{\"entry\":\"EsOptimizer\",\"strategies\":{{\"openes\":0,\"mu_lambda\":1}},\"lifecycle\":\"ask->tell\"}},",
             "\"recommended_flow\":[\"discover\",\"construct_reference\",\"run_external_candidate\",\"verify\",\"revise_or_accept\"],",
             "\"layers\":{{",
@@ -1139,6 +1155,7 @@ mod tests {
         assert!(manifest.contains("\"constructor_signatures\":{\"linear\""));
         assert!(manifest.contains("\"ghost\":\"ghost(id,in_ch,out_ch"));
         assert!(manifest.contains("\"lifecycle\":\"ask->tell\""));
+        assert!(manifest.contains("compileWithOutput"));
     }
 
     #[test]
@@ -1269,6 +1286,23 @@ mod tests {
         let input = WasmTensor::new(&[-2.0, 5.0], &[1, 2, 1, 1]);
         let output = graph.run(&registry, &input).unwrap();
         assert_eq!(output.to_array(), vec![0.0, 5.0]);
+    }
+
+    #[test]
+    fn compile_with_output_does_not_mutate_existing_output_selection() {
+        let mut registry = LayerRegistry::new();
+        let relu = AgentLayerSpec::relu(12);
+        registry.init_agent_layer(&relu).unwrap();
+
+        let mut builder = AgentGraphBuilder::new(3).unwrap();
+        builder.add_unary(&relu, 0, 1).unwrap();
+        builder.add_unary(&relu, 1, 2).unwrap();
+        builder.set_output(1).unwrap();
+
+        let alternate = builder.compile_with_output(&registry, 2).unwrap();
+        assert_eq!(alternate.output_slot(), 2);
+        let configured = builder.compile(&registry).unwrap();
+        assert_eq!(configured.output_slot(), 1);
     }
 
     #[test]
