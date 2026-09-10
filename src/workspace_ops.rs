@@ -472,7 +472,10 @@ mod tests {
         builder.add_unary(&relu, 0, 1).unwrap();
         builder.set_output(1).unwrap();
 
-        let err = workspace_compile(&builder, &registry, 2).unwrap_err();
+        let err = match workspace_compile(&builder, &registry, 2) {
+            Ok(_) => panic!("workspaceCompile unexpectedly succeeded for unwritten output slot"),
+            Err(err) => err,
+        };
         assert!(err.contains("output slot 2 is never written"));
 
         let configured = builder.compile(&registry).unwrap();
