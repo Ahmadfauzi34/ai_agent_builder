@@ -4,6 +4,10 @@ use super::objective::{LinearMseObjective, Objective};
 use super::rng::Rng;
 use super::strategy::{EsStrategy, Strategy};
 
+const LINEAR_DEMO_IN_DIM: usize = 3;
+const LINEAR_DEMO_OUT_DIM: usize = 2;
+const LINEAR_DEMO_PARAM_DIM: usize = LINEAR_DEMO_IN_DIM * LINEAR_DEMO_OUT_DIM;
+
 #[wasm_bindgen]
 pub struct EsOptimizer {
     strategy: Strategy,
@@ -175,15 +179,28 @@ impl EsOptimizer {
     /// Laporan JSON generasi terakhir.
     pub fn report(&self) -> String { self.last_report.clone() }
 
-    /// Proof-of-life mandiri: latih W supaya X*W ≈ Y (plain Rust), kembalikan laporan akhir.
-    /// Tidak butuh JS objective, tidak butuh burn. Berguna untuk "lihat ES bekerja" instan.
+    /// Proof-of-life mandiri untuk problem linear tetap `in=3, out=2`.
+    ///
+    /// Contract: optimizer harus dibuat dengan `dim == 6` dan `gens > 0`.
+    /// Pelanggaran contract atau kegagalan internal `tell()` dikembalikan sebagai error
+    /// (menjadi exception terkontrol pada boundary JavaScript/WASM), bukan report kosong/stale.
     #[wasm_bindgen(js_name = runLinearDemo)]
-    pub fn run_linear_demo(&mut self, gens: u32) -> String {
+    pub fn run_linear_demo(&mut self, gens: u32) -> Result<String, String> {
+        if self.dim != LINEAR_DEMO_PARAM_DIM {
+            return Err(format!(
+                "runLinearDemo: fixed 3x2 linear demo requires optimizer dim={}, got {}",
+                LINEAR_DEMO_PARAM_DIM, self.dim
+            ));
+        }
+        if gens == 0 {
+            return Err("runLinearDemo: gens must be > 0".into());
+        }
+
         // masalah kecil deterministik: in=3, out=2, n=8
-        let in_dim = 3usize;
-        let out_dim = 2usize;
+        let in_dim = LINEAR_DEMO_IN_DIM;
+        let out_dim = LINEAR_DEMO_OUT_DIM;
         let n = 8usize;
-        let w_true: [f32; 6] = [0.7, -0.3, 0.2, 0.5, -0.8, 0.4];
+        let w_true: [f32; LINEAR_DEMO_PARAM_DIM] = [0.7, -0.3, 0.2, 0.5, -0.8, 0.4];
         let mut x = Vec::with_capacity(n * in_dim);
         let mut y = Vec::with_capacity(n * out_dim);
         let mut r = Rng::new(12345); // rng terpisah & tetap untuk data
@@ -206,9 +223,66 @@ impl EsOptimizer {
                 let cand = &flat[i * self.dim..(i + 1) * self.dim];
                 f.push(obj.fitness(cand) as f32);
             }
-            // Internal demo always evaluates exactly the batch returned by ask().
-            let _ = self.tell(&f);
+            // Internal demo evaluates exactly the pending batch and must never swallow tell failures.
+            self.tell(&f)?;
         }
-        self.report()
+        Ok(self.report())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EsOptimizer;
+
+    fn optimizer(dim: u32) -> EsOptimizer {
+        EsOptimizer::new(dim, 0, 123, Some(8), Some(0.1), Some(0.05))
+    }
+
+    #[test]
+    fn linear_demo_rejects_every_non_six_dimension_in_matrix() {
+        for dim in 1..=10 {
+            if dim == 6 {
+                continue;
+            }
+            let mut opt = optimizer(dim);
+            let err = opt.run_linear_demo(1).unwrap_err();
+            assert!(err.contains("requires optimizer dim=6"));
+            assert_eq!(opt.generation(), 0);
+            assert_eq!(opt.report(), "{}");
+        }
+    }
+
+    #[test]
+    fn linear_demo_requires_at_least_one_generation() {
+        let mut opt = optimizer(6);
+        let err = opt.run_linear_demo(0).unwrap_err();
+        assert!(err.contains("gens must be > 0"));
+        assert_eq!(opt.generation(), 0);
+        assert_eq!(opt.report(), "{}");
+    }
+
+    #[test]
+    fn linear_demo_succeeds_only_for_six_dimensions_and_advances_generation() {
+        let mut opt = optimizer(6);
+        let report = opt.run_linear_demo(2).unwrap();
+        assert_ne!(report, "{}");
+        assert!(report.contains("\"dim\":6"));
+        assert_eq!(opt.generation(), 2);
+    }
+
+    #[test]
+    fn invalid_linear_demo_cannot_leak_a_stale_prior_report() {
+        let mut opt = optimizer(5);
+        let candidates = opt.ask();
+        assert!(!candidates.is_empty());
+        let fitness = vec![0.0f32; opt.batch_size() as usize];
+        let previous = opt.tell(&fitness).unwrap();
+        assert_ne!(previous, "{}");
+        assert_eq!(opt.generation(), 1);
+
+        let err = opt.run_linear_demo(2).unwrap_err();
+        assert!(err.contains("requires optimizer dim=6"));
+        assert_eq!(opt.generation(), 1);
+        assert_eq!(opt.report(), previous);
     }
 }
