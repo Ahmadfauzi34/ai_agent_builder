@@ -5,6 +5,33 @@ use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 use crate::layers::shape_contract::require_singleton_spatial;
 
+fn validate_embedding_indices(values: &[f32], vocab_size: usize) -> Result<(), String> {
+    for (position, &value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!(
+                "Embedding forward: index at position {position} must be finite, got {value}"
+            ));
+        }
+        if value.fract() != 0.0 {
+            return Err(format!(
+                "Embedding forward: index at position {position} must be an integer-valued float, got {value}"
+            ));
+        }
+        if value < 0.0 {
+            return Err(format!(
+                "Embedding forward: index at position {position} must be >= 0, got {value}"
+            ));
+        }
+        let index = value as usize;
+        if index >= vocab_size {
+            return Err(format!(
+                "Embedding forward: index at position {position} is out of range: {index} >= vocab_size {vocab_size}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
 pub enum EmbeddingConfigEnum {
@@ -31,7 +58,7 @@ impl<B: Backend> EmbeddingLayer<B> {
     pub fn forward(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
         match self {
             EmbeddingLayer::Basic(layer) => {
-                // 1. Konversi Tipe Data: Float -> Int
+                // The public boundary validates that these f32 values are exact, in-range indices.
                 let x_int = input.int();
 
                 // 2. Reshape: 4D -> 2D
@@ -97,8 +124,20 @@ impl WasmEmbedding {
 }
 
 impl WasmEmbedding {
+    fn vocab_size(&self) -> usize {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            EmbeddingLayerRecord::Basic(r) => r.weight.dims()[0],
+        }
+    }
+
     pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         require_singleton_spatial(input.inner.dims(), "Embedding forward")?;
+        let input_data = input.inner.to_data();
+        let values = input_data
+            .as_slice::<f32>()
+            .map_err(|_| "Embedding forward: input tensor is not f32".to_string())?;
+        validate_embedding_indices(values, self.vocab_size())?;
         let out = self.inner.forward(input.inner.clone());
         Ok(WasmTensor { inner: out })
     }
@@ -167,5 +206,28 @@ impl WasmEmbedding {
 
     pub fn weight_layout(&self) -> String {
         crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_embedding_indices;
+
+    #[test]
+    fn embedding_indices_accept_integer_values_inside_vocabulary() {
+        assert!(validate_embedding_indices(&[0.0, 1.0, 3.0], 4).is_ok());
+    }
+
+    #[test]
+    fn embedding_indices_reject_negative_and_upper_bound() {
+        assert!(validate_embedding_indices(&[-1.0], 4).is_err());
+        assert!(validate_embedding_indices(&[4.0], 4).is_err());
+    }
+
+    #[test]
+    fn embedding_indices_reject_fractional_and_non_finite_values() {
+        assert!(validate_embedding_indices(&[1.5], 4).is_err());
+        assert!(validate_embedding_indices(&[f32::NAN], 4).is_err());
+        assert!(validate_embedding_indices(&[f32::INFINITY], 4).is_err());
     }
 }

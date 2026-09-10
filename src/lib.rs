@@ -10,6 +10,8 @@ pub mod graph;
 pub mod layers;
 pub mod protocol;
 pub mod registry;
+pub mod workspace;
+pub mod workspace_ops;
 #[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
