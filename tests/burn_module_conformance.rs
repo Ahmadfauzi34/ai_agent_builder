@@ -16,6 +16,13 @@ fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
     }
 }
 
+fn expect_err_without_debug<T, E>(result: Result<T, E>) -> E {
+    match result {
+        Ok(_) => panic!("expected operation to fail"),
+        Err(err) => err,
+    }
+}
+
 #[test]
 fn direct_burn_record_registry_and_compiled_graph_preserve_linear_semantics() {
     let direct = WasmLinear::new(3, 2, true);
@@ -138,7 +145,7 @@ fn linear_shape_adapter_rejects_hidden_spatial_data_without_state_mutation_then_
     let state_before = registry.get_layer_state(31, LAYER_LINEAR).unwrap();
 
     let invalid = WasmTensor::new(&[1.0; 6], &[1, 3, 2, 1]);
-    let err = registry.forward_layer(31, LAYER_LINEAR, &invalid).unwrap_err();
+    let err = expect_err_without_debug(registry.forward_layer(31, LAYER_LINEAR, &invalid));
     assert!(err.contains("axis 2"));
     assert_eq!(registry.get_layer_state(31, LAYER_LINEAR).unwrap(), state_before);
 
@@ -156,11 +163,11 @@ fn one_dimensional_conv_and_pool_reject_hidden_width_then_accept_canonical_rank4
 
     let conv_state_before = registry.get_layer_state(32, LAYER_CONV).unwrap();
     let invalid = WasmTensor::new(&[1.0; 10], &[1, 1, 5, 2]);
-    let conv_err = registry.forward_layer(32, LAYER_CONV, &invalid).unwrap_err();
+    let conv_err = expect_err_without_debug(registry.forward_layer(32, LAYER_CONV, &invalid));
     assert!(conv_err.contains("axis 3"));
     assert_eq!(registry.get_layer_state(32, LAYER_CONV).unwrap(), conv_state_before);
 
-    let pool_err = registry.forward_layer(33, LAYER_POOL, &invalid).unwrap_err();
+    let pool_err = expect_err_without_debug(registry.forward_layer(33, LAYER_POOL, &invalid));
     assert!(pool_err.contains("axis 3"));
 
     let valid = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0, 5.0], &[1, 1, 5, 1]);
