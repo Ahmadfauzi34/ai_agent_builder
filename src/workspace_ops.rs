@@ -125,6 +125,7 @@ pub fn workspace_capabilities() -> String {
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
         "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"metadata_only_not_canonical_orchestration\"},",
+        "\"atomicity\":{\"compile\":\"non_mutating_output_override\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
@@ -277,16 +278,15 @@ pub fn workspace_init_binary(
     Ok(output_slot)
 }
 
-/// Set the graph output and compile through the existing registry/compiler boundary.
+/// Compile using a temporary output selection without mutating builder state.
 #[wasm_bindgen(js_name = workspaceCompile)]
 pub fn workspace_compile(
-    builder: &mut AgentGraphBuilder,
+    builder: &AgentGraphBuilder,
     registry: &LayerRegistry,
     output_slot: u8,
 ) -> Result<CompiledGraph, String> {
     validate_builder_slot(builder, output_slot, "workspaceCompile")?;
-    builder.set_output(output_slot)?;
-    builder.compile(registry)
+    builder.compile_with_output(registry, output_slot)
 }
 
 #[cfg(test)]
@@ -307,6 +307,7 @@ mod tests {
         assert!(manifest.contains("\"state\":\"AgentWorkspace\""));
         assert!(manifest.contains("\"execution_truth\":\"LayerRegistry\""));
         assert!(manifest.contains("exact_validated_init_fingerprint"));
+        assert!(manifest.contains("non_mutating_output_override"));
         assert!(manifest.contains("workspaceInitUnary"));
         assert!(manifest.contains("raw_protocol"));
     }
@@ -342,7 +343,7 @@ mod tests {
         )
         .unwrap();
 
-        let graph = workspace_compile(&mut builder, &registry, sum_slot).unwrap();
+        let graph = workspace_compile(&builder, &registry, sum_slot).unwrap();
         let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
         assert_eq!(graph.run(&registry, &input).unwrap().to_array(), vec![0.0, 6.0]);
         assert!(workspace
@@ -408,7 +409,7 @@ mod tests {
             "manual-relu".into(),
         )
         .unwrap();
-        let graph = workspace_compile(&mut builder, &registry, out).unwrap();
+        let graph = workspace_compile(&builder, &registry, out).unwrap();
         let input = WasmTensor::new(&[-1.0, 4.0], &[1, 2, 1, 1]);
         assert_eq!(graph.run(&registry, &input).unwrap().to_array(), vec![0.0, 4.0]);
         assert!(workspace.get("_layers".into(), "42".into()).contains("manual-relu"));
@@ -460,5 +461,21 @@ mod tests {
         assert_eq!(workspace.get("_layers".into(), "9".into()), "null");
         assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
         assert_eq!(builder.num_steps(), 0);
+    }
+
+    #[test]
+    fn workspace_compile_failure_does_not_mutate_builder_output() {
+        let mut registry = LayerRegistry::new();
+        let relu = AgentLayerSpec::relu(88);
+        registry.init_agent_layer(&relu).unwrap();
+        let mut builder = AgentGraphBuilder::new(3).unwrap();
+        builder.add_unary(&relu, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+
+        let err = workspace_compile(&builder, &registry, 2).unwrap_err();
+        assert!(err.contains("output slot 2 is never written"));
+
+        let configured = builder.compile(&registry).unwrap();
+        assert_eq!(configured.output_slot(), 1);
     }
 }
