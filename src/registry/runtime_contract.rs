@@ -3,6 +3,7 @@ use crate::protocol::{
     LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
     POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
 };
+use crate::registry::LayerRegistry;
 
 fn require_channels(
     shape: [usize; 4],
@@ -77,6 +78,42 @@ fn require_transpose_output_positive(
         ));
     }
     Ok(())
+}
+
+fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
+    if !value.len().is_multiple_of(2) {
+        return Err("runtime contract: malformed odd-length fingerprint payload".into());
+    }
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len() / 2);
+    for pair in bytes.chunks_exact(2) {
+        let text = std::str::from_utf8(pair)
+            .map_err(|_| "runtime contract: fingerprint payload is not ASCII hex".to_string())?;
+        out.push(
+            u8::from_str_radix(text, 16)
+                .map_err(|_| format!("runtime contract: invalid fingerprint hex byte {text}"))?,
+        );
+    }
+    Ok(out)
+}
+
+fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
+    let mut variant = None;
+    let mut payload = None;
+    for field in fingerprint.split(';') {
+        if let Some(value) = field.strip_prefix("variant=") {
+            variant = Some(
+                u8::from_str_radix(value, 16)
+                    .map_err(|_| "runtime contract: invalid variant in fingerprint".to_string())?,
+            );
+        } else if let Some(value) = field.strip_prefix("payload=") {
+            payload = Some(decode_hex(value)?);
+        }
+    }
+    Ok((
+        variant.ok_or_else(|| "runtime contract: fingerprint missing variant".to_string())?,
+        payload.ok_or_else(|| "runtime contract: fingerprint missing payload".to_string())?,
+    ))
 }
 
 fn validate_conv(
@@ -214,9 +251,22 @@ pub(crate) fn validate_unary_runtime_contract(
     }
 }
 
+pub(crate) fn validate_registry_unary_contract(
+    registry: &LayerRegistry,
+    layer_type: u8,
+    layer_id: u32,
+    shape: [usize; 4],
+) -> Result<(), String> {
+    let fingerprint = registry.layer_init_fingerprint(layer_type, layer_id)?;
+    let (variant, payload) = parse_init_fingerprint(&fingerprint)?;
+    validate_unary_runtime_contract(layer_type, variant, &payload, shape)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{require_kernel_fits, require_transpose_output_positive};
+    use super::{
+        parse_init_fingerprint, require_kernel_fits, require_transpose_output_positive,
+    };
 
     #[test]
     fn kernel_fit_rejects_kernel_larger_than_padded_input() {
@@ -228,5 +278,15 @@ mod tests {
     fn transpose_extent_rejects_non_positive_output() {
         assert!(require_transpose_output_positive(1, 2, 1, 1, 2, "test").is_err());
         assert!(require_transpose_output_positive(1, 0, 3, 1, 2, "test").is_ok());
+    }
+
+    #[test]
+    fn fingerprint_parser_recovers_variant_and_payload() {
+        let (variant, payload) = parse_init_fingerprint(
+            "type=04;id=1;variant=01;flags=00;payload=01000000",
+        )
+        .unwrap();
+        assert_eq!(variant, 1);
+        assert_eq!(payload, vec![1, 0, 0, 0]);
     }
 }
