@@ -411,6 +411,19 @@ impl AgentWorkspace {
                 spec.layer_id()
             ));
         }
+
+        let actual = registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+        let mut expected_registry = LayerRegistry::new();
+        expected_registry.init_agent_layer(spec)?;
+        let expected = expected_registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+        if actual != expected {
+            return Err(format!(
+                "AgentWorkspace.syncLayer: registry init identity mismatch for layer type 0x{:02X} id {}; supplied AgentLayerSpec does not match the live layer",
+                spec.layer_type(),
+                spec.layer_id()
+            ));
+        }
+
         let value = format!(
             "label={};type={};variant={}",
             label,
