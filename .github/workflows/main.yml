@@ -80,7 +80,7 @@ jobs:
         run: python3 scripts/check_wasm_surface.py
 
       - name: Run host tests
-        run: cargo test --lib
+        run: cargo test --lib --tests
 
       - name: Report artifact size
         run: |
