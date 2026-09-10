@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
 use crate::WasmTensor;
 use crate::protocol::*;
@@ -14,6 +15,35 @@ use crate::layers::custom::seblock::WasmSeBlock;
 use crate::layers::binary::WasmBinary;
 
 type LayerId = u32;
+type LayerKey = (u8, LayerId);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayerInitIdentity {
+    variant: u8,
+    flags: u8,
+    payload: Vec<u8>,
+}
+
+impl LayerInitIdentity {
+    fn new(header: &PacketHeader, payload: &[u8]) -> Self {
+        Self {
+            variant: header.variant,
+            flags: header.flags,
+            payload: payload.to_vec(),
+        }
+    }
+
+    fn fingerprint(&self, layer_type: u8, layer_id: LayerId) -> String {
+        let mut out = format!(
+            "type={layer_type:02x};id={layer_id};variant={:02x};flags={:02x};payload=",
+            self.variant, self.flags
+        );
+        for byte in &self.payload {
+            let _ = write!(&mut out, "{byte:02x}");
+        }
+        out
+    }
+}
 
 #[wasm_bindgen]
 pub struct LayerRegistry {
@@ -27,6 +57,7 @@ pub struct LayerRegistry {
     ghosts:      HashMap<LayerId, WasmGhostModule>,
     seblocks:    HashMap<LayerId, WasmSeBlock>,
     binaries:    HashMap<LayerId, WasmBinary>,
+    init_identities: HashMap<LayerKey, LayerInitIdentity>,
     cached_params: usize,
 }
 
@@ -89,6 +120,7 @@ impl LayerRegistry {
             ghosts:      HashMap::new(),
             seblocks:    HashMap::new(),
             binaries:    HashMap::new(),
+            init_identities: HashMap::new(),
             cached_params: 0,
         }
     }
@@ -96,7 +128,9 @@ impl LayerRegistry {
     #[wasm_bindgen(js_name = initLayer)]
     pub fn init_layer(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let payload = header.validate_payload(payload)?;
-        match header.layer_type {
+        let mut id_cursor = PayloadCursor::new(payload);
+        let layer_id = id_cursor.read_u32()?;
+        let result = match header.layer_type {
             LAYER_LINEAR      => self.init_linear(header, payload),
             LAYER_NORM        => self.init_norm(header, payload),
             LAYER_CONV        => self.init_conv(header, payload),
@@ -108,7 +142,38 @@ impl LayerRegistry {
             LAYER_SEBLOCK     => self.init_seblock(header, payload),
             LAYER_BINARY      => self.init_binary(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
+        };
+        if result.is_ok() {
+            self.init_identities.insert(
+                (header.layer_type, layer_id),
+                LayerInitIdentity::new(header, payload),
+            );
         }
+        result
+    }
+
+    /// Return the canonical init identity for a live layer.
+    /// The identity is derived from the validated payload prefix plus variant/flags,
+    /// so ignored outer trailing bytes never affect provenance.
+    #[wasm_bindgen(js_name = layerInitFingerprint)]
+    pub fn layer_init_fingerprint(
+        &self,
+        layer_type: u8,
+        layer_id: LayerId,
+    ) -> Result<String, String> {
+        if !self.layer_exists(layer_type, layer_id) {
+            return Err(format!(
+                "layerInitFingerprint: layer type 0x{layer_type:02X} id {layer_id} not found"
+            ));
+        }
+        self.init_identities
+            .get(&(layer_type, layer_id))
+            .map(|identity| identity.fingerprint(layer_type, layer_id))
+            .ok_or_else(|| {
+                format!(
+                    "layerInitFingerprint: identity missing for live layer type 0x{layer_type:02X} id {layer_id}"
+                )
+            })
     }
 
     #[wasm_bindgen(js_name = forwardLayer)]
@@ -212,7 +277,7 @@ impl LayerRegistry {
 
     #[wasm_bindgen(js_name = destroyLayer)]
     pub fn destroy_layer(&mut self, layer_id: LayerId, layer_type: u8) -> bool {
-        match layer_type {
+        let removed = match layer_type {
             LAYER_LINEAR      => remove_layer!(self, linears, layer_id),
             LAYER_NORM        => remove_layer!(self, norms, layer_id),
             LAYER_CONV        => remove_layer!(self, convs, layer_id),
@@ -224,7 +289,11 @@ impl LayerRegistry {
             LAYER_SHIFT       => self.shifts.remove(&layer_id).is_some(),
             LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),
             _ => false,
+        };
+        if removed {
+            self.init_identities.remove(&(layer_type, layer_id));
         }
+        removed
     }
 
     #[wasm_bindgen(js_name = totalParams)]
