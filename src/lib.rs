@@ -5,6 +5,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod agent;
 pub mod coprocessor;
+pub mod contracts;
 pub mod es;
 pub mod graph;
 pub mod layers;

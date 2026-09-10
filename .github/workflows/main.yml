@@ -19,6 +19,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate agent contract schema
+        run: python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
+
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
