@@ -22,8 +22,9 @@ mod tests {
 
     fn assert_present_stateless_state(reg: &mut LayerRegistry, id: u32, layer_type: u8) {
         assert_eq!(reg.get_layer_state(id, layer_type).unwrap(), Vec::<u8>::new());
-        // Preserve the existing stateless contract: state bytes are ignored.
-        assert!(reg.load_layer_state(id, layer_type, &[9, 8, 7]).is_ok());
+        // Stateless state has one canonical encoding: empty bytes.
+        assert!(reg.load_layer_state(id, layer_type, &[9, 8, 7]).is_err());
+        assert!(reg.load_layer_state(id, layer_type, &[]).is_ok());
     }
 
     #[test]

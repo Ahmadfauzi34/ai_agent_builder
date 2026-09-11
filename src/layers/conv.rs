@@ -87,6 +87,48 @@ impl<B: Backend> Convolution<B> {
     }
 }
 
+fn validate_conv_params<const D: usize>(
+    expected_weight: &burn::module::Param<Tensor<WasmBackend, D>>,
+    expected_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+    actual_weight: &burn::module::Param<Tensor<WasmBackend, D>>,
+    actual_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+) -> Result<(), String> {
+    if expected_weight.dims() != actual_weight.dims() {
+        return Err(format!(
+            "Conv loadState: weight shape mismatch: expected {:?}, got {:?}",
+            expected_weight.dims(),
+            actual_weight.dims()
+        ));
+    }
+    match (expected_bias, actual_bias) {
+        (None, None) => Ok(()),
+        (Some(expected), Some(actual)) if expected.dims() == actual.dims() => Ok(()),
+        (Some(expected), Some(actual)) => Err(format!(
+            "Conv loadState: bias shape mismatch: expected {:?}, got {:?}",
+            expected.dims(),
+            actual.dims()
+        )),
+        _ => Err("Conv loadState: bias presence mismatch".to_string()),
+    }
+}
+
+fn validate_conv_state_structure(
+    current: &ConvolutionRecord<WasmBackend>,
+    incoming: &ConvolutionRecord<WasmBackend>,
+) -> Result<(), String> {
+    match (current, incoming) {
+        (ConvolutionRecord::Conv1d(expected), ConvolutionRecord::Conv1d(actual)) =>
+            validate_conv_params::<3>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
+        (ConvolutionRecord::Conv2d(expected), ConvolutionRecord::Conv2d(actual)) =>
+            validate_conv_params::<4>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
+        (
+            ConvolutionRecord::ConvTranspose2d(expected),
+            ConvolutionRecord::ConvTranspose2d(actual),
+        ) => validate_conv_params::<4>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
+        _ => Err("Conv loadState: convolution variant mismatch".to_string()),
+    }
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmConv {
@@ -166,11 +208,13 @@ impl WasmConv {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: ConvolutionRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "Conv loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_conv_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }

@@ -105,6 +105,54 @@ impl<B: Backend> GhostModule<B> {
     }
 }
 
+fn validate_conv2d_params(
+    context: &str,
+    expected_weight: &burn::module::Param<Tensor<WasmBackend, 4>>,
+    expected_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+    actual_weight: &burn::module::Param<Tensor<WasmBackend, 4>>,
+    actual_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+) -> Result<(), String> {
+    if expected_weight.dims() != actual_weight.dims() {
+        return Err(format!(
+            "GhostModule loadState: {context} weight shape mismatch: expected {:?}, got {:?}",
+            expected_weight.dims(),
+            actual_weight.dims()
+        ));
+    }
+    match (expected_bias, actual_bias) {
+        (None, None) => Ok(()),
+        (Some(expected), Some(actual)) if expected.dims() == actual.dims() => Ok(()),
+        (Some(expected), Some(actual)) => Err(format!(
+            "GhostModule loadState: {context} bias shape mismatch: expected {:?}, got {:?}",
+            expected.dims(),
+            actual.dims()
+        )),
+        _ => Err(format!(
+            "GhostModule loadState: {context} bias presence mismatch"
+        )),
+    }
+}
+
+fn validate_ghost_state_structure(
+    current: &GhostModuleRecord<WasmBackend>,
+    incoming: &GhostModuleRecord<WasmBackend>,
+) -> Result<(), String> {
+    validate_conv2d_params(
+        "primary",
+        &current.primary.weight,
+        &current.primary.bias,
+        &incoming.primary.weight,
+        &incoming.primary.bias,
+    )?;
+    validate_conv2d_params(
+        "cheap",
+        &current.cheap.weight,
+        &current.cheap.bias,
+        &incoming.cheap.weight,
+        &incoming.cheap.bias,
+    )
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmGhostModule {
@@ -153,11 +201,13 @@ impl WasmGhostModule {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: GhostModuleRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "GhostModule loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_ghost_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }

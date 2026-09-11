@@ -94,6 +94,54 @@ impl<B: Backend> SeBlock<B> {
     }
 }
 
+fn validate_linear_params(
+    context: &str,
+    expected_weight: &burn::module::Param<Tensor<WasmBackend, 2>>,
+    expected_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+    actual_weight: &burn::module::Param<Tensor<WasmBackend, 2>>,
+    actual_bias: &Option<burn::module::Param<Tensor<WasmBackend, 1>>>,
+) -> Result<(), String> {
+    if expected_weight.dims() != actual_weight.dims() {
+        return Err(format!(
+            "SEBlock loadState: {context} weight shape mismatch: expected {:?}, got {:?}",
+            expected_weight.dims(),
+            actual_weight.dims()
+        ));
+    }
+    match (expected_bias, actual_bias) {
+        (None, None) => Ok(()),
+        (Some(expected), Some(actual)) if expected.dims() == actual.dims() => Ok(()),
+        (Some(expected), Some(actual)) => Err(format!(
+            "SEBlock loadState: {context} bias shape mismatch: expected {:?}, got {:?}",
+            expected.dims(),
+            actual.dims()
+        )),
+        _ => Err(format!(
+            "SEBlock loadState: {context} bias presence mismatch"
+        )),
+    }
+}
+
+fn validate_seblock_state_structure(
+    current: &SeBlockRecord<WasmBackend>,
+    incoming: &SeBlockRecord<WasmBackend>,
+) -> Result<(), String> {
+    validate_linear_params(
+        "fc1",
+        &current.fc1.weight,
+        &current.fc1.bias,
+        &incoming.fc1.weight,
+        &incoming.fc1.bias,
+    )?;
+    validate_linear_params(
+        "fc2",
+        &current.fc2.weight,
+        &current.fc2.bias,
+        &incoming.fc2.weight,
+        &incoming.fc2.bias,
+    )
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmSeBlock {
@@ -125,11 +173,13 @@ impl WasmSeBlock {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: SeBlockRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "SEBlock loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_seblock_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }

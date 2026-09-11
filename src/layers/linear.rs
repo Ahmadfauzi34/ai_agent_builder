@@ -64,11 +64,33 @@ impl WasmLinear {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: LinearLayerRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "Linear loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        if record.inner.weight.dims() != current.inner.weight.dims() {
+            return Err(format!(
+                "Linear loadState: weight shape mismatch: expected {:?}, got {:?}",
+                current.inner.weight.dims(),
+                record.inner.weight.dims()
+            ));
+        }
+        match (&current.inner.bias, &record.inner.bias) {
+            (None, None) => {}
+            (Some(expected), Some(actual)) if expected.dims() == actual.dims() => {}
+            (Some(expected), Some(actual)) => {
+                return Err(format!(
+                    "Linear loadState: bias shape mismatch: expected {:?}, got {:?}",
+                    expected.dims(),
+                    actual.dims()
+                ));
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                return Err("Linear loadState: bias presence mismatch".to_string());
+            }
+        }
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
