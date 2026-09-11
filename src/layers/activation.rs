@@ -158,6 +158,67 @@ impl<B: Backend> Activation<B> {
     }
 }
 
+fn validate_activation_linear_state(
+    context: &str,
+    expected: &burn::nn::LinearRecord<WasmBackend>,
+    actual: &burn::nn::LinearRecord<WasmBackend>,
+) -> Result<(), String> {
+    if expected.weight.dims() != actual.weight.dims() {
+        return Err(format!(
+            "Activation loadState: {context} weight shape mismatch: expected {:?}, got {:?}",
+            expected.weight.dims(),
+            actual.weight.dims()
+        ));
+    }
+    match (&expected.bias, &actual.bias) {
+        (None, None) => Ok(()),
+        (Some(expected), Some(actual)) if expected.dims() == actual.dims() => Ok(()),
+        (Some(expected), Some(actual)) => Err(format!(
+            "Activation loadState: {context} bias shape mismatch: expected {:?}, got {:?}",
+            expected.dims(),
+            actual.dims()
+        )),
+        _ => Err(format!(
+            "Activation loadState: {context} bias presence mismatch"
+        )),
+    }
+}
+
+fn validate_activation_state_structure(
+    current: &ActivationRecord<WasmBackend>,
+    incoming: &ActivationRecord<WasmBackend>,
+) -> Result<(), String> {
+    if std::mem::discriminant(current) != std::mem::discriminant(incoming) {
+        return Err("Activation loadState: activation variant mismatch".to_string());
+    }
+
+    match (current, incoming) {
+        (ActivationRecord::PRelu(expected), ActivationRecord::PRelu(actual)) => {
+            if expected.alpha.dims() != actual.alpha.dims() {
+                return Err(format!(
+                    "Activation loadState: PRelu alpha shape mismatch: expected {:?}, got {:?}",
+                    expected.alpha.dims(),
+                    actual.alpha.dims()
+                ));
+            }
+            Ok(())
+        }
+        (ActivationRecord::SwiGlu(expected), ActivationRecord::SwiGlu(actual)) => {
+            validate_activation_linear_state(
+                "SwiGlu.linear_inner",
+                &expected.linear_inner,
+                &actual.linear_inner,
+            )?;
+            validate_activation_linear_state(
+                "SwiGlu.linear_outer",
+                &expected.linear_outer,
+                &actual.linear_outer,
+            )
+        }
+        _ => Ok(()),
+    }
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmActivation {
@@ -286,11 +347,13 @@ impl WasmActivation {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: ActivationRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "Activation loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_activation_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
