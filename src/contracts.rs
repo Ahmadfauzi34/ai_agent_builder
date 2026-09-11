@@ -63,21 +63,21 @@ impl LayoutCompatibility {
     }
 }
 
-fn layout_profile(spec: &AgentLayerSpec) -> LayoutProfile {
+fn layout_profile_for(layer_type: u8, variant: u8) -> LayoutProfile {
     let input_output = |layout| LayoutProfile {
         input: layout,
         output: layout,
     };
 
-    match spec.layer_type() {
+    match layer_type {
         LAYER_LINEAR => input_output(LayoutTag::FeatureAxis1Singleton),
-        LAYER_NORM => match spec.variant() {
+        LAYER_NORM => match variant {
             NORM_BATCH | NORM_GROUP | NORM_INSTANCE => input_output(LayoutTag::ChannelFirst),
             NORM_LAYER | NORM_RMS => input_output(LayoutTag::FeatureLast),
             _ => input_output(LayoutTag::Dynamic),
         },
         LAYER_CONV => {
-            if spec.variant() == CONV_CONV1D {
+            if variant == CONV_CONV1D {
                 input_output(LayoutTag::ChannelFirstSingletonWidth)
             } else {
                 input_output(LayoutTag::ChannelFirst)
@@ -88,14 +88,14 @@ fn layout_profile(spec: &AgentLayerSpec) -> LayoutProfile {
             output: LayoutTag::SequenceFeatureAxis2SingletonWidth,
         },
         LAYER_POOL => {
-            if matches!(spec.variant(), POOL_MAXPOOL1D | POOL_AVGPOOL1D) {
+            if matches!(variant, POOL_MAXPOOL1D | POOL_AVGPOOL1D) {
                 input_output(LayoutTag::ChannelFirstSingletonWidth)
             } else {
                 input_output(LayoutTag::ChannelFirst)
             }
         }
         LAYER_SHIFT | LAYER_GHOST | LAYER_SEBLOCK => input_output(LayoutTag::ChannelFirst),
-        LAYER_ACTIVATION => match spec.variant() {
+        LAYER_ACTIVATION => match variant {
             ACT_SWIGLU => input_output(LayoutTag::FeatureLast),
             ACT_PRELU => LayoutProfile {
                 input: LayoutTag::Dynamic,
@@ -109,6 +109,10 @@ fn layout_profile(spec: &AgentLayerSpec) -> LayoutProfile {
         LAYER_BINARY => input_output(LayoutTag::Dynamic),
         _ => input_output(LayoutTag::Dynamic),
     }
+}
+
+fn layout_profile(spec: &AgentLayerSpec) -> LayoutProfile {
+    layout_profile_for(spec.layer_type(), spec.variant())
 }
 
 fn compatibility(producer_output: LayoutTag, consumer_input: LayoutTag) -> LayoutCompatibility {
@@ -138,6 +142,32 @@ fn compatibility(producer_output: LayoutTag, consumer_input: LayoutTag) -> Layou
         | (ChannelFirstSingletonWidth, FeatureAxis1Singleton) => Unknown,
         _ => Incompatible,
     }
+}
+
+fn validate_layout_profiles(
+    producer_profile: LayoutProfile,
+    consumer_profile: LayoutProfile,
+) -> Result<(), String> {
+    let result = compatibility(producer_profile.output, consumer_profile.input);
+    if result == LayoutCompatibility::Incompatible {
+        return Err(format!(
+            "validateAgentLayoutEdge: producer output layout {} is incompatible with consumer input layout {}; implicit relayout is forbidden",
+            producer_profile.output.as_str(),
+            consumer_profile.input.as_str()
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_agent_layout_identity_edge(
+    producer_layer_type: u8,
+    producer_variant: u8,
+    consumer: &AgentLayerSpec,
+) -> Result<(), String> {
+    validate_layout_profiles(
+        layout_profile_for(producer_layer_type, producer_variant),
+        layout_profile(consumer),
+    )
 }
 
 /// Return the canonical machine-readable contract manifest used by agents and future fuzzers.
@@ -195,17 +225,7 @@ pub fn validate_agent_layout_edge(
     producer: &AgentLayerSpec,
     consumer: &AgentLayerSpec,
 ) -> Result<(), String> {
-    let producer_profile = layout_profile(producer);
-    let consumer_profile = layout_profile(consumer);
-    let result = compatibility(producer_profile.output, consumer_profile.input);
-    if result == LayoutCompatibility::Incompatible {
-        return Err(format!(
-            "validateAgentLayoutEdge: producer output layout {} is incompatible with consumer input layout {}; implicit relayout is forbidden",
-            producer_profile.output.as_str(),
-            consumer_profile.input.as_str()
-        ));
-    }
-    Ok(())
+    validate_layout_profiles(layout_profile(producer), layout_profile(consumer))
 }
 
 #[cfg(test)]

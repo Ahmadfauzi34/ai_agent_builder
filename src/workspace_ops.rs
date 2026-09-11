@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
+use crate::contracts::validate_agent_layout_identity_edge;
 use crate::graph::CompiledGraph;
 use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
@@ -30,6 +31,82 @@ fn validate_workspace_input_slot(
 ) -> Result<(), String> {
     validate_builder_slot(builder, slot, context)?;
     workspace.ensure_slot_readable(slot, context)
+}
+
+fn workspace_row_value(row: &str) -> Option<&str> {
+    const PREFIX: &str = "\"value\":\"";
+    let start = row.rfind(PREFIX)? + PREFIX.len();
+    let tail = &row[start..];
+    let end = tail.rfind("\"}")?;
+    Some(&tail[..end])
+}
+
+fn workspace_slot_producer_identity(
+    workspace: &AgentWorkspace,
+    slot: u8,
+    context: &str,
+) -> Result<Option<(u8, u8)>, String> {
+    let slot_row = workspace.get("_slots".into(), slot.to_string());
+    let Some(owner) = workspace_row_value(&slot_row) else {
+        return Err(format!(
+            "{context}: internal slot {slot} row is missing a value field"
+        ));
+    };
+    let Some(layer_id) = owner.strip_prefix("layer:") else {
+        return Ok(None);
+    };
+    let layer_id = layer_id.parse::<u32>().map_err(|_| {
+        format!("{context}: internal slot {slot} has invalid layer owner {owner}")
+    })?;
+
+    let layer_row = workspace.get("_layers".into(), layer_id.to_string());
+    if layer_row == "null" {
+        return Err(format!(
+            "{context}: internal slot {slot} references missing layer metadata id {layer_id}"
+        ));
+    }
+    let layer_value = workspace_row_value(&layer_row).ok_or_else(|| {
+        format!(
+            "{context}: internal layer metadata id {layer_id} is missing a value field"
+        )
+    })?;
+    let (before_variant, variant) = layer_value.rsplit_once(";variant=").ok_or_else(|| {
+        format!(
+            "{context}: internal layer metadata id {layer_id} is missing variant provenance"
+        )
+    })?;
+    let (_, layer_type) = before_variant.rsplit_once(";type=").ok_or_else(|| {
+        format!(
+            "{context}: internal layer metadata id {layer_id} is missing type provenance"
+        )
+    })?;
+    let layer_type = layer_type.parse::<u8>().map_err(|_| {
+        format!(
+            "{context}: internal layer metadata id {layer_id} has invalid type provenance"
+        )
+    })?;
+    let variant = variant.parse::<u8>().map_err(|_| {
+        format!(
+            "{context}: internal layer metadata id {layer_id} has invalid variant provenance"
+        )
+    })?;
+    Ok(Some((layer_type, variant)))
+}
+
+fn validate_workspace_layout_input(
+    workspace: &AgentWorkspace,
+    slot: u8,
+    consumer: &AgentLayerSpec,
+    context: &str,
+) -> Result<(), String> {
+    let Some((producer_layer_type, producer_variant)) =
+        workspace_slot_producer_identity(workspace, slot, context)?
+    else {
+        return Ok(());
+    };
+
+    validate_agent_layout_identity_edge(producer_layer_type, producer_variant, consumer)
+        .map_err(|err| format!("{context}: {err}"))
 }
 
 fn validate_spec_is_new(
@@ -252,9 +329,10 @@ pub fn workspace_capabilities() -> String {
         "\"ownership\":\"metadata_only\",",
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
-        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"exact_identity_metadata_only_not_canonical_orchestration\"},",
+        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"exact_identity_metadata_only_not_canonical_orchestration\",\"layout_preflight\":\"canonical_slot_owner_to_layer_type_variant\"},",
         "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
         "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
+        "\"layout_policy\":{\"known_incompatible\":\"reject_before_mutation\",\"unknown\":\"defer_to_runtime\",\"implicit_relayout\":\"forbidden\"},",
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
@@ -279,6 +357,7 @@ pub fn workspace_wire_unary(
         return Err("workspaceWireUnary: binary spec requires workspaceWireBinary".into());
     }
     validate_workspace_input_slot(workspace, builder, input_slot, "workspaceWireUnary")?;
+    validate_workspace_layout_input(workspace, input_slot, spec, "workspaceWireUnary")?;
     ensure_registry_matches_spec(registry, spec, "workspaceWireUnary")?;
     validate_workspace_op_label(&label, "workspaceWireUnary")?;
 
@@ -317,6 +396,8 @@ pub fn workspace_wire_binary(
     }
     validate_workspace_input_slot(workspace, builder, left_slot, "workspaceWireBinary.left")?;
     validate_workspace_input_slot(workspace, builder, right_slot, "workspaceWireBinary.right")?;
+    validate_workspace_layout_input(workspace, left_slot, spec, "workspaceWireBinary.left")?;
+    validate_workspace_layout_input(workspace, right_slot, spec, "workspaceWireBinary.right")?;
     ensure_registry_matches_spec(registry, spec, "workspaceWireBinary")?;
     validate_workspace_op_label(&label, "workspaceWireBinary")?;
 
@@ -352,6 +433,7 @@ pub fn workspace_init_unary(
         return Err("workspaceInitUnary: binary spec requires workspaceInitBinary".into());
     }
     validate_workspace_input_slot(workspace, builder, input_slot, "workspaceInitUnary")?;
+    validate_workspace_layout_input(workspace, input_slot, spec, "workspaceInitUnary")?;
     validate_spec_is_new(registry, spec, "workspaceInitUnary")?;
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitUnary")?;
     validate_workspace_op_label(&label, "workspaceInitUnary")?;
@@ -410,6 +492,8 @@ pub fn workspace_init_binary(
     }
     validate_workspace_input_slot(workspace, builder, left_slot, "workspaceInitBinary.left")?;
     validate_workspace_input_slot(workspace, builder, right_slot, "workspaceInitBinary.right")?;
+    validate_workspace_layout_input(workspace, left_slot, spec, "workspaceInitBinary.left")?;
+    validate_workspace_layout_input(workspace, right_slot, spec, "workspaceInitBinary.right")?;
     validate_spec_is_new(registry, spec, "workspaceInitBinary")?;
     ensure_workspace_layer_reserved(workspace, spec, "workspaceInitBinary")?;
     validate_workspace_op_label(&label, "workspaceInitBinary")?;
