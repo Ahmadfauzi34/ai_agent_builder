@@ -79,6 +79,24 @@ impl<B: Backend> EmbeddingLayer<B> {
     }
 }
 
+fn validate_embedding_state_structure(
+    current: &EmbeddingLayerRecord<WasmBackend>,
+    incoming: &EmbeddingLayerRecord<WasmBackend>,
+) -> Result<(), String> {
+    match (current, incoming) {
+        (EmbeddingLayerRecord::Basic(expected), EmbeddingLayerRecord::Basic(actual)) => {
+            if expected.weight.dims() != actual.weight.dims() {
+                return Err(format!(
+                    "Embedding loadState: weight shape mismatch: expected {:?}, got {:?}",
+                    expected.weight.dims(),
+                    actual.weight.dims()
+                ));
+            }
+            Ok(())
+        }
+    }
+}
+
 // --- WASM WRAPPER ---
 #[wasm_bindgen]
 pub struct WasmEmbedding {
@@ -107,11 +125,13 @@ impl WasmEmbedding {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
-        let record = crate::layers::state_record::decode_bin_record(
+        let record: EmbeddingLayerRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
             data,
             &device,
             "Embedding loadState",
         )?;
+        let current = self.inner.clone().into_record();
+        validate_embedding_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
         Ok(())
     }
