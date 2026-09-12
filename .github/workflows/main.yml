@@ -92,6 +92,9 @@ jobs:
       - name: Run custom Shift real-task research
         run: node scripts/research_shift_lag.mjs pkg
 
+      - name: Run FeatureNorm retrieval research
+        run: node scripts/research_feature_norm_retrieval.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
