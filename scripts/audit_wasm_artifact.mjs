@@ -153,6 +153,42 @@ test('missing referenced layer rejects run and verifyFlat before execution',()=>
  const detail={runErr,verifyErr}; input.free();g.free();b.free();spec.free();reg.free();return detail;
 });
 
+test('program bundle capabilities declare atomic replace + separate state',()=>{
+ const caps=JSON.parse(m.programBundleCapabilities());
+ assert(caps.schema==='burn-research.program-bundle.v1','bundle schema');
+ assert(caps.structural_identity==='burn-research.program-identity.v1','bundle identity schema');
+ assert(caps.target_registry==='atomic_replace_on_success','target replacement semantics');
+ assert(caps.import_commit==='atomic_after_identity_validation','atomic commit semantics');
+ assert(caps.mutable_state==='optional_separate_section','state separation');
+ return caps;
+});
+
+test('program bundle state round-trip preserves identity and output',()=>{
+ const source=new m.LayerRegistry(); const spec=m.AgentLayerSpec.linear(77,2,2,true); source.initAgentLayer(spec);
+ const builder=new m.AgentGraphBuilder(2); builder.addUnary(spec,0,1); builder.setOutput(1); const graph=builder.compile(source);
+ const type=spec.layerType(); const weights=source.getWeightsFlat(77,type); const fixed=new Float32Array(weights.length); for(let i=0;i<fixed.length;i++)fixed[i]=(i+1)*0.125; source.setWeightsFlat(77,type,fixed);
+ const input=new m.WasmTensor(new Float32Array([1.5,-0.5]),new Uint32Array([1,2,1,1])); const before=graph.run(source,input); const expected=arr(before.to_array());
+ const bundle=m.exportProgramBundle(graph,source,true); const oldIdentity=graph.programIdentity();
+ const target=new m.LayerRegistry(); const old=m.AgentLayerSpec.relu(99); target.initAgentLayer(old);
+ const imported=m.importProgramBundle(target,bundle); const after=imported.run(target,input); const got=arr(after.to_array());
+ assert(imported.programIdentity()===oldIdentity,'bundle identity changed');
+ assert(JSON.stringify(arr(imported.programPlan()))===JSON.stringify(arr(graph.programPlan())),'bundle plan changed');
+ assert(JSON.stringify(got)===JSON.stringify(expected),`bundle output mismatch: ${expected} -> ${got}`);
+ assert(!target.layerExists(old.layerType(),old.layerId()),'successful import did not replace prior registry');
+ imported.validateRegistryBinding(target);
+ const detail={bytes:bundle.length,identity:oldIdentity,output:got};
+ after.free();imported.free();old.free();before.free();input.free();graph.free();builder.free();spec.free();source.free();target.free();return detail;
+});
+
+test('corrupt program bundle fails atomically',()=>{
+ const source=new m.LayerRegistry(); const spec=m.AgentLayerSpec.linear(77,2,2,true); source.initAgentLayer(spec);
+ const builder=new m.AgentGraphBuilder(2); builder.addUnary(spec,0,1); builder.setOutput(1); const graph=builder.compile(source); const bundle=m.exportProgramBundle(graph,source,true); const corrupt=bundle.slice(0,bundle.length-1);
+ const target=new m.LayerRegistry(); const existing=m.AgentLayerSpec.relu(99); target.initAgentLayer(existing); let err='';
+ try{m.importProgramBundle(target,corrupt)}catch(e){err=String(e)}
+ assert(err,'corrupt bundle unexpectedly imported'); assert(target.layerExists(existing.layerType(),existing.layerId()),'target registry mutated on failed import');
+ const detail={err,target_preserved:true}; existing.free();graph.free();builder.free();spec.free();source.free();target.free();return detail;
+});
+
 let asyncInit;
 try{ const m2=await import(modUrl.href+'?asyncprobe=1'); await m2.default(); asyncInit={ok:true}; }catch(e){ asyncInit={ok:false,error:String(e)}; }
 results.push({name:'default async init local file',pass:asyncInit.ok,expected_portability_caveat:!asyncInit.ok,detail:asyncInit});
