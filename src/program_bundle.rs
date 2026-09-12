@@ -4,7 +4,6 @@ use wasm_bindgen::prelude::*;
 use crate::graph::CompiledGraph;
 use crate::protocol::{PacketHeader, OP_INIT};
 use crate::registry::LayerRegistry;
-use crate::WasmTensor;
 
 const BUNDLE_MAGIC: &[u8; 8] = b"BRPGBNDL";
 const BUNDLE_SCHEMA_VERSION: u32 = 1;
@@ -60,6 +59,63 @@ fn referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
         }
     }
     Ok(keys)
+}
+
+fn parse_hex_u8(value: &str, context: &str) -> Result<u8, String> {
+    u8::from_str_radix(value, 16)
+        .map_err(|_| format!("program bundle: invalid {context} hex value {value:?}"))
+}
+
+fn decode_hex(value: &str, context: &str) -> Result<Vec<u8>, String> {
+    if value.len() % 2 != 0 {
+        return Err(format!("program bundle: {context} hex length must be even"));
+    }
+    let mut out = Vec::with_capacity(value.len() / 2);
+    for offset in (0..value.len()).step_by(2) {
+        out.push(parse_hex_u8(&value[offset..offset + 2], context)?);
+    }
+    Ok(out)
+}
+
+fn field<'a>(part: &'a str, prefix: &str, context: &str) -> Result<&'a str, String> {
+    part.strip_prefix(prefix)
+        .ok_or_else(|| format!("program bundle: malformed {context} fingerprint field {part:?}"))
+}
+
+fn parse_init_fingerprint(
+    fingerprint: &str,
+    expected_type: u8,
+    expected_id: u32,
+) -> Result<(u8, u8, Vec<u8>), String> {
+    let parts = fingerprint.split(';').collect::<Vec<_>>();
+    if parts.len() != 5 {
+        return Err(format!(
+            "program bundle: unsupported program-identity.v1 layer fingerprint {fingerprint:?}"
+        ));
+    }
+    let layer_type = parse_hex_u8(field(parts[0], "type=", "type")?, "layer type")?;
+    let layer_id = field(parts[1], "id=", "id")?
+        .parse::<u32>()
+        .map_err(|_| "program bundle: invalid layer id in fingerprint".to_string())?;
+    let variant = parse_hex_u8(field(parts[2], "variant=", "variant")?, "variant")?;
+    let flags = parse_hex_u8(field(parts[3], "flags=", "flags")?, "flags")?;
+    let payload = decode_hex(field(parts[4], "payload=", "payload")?, "payload")?;
+
+    if layer_type != expected_type || layer_id != expected_id {
+        return Err(format!(
+            "program bundle: fingerprint key mismatch: expected type 0x{expected_type:02X} id {expected_id}, got type 0x{layer_type:02X} id {layer_id}"
+        ));
+    }
+    if payload.len() < 4 {
+        return Err("program bundle: fingerprint payload is too short to contain layer id".into());
+    }
+    let payload_id = read_u32_at(&payload, 0, "program bundle fingerprint payload")?;
+    if payload_id != layer_id {
+        return Err(format!(
+            "program bundle: fingerprint payload id {payload_id} does not match layer id {layer_id}"
+        ));
+    }
+    Ok((variant, flags, payload))
 }
 
 struct BundleCursor<'a> {
@@ -217,7 +273,8 @@ pub fn program_bundle_capabilities() -> String {
         "\"export\":\"exportProgramBundle\",",
         "\"import\":\"importProgramBundle\",",
         "\"structural_identity\":\"burn-research.program-identity.v1\",",
-        "\"target_registry\":\"empty_required\",",
+        "\"structural_source\":\"program-identity.v1_layer_init_fingerprint\",",
+        "\"target_registry\":\"atomic_replace_on_success\",",
         "\"import_commit\":\"atomic_after_identity_validation\",",
         "\"mutable_state\":\"optional_separate_section\"",
         "}"
@@ -240,9 +297,11 @@ pub fn export_program_bundle(
     let keys = referenced_layer_keys(&plan)?;
     let mut records = Vec::with_capacity(keys.len());
     for (layer_type, layer_id) in keys {
-        let (variant, flags, init_payload) = registry
-            .canonical_init_record(layer_type, layer_id)
+        let fingerprint = registry
+            .layer_init_fingerprint(layer_type, layer_id)
             .map_err(|error| format!("exportProgramBundle: {error}"))?;
+        let (variant, flags, init_payload) =
+            parse_init_fingerprint(&fingerprint, layer_type, layer_id)?;
         let state = if include_state {
             registry
                 .get_layer_state(layer_id, layer_type)
@@ -301,10 +360,6 @@ pub fn import_program_bundle(
     registry: &mut LayerRegistry,
     bundle: &[u8],
 ) -> Result<CompiledGraph, String> {
-    if !registry.is_empty_for_program_import() {
-        return Err("importProgramBundle: target LayerRegistry must be empty".into());
-    }
-
     let decoded = decode_bundle(bundle).map_err(|error| format!("importProgramBundle: {error}"))?;
     let mut staged = LayerRegistry::new();
     for (index, layer) in decoded.layers.iter().enumerate() {
@@ -349,7 +404,7 @@ pub fn import_program_bundle(
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_bundle, export_program_bundle, import_program_bundle, program_bundle_capabilities};
+    use super::{decode_bundle, export_program_bundle, import_program_bundle, parse_init_fingerprint, program_bundle_capabilities};
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
     use crate::protocol::LAYER_LINEAR;
     use crate::registry::LayerRegistry;
@@ -363,6 +418,19 @@ mod tests {
         builder.set_output(1).unwrap();
         let graph = builder.compile(registry).unwrap();
         (spec, builder, graph)
+    }
+
+    #[test]
+    fn fingerprint_parser_is_schema_bound_and_exact() {
+        let mut registry = LayerRegistry::new();
+        let (spec, _builder, _graph) = linear_graph(&mut registry);
+        let fingerprint = registry
+            .layer_init_fingerprint(spec.layer_type(), spec.layer_id())
+            .unwrap();
+        let (_variant, _flags, payload) =
+            parse_init_fingerprint(&fingerprint, spec.layer_type(), spec.layer_id()).unwrap();
+        assert_eq!(u32::from_le_bytes(payload[0..4].try_into().unwrap()), spec.layer_id());
+        assert!(parse_init_fingerprint("future-format", spec.layer_type(), spec.layer_id()).is_err());
     }
 
     #[test]
@@ -424,10 +492,15 @@ mod tests {
         corrupt.truncate(corrupt.len() - 1);
 
         let mut target = LayerRegistry::new();
+        let existing = AgentLayerSpec::relu(99);
+        target.init_agent_layer(&existing).unwrap();
         assert!(import_program_bundle(&mut target, &corrupt).is_err());
-        assert!(target.is_empty_for_program_import());
+        assert!(target.layer_exists(existing.layer_type(), existing.layer_id()));
+
         let imported = import_program_bundle(&mut target, &valid).unwrap();
         assert_eq!(imported.program_identity(), graph.program_identity());
+        assert!(!target.layer_exists(existing.layer_type(), existing.layer_id()));
+        assert!(target.layer_exists(LAYER_LINEAR, 7));
     }
 
     #[test]
@@ -445,29 +518,19 @@ mod tests {
         corrupt[start] ^= 1;
 
         let mut target = LayerRegistry::new();
-        assert!(import_program_bundle(&mut target, &corrupt).is_err());
-        assert!(target.is_empty_for_program_import());
-    }
-
-    #[test]
-    fn non_empty_target_is_rejected_without_overwrite() {
-        let mut source = LayerRegistry::new();
-        let (_spec, _builder, graph) = linear_graph(&mut source);
-        let bundle = export_program_bundle(&graph, &source, true).unwrap();
-
-        let mut target = LayerRegistry::new();
         let existing = AgentLayerSpec::relu(99);
         target.init_agent_layer(&existing).unwrap();
-        assert!(import_program_bundle(&mut target, &bundle).is_err());
+        assert!(import_program_bundle(&mut target, &corrupt).is_err());
         assert!(target.layer_exists(existing.layer_type(), existing.layer_id()));
     }
 
     #[test]
-    fn discovery_declares_atomic_import_and_state_separation() {
+    fn discovery_declares_atomic_replace_and_state_separation() {
         let caps = program_bundle_capabilities();
         assert!(caps.contains("burn-research.program-bundle.v1"));
+        assert!(caps.contains("program-identity.v1_layer_init_fingerprint"));
+        assert!(caps.contains("atomic_replace_on_success"));
         assert!(caps.contains("atomic_after_identity_validation"));
         assert!(caps.contains("optional_separate_section"));
-        assert!(caps.contains("empty_required"));
     }
 }
