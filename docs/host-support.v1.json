@@ -1,0 +1,25 @@
+{
+  "schema": "burn-research.host-support.v1",
+  "artifact_target": "wasm-bindgen-web",
+  "verified_hosts": {
+    "node": {
+      "status": "supported",
+      "module_system": "esm",
+      "adapter": "node.mjs",
+      "initialization": "filesystem_read_plus_initSync",
+      "local_file_package": true,
+      "ci_smoke_required": true
+    }
+  },
+  "generated_but_not_host_verified": {
+    "browser": {
+      "entry": "burn_research.js",
+      "initialization": "wasm-bindgen_default_async"
+    }
+  },
+  "planned_hosts": [
+    "rust",
+    "python",
+    "go"
+  ]
+}
