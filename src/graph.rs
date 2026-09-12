@@ -199,6 +199,7 @@ pub fn program_capabilities() -> String {
         "\"plan\":\"programPlan\",",
         "\"identity\":\"programIdentity\",",
         "\"binding_validation\":\"validateRegistryBinding\",",
+        "\"execution_binding\":\"required\",",
         "\"identity_scope\":\"graph_plan_plus_layer_init_identity\",",
         "\"mutable_state_in_identity\":false",
         "}"
@@ -214,6 +215,11 @@ impl CompiledGraph {
         registry: &LayerRegistry,
         input: &WasmTensor,
     ) -> Result<WasmTensor, String> {
+        // A compiled graph is structurally bound to the init identities validated at compile time.
+        // Mutable weights/state may change under the same init identity, but structural re-init
+        // requires recompiling the canonical plan before execution.
+        self.validate_registry_binding_internal(registry, "run")?;
+
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         slots[0] = Some(input.clone());
         for s in &self.steps {
@@ -291,6 +297,7 @@ mod tests {
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
     use crate::protocol::LAYER_LINEAR;
     use crate::registry::LayerRegistry;
+    use crate::WasmTensor;
 
     fn compiled_linear(registry: &mut LayerRegistry, out_dim: u32) -> CompiledGraph {
         let spec = AgentLayerSpec::linear(7, 2, out_dim, true).unwrap();
@@ -315,28 +322,55 @@ mod tests {
     }
 
     #[test]
-    fn structural_identity_ignores_compatible_mutable_state_changes() {
+    fn compatible_mutable_weight_changes_remain_executable_and_visible() {
         let mut registry = LayerRegistry::new();
         let graph = compiled_linear(&mut registry, 2);
         let identity = graph.program_identity();
+        let input = WasmTensor::new(&[1.0, 1.0], &[1, 2, 1, 1]);
+        let before = graph.run(&registry, &input).unwrap().to_array();
+
         let mut weights = registry.get_weights_flat(7, LAYER_LINEAR).unwrap();
         for value in &mut weights {
             *value += 1.0;
         }
         registry.set_weights_flat(7, LAYER_LINEAR, &weights).unwrap();
+
+        let after = graph.run(&registry, &input).unwrap().to_array();
+        assert_ne!(before, after);
         assert_eq!(graph.program_identity(), identity);
         assert!(graph.validate_registry_binding(&registry).is_ok());
     }
 
     #[test]
-    fn registry_structural_replacement_is_detected_without_changing_program_identity() {
+    fn structural_replacement_requires_recompile_before_execution() {
         let mut registry = LayerRegistry::new();
         let graph = compiled_linear(&mut registry, 2);
-        let identity = graph.program_identity();
+        let old_identity = graph.program_identity();
+        let plan = graph.program_plan();
+        let input = WasmTensor::new(&[1.0, -2.0], &[1, 2, 1, 1]);
+        assert!(graph.run(&registry, &input).is_ok());
+
         let replacement = AgentLayerSpec::linear(7, 2, 3, true).unwrap();
         registry.init_agent_layer(&replacement).unwrap();
-        assert_eq!(graph.program_identity(), identity);
+
         assert!(graph.validate_registry_binding(&registry).is_err());
+        assert!(graph.run(&registry, &input).is_err());
+        assert!(graph.verify_flat(&registry, &input, &[0.0, 0.0], 0.0, 0.0).is_err());
+
+        let rebound = registry.compile_graph(&plan).unwrap();
+        assert_ne!(rebound.program_identity(), old_identity);
+        assert!(rebound.validate_registry_binding(&registry).is_ok());
+        assert!(rebound.run(&registry, &input).is_ok());
+    }
+
+    #[test]
+    fn missing_referenced_layer_is_rejected_before_execution() {
+        let mut registry = LayerRegistry::new();
+        let graph = compiled_linear(&mut registry, 2);
+        let input = WasmTensor::new(&[1.0, 1.0], &[1, 2, 1, 1]);
+        assert!(registry.destroy_layer(7, LAYER_LINEAR));
+        assert!(graph.validate_registry_binding(&registry).is_err());
+        assert!(graph.run(&registry, &input).is_err());
     }
 
     #[test]
@@ -354,12 +388,13 @@ mod tests {
     }
 
     #[test]
-    fn program_discovery_states_structural_scope() {
+    fn program_discovery_states_structural_scope_and_execution_binding() {
         let capabilities = program_capabilities();
         assert!(capabilities.contains("burn-research.program-identity.v1"));
         assert!(capabilities.contains("programPlan"));
         assert!(capabilities.contains("programIdentity"));
         assert!(capabilities.contains("validateRegistryBinding"));
+        assert!(capabilities.contains("\"execution_binding\":\"required\""));
         assert!(capabilities.contains("\"mutable_state_in_identity\":false"));
     }
 }
