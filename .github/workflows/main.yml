@@ -89,6 +89,9 @@ jobs:
       - name: Run Node host adapter audit
         run: node scripts/audit_node_host.mjs pkg
 
+      - name: Run custom Shift real-task research
+        run: node scripts/research_shift_lag.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
