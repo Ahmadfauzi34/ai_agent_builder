@@ -6,6 +6,7 @@
       "status": "supported",
       "module_system": "esm",
       "adapter": "node.mjs",
+      "types": "node.d.mts",
       "initialization": "filesystem_read_plus_initSync",
       "local_file_package": true,
       "ci_smoke_required": true
