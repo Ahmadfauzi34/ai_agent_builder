@@ -79,6 +79,9 @@ jobs:
       - name: Audit packaged WASM surface
         run: python3 scripts/check_wasm_surface.py
 
+      - name: Run packaged WASM artifact audit
+        run: node scripts/audit_wasm_artifact.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
