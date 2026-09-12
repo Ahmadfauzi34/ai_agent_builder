@@ -23,6 +23,7 @@ jobs:
         run: |
           python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
+          python3 -m json.tool docs/host-support.v1.json >/dev/null
 
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -76,11 +77,17 @@ jobs:
       - name: Build WASM
         run: wasm-pack build --target web --out-dir pkg
 
+      - name: Package Node host adapter
+        run: node scripts/package_node_host.mjs pkg
+
       - name: Audit packaged WASM surface
         run: python3 scripts/check_wasm_surface.py
 
       - name: Run packaged WASM artifact audit
         run: node scripts/audit_wasm_artifact.mjs pkg
+
+      - name: Run Node host adapter audit
+        run: node scripts/audit_node_host.mjs pkg
 
       - name: Run host tests
         run: cargo test --lib --tests
