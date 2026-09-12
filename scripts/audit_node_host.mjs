@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 
 const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
 const adapterPath = path.join(pkgDir, 'node.mjs');
+const typesPath = path.join(pkgDir, 'node.d.mts');
 const supportPath = path.join(pkgDir, 'host-support.v1.json');
 
 function assert(condition, message) {
@@ -11,12 +12,14 @@ function assert(condition, message) {
 }
 
 assert(fs.existsSync(adapterPath), 'packaged node.mjs is missing');
+assert(fs.existsSync(typesPath), 'packaged node.d.mts is missing');
 assert(fs.existsSync(supportPath), 'packaged host-support.v1.json is missing');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
 assert(support.schema === 'burn-research.host-support.v1', 'host support schema mismatch');
 assert(support.verified_hosts?.node?.status === 'supported', 'Node host must be declared supported');
 assert(support.verified_hosts?.node?.adapter === 'node.mjs', 'Node adapter discovery mismatch');
+assert(support.verified_hosts?.node?.types === 'node.d.mts', 'Node type discovery mismatch');
 
 const adapter = await import(pathToFileURL(adapterPath).href);
 const runtime = await adapter.loadBurnRuntime();
@@ -52,6 +55,7 @@ console.log(JSON.stringify({
   verdict: 'PASS',
   host: 'node',
   adapter: 'node.mjs',
+  types: 'node.d.mts',
   packageDir: adapter.burnRuntimePackageDir(),
   execution: got,
   programIdentitySchema: programCaps.identity_schema,
