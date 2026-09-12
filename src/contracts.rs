@@ -280,9 +280,9 @@ mod tests {
 
     #[test]
     fn schema_exposes_explicit_compatibility_policy() {
-        let schema = agent_contract_schema();
-        assert!(schema.contains("\"unknown_schema_version\":\"reject\""));
-        assert!(schema.contains("\"unknown_predicate\":\"reject\""));
+        let schema: serde_json::Value = serde_json::from_str(&agent_contract_schema()).unwrap();
+        assert_eq!(schema["compatibility"]["unknown_schema_version"], "reject");
+        assert_eq!(schema["compatibility"]["unknown_predicate"], "reject");
     }
 
     #[test]
