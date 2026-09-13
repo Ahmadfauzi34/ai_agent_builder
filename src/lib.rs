@@ -13,6 +13,7 @@ pub mod math;
 pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
+pub mod resolution;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]
