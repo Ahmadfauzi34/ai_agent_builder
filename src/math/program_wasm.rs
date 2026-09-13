@@ -61,6 +61,37 @@ impl WasmMathProgramBuilder {
             .add_cosine_similarity(lhs, rhs, output, epsilon)
     }
 
+    #[wasm_bindgen(js_name = addReshape)]
+    pub fn add_reshape(
+        &mut self,
+        input: u8,
+        output: u8,
+        shape: &[u32],
+    ) -> Result<(), String> {
+        self.inner.add_reshape(input, output, shape)
+    }
+
+    #[wasm_bindgen(js_name = addPermute)]
+    pub fn add_permute(
+        &mut self,
+        input: u8,
+        output: u8,
+        axes: &[u32],
+    ) -> Result<(), String> {
+        self.inner.add_permute(input, output, axes)
+    }
+
+    #[wasm_bindgen(js_name = addSlice)]
+    pub fn add_slice(
+        &mut self,
+        input: u8,
+        output: u8,
+        starts: &[u32],
+        ends: &[u32],
+    ) -> Result<(), String> {
+        self.inner.add_slice(input, output, starts, ends)
+    }
+
     #[wasm_bindgen(js_name = setOutput)]
     pub fn set_output(&mut self, slot: u8) -> Result<(), String> {
         self.inner.set_output(slot)

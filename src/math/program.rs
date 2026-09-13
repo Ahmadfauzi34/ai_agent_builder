@@ -1,3 +1,7 @@
+use crate::math::program_shape_params::{
+    FixedShapeParams, PARAM_PERMUTE_RANK4, PARAM_RESHAPE_RANK4, PARAM_SLICE_RANK4,
+    SHAPE_PARAM_BYTES,
+};
 use crate::math::{
     WasmLinearAlgebra, WasmNumericKernel, WasmProbability, WasmStatistics, WasmTensorTransform,
 };
@@ -6,9 +10,11 @@ use crate::WasmTensor;
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
 const PLAN_VERSION_V1: u8 = 1;
 const PLAN_VERSION_V2: u8 = 2;
+const PLAN_VERSION_V3: u8 = 3;
 const PLAN_HEADER_BYTES: usize = 8;
 const PLAN_STEP_BYTES_V1: usize = 5;
 const PLAN_STEP_BYTES_V2: usize = 14;
+const PLAN_STEP_BYTES_V3: usize = 5 + 1 + SHAPE_PARAM_BYTES;
 const PLAN_OUTPUT_BYTES: usize = 1;
 const MAX_SLOTS: u8 = 64;
 const MAX_STEPS: usize = u8::MAX as usize;
@@ -24,8 +30,11 @@ pub const OP_SUB: u8 = 0x12;
 pub const OP_MUL: u8 = 0x13;
 pub const OP_DIV: u8 = 0x14;
 
-// Tensor Transform. Shape-parameter transforms remain deferred.
+// Tensor Transform.
 pub const OP_TRANSPOSE: u8 = 0x20;
+pub const OP_RESHAPE: u8 = 0x21;
+pub const OP_PERMUTE: u8 = 0x22;
+pub const OP_SLICE: u8 = 0x23;
 
 // Linear Algebra.
 pub const OP_L2_NORM: u8 = 0x30;
@@ -64,6 +73,7 @@ struct MathStep {
     param_kind: u8,
     param_a_bits: u32,
     param_b_bits: u32,
+    shape_params: Option<FixedShapeParams>,
 }
 
 impl MathStep {
@@ -77,6 +87,7 @@ impl MathStep {
             param_kind: PARAM_NONE,
             param_a_bits: 0,
             param_b_bits: 0,
+            shape_params: None,
         }
     }
 
@@ -98,6 +109,7 @@ impl MathStep {
             param_kind,
             param_a_bits: canonical_f32_bits(value),
             param_b_bits: 0,
+            shape_params: None,
         }
     }
 
@@ -120,6 +132,26 @@ impl MathStep {
             param_kind,
             param_a_bits: canonical_f32_bits(a),
             param_b_bits: canonical_f32_bits(b),
+            shape_params: None,
+        }
+    }
+
+    fn shape(
+        op: u8,
+        input: u8,
+        output: u8,
+        shape_params: FixedShapeParams,
+    ) -> Self {
+        Self {
+            op,
+            arity: ARITY_UNARY,
+            in_a: input,
+            in_b: 0,
+            out: output,
+            param_kind: shape_params.kind(),
+            param_a_bits: 0,
+            param_b_bits: 0,
+            shape_params: Some(shape_params),
         }
     }
 
@@ -131,8 +163,22 @@ impl MathStep {
         f32::from_bits(self.param_b_bits)
     }
 
-    fn has_parameters(self) -> bool {
-        self.param_kind != PARAM_NONE
+    fn has_scalar_parameters(self) -> bool {
+        self.shape_params.is_none() && self.param_kind != PARAM_NONE
+    }
+
+    fn has_shape_parameters(self) -> bool {
+        self.shape_params.is_some()
+    }
+
+    fn v3_payload(self) -> [u8; SHAPE_PARAM_BYTES] {
+        if let Some(params) = self.shape_params {
+            return params.encode();
+        }
+        let mut payload = [0u8; SHAPE_PARAM_BYTES];
+        payload[0..4].copy_from_slice(&self.param_a_bits.to_le_bytes());
+        payload[4..8].copy_from_slice(&self.param_b_bits.to_le_bytes());
+        payload
     }
 }
 
@@ -152,6 +198,9 @@ fn expected_arity(op: u8) -> Option<u8> {
         | OP_LOG
         | OP_CLAMP
         | OP_TRANSPOSE
+        | OP_RESHAPE
+        | OP_PERMUTE
+        | OP_SLICE
         | OP_L2_NORM
         | OP_SUM
         | OP_MEAN
@@ -187,6 +236,9 @@ fn op_name(op: u8) -> &'static str {
         OP_MUL => "mul",
         OP_DIV => "div",
         OP_TRANSPOSE => "transpose",
+        OP_RESHAPE => "reshape",
+        OP_PERMUTE => "permute",
+        OP_SLICE => "slice",
         OP_L2_NORM => "l2Norm",
         OP_DOT => "dot",
         OP_L2_DISTANCE => "l2Distance",
@@ -229,10 +281,36 @@ fn validate_program_shape(num_inputs: u8, num_slots: u8) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_shape_parameters(
+    step: MathStep,
+    expected_kind: u8,
+    context: &str,
+) -> Result<(), String> {
+    if step.param_kind != expected_kind || step.param_a_bits != 0 || step.param_b_bits != 0 {
+        return Err(format!(
+            "{context}: opcode {} requires canonical fixed rank-4 metadata",
+            op_name(step.op)
+        ));
+    }
+    let params = step.shape_params.ok_or_else(|| {
+        format!(
+            "{context}: opcode {} is missing fixed rank-4 metadata",
+            op_name(step.op)
+        )
+    })?;
+    if params.kind() != expected_kind {
+        return Err(format!(
+            "{context}: opcode {} parameter kind mismatch",
+            op_name(step.op)
+        ));
+    }
+    Ok(())
+}
+
 fn validate_step_parameters(step: MathStep, context: &str) -> Result<(), String> {
     match step.op {
         OP_CLAMP => {
-            if step.param_kind != PARAM_CLAMP {
+            if step.shape_params.is_some() || step.param_kind != PARAM_CLAMP {
                 return Err(format!(
                     "{context}: opcode clamp requires scalar min/max parameters"
                 ));
@@ -258,7 +336,10 @@ fn validate_step_parameters(step: MathStep, context: &str) -> Result<(), String>
             }
         }
         OP_COSINE_SIMILARITY => {
-            if step.param_kind != PARAM_EPSILON || step.param_b_bits != 0 {
+            if step.shape_params.is_some()
+                || step.param_kind != PARAM_EPSILON
+                || step.param_b_bits != 0
+            {
                 return Err(format!(
                     "{context}: opcode cosineSimilarity requires exactly one epsilon parameter"
                 ));
@@ -275,10 +356,17 @@ fn validate_step_parameters(step: MathStep, context: &str) -> Result<(), String>
                 ));
             }
         }
+        OP_RESHAPE => validate_shape_parameters(step, PARAM_RESHAPE_RANK4, context)?,
+        OP_PERMUTE => validate_shape_parameters(step, PARAM_PERMUTE_RANK4, context)?,
+        OP_SLICE => validate_shape_parameters(step, PARAM_SLICE_RANK4, context)?,
         _ => {
-            if step.param_kind != PARAM_NONE || step.param_a_bits != 0 || step.param_b_bits != 0 {
+            if step.param_kind != PARAM_NONE
+                || step.param_a_bits != 0
+                || step.param_b_bits != 0
+                || step.shape_params.is_some()
+            {
                 return Err(format!(
-                    "{context}: opcode {} does not accept scalar parameters",
+                    "{context}: opcode {} does not accept parameters",
                     op_name(step.op)
                 ));
             }
@@ -345,10 +433,23 @@ fn validate_step(
 }
 
 fn plan_version(steps: &[MathStep]) -> u8 {
-    if steps.iter().copied().any(MathStep::has_parameters) {
+    if steps.iter().copied().any(MathStep::has_shape_parameters) {
+        PLAN_VERSION_V3
+    } else if steps.iter().copied().any(MathStep::has_scalar_parameters) {
         PLAN_VERSION_V2
     } else {
         PLAN_VERSION_V1
+    }
+}
+
+fn step_bytes(version: u8) -> Result<usize, String> {
+    match version {
+        PLAN_VERSION_V1 => Ok(PLAN_STEP_BYTES_V1),
+        PLAN_VERSION_V2 => Ok(PLAN_STEP_BYTES_V2),
+        PLAN_VERSION_V3 => Ok(PLAN_STEP_BYTES_V3),
+        _ => Err(format!(
+            "MathProgram: unsupported plan version {version}; supported versions are 1, 2, and 3"
+        )),
     }
 }
 
@@ -392,11 +493,7 @@ fn encode_plan(
     }
 
     let version = plan_version(steps);
-    let step_bytes = if version == PLAN_VERSION_V1 {
-        PLAN_STEP_BYTES_V1
-    } else {
-        PLAN_STEP_BYTES_V2
-    };
+    let step_bytes = step_bytes(version)?;
     let mut plan = Vec::with_capacity(
         PLAN_HEADER_BYTES + steps.len() * step_bytes + PLAN_OUTPUT_BYTES,
     );
@@ -415,10 +512,41 @@ fn encode_plan(
             plan.push(step.param_kind);
             plan.extend_from_slice(&step.param_a_bits.to_le_bytes());
             plan.extend_from_slice(&step.param_b_bits.to_le_bytes());
+        } else if version == PLAN_VERSION_V3 {
+            plan.push(step.param_kind);
+            plan.extend_from_slice(&step.v3_payload());
         }
     }
     plan.push(out_slot);
     Ok(plan)
+}
+
+fn decode_v3_parameters(
+    param_kind: u8,
+    payload: &[u8],
+) -> Result<(u32, u32, Option<FixedShapeParams>), String> {
+    if payload.len() != SHAPE_PARAM_BYTES {
+        return Err(format!(
+            "MathProgram: malformed v3 parameter payload length {}, expected {SHAPE_PARAM_BYTES}",
+            payload.len()
+        ));
+    }
+    if matches!(
+        param_kind,
+        PARAM_RESHAPE_RANK4 | PARAM_PERMUTE_RANK4 | PARAM_SLICE_RANK4
+    ) {
+        return Ok((
+            0,
+            0,
+            Some(FixedShapeParams::decode(param_kind, payload)?),
+        ));
+    }
+    if payload[8..].iter().any(|byte| *byte != 0) {
+        return Err("MathProgram: unused v3 scalar parameter bytes must be zero".into());
+    }
+    let a = u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]);
+    let b = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]);
+    Ok((a, b, None))
 }
 
 fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
@@ -429,15 +557,7 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
         return Err("MathProgram: invalid plan magic".into());
     }
     let version = plan[4];
-    let step_bytes = match version {
-        PLAN_VERSION_V1 => PLAN_STEP_BYTES_V1,
-        PLAN_VERSION_V2 => PLAN_STEP_BYTES_V2,
-        _ => {
-            return Err(format!(
-                "MathProgram: unsupported plan version {version}; supported versions are 1 and 2"
-            ))
-        }
-    };
+    let step_bytes = step_bytes(version)?;
 
     let num_inputs = plan[5];
     let num_slots = plan[6];
@@ -464,8 +584,9 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
     let mut written = 0u64;
     let mut offset = PLAN_HEADER_BYTES;
     for index in 0..num_steps {
-        let (param_kind, param_a_bits, param_b_bits) = if version == PLAN_VERSION_V2 {
-            (
+        let (param_kind, param_a_bits, param_b_bits, shape_params) = match version {
+            PLAN_VERSION_V1 => (PARAM_NONE, 0, 0, None),
+            PLAN_VERSION_V2 => (
                 plan[offset + 5],
                 u32::from_le_bytes([
                     plan[offset + 6],
@@ -479,9 +600,15 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
                     plan[offset + 12],
                     plan[offset + 13],
                 ]),
-            )
-        } else {
-            (PARAM_NONE, 0, 0)
+                None,
+            ),
+            PLAN_VERSION_V3 => {
+                let param_kind = plan[offset + 5];
+                let payload = &plan[offset + 6..offset + 6 + SHAPE_PARAM_BYTES];
+                let (a, b, shape) = decode_v3_parameters(param_kind, payload)?;
+                (param_kind, a, b, shape)
+            }
+            _ => unreachable!(),
         };
         let step = MathStep {
             op: plan[offset],
@@ -492,6 +619,7 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
             param_kind,
             param_a_bits,
             param_b_bits,
+            shape_params,
         };
         (filled, written) = validate_step(
             step,
@@ -531,21 +659,22 @@ fn hex(bytes: &[u8]) -> String {
 pub fn math_program_capabilities() -> String {
     concat!(
         "{",
-        "\"schema\":\"burn-research.math-program.v2\",",
-        "\"plan_schemas\":[\"burn-research.math-program-plan.v1\",\"burn-research.math-program-plan.v2\"],",
+        "\"schema\":\"burn-research.math-program.v3\",",
+        "\"plan_schemas\":[\"burn-research.math-program-plan.v1\",\"burn-research.math-program-plan.v2\",\"burn-research.math-program-plan.v3\"],",
         "\"identity_schema\":\"burn-research.math-program-identity.v1\",",
         "\"inputs\":\"one_or_two\",",
         "\"max_slots\":64,",
         "\"slot_semantics\":\"write_once_read_after_write\",",
         "\"replay\":true,",
         "\"v1_identity_compatibility\":true,",
+        "\"v2_identity_compatibility\":true,",
         "\"registry_dependency\":false,",
         "\"mutable_state\":false,",
-        "\"parameterized_ops\":{\"scalar_v2\":[\"clamp\",\"cosineSimilarity\"],\"shape\":\"deferred\"},",
+        "\"parameterized_ops\":{\"scalar_v2\":[\"clamp\",\"cosineSimilarity\"],\"fixed_rank4_v3\":[\"reshape\",\"permute\",\"slice\"],\"variable_length\":\"deferred_selectAxis\"},",
         "\"opcodes\":{",
         "\"abs\":1,\"sqrt\":2,\"exp\":3,\"log\":4,\"clamp\":5,",
         "\"add\":17,\"sub\":18,\"mul\":19,\"div\":20,",
-        "\"transpose\":32,",
+        "\"transpose\":32,\"reshape\":33,\"permute\":34,\"slice\":35,",
         "\"l2Norm\":48,\"dot\":49,\"l2Distance\":50,\"matmul\":51,\"cosineSimilarity\":52,",
         "\"sum\":64,\"mean\":65,\"variancePopulation\":66,\"stdPopulation\":67,\"min\":68,\"max\":69,",
         "\"normalize\":80,\"entropy\":81,\"crossEntropy\":82,\"klDivergence\":83",
@@ -657,6 +786,46 @@ impl MathProgramBuilder {
                 epsilon,
             ),
             "MathProgramBuilder.addCosineSimilarity",
+        )
+    }
+
+    pub fn add_reshape(
+        &mut self,
+        input: u8,
+        output: u8,
+        shape: &[u32],
+    ) -> Result<(), String> {
+        let params = FixedShapeParams::reshape(shape)?;
+        self.push_step(
+            MathStep::shape(OP_RESHAPE, input, output, params),
+            "MathProgramBuilder.addReshape",
+        )
+    }
+
+    pub fn add_permute(
+        &mut self,
+        input: u8,
+        output: u8,
+        axes: &[u32],
+    ) -> Result<(), String> {
+        let params = FixedShapeParams::permute(axes)?;
+        self.push_step(
+            MathStep::shape(OP_PERMUTE, input, output, params),
+            "MathProgramBuilder.addPermute",
+        )
+    }
+
+    pub fn add_slice(
+        &mut self,
+        input: u8,
+        output: u8,
+        starts: &[u32],
+        ends: &[u32],
+    ) -> Result<(), String> {
+        let params = FixedShapeParams::slice(starts, ends)?;
+        self.push_step(
+            MathStep::shape(OP_SLICE, input, output, params),
+            "MathProgramBuilder.addSlice",
         )
     }
 
@@ -781,6 +950,33 @@ impl MathProgram {
                     OP_LOG => numeric.log(a),
                     OP_CLAMP => numeric.clamp(a, step.param_a(), step.param_b()),
                     OP_TRANSPOSE => Ok(tensor.transpose(a)),
+                    OP_RESHAPE => {
+                        let shape = step
+                            .shape_params
+                            .and_then(FixedShapeParams::reshape_usize)
+                            .ok_or_else(|| {
+                                format!("MathProgram.run: step {index} reshape metadata missing")
+                            })?;
+                        tensor.reshape(a, &shape)
+                    }
+                    OP_PERMUTE => {
+                        let axes = step
+                            .shape_params
+                            .and_then(FixedShapeParams::permute_usize)
+                            .ok_or_else(|| {
+                                format!("MathProgram.run: step {index} permute metadata missing")
+                            })?;
+                        tensor.permute(a, &axes)
+                    }
+                    OP_SLICE => {
+                        let (starts, ends) = step
+                            .shape_params
+                            .and_then(FixedShapeParams::slice_usize)
+                            .ok_or_else(|| {
+                                format!("MathProgram.run: step {index} slice metadata missing")
+                            })?;
+                        tensor.slice(a, &starts, &ends)
+                    }
                     OP_L2_NORM => linalg.l2_norm(a),
                     OP_SUM => statistics.sum(a),
                     OP_MEAN => statistics.mean(a),
@@ -982,6 +1178,76 @@ mod tests {
     }
 
     #[test]
+    fn fixed_shape_transforms_use_v3_and_replay_identically() {
+        let mut builder = MathProgramBuilder::new(1, 4).unwrap();
+        builder.add_reshape(0, 1, &[1, 1, 3, 2]).unwrap();
+        builder.add_permute(1, 2, &[0, 1, 3, 2]).unwrap();
+        builder
+            .add_slice(2, 3, &[0, 0, 0, 1], &[1, 1, 2, 3])
+            .unwrap();
+        builder.set_output(3).unwrap();
+        let program = builder.compile().unwrap();
+        assert_eq!(program.program_plan()[4], PLAN_VERSION_V3);
+
+        let input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[1, 2, 1, 3]);
+        let output = program.run1(&input).unwrap();
+        assert_eq!(output.shape(), vec![1, 1, 2, 2]);
+
+        let replay = MathProgram::from_plan(&program.program_plan()).unwrap();
+        assert_eq!(replay.program_plan(), program.program_plan());
+        assert_eq!(replay.program_identity(), program.program_identity());
+        assert_eq!(replay.run1(&input).unwrap().to_array(), output.to_array());
+    }
+
+    #[test]
+    fn fixed_shape_metadata_changes_identity() {
+        let mut a = MathProgramBuilder::new(1, 2).unwrap();
+        a.add_reshape(0, 1, &[1, 1, 2, 3]).unwrap();
+        a.set_output(1).unwrap();
+        let a = a.compile().unwrap();
+
+        let mut b = MathProgramBuilder::new(1, 2).unwrap();
+        b.add_reshape(0, 1, &[1, 1, 3, 2]).unwrap();
+        b.set_output(1).unwrap();
+        let b = b.compile().unwrap();
+
+        assert_eq!(a.program_plan()[4], PLAN_VERSION_V3);
+        assert_ne!(a.program_identity(), b.program_identity());
+    }
+
+    #[test]
+    fn invalid_shape_metadata_is_rejected_without_builder_mutation() {
+        let mut builder = MathProgramBuilder::new(1, 3).unwrap();
+        assert!(builder.add_unary(OP_RESHAPE, 0, 1).is_err());
+        assert!(builder.add_reshape(0, 1, &[1, 0, 2, 3]).is_err());
+        assert!(builder.add_permute(0, 1, &[0, 1, 1, 3]).is_err());
+        assert!(builder
+            .add_slice(0, 1, &[0, 0, 1, 0], &[1, 1, 1, 1])
+            .is_err());
+        assert_eq!(builder.num_steps(), 0);
+        builder.add_reshape(0, 1, &[1, 1, 2, 3]).unwrap();
+        assert_eq!(builder.num_steps(), 1);
+    }
+
+    #[test]
+    fn runtime_shape_failure_preserves_identity_and_program_is_reusable() {
+        let mut builder = MathProgramBuilder::new(1, 2).unwrap();
+        builder.add_reshape(0, 1, &[1, 1, 2, 2]).unwrap();
+        builder.set_output(1).unwrap();
+        let program = builder.compile().unwrap();
+        let identity = program.program_identity();
+
+        let invalid = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
+        assert!(program.run1(&invalid).is_err());
+        assert_eq!(program.program_identity(), identity);
+
+        let valid = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 4, 1, 1]);
+        let output = program.run1(&valid).unwrap();
+        assert_eq!(output.shape(), vec![1, 1, 2, 2]);
+        assert_eq!(program.program_identity(), identity);
+    }
+
+    #[test]
     fn invalid_scalar_parameters_are_rejected_without_builder_mutation() {
         let mut unary = MathProgramBuilder::new(1, 3).unwrap();
         assert!(unary.add_unary(OP_CLAMP, 0, 1).is_err());
@@ -1021,6 +1287,25 @@ mod tests {
         v2.extend_from_slice(&[0u8; PLAN_STEP_BYTES_V2 - PLAN_STEP_BYTES_V1]);
         v2.push(*v1.last().unwrap());
         assert!(MathProgram::from_plan(&v2).is_err());
+    }
+
+    #[test]
+    fn v3_plan_without_shape_parameters_is_noncanonical() {
+        let mut builder = MathProgramBuilder::new(1, 2).unwrap();
+        builder.add_clamp(0, 1, -1.0, 1.0).unwrap();
+        builder.set_output(1).unwrap();
+        let v2 = builder.compile().unwrap().program_plan();
+        assert_eq!(v2[4], PLAN_VERSION_V2);
+
+        let mut v3 = Vec::with_capacity(PLAN_HEADER_BYTES + PLAN_STEP_BYTES_V3 + 1);
+        v3.extend_from_slice(&v2[..PLAN_HEADER_BYTES]);
+        v3[4] = PLAN_VERSION_V3;
+        let step = &v2[PLAN_HEADER_BYTES..PLAN_HEADER_BYTES + PLAN_STEP_BYTES_V2];
+        v3.extend_from_slice(&step[..6]);
+        v3.extend_from_slice(&step[6..14]);
+        v3.extend_from_slice(&[0u8; SHAPE_PARAM_BYTES - 8]);
+        v3.push(*v2.last().unwrap());
+        assert!(MathProgram::from_plan(&v3).is_err());
     }
 
     #[test]
@@ -1088,13 +1373,16 @@ mod tests {
     #[test]
     fn capabilities_document_core_boundary() {
         let caps = math_program_capabilities();
-        assert!(caps.contains("burn-research.math-program.v2"));
+        assert!(caps.contains("burn-research.math-program.v3"));
         assert!(caps.contains("burn-research.math-program-plan.v1"));
         assert!(caps.contains("burn-research.math-program-plan.v2"));
+        assert!(caps.contains("burn-research.math-program-plan.v3"));
         assert!(caps.contains("\"slot_semantics\":\"write_once_read_after_write\""));
         assert!(caps.contains("\"v1_identity_compatibility\":true"));
+        assert!(caps.contains("\"v2_identity_compatibility\":true"));
         assert!(caps.contains("\"registry_dependency\":false"));
         assert!(caps.contains("\"scalar_v2\":[\"clamp\",\"cosineSimilarity\"]"));
-        assert!(caps.contains("\"shape\":\"deferred\""));
+        assert!(caps.contains("\"fixed_rank4_v3\":[\"reshape\",\"permute\",\"slice\"]"));
+        assert!(caps.contains("\"variable_length\":\"deferred_selectAxis\""));
     }
 }
