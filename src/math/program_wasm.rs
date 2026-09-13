@@ -38,6 +38,29 @@ impl WasmMathProgramBuilder {
         self.inner.add_binary(op, lhs, rhs, output)
     }
 
+    #[wasm_bindgen(js_name = addClamp)]
+    pub fn add_clamp(
+        &mut self,
+        input: u8,
+        output: u8,
+        min: f32,
+        max: f32,
+    ) -> Result<(), String> {
+        self.inner.add_clamp(input, output, min, max)
+    }
+
+    #[wasm_bindgen(js_name = addCosineSimilarity)]
+    pub fn add_cosine_similarity(
+        &mut self,
+        lhs: u8,
+        rhs: u8,
+        output: u8,
+        epsilon: f32,
+    ) -> Result<(), String> {
+        self.inner
+            .add_cosine_similarity(lhs, rhs, output, epsilon)
+    }
+
     #[wasm_bindgen(js_name = setOutput)]
     pub fn set_output(&mut self, slot: u8) -> Result<(), String> {
         self.inner.set_output(slot)
