@@ -9,6 +9,7 @@ pub mod contracts;
 pub mod es;
 pub mod graph;
 pub mod layers;
+pub mod math;
 pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
