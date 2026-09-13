@@ -14,6 +14,7 @@ pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
 pub mod resolution;
+pub mod resolution_review;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]
