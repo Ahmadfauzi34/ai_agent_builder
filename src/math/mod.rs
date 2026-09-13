@@ -2,6 +2,7 @@ pub mod linalg;
 pub mod numeric;
 pub mod probability;
 pub mod program;
+pub(crate) mod program_select_params;
 pub(crate) mod program_shape_params;
 pub mod program_wasm;
 pub mod statistics;
