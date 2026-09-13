@@ -107,6 +107,9 @@ jobs:
       - name: Run Linear Algebra artifact research
         run: node scripts/research_linear_algebra.mjs pkg
 
+      - name: Run Statistics artifact research
+        run: node scripts/research_statistics.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
