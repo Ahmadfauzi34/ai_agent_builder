@@ -15,27 +15,41 @@ jobs:
         with:
           ref: feat/feature-norm-integration
 
-      - name: Narrow patch anchor
-        run: python3 scripts/fix_feature_norm_phase2_patch.py
-
-      - name: Keep source push workflow-neutral
-        run: python3 scripts/fix_feature_norm_phase2_push.py
-
-      - name: Apply integration patch
-        run: python3 scripts/apply_feature_norm_phase2.py
-
-      - name: Format and validate host proof
+      - name: Reapply semantic patch from exact baseline
+        shell: bash
         run: |
-          cargo fmt --all
+          BASE=ac1b2f2f3945454b5fbf06a7f0887a10736c3497
+          PATCH_SOURCE=225fcd99a15bda3fcaafe23db86f27374d932411
+          git fetch --depth=1 origin "$BASE"
+          git fetch --depth=1 origin "$PATCH_SOURCE"
+          git checkout "$BASE" -- \
+            src/protocol.rs \
+            src/layers/custom/feature_norm.rs \
+            src/registry.rs \
+            src/agent.rs \
+            src/contracts.rs \
+            src/lib.rs \
+            docs/agent-layout-contracts.v1.json \
+            docs/wasm-surface.v1.json
+          git show "$PATCH_SOURCE":scripts/apply_feature_norm_phase2.py > scripts/apply_feature_norm_phase2.py
+          git show "$PATCH_SOURCE":scripts/fix_feature_norm_phase2_patch.py > scripts/fix_feature_norm_phase2_patch.py
+          git show "$PATCH_SOURCE":scripts/fix_feature_norm_phase2_push.py > scripts/fix_feature_norm_phase2_push.py
+          python3 scripts/fix_feature_norm_phase2_patch.py
+          python3 scripts/fix_feature_norm_phase2_push.py
+          python3 scripts/apply_feature_norm_phase2.py
+          rustfmt src/feature_norm_integration_tests.rs
+          rm scripts/apply_feature_norm_phase2.py
+          rm scripts/fix_feature_norm_phase2_patch.py
+          rm scripts/fix_feature_norm_phase2_push.py
+
+      - name: Validate minimized host proof
+        run: |
           python3 -m json.tool docs/agent-layout-contracts.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           cargo test --lib --tests
 
-      - name: Commit proven source patch only
+      - name: Commit minimized semantic diff
         run: |
-          rm scripts/apply_feature_norm_phase2.py
-          rm scripts/fix_feature_norm_phase2_patch.py
-          rm scripts/fix_feature_norm_phase2_push.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add \
@@ -49,8 +63,7 @@ jobs:
             docs/agent-layout-contracts.v1.json \
             docs/wasm-surface.v1.json \
             scripts/research_feature_norm_integration.mjs
-          git add -u scripts/apply_feature_norm_phase2.py scripts/fix_feature_norm_phase2_patch.py scripts/fix_feature_norm_phase2_push.py
           git diff --cached --check
           git diff --cached --stat
-          git commit -m "feat: integrate FeatureNorm across agent runtime"
+          git commit -m "refactor: minimize FeatureNorm integration diff"
           git push origin HEAD:feat/feature-norm-integration
