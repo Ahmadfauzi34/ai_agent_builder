@@ -127,6 +127,9 @@ jobs:
       - name: Run Math Program v4 artifact research
         run: node scripts/research_math_program_v4.mjs pkg
 
+      - name: Run Math Program flexibility audit
+        run: node scripts/audit_math_program_flexibility.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
