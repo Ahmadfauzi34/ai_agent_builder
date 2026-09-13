@@ -4,33 +4,37 @@ use crate::math::{
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
-const PLAN_VERSION: u8 = 1;
+const PLAN_VERSION_V1: u8 = 1;
+const PLAN_VERSION_V2: u8 = 2;
 const PLAN_HEADER_BYTES: usize = 8;
-const PLAN_STEP_BYTES: usize = 5;
+const PLAN_STEP_BYTES_V1: usize = 5;
+const PLAN_STEP_BYTES_V2: usize = 14;
 const PLAN_OUTPUT_BYTES: usize = 1;
 const MAX_SLOTS: u8 = 64;
 const MAX_STEPS: usize = u8::MAX as usize;
 
-// Numeric Kernel v1.
+// Numeric Kernel.
 pub const OP_ABS: u8 = 0x01;
 pub const OP_SQRT: u8 = 0x02;
 pub const OP_EXP: u8 = 0x03;
 pub const OP_LOG: u8 = 0x04;
+pub const OP_CLAMP: u8 = 0x05;
 pub const OP_ADD: u8 = 0x11;
 pub const OP_SUB: u8 = 0x12;
 pub const OP_MUL: u8 = 0x13;
 pub const OP_DIV: u8 = 0x14;
 
-// Tensor Transform v1. Parameterized transforms are intentionally deferred.
+// Tensor Transform. Shape-parameter transforms remain deferred.
 pub const OP_TRANSPOSE: u8 = 0x20;
 
-// Linear Algebra v1. Cosine similarity is deferred because epsilon is parameterized.
+// Linear Algebra.
 pub const OP_L2_NORM: u8 = 0x30;
 pub const OP_DOT: u8 = 0x31;
 pub const OP_L2_DISTANCE: u8 = 0x32;
 pub const OP_MATMUL: u8 = 0x33;
+pub const OP_COSINE_SIMILARITY: u8 = 0x34;
 
-// Statistics v1.
+// Statistics.
 pub const OP_SUM: u8 = 0x40;
 pub const OP_MEAN: u8 = 0x41;
 pub const OP_VARIANCE_POPULATION: u8 = 0x42;
@@ -38,7 +42,7 @@ pub const OP_STD_POPULATION: u8 = 0x43;
 pub const OP_MIN: u8 = 0x44;
 pub const OP_MAX: u8 = 0x45;
 
-// Probability v1.
+// Probability.
 pub const OP_NORMALIZE: u8 = 0x50;
 pub const OP_ENTROPY: u8 = 0x51;
 pub const OP_CROSS_ENTROPY: u8 = 0x52;
@@ -46,6 +50,9 @@ pub const OP_KL_DIVERGENCE: u8 = 0x53;
 
 const ARITY_UNARY: u8 = 1;
 const ARITY_BINARY: u8 = 2;
+const PARAM_NONE: u8 = 0;
+const PARAM_CLAMP: u8 = 1;
+const PARAM_EPSILON: u8 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct MathStep {
@@ -54,6 +61,87 @@ struct MathStep {
     in_a: u8,
     in_b: u8,
     out: u8,
+    param_kind: u8,
+    param_a_bits: u32,
+    param_b_bits: u32,
+}
+
+impl MathStep {
+    fn plain(op: u8, arity: u8, in_a: u8, in_b: u8, out: u8) -> Self {
+        Self {
+            op,
+            arity,
+            in_a,
+            in_b,
+            out,
+            param_kind: PARAM_NONE,
+            param_a_bits: 0,
+            param_b_bits: 0,
+        }
+    }
+
+    fn scalar1(
+        op: u8,
+        arity: u8,
+        in_a: u8,
+        in_b: u8,
+        out: u8,
+        param_kind: u8,
+        value: f32,
+    ) -> Self {
+        Self {
+            op,
+            arity,
+            in_a,
+            in_b,
+            out,
+            param_kind,
+            param_a_bits: canonical_f32_bits(value),
+            param_b_bits: 0,
+        }
+    }
+
+    fn scalar2(
+        op: u8,
+        arity: u8,
+        in_a: u8,
+        in_b: u8,
+        out: u8,
+        param_kind: u8,
+        a: f32,
+        b: f32,
+    ) -> Self {
+        Self {
+            op,
+            arity,
+            in_a,
+            in_b,
+            out,
+            param_kind,
+            param_a_bits: canonical_f32_bits(a),
+            param_b_bits: canonical_f32_bits(b),
+        }
+    }
+
+    fn param_a(self) -> f32 {
+        f32::from_bits(self.param_a_bits)
+    }
+
+    fn param_b(self) -> f32 {
+        f32::from_bits(self.param_b_bits)
+    }
+
+    fn has_parameters(self) -> bool {
+        self.param_kind != PARAM_NONE
+    }
+}
+
+fn canonical_f32_bits(value: f32) -> u32 {
+    if value == 0.0 {
+        0
+    } else {
+        value.to_bits()
+    }
 }
 
 fn expected_arity(op: u8) -> Option<u8> {
@@ -62,6 +150,7 @@ fn expected_arity(op: u8) -> Option<u8> {
         | OP_SQRT
         | OP_EXP
         | OP_LOG
+        | OP_CLAMP
         | OP_TRANSPOSE
         | OP_L2_NORM
         | OP_SUM
@@ -79,6 +168,7 @@ fn expected_arity(op: u8) -> Option<u8> {
         | OP_DOT
         | OP_L2_DISTANCE
         | OP_MATMUL
+        | OP_COSINE_SIMILARITY
         | OP_CROSS_ENTROPY
         | OP_KL_DIVERGENCE => Some(ARITY_BINARY),
         _ => None,
@@ -91,6 +181,7 @@ fn op_name(op: u8) -> &'static str {
         OP_SQRT => "sqrt",
         OP_EXP => "exp",
         OP_LOG => "log",
+        OP_CLAMP => "clamp",
         OP_ADD => "add",
         OP_SUB => "sub",
         OP_MUL => "mul",
@@ -100,6 +191,7 @@ fn op_name(op: u8) -> &'static str {
         OP_DOT => "dot",
         OP_L2_DISTANCE => "l2Distance",
         OP_MATMUL => "matmul",
+        OP_COSINE_SIMILARITY => "cosineSimilarity",
         OP_SUM => "sum",
         OP_MEAN => "mean",
         OP_VARIANCE_POPULATION => "variancePopulation",
@@ -125,7 +217,7 @@ fn initial_filled(num_inputs: u8) -> u64 {
 fn validate_program_shape(num_inputs: u8, num_slots: u8) -> Result<(), String> {
     if !(1..=2).contains(&num_inputs) {
         return Err(format!(
-            "MathProgram: num_inputs must be 1 or 2 in v1, got {num_inputs}"
+            "MathProgram: num_inputs must be 1 or 2, got {num_inputs}"
         ));
     }
     if num_slots <= num_inputs || num_slots > MAX_SLOTS {
@@ -133,6 +225,64 @@ fn validate_program_shape(num_inputs: u8, num_slots: u8) -> Result<(), String> {
             "MathProgram: num_slots must be in {}..={MAX_SLOTS}, got {num_slots}",
             num_inputs + 1
         ));
+    }
+    Ok(())
+}
+
+fn validate_step_parameters(step: MathStep, context: &str) -> Result<(), String> {
+    match step.op {
+        OP_CLAMP => {
+            if step.param_kind != PARAM_CLAMP {
+                return Err(format!(
+                    "{context}: opcode clamp requires scalar min/max parameters"
+                ));
+            }
+            let min = step.param_a();
+            let max = step.param_b();
+            if !min.is_finite() || !max.is_finite() {
+                return Err(format!(
+                    "{context}: clamp bounds must be finite, got min={min}, max={max}"
+                ));
+            }
+            if min > max {
+                return Err(format!(
+                    "{context}: clamp requires min <= max, got min={min}, max={max}"
+                ));
+            }
+            if step.param_a_bits != canonical_f32_bits(min)
+                || step.param_b_bits != canonical_f32_bits(max)
+            {
+                return Err(format!(
+                    "{context}: clamp parameters are not canonically encoded"
+                ));
+            }
+        }
+        OP_COSINE_SIMILARITY => {
+            if step.param_kind != PARAM_EPSILON || step.param_b_bits != 0 {
+                return Err(format!(
+                    "{context}: opcode cosineSimilarity requires exactly one epsilon parameter"
+                ));
+            }
+            let epsilon = step.param_a();
+            if !epsilon.is_finite() || epsilon <= 0.0 {
+                return Err(format!(
+                    "{context}: cosineSimilarity epsilon must be finite and > 0, got {epsilon}"
+                ));
+            }
+            if step.param_a_bits != canonical_f32_bits(epsilon) {
+                return Err(format!(
+                    "{context}: cosineSimilarity epsilon is not canonically encoded"
+                ));
+            }
+        }
+        _ => {
+            if step.param_kind != PARAM_NONE || step.param_a_bits != 0 || step.param_b_bits != 0 {
+                return Err(format!(
+                    "{context}: opcode {} does not accept scalar parameters",
+                    op_name(step.op)
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -146,7 +296,7 @@ fn validate_step(
 ) -> Result<(u64, u64), String> {
     let expected = expected_arity(step.op).ok_or_else(|| {
         format!(
-            "{context}: unknown opcode 0x{:02X}; Math Program v1 is fail-closed",
+            "{context}: unknown opcode 0x{:02X}; Math Program is fail-closed",
             step.op
         )
     })?;
@@ -158,6 +308,7 @@ fn validate_step(
             step.arity
         ));
     }
+    validate_step_parameters(step, context)?;
     if step.in_a >= num_slots || step.in_b >= num_slots || step.out >= num_slots {
         return Err(format!(
             "{context}: slot out of range for num_slots={num_slots}: in_a={}, in_b={}, out={}",
@@ -185,12 +336,20 @@ fn validate_step(
     }
     if filled & bit(step.out) != 0 {
         return Err(format!(
-            "{context}: output slot {} is already filled; Math Program v1 slots are write-once",
+            "{context}: output slot {} is already filled; Math Program slots are write-once",
             step.out
         ));
     }
 
     Ok((filled | bit(step.out), written | bit(step.out)))
+}
+
+fn plan_version(steps: &[MathStep]) -> u8 {
+    if steps.iter().copied().any(MathStep::has_parameters) {
+        PLAN_VERSION_V2
+    } else {
+        PLAN_VERSION_V1
+    }
 }
 
 fn encode_plan(
@@ -205,7 +364,7 @@ fn encode_plan(
     }
     if steps.len() > MAX_STEPS {
         return Err(format!(
-            "MathProgram: step count {} exceeds v1 maximum {MAX_STEPS}",
+            "MathProgram: step count {} exceeds maximum {MAX_STEPS}",
             steps.len()
         ));
     }
@@ -232,11 +391,17 @@ fn encode_plan(
         ));
     }
 
+    let version = plan_version(steps);
+    let step_bytes = if version == PLAN_VERSION_V1 {
+        PLAN_STEP_BYTES_V1
+    } else {
+        PLAN_STEP_BYTES_V2
+    };
     let mut plan = Vec::with_capacity(
-        PLAN_HEADER_BYTES + steps.len() * PLAN_STEP_BYTES + PLAN_OUTPUT_BYTES,
+        PLAN_HEADER_BYTES + steps.len() * step_bytes + PLAN_OUTPUT_BYTES,
     );
     plan.extend_from_slice(PLAN_MAGIC);
-    plan.push(PLAN_VERSION);
+    plan.push(version);
     plan.push(num_inputs);
     plan.push(num_slots);
     plan.push(steps.len() as u8);
@@ -246,6 +411,11 @@ fn encode_plan(
         plan.push(step.in_a);
         plan.push(step.in_b);
         plan.push(step.out);
+        if version == PLAN_VERSION_V2 {
+            plan.push(step.param_kind);
+            plan.extend_from_slice(&step.param_a_bits.to_le_bytes());
+            plan.extend_from_slice(&step.param_b_bits.to_le_bytes());
+        }
     }
     plan.push(out_slot);
     Ok(plan)
@@ -258,12 +428,16 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
     if &plan[..4] != PLAN_MAGIC {
         return Err("MathProgram: invalid plan magic".into());
     }
-    if plan[4] != PLAN_VERSION {
-        return Err(format!(
-            "MathProgram: unsupported plan version {}, expected {PLAN_VERSION}",
-            plan[4]
-        ));
-    }
+    let version = plan[4];
+    let step_bytes = match version {
+        PLAN_VERSION_V1 => PLAN_STEP_BYTES_V1,
+        PLAN_VERSION_V2 => PLAN_STEP_BYTES_V2,
+        _ => {
+            return Err(format!(
+                "MathProgram: unsupported plan version {version}; supported versions are 1 and 2"
+            ))
+        }
+    };
 
     let num_inputs = plan[5];
     let num_slots = plan[6];
@@ -273,7 +447,7 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
         return Err("MathProgram: plan must contain at least one step".into());
     }
     let expected_len = PLAN_HEADER_BYTES
-        .checked_add(num_steps.checked_mul(PLAN_STEP_BYTES).ok_or_else(|| {
+        .checked_add(num_steps.checked_mul(step_bytes).ok_or_else(|| {
             "MathProgram: plan step length overflow".to_string()
         })?)
         .and_then(|len| len.checked_add(PLAN_OUTPUT_BYTES))
@@ -290,12 +464,34 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
     let mut written = 0u64;
     let mut offset = PLAN_HEADER_BYTES;
     for index in 0..num_steps {
+        let (param_kind, param_a_bits, param_b_bits) = if version == PLAN_VERSION_V2 {
+            (
+                plan[offset + 5],
+                u32::from_le_bytes([
+                    plan[offset + 6],
+                    plan[offset + 7],
+                    plan[offset + 8],
+                    plan[offset + 9],
+                ]),
+                u32::from_le_bytes([
+                    plan[offset + 10],
+                    plan[offset + 11],
+                    plan[offset + 12],
+                    plan[offset + 13],
+                ]),
+            )
+        } else {
+            (PARAM_NONE, 0, 0)
+        };
         let step = MathStep {
             op: plan[offset],
             arity: plan[offset + 1],
             in_a: plan[offset + 2],
             in_b: plan[offset + 3],
             out: plan[offset + 4],
+            param_kind,
+            param_a_bits,
+            param_b_bits,
         };
         (filled, written) = validate_step(
             step,
@@ -305,7 +501,7 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
             &format!("MathProgram replay step {index}"),
         )?;
         steps.push(step);
-        offset += PLAN_STEP_BYTES;
+        offset += step_bytes;
     }
 
     let out_slot = plan[offset];
@@ -335,21 +531,22 @@ fn hex(bytes: &[u8]) -> String {
 pub fn math_program_capabilities() -> String {
     concat!(
         "{",
-        "\"schema\":\"burn-research.math-program.v1\",",
-        "\"plan_schema\":\"burn-research.math-program-plan.v1\",",
+        "\"schema\":\"burn-research.math-program.v2\",",
+        "\"plan_schemas\":[\"burn-research.math-program-plan.v1\",\"burn-research.math-program-plan.v2\"],",
         "\"identity_schema\":\"burn-research.math-program-identity.v1\",",
         "\"inputs\":\"one_or_two\",",
         "\"max_slots\":64,",
         "\"slot_semantics\":\"write_once_read_after_write\",",
         "\"replay\":true,",
+        "\"v1_identity_compatibility\":true,",
         "\"registry_dependency\":false,",
         "\"mutable_state\":false,",
-        "\"parameterized_ops\":\"deferred_v1\",",
+        "\"parameterized_ops\":{\"scalar_v2\":[\"clamp\",\"cosineSimilarity\"],\"shape\":\"deferred\"},",
         "\"opcodes\":{",
-        "\"abs\":1,\"sqrt\":2,\"exp\":3,\"log\":4,",
+        "\"abs\":1,\"sqrt\":2,\"exp\":3,\"log\":4,\"clamp\":5,",
         "\"add\":17,\"sub\":18,\"mul\":19,\"div\":20,",
         "\"transpose\":32,",
-        "\"l2Norm\":48,\"dot\":49,\"l2Distance\":50,\"matmul\":51,",
+        "\"l2Norm\":48,\"dot\":49,\"l2Distance\":50,\"matmul\":51,\"cosineSimilarity\":52,",
         "\"sum\":64,\"mean\":65,\"variancePopulation\":66,\"stdPopulation\":67,\"min\":68,\"max\":69,",
         "\"normalize\":80,\"entropy\":81,\"crossEntropy\":82,\"klDivergence\":83",
         "}",
@@ -381,30 +578,30 @@ impl MathProgramBuilder {
         })
     }
 
-    pub fn add_unary(&mut self, op: u8, input: u8, output: u8) -> Result<(), String> {
+    fn push_step(&mut self, step: MathStep, context: &str) -> Result<(), String> {
         if self.steps.len() >= MAX_STEPS {
             return Err(format!(
-                "MathProgramBuilder.addUnary: step count exceeds v1 maximum {MAX_STEPS}"
+                "{context}: step count exceeds maximum {MAX_STEPS}"
             ));
         }
-        let step = MathStep {
-            op,
-            arity: ARITY_UNARY,
-            in_a: input,
-            in_b: 0,
-            out: output,
-        };
         let (filled, written) = validate_step(
             step,
             self.num_slots,
             self.filled,
             self.written,
-            "MathProgramBuilder.addUnary",
+            context,
         )?;
         self.steps.push(step);
         self.filled = filled;
         self.written = written;
         Ok(())
+    }
+
+    pub fn add_unary(&mut self, op: u8, input: u8, output: u8) -> Result<(), String> {
+        self.push_step(
+            MathStep::plain(op, ARITY_UNARY, input, 0, output),
+            "MathProgramBuilder.addUnary",
+        )
     }
 
     pub fn add_binary(
@@ -414,29 +611,53 @@ impl MathProgramBuilder {
         rhs: u8,
         output: u8,
     ) -> Result<(), String> {
-        if self.steps.len() >= MAX_STEPS {
-            return Err(format!(
-                "MathProgramBuilder.addBinary: step count exceeds v1 maximum {MAX_STEPS}"
-            ));
-        }
-        let step = MathStep {
-            op,
-            arity: ARITY_BINARY,
-            in_a: lhs,
-            in_b: rhs,
-            out: output,
-        };
-        let (filled, written) = validate_step(
-            step,
-            self.num_slots,
-            self.filled,
-            self.written,
+        self.push_step(
+            MathStep::plain(op, ARITY_BINARY, lhs, rhs, output),
             "MathProgramBuilder.addBinary",
-        )?;
-        self.steps.push(step);
-        self.filled = filled;
-        self.written = written;
-        Ok(())
+        )
+    }
+
+    pub fn add_clamp(
+        &mut self,
+        input: u8,
+        output: u8,
+        min: f32,
+        max: f32,
+    ) -> Result<(), String> {
+        self.push_step(
+            MathStep::scalar2(
+                OP_CLAMP,
+                ARITY_UNARY,
+                input,
+                0,
+                output,
+                PARAM_CLAMP,
+                min,
+                max,
+            ),
+            "MathProgramBuilder.addClamp",
+        )
+    }
+
+    pub fn add_cosine_similarity(
+        &mut self,
+        lhs: u8,
+        rhs: u8,
+        output: u8,
+        epsilon: f32,
+    ) -> Result<(), String> {
+        self.push_step(
+            MathStep::scalar1(
+                OP_COSINE_SIMILARITY,
+                ARITY_BINARY,
+                lhs,
+                rhs,
+                output,
+                PARAM_EPSILON,
+                epsilon,
+            ),
+            "MathProgramBuilder.addCosineSimilarity",
+        )
     }
 
     pub fn set_output(&mut self, slot: u8) -> Result<(), String> {
@@ -558,6 +779,7 @@ impl MathProgram {
                     OP_SQRT => numeric.sqrt(a),
                     OP_EXP => numeric.exp(a),
                     OP_LOG => numeric.log(a),
+                    OP_CLAMP => numeric.clamp(a, step.param_a(), step.param_b()),
                     OP_TRANSPOSE => Ok(tensor.transpose(a)),
                     OP_L2_NORM => linalg.l2_norm(a),
                     OP_SUM => statistics.sum(a),
@@ -588,6 +810,9 @@ impl MathProgram {
                     OP_DOT => linalg.dot(a, b),
                     OP_L2_DISTANCE => linalg.l2_distance(a, b),
                     OP_MATMUL => linalg.matmul(a, b),
+                    OP_COSINE_SIMILARITY => {
+                        linalg.cosine_similarity(a, b, Some(step.param_a() as f64))
+                    }
                     OP_CROSS_ENTROPY => probability.cross_entropy(a, b),
                     OP_KL_DIVERGENCE => probability.kl_divergence(a, b),
                     _ => Err(format!(
@@ -690,14 +915,14 @@ mod tests {
     }
 
     #[test]
-    fn canonical_plan_replays_same_identity_and_behavior() {
+    fn canonical_v1_plan_replays_same_identity_and_behavior() {
         let mut builder = MathProgramBuilder::new(1, 3).unwrap();
         builder.add_unary(OP_ABS, 0, 1).unwrap();
         builder.add_unary(OP_SUM, 1, 2).unwrap();
         builder.set_output(2).unwrap();
         let program = builder.compile().unwrap();
+        assert_eq!(program.program_plan()[4], PLAN_VERSION_V1);
         let replay = MathProgram::from_plan(&program.program_plan()).unwrap();
-
         assert_eq!(replay.program_plan(), program.program_plan());
         assert_eq!(replay.program_identity(), program.program_identity());
 
@@ -706,6 +931,96 @@ mod tests {
             replay.run1(&input).unwrap().to_array(),
             program.run1(&input).unwrap().to_array()
         );
+    }
+
+    #[test]
+    fn clamp_uses_v2_plan_and_replays_identically() {
+        let mut builder = MathProgramBuilder::new(1, 3).unwrap();
+        builder.add_clamp(0, 1, -1.0, 1.0).unwrap();
+        builder.add_unary(OP_SUM, 1, 2).unwrap();
+        builder.set_output(2).unwrap();
+        let program = builder.compile().unwrap();
+        assert_eq!(program.program_plan()[4], PLAN_VERSION_V2);
+
+        let replay = MathProgram::from_plan(&program.program_plan()).unwrap();
+        assert_eq!(replay.program_plan(), program.program_plan());
+        assert_eq!(replay.program_identity(), program.program_identity());
+
+        let input = WasmTensor::new(&[-2.0, 0.5, 3.0], &[1, 3, 1, 1]);
+        assert_close(&program.run1(&input).unwrap().to_array(), &[0.5], 1e-6);
+        assert_eq!(
+            replay.run1(&input).unwrap().to_array(),
+            program.run1(&input).unwrap().to_array()
+        );
+    }
+
+    #[test]
+    fn cosine_similarity_parameter_changes_identity_and_executes() {
+        let mut tight = MathProgramBuilder::new(2, 3).unwrap();
+        tight
+            .add_cosine_similarity(0, 1, 2, 1e-6)
+            .unwrap();
+        tight.set_output(2).unwrap();
+        let tight = tight.compile().unwrap();
+
+        let mut loose = MathProgramBuilder::new(2, 3).unwrap();
+        loose
+            .add_cosine_similarity(0, 1, 2, 1e-3)
+            .unwrap();
+        loose.set_output(2).unwrap();
+        let loose = loose.compile().unwrap();
+
+        assert_eq!(tight.program_plan()[4], PLAN_VERSION_V2);
+        assert_ne!(tight.program_identity(), loose.program_identity());
+
+        let a = WasmTensor::new(&[1.0, 0.0], &[1, 2, 1, 1]);
+        let b = WasmTensor::new(&[1.0, 0.0], &[1, 2, 1, 1]);
+        assert_close(&tight.run2(&a, &b).unwrap().to_array(), &[1.0], 1e-6);
+        let replay = MathProgram::from_plan(&tight.program_plan()).unwrap();
+        assert_eq!(replay.program_identity(), tight.program_identity());
+        assert_close(&replay.run2(&a, &b).unwrap().to_array(), &[1.0], 1e-6);
+    }
+
+    #[test]
+    fn invalid_scalar_parameters_are_rejected_without_builder_mutation() {
+        let mut unary = MathProgramBuilder::new(1, 3).unwrap();
+        assert!(unary.add_unary(OP_CLAMP, 0, 1).is_err());
+        assert!(unary.add_clamp(0, 1, f32::NAN, 1.0).is_err());
+        assert!(unary.add_clamp(0, 1, 2.0, 1.0).is_err());
+        assert_eq!(unary.num_steps(), 0);
+        unary.add_unary(OP_ABS, 0, 1).unwrap();
+        assert_eq!(unary.num_steps(), 1);
+
+        let mut binary = MathProgramBuilder::new(2, 3).unwrap();
+        assert!(binary
+            .add_binary(OP_COSINE_SIMILARITY, 0, 1, 2)
+            .is_err());
+        assert!(binary
+            .add_cosine_similarity(0, 1, 2, 0.0)
+            .is_err());
+        assert!(binary
+            .add_cosine_similarity(0, 1, 2, f32::INFINITY)
+            .is_err());
+        assert_eq!(binary.num_steps(), 0);
+        binary.add_binary(OP_DOT, 0, 1, 2).unwrap();
+        assert_eq!(binary.num_steps(), 1);
+    }
+
+    #[test]
+    fn v2_plan_without_parameters_is_noncanonical() {
+        let mut builder = MathProgramBuilder::new(1, 2).unwrap();
+        builder.add_unary(OP_ABS, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+        let v1 = builder.compile().unwrap().program_plan();
+        assert_eq!(v1[4], PLAN_VERSION_V1);
+
+        let mut v2 = Vec::with_capacity(PLAN_HEADER_BYTES + PLAN_STEP_BYTES_V2 + 1);
+        v2.extend_from_slice(&v1[..PLAN_HEADER_BYTES]);
+        v2[4] = PLAN_VERSION_V2;
+        v2.extend_from_slice(&v1[PLAN_HEADER_BYTES..PLAN_HEADER_BYTES + PLAN_STEP_BYTES_V1]);
+        v2.extend_from_slice(&[0u8; PLAN_STEP_BYTES_V2 - PLAN_STEP_BYTES_V1]);
+        v2.push(*v1.last().unwrap());
+        assert!(MathProgram::from_plan(&v2).is_err());
     }
 
     #[test]
@@ -773,9 +1088,13 @@ mod tests {
     #[test]
     fn capabilities_document_core_boundary() {
         let caps = math_program_capabilities();
-        assert!(caps.contains("burn-research.math-program.v1"));
+        assert!(caps.contains("burn-research.math-program.v2"));
+        assert!(caps.contains("burn-research.math-program-plan.v1"));
+        assert!(caps.contains("burn-research.math-program-plan.v2"));
         assert!(caps.contains("\"slot_semantics\":\"write_once_read_after_write\""));
+        assert!(caps.contains("\"v1_identity_compatibility\":true"));
         assert!(caps.contains("\"registry_dependency\":false"));
-        assert!(caps.contains("\"parameterized_ops\":\"deferred_v1\""));
+        assert!(caps.contains("\"scalar_v2\":[\"clamp\",\"cosineSimilarity\"]"));
+        assert!(caps.contains("\"shape\":\"deferred\""));
     }
 }
