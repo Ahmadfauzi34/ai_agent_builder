@@ -1,0 +1,420 @@
+name: FeatureNorm Phase 2 Patch
+
+on:
+  push:
+    branches: [ "feat/feature-norm-integration" ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/feature-norm-integration
+      - name: Apply FeatureNorm first-class integration
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old[:80]!r}")
+              p.write_text(text.replace(old, new))
+
+          # Protocol: allocate the next custom layer code.
+          replace(
+              'src/protocol.rs',
+              'pub const LAYER_BINARY:      u8 = 0x13;\n',
+              'pub const LAYER_BINARY:      u8 = 0x13;\npub const LAYER_FEATURE_NORM: u8 = 0x14;\n',
+          )
+
+          # Keep one canonical default shared by the typed facade and primitive.
+          replace(
+              'src/layers/custom/feature_norm.rs',
+              'const DEFAULT_EPSILON: f64 = 1e-12;',
+              'pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;',
+          )
+
+          # Registry: make FeatureNorm a first-class stateless unary family.
+          replace(
+              'src/registry.rs',
+              'use crate::layers::custom::seblock::WasmSeBlock;\nuse crate::layers::binary::WasmBinary;\n',
+              'use crate::layers::custom::seblock::WasmSeBlock;\nuse crate::layers::custom::feature_norm::WasmFeatureNorm;\nuse crate::layers::binary::WasmBinary;\n',
+          )
+          replace(
+              'src/registry.rs',
+              '    binaries:    HashMap<LayerId, WasmBinary>,\n    init_identities: HashMap<LayerKey, LayerInitIdentity>,\n',
+              '    binaries:    HashMap<LayerId, WasmBinary>,\n    feature_norms: HashMap<LayerId, WasmFeatureNorm>,\n    init_identities: HashMap<LayerKey, LayerInitIdentity>,\n',
+          )
+          replace(
+              'src/registry.rs',
+              '            binaries:    HashMap::new(),\n            init_identities: HashMap::new(),\n',
+              '            binaries:    HashMap::new(),\n            feature_norms: HashMap::new(),\n            init_identities: HashMap::new(),\n',
+          )
+          replace(
+              'src/registry.rs',
+              '            LAYER_BINARY      => self.init_binary(header, payload),\n            _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),\n',
+              '            LAYER_BINARY      => self.init_binary(header, payload),\n            LAYER_FEATURE_NORM => self.init_feature_norm(header, payload),\n            _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),\n',
+          )
+          replace(
+              'src/registry.rs',
+              '            LAYER_SEBLOCK => Ok(self\n                .seblocks\n                .get(&layer_id)\n                .ok_or_else(|| "SEBlock not found".to_string())?\n                .forward(input)),\n            _ => Err(format!("Unknown layer type for forward: 0x{:02X}", layer_type)),\n',
+              '            LAYER_SEBLOCK => Ok(self\n                .seblocks\n                .get(&layer_id)\n                .ok_or_else(|| "SEBlock not found".to_string())?\n                .forward(input)),\n            LAYER_FEATURE_NORM => self\n                .feature_norms\n                .get(&layer_id)\n                .ok_or_else(|| "FeatureNorm not found".to_string())?\n                .forward(input),\n            _ => Err(format!("Unknown layer type for forward: 0x{:02X}", layer_type)),\n',
+          )
+          replace(
+              'src/registry.rs',
+              '            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {',
+              '            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {',
+              count=2,
+          )
+          replace(
+              'src/registry.rs',
+              '            LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),\n            _ => false,\n',
+              '            LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),\n            LAYER_FEATURE_NORM => remove_layer!(self, feature_norms, layer_id),\n            _ => false,\n',
+          )
+          marker = '    fn init_ghost(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {'
+          replace(
+              'src/registry.rs',
+              marker,
+              '''    fn init_feature_norm(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {\n        let mut c = PayloadCursor::new(payload);\n        let id = c.read_u32()?;\n        let epsilon = c.read_option_f64()?;\n        let layer = WasmFeatureNorm::new_feature_norm(epsilon)?;\n        insert_layer!(self, feature_norms, id, layer);\n        Ok(())\n    }\n\n''' + marker,
+          )
+          replace(
+              'src/registry.rs',
+              '            LAYER_BINARY     => self.binaries.contains_key(&layer_id),\n            _ => false,\n',
+              '            LAYER_BINARY     => self.binaries.contains_key(&layer_id),\n            LAYER_FEATURE_NORM => self.feature_norms.contains_key(&layer_id),\n            _ => false,\n',
+          )
+
+          # Typed agent facade: canonicalize omitted epsilon to the primitive default.
+          replace(
+              'src/agent.rs',
+              '    LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,\n',
+              '    LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,\n',
+          )
+          replace(
+              'src/agent.rs',
+              'use crate::registry::LayerRegistry;\n',
+              'use crate::registry::LayerRegistry;\nuse crate::layers::custom::feature_norm::DEFAULT_EPSILON as FEATURE_NORM_DEFAULT_EPSILON;\n',
+          )
+          feature_ctor = '''    #[wasm_bindgen(js_name = featureNorm)]\n    pub fn feature_norm(\n        layer_id: u32,\n        epsilon: Option<f64>,\n    ) -> Result<AgentLayerSpec, String> {\n        let epsilon = epsilon.unwrap_or(FEATURE_NORM_DEFAULT_EPSILON);\n        validate_positive_f64(epsilon, "AgentLayerSpec.featureNorm.epsilon")?;\n        let mut payload = Vec::with_capacity(13);\n        push_u32(&mut payload, layer_id);\n        push_option_f64(&mut payload, Some(epsilon));\n        Ok(Self::from_payload(\n            layer_id,\n            LAYER_FEATURE_NORM,\n            VARIANT_NONE,\n            0,\n            payload,\n        ))\n    }\n\n'''
+          replace(
+              'src/agent.rs',
+              '    #[wasm_bindgen(js_name = shiftUp)]\n',
+              feature_ctor + '    #[wasm_bindgen(js_name = shiftUp)]\n',
+          )
+          replace(
+              'src/agent.rs',
+              '\\"adaptiveAvgPool2d\\",\\"shiftUp\\"',
+              '\\"adaptiveAvgPool2d\\",\\"featureNorm\\",\\"shiftUp\\"',
+          )
+          replace(
+              'src/agent.rs',
+              '\\"embedding\\":\\"embedding(id,vocab_size,d_model)\\",\n',
+              '\\"embedding\\":\\"embedding(id,vocab_size,d_model)\\",\n            "\\\"featureNorm\\\":\\\"featureNorm(id,epsilon?)\\\",",\n',
+          )
+          replace(
+              'src/agent.rs',
+              '            "\\\"shift\\\":{{\\\"code\\\":{},\\\"arity\\\":1,\\\"variants\\\":{{\\\"up\\\":{},\\\"down\\\":{},\\\"left\\\":{},\\\"right\\\":{}}}}},",\n',
+              '            "\\\"feature_norm\\\":{{\\\"code\\\":{},\\\"arity\\\":1}},",\n            "\\\"shift\\\":{{\\\"code\\\":{},\\\"arity\\\":1,\\\"variants\\\":{{\\\"up\\\":{},\\\"down\\\":{},\\\"left\\\":{},\\\"right\\\":{}}}}},",\n',
+          )
+          replace(
+              'src/agent.rs',
+              '        POOL_ADAPTIVEAVGPOOL2D,\n        LAYER_SHIFT,\n',
+              '        POOL_ADAPTIVEAVGPOOL2D,\n        LAYER_FEATURE_NORM,\n        LAYER_SHIFT,\n',
+          )
+
+          # Static layout contract: FeatureNorm is exactly [B,F,1,1] -> [B,F,1,1].
+          replace(
+              'src/contracts.rs',
+              '    LAYER_EMBEDDING, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,\n',
+              '    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,\n',
+          )
+          replace(
+              'src/contracts.rs',
+              '        LAYER_LINEAR => input_output(LayoutTag::FeatureAxis1Singleton),\n',
+              '        LAYER_LINEAR => input_output(LayoutTag::FeatureAxis1Singleton),\n        LAYER_FEATURE_NORM => input_output(LayoutTag::FeatureAxis1Singleton),\n',
+          )
+
+          # Machine-readable layout and surface inventories.
+          p = Path('docs/agent-layout-contracts.v1.json')
+          layout = json.loads(p.read_text())
+          layout['constructors']['featureNorm'] = {
+              'input': 'feature_axis1_singleton',
+              'output': 'feature_axis1_singleton',
+              'semantic': 'L2 normalize feature axis 1; requires [B,F,1,1]',
+          }
+          p.write_text(json.dumps(layout, separators=(',', ':')) + '\n')
+
+          p = Path('docs/wasm-surface.v1.json')
+          surface = json.loads(p.read_text())
+          methods = surface['classes']['AgentLayerSpec']
+          if 'featureNorm' not in methods:
+              methods.append('featureNorm')
+              methods.sort()
+          p.write_text(json.dumps(surface, separators=(',', ':')) + '\n')
+
+          # Cross-boundary Rust proof.
+          Path('src/feature_norm_integration_tests.rs').write_text(r'''#[cfg(test)]
+mod tests {
+    use crate::agent::{agent_capabilities, AgentGraphBuilder, AgentLayerSpec};
+    use crate::contracts::{agent_layout_compatibility, agent_spec_layout};
+    use crate::program_bundle::{export_program_bundle, import_program_bundle};
+    use crate::protocol::LAYER_FEATURE_NORM;
+    use crate::registry::LayerRegistry;
+    use crate::WasmTensor;
+
+    fn assert_close(actual: &[f32], expected: &[f32]) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+        }
+    }
+
+    fn compiled_feature_norm(
+        registry: &mut LayerRegistry,
+        layer_id: u32,
+        epsilon: Option<f64>,
+    ) -> (AgentLayerSpec, AgentGraphBuilder, crate::graph::CompiledGraph) {
+        let spec = AgentLayerSpec::feature_norm(layer_id, epsilon).unwrap();
+        registry.init_agent_layer(&spec).unwrap();
+        let mut builder = AgentGraphBuilder::new(2).unwrap();
+        builder.add_unary(&spec, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+        let graph = builder.compile(registry).unwrap();
+        (spec, builder, graph)
+    }
+
+    #[test]
+    fn typed_feature_norm_is_stateless_parameter_free_and_executable() {
+        assert!(AgentLayerSpec::feature_norm(1, Some(0.0)).is_err());
+        assert!(AgentLayerSpec::feature_norm(1, Some(f64::NAN)).is_err());
+
+        let mut registry = LayerRegistry::new();
+        let spec = AgentLayerSpec::feature_norm(7, None).unwrap();
+        registry.init_agent_layer(&spec).unwrap();
+        assert_eq!(spec.layer_type(), LAYER_FEATURE_NORM);
+        assert!(registry.layer_exists(LAYER_FEATURE_NORM, 7));
+        assert_eq!(registry.total_params(), 0);
+        assert_eq!(registry.get_layer_state(7, LAYER_FEATURE_NORM).unwrap(), Vec::<u8>::new());
+        assert!(registry.load_layer_state(7, LAYER_FEATURE_NORM, &[1]).is_err());
+        assert!(registry.load_layer_state(7, LAYER_FEATURE_NORM, &[]).is_ok());
+
+        let input = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
+        let output = registry.forward_layer(7, LAYER_FEATURE_NORM, &input).unwrap();
+        assert_close(&output.to_array(), &[0.6, 0.8]);
+        let zero = WasmTensor::new(&[0.0, 0.0], &[1, 2, 1, 1]);
+        assert_eq!(
+            registry.forward_layer(7, LAYER_FEATURE_NORM, &zero).unwrap().to_array(),
+            vec![0.0, 0.0]
+        );
+
+        assert!(registry.destroy_layer(7, LAYER_FEATURE_NORM));
+        assert!(!registry.layer_exists(LAYER_FEATURE_NORM, 7));
+        assert!(registry.get_layer_state(7, LAYER_FEATURE_NORM).is_err());
+    }
+
+    #[test]
+    fn feature_norm_identity_binds_epsilon_and_requires_recompile_after_change() {
+        let mut registry = LayerRegistry::new();
+        let (_spec, _builder, graph) = compiled_feature_norm(&mut registry, 11, None);
+        let plan = graph.program_plan();
+        let old_identity = graph.program_identity();
+
+        let replacement = AgentLayerSpec::feature_norm(11, Some(1e-6)).unwrap();
+        registry.init_agent_layer(&replacement).unwrap();
+        assert!(graph.validate_registry_binding(&registry).is_err());
+
+        let rebound = registry.compile_graph(&plan).unwrap();
+        assert_ne!(rebound.program_identity(), old_identity);
+        assert!(rebound.validate_registry_binding(&registry).is_ok());
+    }
+
+    #[test]
+    fn feature_norm_program_bundle_round_trip_preserves_identity_and_output() {
+        let mut source = LayerRegistry::new();
+        let (_spec, _builder, graph) = compiled_feature_norm(&mut source, 17, None);
+        let input = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
+        let expected = graph.run(&source, &input).unwrap().to_array();
+        let identity = graph.program_identity();
+        let bundle = export_program_bundle(&graph, &source, true).unwrap();
+
+        let mut target = LayerRegistry::new();
+        let replay = import_program_bundle(&mut target, &bundle).unwrap();
+        assert_eq!(replay.program_identity(), identity);
+        assert_eq!(replay.program_plan(), graph.program_plan());
+        assert_eq!(target.get_layer_state(17, LAYER_FEATURE_NORM).unwrap(), Vec::<u8>::new());
+        assert_close(&replay.run(&target, &input).unwrap().to_array(), &expected);
+        assert!(replay.validate_registry_binding(&target).is_ok());
+    }
+
+    #[test]
+    fn feature_norm_layout_and_capability_are_machine_discoverable() {
+        let feature = AgentLayerSpec::feature_norm(21, None).unwrap();
+        let linear = AgentLayerSpec::linear(22, 2, 2, false).unwrap();
+        assert_eq!(
+            agent_spec_layout(&feature),
+            "{\"input\":\"feature_axis1_singleton\",\"output\":\"feature_axis1_singleton\"}"
+        );
+        assert_eq!(agent_layout_compatibility(&linear, &feature), "compatible");
+
+        let caps: serde_json::Value = serde_json::from_str(&agent_capabilities()).unwrap();
+        assert!(caps["agent_facade"]["constructors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "featureNorm"));
+        assert_eq!(
+            caps["layers"]["feature_norm"]["code"].as_u64(),
+            Some(u64::from(LAYER_FEATURE_NORM))
+        );
+    }
+}
+''')
+          replace(
+              'src/lib.rs',
+              '#[cfg(test)]\nmod stateless_lifecycle_tests;\n',
+              '#[cfg(test)]\nmod stateless_lifecycle_tests;\n#[cfg(test)]\nmod feature_norm_integration_tests;\n',
+          )
+
+          # Packaged-WASM proof through typed facade, compiled graph, identity, and generic bundle.
+          Path('scripts/research_feature_norm_integration.mjs').write_text(r'''import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
+const adapter = await import(pathToFileURL(path.join(pkgDir, 'node.mjs')).href);
+const m = await adapter.loadBurnRuntime();
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function dot(a, b) {
+  return a.reduce((sum, value, index) => sum + value * b[index], 0);
+}
+
+function closeArray(a, b, tolerance = 1e-6) {
+  return a.length === b.length && a.every((value, index) => Math.abs(value - b[index]) <= tolerance);
+}
+
+function build(layerId, epsilon) {
+  const registry = new m.LayerRegistry();
+  const spec = m.AgentLayerSpec.featureNorm(layerId, epsilon);
+  registry.initAgentLayer(spec);
+  const builder = new m.AgentGraphBuilder(2);
+  builder.addUnary(spec, 0, 1);
+  builder.setOutput(1);
+  const graph = builder.compile(registry);
+  return { registry, spec, builder, graph };
+}
+
+function run(graph, registry, values) {
+  const input = new m.WasmTensor(
+    new Float32Array(values),
+    new Uint32Array([1, values.length, 1, 1]),
+  );
+  const output = graph.run(registry, input);
+  const result = Array.from(output.to_array());
+  output.free();
+  input.free();
+  return result;
+}
+
+const base = build(17, undefined);
+assert(base.registry.totalParams() === 0, 'FeatureNorm registry entry must be parameter-free');
+assert(base.registry.layerExists(base.spec.layerType(), base.spec.layerId()), 'FeatureNorm missing from Registry');
+assert(base.registry.getLayerState(base.spec.layerId(), base.spec.layerType()).length === 0, 'FeatureNorm state must be empty');
+
+const query = [1.0, 0.0];
+const relevant = [1.0, 0.1];
+const distractor = [2.0, 2.0];
+const rawRelevant = dot(query, relevant);
+const rawDistractor = dot(query, distractor);
+assert(rawDistractor > rawRelevant, 'fixture must expose raw magnitude bias');
+
+const normalizedQuery = run(base.graph, base.registry, query);
+const normalizedRelevant = run(base.graph, base.registry, relevant);
+const normalizedDistractor = run(base.graph, base.registry, distractor);
+const relevantScore = dot(normalizedQuery, normalizedRelevant);
+const distractorScore = dot(normalizedQuery, normalizedDistractor);
+assert(relevantScore > distractorScore, 'typed FeatureNorm graph did not repair ranking');
+assert(closeArray(run(base.graph, base.registry, [0, 0]), [0, 0]), 'zero vector is not stable');
+
+const identity = base.graph.programIdentity();
+const bundle = m.exportProgramBundle(base.graph, base.registry, true);
+const replayRegistry = new m.LayerRegistry();
+const replayGraph = m.importProgramBundle(replayRegistry, bundle);
+assert(replayGraph.programIdentity() === identity, 'Program Bundle changed structural identity');
+const replayRelevant = run(replayGraph, replayRegistry, relevant);
+assert(closeArray(replayRelevant, normalizedRelevant), 'Program Bundle replay output mismatch');
+replayGraph.validateRegistryBinding(replayRegistry);
+
+const changed = build(17, 1e-6);
+assert(changed.graph.programIdentity() !== identity, 'epsilon did not participate in program identity');
+const changedPlan = base.graph.programPlan();
+base.registry.initAgentLayer(m.AgentLayerSpec.featureNorm(17, 1e-6));
+let driftRejected = false;
+try {
+  base.graph.validateRegistryBinding(base.registry);
+} catch {
+  driftRejected = true;
+}
+assert(driftRejected, 'old CompiledGraph accepted FeatureNorm structural drift');
+const rebound = base.registry.compileGraph(changedPlan);
+assert(rebound.programIdentity() !== identity, 'recompile did not capture changed epsilon identity');
+
+let invalidEpsilonRejected = false;
+try {
+  m.AgentLayerSpec.featureNorm(99, 0);
+} catch {
+  invalidEpsilonRejected = true;
+}
+assert(invalidEpsilonRejected, 'typed FeatureNorm accepted invalid epsilon');
+
+const capabilities = JSON.parse(m.agentCapabilities());
+assert(capabilities.agent_facade.constructors.includes('featureNorm'), 'featureNorm missing from agent capabilities');
+assert(capabilities.layers.feature_norm.code === base.spec.layerType(), 'featureNorm capability code mismatch');
+
+console.log(JSON.stringify({
+  verdict: 'PASS',
+  task: 'first-class FeatureNorm graph + identity + Program Bundle retrieval proof',
+  layerType: base.spec.layerType(),
+  parameterCount: base.registry.totalParams(),
+  normalizedWinner: relevantScore > distractorScore ? 'relevant' : 'distractor',
+  programIdentity: identity,
+  programBundleReplay: true,
+  identityBindsEpsilon: true,
+  structuralDriftRejected: driftRejected,
+  invalidEpsilonRejected,
+}, null, 2));
+
+rebound.free();
+changed.graph.free(); changed.builder.free(); changed.spec.free(); changed.registry.free();
+replayGraph.free(); replayRegistry.free();
+base.graph.free(); base.builder.free(); base.spec.free(); base.registry.free();
+''')
+
+          # CI gate for the first-class packaged integration.
+          replace(
+              '.github/workflows/main.yml',
+              '      - name: Run FeatureNorm retrieval research\n        run: node scripts/research_feature_norm_retrieval.mjs pkg\n\n      - name: Run host tests\n',
+              '      - name: Run FeatureNorm retrieval research\n        run: node scripts/research_feature_norm_retrieval.mjs pkg\n\n      - name: Run FeatureNorm first-class integration research\n        run: node scripts/research_feature_norm_integration.mjs pkg\n\n      - name: Run host tests\n',
+          )
+          PY
+
+          cargo fmt --all
+          python3 -m json.tool docs/agent-layout-contracts.v1.json >/dev/null
+          python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
+          rm .github/workflows/feature-norm-phase2-patch.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat: integrate FeatureNorm across agent runtime"
+          git push origin HEAD:feat/feature-norm-integration
