@@ -98,6 +98,9 @@ jobs:
       - name: Run FeatureNorm integration research
         run: node scripts/research_feature_norm_integration.mjs pkg
 
+      - name: Run Numeric Kernel artifact research
+        run: node scripts/research_numeric_kernel.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
