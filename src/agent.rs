@@ -1,18 +1,19 @@
 use wasm_bindgen::prelude::*;
 
 use crate::graph::CompiledGraph;
-use crate::layers::custom::feature_norm::DEFAULT_EPSILON as FEATURE_NORM_DEFAULT_EPSILON;
 use crate::protocol::{
-    PacketHeader, ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
-    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH,
-    BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
-    CONV_CONVTRANSPOSE2D, FLAG_BIAS, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
-    LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, OP_INIT,
-    POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
-    SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, VARIANT_NONE,
+    ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
+    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
+    ACT_TANH, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB,
+    CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, FLAG_BIAS, LAYER_ACTIVATION,
+    LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,
+    LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE,
+    NORM_LAYER, NORM_RMS, OP_INIT, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
+    POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, PacketHeader, SHIFT_DOWN,
+    SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, VARIANT_NONE,
 };
 use crate::registry::LayerRegistry;
+use crate::layers::custom::feature_norm::DEFAULT_EPSILON as FEATURE_NORM_DEFAULT_EPSILON;
 
 fn push_u32(payload: &mut Vec<u8>, value: u32) {
     payload.extend_from_slice(&value.to_le_bytes());
@@ -275,7 +276,11 @@ impl AgentLayerSpec {
     }
 
     #[wasm_bindgen(js_name = prelu)]
-    pub fn prelu(layer_id: u32, num_parameters: u32, alpha: f64) -> Result<AgentLayerSpec, String> {
+    pub fn prelu(
+        layer_id: u32,
+        num_parameters: u32,
+        alpha: f64,
+    ) -> Result<AgentLayerSpec, String> {
         validate_positive(num_parameters, "AgentLayerSpec.prelu.num_parameters")?;
         validate_finite(alpha, "AgentLayerSpec.prelu.alpha")?;
         let mut payload = Vec::with_capacity(18);
@@ -315,7 +320,11 @@ impl AgentLayerSpec {
     }
 
     #[wasm_bindgen(js_name = hardSigmoid)]
-    pub fn hard_sigmoid(layer_id: u32, alpha: f64, beta: f64) -> Result<AgentLayerSpec, String> {
+    pub fn hard_sigmoid(
+        layer_id: u32,
+        alpha: f64,
+        beta: f64,
+    ) -> Result<AgentLayerSpec, String> {
         validate_finite(alpha, "AgentLayerSpec.hardSigmoid.alpha")?;
         validate_finite(beta, "AgentLayerSpec.hardSigmoid.beta")?;
         let mut payload = Vec::with_capacity(22);
@@ -455,7 +464,13 @@ impl AgentLayerSpec {
     ) -> Result<AgentLayerSpec, String> {
         validate_positive(size, "AgentLayerSpec.layerNorm.size")?;
         validate_optional_epsilon(epsilon, "AgentLayerSpec.layerNorm.epsilon")?;
-        Ok(Self::norm_spec(layer_id, NORM_LAYER, size, epsilon, None))
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_LAYER,
+            size,
+            epsilon,
+            None,
+        ))
     }
 
     #[wasm_bindgen(js_name = rmsNorm)]
@@ -466,7 +481,13 @@ impl AgentLayerSpec {
     ) -> Result<AgentLayerSpec, String> {
         validate_positive(size, "AgentLayerSpec.rmsNorm.size")?;
         validate_optional_epsilon(epsilon, "AgentLayerSpec.rmsNorm.epsilon")?;
-        Ok(Self::norm_spec(layer_id, NORM_RMS, size, epsilon, None))
+        Ok(Self::norm_spec(
+            layer_id,
+            NORM_RMS,
+            size,
+            epsilon,
+            None,
+        ))
     }
 
     #[wasm_bindgen(js_name = conv1d)]
@@ -548,7 +569,11 @@ impl AgentLayerSpec {
         validate_positive(out_channels, "AgentLayerSpec.convTranspose2d.out_channels")?;
         validate_positive(kernel_h, "AgentLayerSpec.convTranspose2d.kernel_h")?;
         validate_positive(kernel_w, "AgentLayerSpec.convTranspose2d.kernel_w")?;
-        validate_pair_presence(stride_h, stride_w, "AgentLayerSpec.convTranspose2d.stride")?;
+        validate_pair_presence(
+            stride_h,
+            stride_w,
+            "AgentLayerSpec.convTranspose2d.stride",
+        )?;
         validate_optional_positive(stride_h, "AgentLayerSpec.convTranspose2d.stride_h")?;
         validate_optional_positive(stride_w, "AgentLayerSpec.convTranspose2d.stride_w")?;
         validate_pair_presence(
@@ -707,7 +732,10 @@ impl AgentLayerSpec {
     }
 
     #[wasm_bindgen(js_name = featureNorm)]
-    pub fn feature_norm(layer_id: u32, epsilon: Option<f64>) -> Result<AgentLayerSpec, String> {
+    pub fn feature_norm(
+        layer_id: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
         let epsilon = epsilon.unwrap_or(FEATURE_NORM_DEFAULT_EPSILON);
         validate_positive_f64(epsilon, "AgentLayerSpec.featureNorm.epsilon")?;
         let mut payload = Vec::with_capacity(13);
@@ -1128,10 +1156,10 @@ pub fn agent_capabilities() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{capability_manifest, AgentGraphBuilder, AgentLayerSpec};
+    use super::{AgentGraphBuilder, AgentLayerSpec, capability_manifest};
     use crate::protocol::{
-        LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST, LAYER_NORM,
-        LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
+        LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST,
+        LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
     };
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
@@ -1158,7 +1186,10 @@ mod tests {
         let manifest = capability_manifest();
         assert!(manifest.contains(&format!("\"norm\":{{\"code\":{}", LAYER_NORM)));
         assert!(manifest.contains(&format!("\"conv\":{{\"code\":{}", LAYER_CONV)));
-        assert!(manifest.contains(&format!("\"activation\":{{\"code\":{}", LAYER_ACTIVATION)));
+        assert!(manifest.contains(&format!(
+            "\"activation\":{{\"code\":{}",
+            LAYER_ACTIVATION
+        )));
         assert!(manifest.contains(&format!("\"binary\":{{\"code\":{}", LAYER_BINARY)));
     }
 
@@ -1168,7 +1199,9 @@ mod tests {
         let spec = AgentLayerSpec::relu(7);
         registry.init_agent_layer(&spec).unwrap();
         let input = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
-        let output = registry.forward_layer(7, LAYER_ACTIVATION, &input).unwrap();
+        let output = registry
+            .forward_layer(7, LAYER_ACTIVATION, &input)
+            .unwrap();
         assert_eq!(output.to_array(), vec![0.0, 2.0]);
     }
 
@@ -1211,7 +1244,8 @@ mod tests {
             AgentLayerSpec::rms_norm(34, 2, Some(1e-5)).unwrap(),
             AgentLayerSpec::conv1d(40, 1, 1, 1, None, None).unwrap(),
             AgentLayerSpec::conv2d(41, 1, 1, 1, 1, None, None, None, None).unwrap(),
-            AgentLayerSpec::conv_transpose2d(42, 1, 1, 1, 1, None, None, None, None).unwrap(),
+            AgentLayerSpec::conv_transpose2d(42, 1, 1, 1, 1, None, None, None, None)
+                .unwrap(),
             AgentLayerSpec::embedding(50, 4, 2).unwrap(),
             AgentLayerSpec::max_pool1d(60, 1, None, None).unwrap(),
             AgentLayerSpec::max_pool2d(61, 1, 1, None, None, None, None).unwrap(),
@@ -1250,7 +1284,9 @@ mod tests {
         assert!(AgentLayerSpec::group_norm(1, 3, 4, None).is_err());
         assert!(AgentLayerSpec::rms_norm(1, 4, Some(f64::NAN)).is_err());
         assert!(AgentLayerSpec::conv1d(1, 0, 1, 3, None, None).is_err());
-        assert!(AgentLayerSpec::conv2d(1, 1, 1, 3, 3, Some(1), None, None, None).is_err());
+        assert!(
+            AgentLayerSpec::conv2d(1, 1, 1, 3, 3, Some(1), None, None, None).is_err()
+        );
         assert!(AgentLayerSpec::embedding(1, 0, 4).is_err());
         assert!(AgentLayerSpec::max_pool1d(1, 0, None, None).is_err());
         assert!(AgentLayerSpec::adaptive_avg_pool2d(1, 0, 1).is_err());

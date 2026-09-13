@@ -3,78 +3,78 @@ use wasm_bindgen::prelude::*;
 // ============================================================
 // OPCODES — Aksi yang bisa dilakukan pada layer
 // ============================================================
-pub const OP_INIT: u8 = 0x01;
-pub const OP_FORWARD: u8 = 0x02;
-pub const OP_GET_STATE: u8 = 0x03;
+pub const OP_INIT:       u8 = 0x01;
+pub const OP_FORWARD:    u8 = 0x02;
+pub const OP_GET_STATE:  u8 = 0x03;
 pub const OP_LOAD_STATE: u8 = 0x04;
-pub const OP_DESTROY: u8 = 0x05;
+pub const OP_DESTROY:    u8 = 0x05;
 pub const OP_GET_PARAMS: u8 = 0x06;
-pub const OP_RUN_GRAPH: u8 = 0x07;
+pub const OP_RUN_GRAPH:    u8 = 0x07;
 
 // ============================================================
 // LAYER TYPES — 1 file.rs = 1 engine = 1 byte
 // ============================================================
-pub const LAYER_LINEAR: u8 = 0x01;
-pub const LAYER_NORM: u8 = 0x02;
-pub const LAYER_CONV: u8 = 0x03;
-pub const LAYER_ACTIVATION: u8 = 0x04;
-pub const LAYER_EMBEDDING: u8 = 0x05;
-pub const LAYER_POOL: u8 = 0x06;
+pub const LAYER_LINEAR:      u8 = 0x01;
+pub const LAYER_NORM:        u8 = 0x02;
+pub const LAYER_CONV:        u8 = 0x03;
+pub const LAYER_ACTIVATION:  u8 = 0x04;
+pub const LAYER_EMBEDDING:   u8 = 0x05;
+pub const LAYER_POOL:        u8 = 0x06;
 
 // --- Custom layers (0x10+) ---
-pub const LAYER_SHIFT: u8 = 0x10;
-pub const LAYER_GHOST: u8 = 0x11;
-pub const LAYER_SEBLOCK: u8 = 0x12;
-pub const LAYER_BINARY: u8 = 0x13;
+pub const LAYER_SHIFT:       u8 = 0x10;
+pub const LAYER_GHOST:       u8 = 0x11;
+pub const LAYER_SEBLOCK:     u8 = 0x12;
+pub const LAYER_BINARY:      u8 = 0x13;
 pub const LAYER_FEATURE_NORM: u8 = 0x14;
 // ============================================================
 // VARIANTS — Pilihan dalam 1 engine
 // ============================================================
 
 // Conv variants
-pub const CONV_CONV1D: u8 = 0x00;
-pub const CONV_CONV2D: u8 = 0x01;
+pub const CONV_CONV1D:          u8 = 0x00;
+pub const CONV_CONV2D:          u8 = 0x01;
 pub const CONV_CONVTRANSPOSE2D: u8 = 0x02;
 
 // Norm variants
-pub const NORM_BATCH: u8 = 0x00;
-pub const NORM_GROUP: u8 = 0x01;
-pub const NORM_INSTANCE: u8 = 0x02;
-pub const NORM_LAYER: u8 = 0x03;
-pub const NORM_RMS: u8 = 0x04;
+pub const NORM_BATCH:     u8 = 0x00;
+pub const NORM_GROUP:     u8 = 0x01;
+pub const NORM_INSTANCE:  u8 = 0x02;
+pub const NORM_LAYER:     u8 = 0x03;
+pub const NORM_RMS:       u8 = 0x04;
 
 // Activation variants
-pub const ACT_GELU: u8 = 0x00;
-pub const ACT_RELU: u8 = 0x01;
-pub const ACT_SIGMOID: u8 = 0x02;
-pub const ACT_TANH: u8 = 0x03;
-pub const ACT_HARDSWISH: u8 = 0x04;
-pub const ACT_LEAKYRELU: u8 = 0x05;
-pub const ACT_PRELU: u8 = 0x06;
-pub const ACT_SWIGLU: u8 = 0x07;
-pub const ACT_HARDSIGMOID: u8 = 0x08;
-pub const ACT_SOFTPLUS: u8 = 0x09;
-pub const ACT_MISH: u8 = 0x0A;
-pub const ACT_SOFTMAX: u8 = 0x0B;
-pub const ACT_LOGSOFTMAX: u8 = 0x0C;
-pub const ACT_GLU: u8 = 0x0D;
+pub const ACT_GELU:         u8 = 0x00;
+pub const ACT_RELU:         u8 = 0x01;
+pub const ACT_SIGMOID:      u8 = 0x02;
+pub const ACT_TANH:         u8 = 0x03;
+pub const ACT_HARDSWISH:    u8 = 0x04;
+pub const ACT_LEAKYRELU:    u8 = 0x05;
+pub const ACT_PRELU:        u8 = 0x06;
+pub const ACT_SWIGLU:       u8 = 0x07;
+pub const ACT_HARDSIGMOID:  u8 = 0x08;
+pub const ACT_SOFTPLUS:     u8 = 0x09;
+pub const ACT_MISH:         u8 = 0x0A;
+pub const ACT_SOFTMAX:      u8 = 0x0B;
+pub const ACT_LOGSOFTMAX:   u8 = 0x0C;
+pub const ACT_GLU:          u8 = 0x0D;
 
 // Pool variants
-pub const POOL_MAXPOOL1D: u8 = 0x00;
-pub const POOL_MAXPOOL2D: u8 = 0x01;
-pub const POOL_AVGPOOL1D: u8 = 0x02;
-pub const POOL_AVGPOOL2D: u8 = 0x03;
-pub const POOL_ADAPTIVEAVGPOOL2D: u8 = 0x04;
+pub const POOL_MAXPOOL1D:          u8 = 0x00;
+pub const POOL_MAXPOOL2D:          u8 = 0x01;
+pub const POOL_AVGPOOL1D:          u8 = 0x02;
+pub const POOL_AVGPOOL2D:          u8 = 0x03;
+pub const POOL_ADAPTIVEAVGPOOL2D:  u8 = 0x04;
 
 // Shift variants
-pub const SHIFT_UP: u8 = 0x00;
-pub const SHIFT_DOWN: u8 = 0x01;
-pub const SHIFT_LEFT: u8 = 0x02;
+pub const SHIFT_UP:    u8 = 0x00;
+pub const SHIFT_DOWN:  u8 = 0x01;
+pub const SHIFT_LEFT:  u8 = 0x02;
 pub const SHIFT_RIGHT: u8 = 0x03;
 // Binary variants (op 2-input)
-pub const BINARY_ADD: u8 = 0x00;
-pub const BINARY_SUB: u8 = 0x01;
-pub const BINARY_MUL: u8 = 0x02;
+pub const BINARY_ADD:    u8 = 0x00;
+pub const BINARY_SUB:    u8 = 0x01;
+pub const BINARY_MUL:    u8 = 0x02;
 pub const BINARY_MATMUL: u8 = 0x03;
 pub const BINARY_CONCAT: u8 = 0x04;
 
@@ -308,13 +308,16 @@ fn checked_read_range<'a>(
 
 pub fn read_u32(payload: &[u8], offset: usize) -> Result<u32, String> {
     let bytes = checked_read_range(payload, offset, 4, "read_u32")?;
-    Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+    Ok(u32::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3],
+    ]))
 }
 
 pub fn read_f64(payload: &[u8], offset: usize) -> Result<f64, String> {
     let bytes = checked_read_range(payload, offset, 8, "read_f64")?;
     Ok(f64::from_le_bytes([
-        bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
     ]))
 }
 
@@ -341,14 +344,17 @@ pub fn read_option_f64(payload: &[u8], offset: usize) -> Result<Option<f64>, Str
     let bytes = checked_read_range(payload, offset, 9, "read_option_f64")?;
     let present = bytes[0] != 0;
     let value = f64::from_le_bytes([
-        bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
+        bytes[1], bytes[2], bytes[3], bytes[4],
+        bytes[5], bytes[6], bytes[7], bytes[8],
     ]);
     Ok(if present { Some(value) } else { None })
 }
 
 #[cfg(test)]
 mod offset_tests {
-    use super::{read_f64, read_option_f64, read_option_u32, read_u32, PayloadCursor};
+    use super::{
+        read_f64, read_option_f64, read_option_u32, read_u32, PayloadCursor,
+    };
 
     #[test]
     fn read_u32_rejects_offset_overflow_without_panicking() {

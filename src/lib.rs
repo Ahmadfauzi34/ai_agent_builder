@@ -4,26 +4,26 @@ use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
 pub mod agent;
-#[cfg(test)]
-mod contract_matrix_tests;
-pub mod contracts;
 pub mod coprocessor;
+pub mod contracts;
 pub mod es;
-#[cfg(test)]
-mod feature_norm_integration_tests;
 pub mod graph;
-#[cfg(test)]
-mod hardening_tests;
 pub mod layers;
 pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
+pub mod workspace;
+pub mod workspace_ops;
+#[cfg(test)]
+mod contract_matrix_tests;
 #[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
+mod feature_norm_integration_tests;
+#[cfg(test)]
 mod tests;
-pub mod workspace;
-pub mod workspace_ops;
+#[cfg(test)]
+mod hardening_tests;
 
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
@@ -64,7 +64,11 @@ fn checked_element_count(dims: [usize; 4], context: &str) -> Result<usize, Strin
     })
 }
 
-fn validate_element_count(dims: [usize; 4], actual: usize, context: &str) -> Result<(), String> {
+fn validate_element_count(
+    dims: [usize; 4],
+    actual: usize,
+    context: &str,
+) -> Result<(), String> {
     let expected = checked_element_count(dims, context)?;
     if actual != expected {
         return Err(format!(
@@ -143,8 +147,8 @@ pub struct TensorView {
 impl TensorView {
     #[wasm_bindgen(constructor)]
     pub fn new(total_elements: usize) -> Self {
-        let byte_length =
-            checked_sab_byte_length(total_elements).unwrap_or_else(|err| boundary_fail(err));
+        let byte_length = checked_sab_byte_length(total_elements)
+            .unwrap_or_else(|err| boundary_fail(err));
         let sab = js_sys::SharedArrayBuffer::new(byte_length);
         TensorView {
             sab: JsValue::from(sab),
