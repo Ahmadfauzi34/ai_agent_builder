@@ -19,6 +19,8 @@ mod contract_matrix_tests;
 #[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
+mod feature_norm_integration_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod hardening_tests;

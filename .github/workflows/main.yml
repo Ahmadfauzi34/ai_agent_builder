@@ -95,6 +95,9 @@ jobs:
       - name: Run FeatureNorm retrieval research
         run: node scripts/research_feature_norm_retrieval.mjs pkg
 
+      - name: Run FeatureNorm integration research
+        run: node scripts/research_feature_norm_integration.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 

@@ -6,13 +6,14 @@ use crate::protocol::{
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
     ACT_TANH, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB,
     CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, FLAG_BIAS, LAYER_ACTIVATION,
-    LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,
+    LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM,
     LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE,
     NORM_LAYER, NORM_RMS, OP_INIT, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
     POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, PacketHeader, SHIFT_DOWN,
     SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, VARIANT_NONE,
 };
 use crate::registry::LayerRegistry;
+use crate::layers::custom::feature_norm::DEFAULT_EPSILON as FEATURE_NORM_DEFAULT_EPSILON;
 
 fn push_u32(payload: &mut Vec<u8>, value: u32) {
     payload.extend_from_slice(&value.to_le_bytes());
@@ -730,6 +731,25 @@ impl AgentLayerSpec {
         ))
     }
 
+    #[wasm_bindgen(js_name = featureNorm)]
+    pub fn feature_norm(
+        layer_id: u32,
+        epsilon: Option<f64>,
+    ) -> Result<AgentLayerSpec, String> {
+        let epsilon = epsilon.unwrap_or(FEATURE_NORM_DEFAULT_EPSILON);
+        validate_positive_f64(epsilon, "AgentLayerSpec.featureNorm.epsilon")?;
+        let mut payload = Vec::with_capacity(13);
+        push_u32(&mut payload, layer_id);
+        push_option_f64(&mut payload, Some(epsilon));
+        Ok(Self::from_payload(
+            layer_id,
+            LAYER_FEATURE_NORM,
+            VARIANT_NONE,
+            0,
+            payload,
+        ))
+    }
+
     #[wasm_bindgen(js_name = shiftUp)]
     pub fn shift_up(layer_id: u32, shift_size: u32) -> AgentLayerSpec {
         Self::shift_spec(layer_id, SHIFT_UP, shift_size)
@@ -1045,7 +1065,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
-            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
+            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
             "\"batchNorm\":\"batchNorm(id,num_features,epsilon?)\",",
@@ -1053,6 +1073,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"conv1d\":\"conv1d(id,in_ch,out_ch,kernel,stride?,padding?)\",",
             "\"conv2d\":\"conv2d(id,in_ch,out_ch,kh,kw,sh?,sw?,ph?,pw?)\",",
             "\"embedding\":\"embedding(id,vocab_size,d_model)\",",
+            "\"featureNorm\":\"featureNorm(id,epsilon?)\",",
             "\"maxPool2d\":\"maxPool2d(id,kh,kw,sh?,sw?,ph?,pw?)\",",
             "\"ghost\":\"ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)\",",
             "\"seBlock\":\"seBlock(id,channels,reduction)\",",
@@ -1067,6 +1088,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"activation\":{{\"code\":{},\"arity\":1,\"variants\":{{\"gelu\":{},\"relu\":{},\"sigmoid\":{},\"tanh\":{},\"hard_swish\":{},\"leaky_relu\":{},\"prelu\":{},\"swiglu\":{},\"hard_sigmoid\":{},\"softplus\":{},\"mish\":{},\"softmax\":{},\"log_softmax\":{},\"glu\":{}}}}},",
             "\"embedding\":{{\"code\":{},\"arity\":1}},",
             "\"pool\":{{\"code\":{},\"arity\":1,\"variants\":{{\"max_pool1d\":{},\"max_pool2d\":{},\"avg_pool1d\":{},\"avg_pool2d\":{},\"adaptive_avg_pool2d\":{}}}}},",
+            "\"feature_norm\":{{\"code\":{},\"arity\":1}},",
             "\"shift\":{{\"code\":{},\"arity\":1,\"variants\":{{\"up\":{},\"down\":{},\"left\":{},\"right\":{}}}}},",
             "\"ghost\":{{\"code\":{},\"arity\":1}},",
             "\"seblock\":{{\"code\":{},\"arity\":1}},",
@@ -1106,6 +1128,7 @@ pub(crate) fn capability_manifest() -> String {
         POOL_AVGPOOL1D,
         POOL_AVGPOOL2D,
         POOL_ADAPTIVEAVGPOOL2D,
+        LAYER_FEATURE_NORM,
         LAYER_SHIFT,
         SHIFT_UP,
         SHIFT_DOWN,

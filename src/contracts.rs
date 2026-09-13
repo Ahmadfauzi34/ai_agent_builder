@@ -3,7 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::agent::AgentLayerSpec;
 use crate::protocol::{
     ACT_PRELU, ACT_SWIGLU, CONV_CONV1D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV,
-    LAYER_EMBEDDING, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
     LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, POOL_AVGPOOL1D,
     POOL_MAXPOOL1D,
 };
@@ -71,6 +71,7 @@ fn layout_profile_for(layer_type: u8, variant: u8) -> LayoutProfile {
 
     match layer_type {
         LAYER_LINEAR => input_output(LayoutTag::FeatureAxis1Singleton),
+        LAYER_FEATURE_NORM => input_output(LayoutTag::FeatureAxis1Singleton),
         LAYER_NORM => match variant {
             NORM_BATCH | NORM_GROUP | NORM_INSTANCE => input_output(LayoutTag::ChannelFirst),
             NORM_LAYER | NORM_RMS => input_output(LayoutTag::FeatureLast),

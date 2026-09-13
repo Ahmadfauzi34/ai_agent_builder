@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::WasmTensor;
 
-const DEFAULT_EPSILON: f64 = 1e-12;
+pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;
 
 fn validate_epsilon(epsilon: f64) -> Result<(), String> {
     if !epsilon.is_finite() || epsilon <= 0.0 {

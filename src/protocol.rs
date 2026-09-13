@@ -26,6 +26,7 @@ pub const LAYER_SHIFT:       u8 = 0x10;
 pub const LAYER_GHOST:       u8 = 0x11;
 pub const LAYER_SEBLOCK:     u8 = 0x12;
 pub const LAYER_BINARY:      u8 = 0x13;
+pub const LAYER_FEATURE_NORM: u8 = 0x14;
 // ============================================================
 // VARIANTS — Pilihan dalam 1 engine
 // ============================================================

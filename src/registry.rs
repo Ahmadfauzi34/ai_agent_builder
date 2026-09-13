@@ -12,6 +12,7 @@ use crate::layers::pool::WasmPool;
 use crate::layers::custom::shift::WasmShift;
 use crate::layers::custom::ghost::WasmGhostModule;
 use crate::layers::custom::seblock::WasmSeBlock;
+use crate::layers::custom::feature_norm::WasmFeatureNorm;
 use crate::layers::binary::WasmBinary;
 
 type LayerId = u32;
@@ -57,6 +58,7 @@ pub struct LayerRegistry {
     ghosts:      HashMap<LayerId, WasmGhostModule>,
     seblocks:    HashMap<LayerId, WasmSeBlock>,
     binaries:    HashMap<LayerId, WasmBinary>,
+    feature_norms: HashMap<LayerId, WasmFeatureNorm>,
     init_identities: HashMap<LayerKey, LayerInitIdentity>,
     cached_params: usize,
 }
@@ -120,6 +122,7 @@ impl LayerRegistry {
             ghosts:      HashMap::new(),
             seblocks:    HashMap::new(),
             binaries:    HashMap::new(),
+            feature_norms: HashMap::new(),
             init_identities: HashMap::new(),
             cached_params: 0,
         }
@@ -141,6 +144,7 @@ impl LayerRegistry {
             LAYER_GHOST       => self.init_ghost(header, payload),
             LAYER_SEBLOCK     => self.init_seblock(header, payload),
             LAYER_BINARY      => self.init_binary(header, payload),
+            LAYER_FEATURE_NORM => self.init_feature_norm(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
         };
         if result.is_ok() {
@@ -229,6 +233,11 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "SEBlock not found".to_string())?
                 .forward(input)),
+            LAYER_FEATURE_NORM => self
+                .feature_norms
+                .get(&layer_id)
+                .ok_or_else(|| "FeatureNorm not found".to_string())?
+                .forward(input),
             _ => Err(format!("Unknown layer type for forward: 0x{:02X}", layer_type)),
         }
     }
@@ -243,7 +252,7 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
                 if self.layer_exists(layer_type, layer_id) {
                     Ok(vec![])
                 } else {
@@ -264,7 +273,7 @@ impl LayerRegistry {
             LAYER_EMBEDDING   => load_layer_state!(self, embeddings, layer_id, data),
             LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY => {
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
                 if !self.layer_exists(layer_type, layer_id) {
                     return Err("Not found".into());
                 }
@@ -292,6 +301,7 @@ impl LayerRegistry {
             LAYER_POOL        => self.pools.remove(&layer_id).is_some(),
             LAYER_SHIFT       => self.shifts.remove(&layer_id).is_some(),
             LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),
+            LAYER_FEATURE_NORM => remove_layer!(self, feature_norms, layer_id),
             _ => false,
         };
         if removed {
@@ -477,6 +487,15 @@ impl LayerRegistry {
             _ => return Err(format!("Unknown shift variant: 0x{:02X}", header.variant)),
         };
         self.shifts.insert(id, layer);
+        Ok(())
+    }
+
+    fn init_feature_norm(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        let mut c = PayloadCursor::new(payload);
+        let id = c.read_u32()?;
+        let epsilon = c.read_option_f64()?;
+        let layer = WasmFeatureNorm::new_feature_norm(epsilon)?;
+        insert_layer!(self, feature_norms, id, layer);
         Ok(())
     }
 
@@ -735,6 +754,7 @@ impl LayerRegistry {
             LAYER_GHOST      => self.ghosts.contains_key(&layer_id),
             LAYER_SEBLOCK    => self.seblocks.contains_key(&layer_id),
             LAYER_BINARY     => self.binaries.contains_key(&layer_id),
+            LAYER_FEATURE_NORM => self.feature_norms.contains_key(&layer_id),
             _ => false,
         }
     }
