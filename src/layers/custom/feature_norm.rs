@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::WasmTensor;
 
-const DEFAULT_EPSILON: f64 = 1e-12;
+pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;
 
 fn validate_epsilon(epsilon: f64) -> Result<(), String> {
     if !epsilon.is_finite() || epsilon <= 0.0 {
@@ -21,9 +21,7 @@ fn validate_feature_shape(shape: [usize; 4]) -> Result<(), String> {
         return Err("FeatureNorm: feature axis 1 must be non-empty".into());
     }
     if h != 1 || w != 1 {
-        return Err(format!(
-            "FeatureNorm: expected [B,F,1,1], got {shape:?}"
-        ));
+        return Err(format!("FeatureNorm: expected [B,F,1,1], got {shape:?}"));
     }
     Ok(())
 }
