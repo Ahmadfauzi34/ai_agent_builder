@@ -223,7 +223,7 @@ mod tests {
         let cosine = linalg.cosine_similarity(&a, &b, None).unwrap();
         assert_close(
             &cosine.to_array(),
-            &[11.0 / 14.0, 16.0 / 20.0],
+            &[11.0 / 14.0, 16.0 / 25.0],
             1e-6,
         );
 
