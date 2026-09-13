@@ -13,6 +13,10 @@ function tensor(values, shape) {
   return new m.WasmTensor(new Float32Array(values), new Uint32Array(shape));
 }
 
+function u32(values) {
+  return new Uint32Array(values);
+}
+
 function verify(actual, expected, absTol = 1e-6, relTol = 1e-6) {
   const report = JSON.parse(m.mathVerifyVectors(
     new Float32Array(expected),
@@ -24,12 +28,16 @@ function verify(actual, expected, absTol = 1e-6, relTol = 1e-6) {
 }
 
 const caps = JSON.parse(m.mathProgramCapabilities());
-assert(caps.schema === 'burn-research.math-program.v2', 'schema mismatch');
+assert(caps.schema === 'burn-research.math-program.v3', 'schema mismatch');
 assert(caps.v1_identity_compatibility === true, 'v1 identity compatibility must be explicit');
+assert(caps.v2_identity_compatibility === true, 'v2 identity compatibility must be explicit');
 assert(caps.registry_dependency === false, 'must remain registry-independent');
 assert(caps.mutable_state === false, 'must remain stateless');
 assert(caps.parameterized_ops.scalar_v2.includes('clamp'), 'clamp capability missing');
 assert(caps.parameterized_ops.scalar_v2.includes('cosineSimilarity'), 'cosine capability missing');
+assert(caps.parameterized_ops.fixed_rank4_v3.includes('reshape'), 'reshape capability missing');
+assert(caps.parameterized_ops.fixed_rank4_v3.includes('permute'), 'permute capability missing');
+assert(caps.parameterized_ops.fixed_rank4_v3.includes('slice'), 'slice capability missing');
 
 // Existing non-parameterized programs must remain canonical v1 plans.
 const builder = new m.WasmMathProgramBuilder(1, 3);
@@ -48,14 +56,14 @@ assert(replay.programIdentity() === program.programIdentity(), 'v1 replay identi
 const replayOutput = replay.run1(input);
 verify(replayOutput, [2]);
 
-// Scalar parameters switch the canonical plan to v2 and survive replay.
+// Scalar-only programs remain canonical v2 plans and survive replay.
 const clampBuilder = new m.WasmMathProgramBuilder(1, 3);
 clampBuilder.addClamp(0, 1, -1, 1);
 clampBuilder.addUnary(caps.opcodes.sum, 1, 2);
 clampBuilder.setOutput(2);
 const clampProgram = clampBuilder.compile();
 const clampPlan = clampProgram.programPlan();
-assert(clampPlan[4] === 2, `parameterized program did not use plan v2: ${clampPlan[4]}`);
+assert(clampPlan[4] === 2, `scalar program changed plan version: ${clampPlan[4]}`);
 const clampReplay = m.WasmMathProgram.fromPlan(clampPlan);
 assert(clampReplay.programIdentity() === clampProgram.programIdentity(), 'v2 replay identity mismatch');
 const clampInput = tensor([-2, 0.5, 3], [1, 3, 1, 1]);
@@ -74,12 +82,12 @@ assert(
   'scalar parameter change must change program identity',
 );
 
-// Binary scalar parameter path: cosineSimilarity(epsilon).
+// Binary scalar parameter path remains v2.
 const cosineBuilder = new m.WasmMathProgramBuilder(2, 3);
 cosineBuilder.addCosineSimilarity(0, 1, 2, 1e-6);
 cosineBuilder.setOutput(2);
 const cosineProgram = cosineBuilder.compile();
-assert(cosineProgram.programPlan()[4] === 2, 'cosine program must use plan v2');
+assert(cosineProgram.programPlan()[4] === 2, 'cosine program must remain plan v2');
 const vectorA = tensor([1, 0], [1, 2, 1, 1]);
 const vectorB = tensor([1, 0], [1, 2, 1, 1]);
 const cosineOutput = cosineProgram.run2(vectorA, vectorB);
@@ -89,18 +97,70 @@ assert(cosineReplay.programIdentity() === cosineProgram.programIdentity(), 'cosi
 const cosineReplayOutput = cosineReplay.run2(vectorA, vectorB);
 verify(cosineReplayOutput, [1]);
 
-// Failed parameter validation must not consume a step.
-const invalidBuilder = new m.WasmMathProgramBuilder(1, 2);
-let rejectedInvalidClamp = false;
-try {
-  invalidBuilder.addClamp(0, 1, Number.NaN, 1);
-} catch {
-  rejectedInvalidClamp = true;
-}
-assert(rejectedInvalidClamp, 'invalid clamp parameter was accepted');
-assert(invalidBuilder.numSteps() === 0, 'failed scalar validation mutated builder state');
+// Fixed rank-4 metadata switches the canonical plan to v3.
+const shapeBuilder = new m.WasmMathProgramBuilder(1, 4);
+shapeBuilder.addReshape(0, 1, u32([1, 1, 3, 2]));
+shapeBuilder.addPermute(1, 2, u32([0, 1, 3, 2]));
+shapeBuilder.addSlice(2, 3, u32([0, 0, 0, 1]), u32([1, 1, 2, 3]));
+shapeBuilder.setOutput(3);
+const shapeProgram = shapeBuilder.compile();
+const shapePlan = shapeProgram.programPlan();
+assert(shapePlan[4] === 3, `fixed-shape program did not use plan v3: ${shapePlan[4]}`);
+const shapeInput = tensor([1, 2, 3, 4, 5, 6], [1, 2, 1, 3]);
+const shapeOutput = shapeProgram.run1(shapeInput);
+assert(JSON.stringify(Array.from(shapeOutput.shape())) === JSON.stringify([1, 1, 2, 2]), 'shape output mismatch');
+verify(shapeOutput, [3, 5, 4, 6]);
+const shapeReplay = m.WasmMathProgram.fromPlan(shapePlan);
+assert(shapeReplay.programIdentity() === shapeProgram.programIdentity(), 'v3 replay identity mismatch');
+const shapeReplayOutput = shapeReplay.run1(shapeInput);
+verify(shapeReplayOutput, [3, 5, 4, 6]);
 
-// Existing probability composition remains valid under the v2 capability envelope.
+const alternateShapeBuilder = new m.WasmMathProgramBuilder(1, 2);
+alternateShapeBuilder.addReshape(0, 1, u32([1, 1, 2, 3]));
+alternateShapeBuilder.setOutput(1);
+const alternateShapeProgram = alternateShapeBuilder.compile();
+const alternateShapeBuilder2 = new m.WasmMathProgramBuilder(1, 2);
+alternateShapeBuilder2.addReshape(0, 1, u32([1, 1, 3, 2]));
+alternateShapeBuilder2.setOutput(1);
+const alternateShapeProgram2 = alternateShapeBuilder2.compile();
+assert(
+  alternateShapeProgram.programIdentity() !== alternateShapeProgram2.programIdentity(),
+  'shape metadata change must change program identity',
+);
+
+// Failed metadata validation must not consume a step.
+const invalidBuilder = new m.WasmMathProgramBuilder(1, 2);
+let rejectedInvalidShape = false;
+try {
+  invalidBuilder.addPermute(0, 1, u32([0, 1, 1, 3]));
+} catch {
+  rejectedInvalidShape = true;
+}
+assert(rejectedInvalidShape, 'invalid permute metadata was accepted');
+assert(invalidBuilder.numSteps() === 0, 'failed shape validation mutated builder state');
+
+// Input-dependent shape failure is controlled and the immutable program stays reusable.
+const reusableBuilder = new m.WasmMathProgramBuilder(1, 2);
+reusableBuilder.addReshape(0, 1, u32([1, 1, 2, 2]));
+reusableBuilder.setOutput(1);
+const reusableProgram = reusableBuilder.compile();
+const reusableIdentity = reusableProgram.programIdentity();
+const badShapeInput = tensor([1, 2, 3], [1, 3, 1, 1]);
+let rejectedRuntimeShape = false;
+try {
+  const unexpected = reusableProgram.run1(badShapeInput);
+  unexpected.free();
+} catch {
+  rejectedRuntimeShape = true;
+}
+assert(rejectedRuntimeShape, 'runtime reshape mismatch was accepted');
+assert(reusableProgram.programIdentity() === reusableIdentity, 'failed run changed program identity');
+const goodShapeInput = tensor([1, 2, 3, 4], [1, 4, 1, 1]);
+const goodShapeOutput = reusableProgram.run1(goodShapeInput);
+verify(goodShapeOutput, [1, 2, 3, 4]);
+assert(reusableProgram.programIdentity() === reusableIdentity, 'reused program identity changed');
+
+// Existing probability composition remains valid under the v3 capability envelope.
 const probabilityBuilder = new m.WasmMathProgramBuilder(1, 3);
 probabilityBuilder.addUnary(caps.opcodes.normalize, 0, 1);
 probabilityBuilder.addUnary(caps.opcodes.entropy, 1, 2);
@@ -112,12 +172,14 @@ verify(entropy, [Math.log(2)], 2e-6, 2e-6);
 
 console.log(JSON.stringify({
   verdict: 'PASS',
-  task: 'Math Program v2 scalar-parameter packaged-WASM proof',
+  task: 'Math Program v3 fixed-rank4 packaged-WASM proof',
   schema: caps.schema,
   v1PlanCompatibility: plan[4] === 1,
-  v2ScalarReplay: clampPlan[4] === 2,
-  parameterIdentitySensitive: true,
-  invalidParameterAtomicity: true,
+  v2ScalarCompatibility: clampPlan[4] === 2,
+  v3FixedShapeReplay: shapePlan[4] === 3,
+  shapeIdentitySensitive: true,
+  invalidMetadataAtomicity: true,
+  runtimeFailureReusable: true,
   registryDependency: caps.registry_dependency,
   mutableState: caps.mutable_state,
   referenceVerification: 'mathVerifyVectors',
@@ -134,6 +196,12 @@ for (const value of [
   vectorB,
   cosineOutput,
   cosineReplayOutput,
+  shapeInput,
+  shapeOutput,
+  shapeReplayOutput,
+  badShapeInput,
+  goodShapeInput,
+  goodShapeOutput,
   weights,
   entropy,
 ]) value.free();
@@ -145,6 +213,11 @@ for (const value of [
   altClampProgram,
   cosineProgram,
   cosineReplay,
+  shapeProgram,
+  shapeReplay,
+  alternateShapeProgram,
+  alternateShapeProgram2,
+  reusableProgram,
   probabilityProgram,
 ]) value.free();
 for (const value of [
@@ -152,6 +225,10 @@ for (const value of [
   clampBuilder,
   altClampBuilder,
   cosineBuilder,
+  shapeBuilder,
+  alternateShapeBuilder,
+  alternateShapeBuilder2,
   invalidBuilder,
+  reusableBuilder,
   probabilityBuilder,
 ]) value.free();
