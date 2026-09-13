@@ -113,6 +113,9 @@ jobs:
       - name: Run Probability artifact research
         run: node scripts/research_probability.mjs pkg
 
+      - name: Run Math Program artifact research
+        run: node scripts/research_math_program.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
