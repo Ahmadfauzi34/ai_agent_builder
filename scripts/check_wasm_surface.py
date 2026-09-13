@@ -8,6 +8,7 @@ SURFACE_PATH = ROOT / "docs" / "wasm-surface.v1.json"
 AGENT_CONTRACT_PATH = ROOT / "docs" / "agent-contracts.v1.json"
 LAYOUT_CONTRACT_PATH = ROOT / "docs" / "agent-layout-contracts.v1.json"
 DTS_PATH = ROOT / "pkg" / "burn_research.d.ts"
+ACTUAL_SURFACE_PATH = ROOT / "pkg" / "wasm-surface.actual.json"
 
 
 def load_json(path: Path):
@@ -61,6 +62,23 @@ def main():
     layout_contract = load_json(LAYOUT_CONTRACT_PATH)
     dts_text = DTS_PATH.read_text(encoding="utf-8")
     actual_classes, actual_functions, actual_default = parse_dts(dts_text)
+
+    ACTUAL_SURFACE_PATH.write_text(
+        json.dumps(
+            {
+                "artifact": str(DTS_PATH.relative_to(ROOT)),
+                "default_init": actual_default,
+                "functions": sorted(actual_functions),
+                "classes": {
+                    name: sorted(members)
+                    for name, members in sorted(actual_classes.items())
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ) + "\n",
+        encoding="utf-8",
+    )
 
     expected_classes = {name: set(members) for name, members in surface["classes"].items()}
     require_equal("exported classes", set(actual_classes), set(expected_classes))

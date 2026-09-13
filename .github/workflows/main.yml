@@ -83,6 +83,14 @@ jobs:
       - name: Audit packaged WASM surface
         run: python3 scripts/check_wasm_surface.py
 
+      - name: Upload parsed WASM surface diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-surface-diagnostic
+          path: pkg/wasm-surface.actual.json
+          if-no-files-found: ignore
+
       - name: Run packaged WASM artifact audit
         run: node scripts/audit_wasm_artifact.mjs pkg
 
@@ -112,6 +120,9 @@ jobs:
 
       - name: Run Probability artifact research
         run: node scripts/research_probability.mjs pkg
+
+      - name: Run Math Program artifact research
+        run: node scripts/research_math_program.mjs pkg
 
       - name: Run host tests
         run: cargo test --lib --tests
