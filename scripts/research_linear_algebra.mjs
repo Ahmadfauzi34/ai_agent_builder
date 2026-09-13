@@ -68,6 +68,12 @@ verify(values(cosine), [11 / 14], 2e-6, 2e-6);
 const distance = linalg.l2Distance(a, b);
 verify(values(distance), [Math.sqrt(6)]);
 
+const batchA = tensor([1, 2, 3, 3, 4, 0], [2, 3, 1, 1]);
+const batchB = tensor([3, 1, 2, 0, 4, 3], [2, 3, 1, 1]);
+const batchCosine = linalg.cosineSimilarity(batchA, batchB);
+assert(JSON.stringify(shape(batchCosine)) === JSON.stringify([2, 1, 1, 1]), 'batched cosine output shape mismatch');
+verify(values(batchCosine), [11 / 14, 16 / 25], 2e-6, 2e-6);
+
 const zero = tensor([0, 0, 0], [1, 3, 1, 1]);
 const zeroCosine = linalg.cosineSimilarity(zero, b);
 verify(values(zeroCosine), [0]);
@@ -100,12 +106,13 @@ console.log(JSON.stringify({
   vectorLayout: capabilities.vector_layout,
   zeroVectorCosine: capabilities.contracts.cosine_zero_vector,
   solve: capabilities.contracts.solve,
+  batchedCosineReference: [11 / 14, 16 / 25],
   referenceVerification: 'mathVerifyVectors',
   controlledErrors: true,
 }, null, 2));
 
 for (const t of [
-  a, b, dot, norm, cosine, distance, zero, zeroCosine,
+  a, b, dot, norm, cosine, distance, batchA, batchB, batchCosine, zero, zeroCosine,
   ma, mb, product, badFeatureLayout, incompatible, incompatibleRhs, nonfinite,
 ]) {
   t.free();
