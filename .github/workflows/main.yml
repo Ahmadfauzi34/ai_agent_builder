@@ -104,6 +104,9 @@ jobs:
       - name: Run Tensor Transform artifact research
         run: node scripts/research_tensor_transform.mjs pkg
 
+      - name: Run Linear Algebra artifact research
+        run: node scripts/research_linear_algebra.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
