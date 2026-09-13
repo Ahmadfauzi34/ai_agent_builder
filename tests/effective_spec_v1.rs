@@ -1,5 +1,5 @@
 mod resolution_subject {
-    pub use ai_agent_builder::resolution_subject::*;
+    pub use burn_research::resolution_subject::*;
 }
 
 #[path = "../src/effective_spec.rs"]
