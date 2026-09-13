@@ -15,6 +15,9 @@ jobs:
         with:
           ref: feat/feature-norm-integration
 
+      - name: Narrow patch anchor
+        run: python3 scripts/fix_feature_norm_phase2_patch.py
+
       - name: Apply integration patch
         run: python3 scripts/apply_feature_norm_phase2.py
 
@@ -27,6 +30,7 @@ jobs:
 
       - name: Commit proven patch
         run: |
+          rm scripts/fix_feature_norm_phase2_patch.py
           rm scripts/apply_feature_norm_phase2.py
           rm .github/workflows/feature-norm-phase2-patch.yml
           git config user.name "github-actions[bot]"
