@@ -101,6 +101,9 @@ jobs:
       - name: Run Numeric Kernel artifact research
         run: node scripts/research_numeric_kernel.mjs pkg
 
+      - name: Run Tensor Transform artifact research
+        run: node scripts/research_tensor_transform.mjs pkg
+
       - name: Run host tests
         run: cargo test --lib --tests
 
