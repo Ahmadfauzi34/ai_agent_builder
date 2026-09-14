@@ -133,6 +133,9 @@ jobs:
       - name: Run Resolution authorization / bulk-policy simulation audit
         run: cargo test --test audit_resolution_policy_simulation -- --nocapture
 
+      - name: Run Resolution scoped-authority / stale-policy audit
+        run: cargo test --test audit_resolution_authority_scope -- --nocapture
+
       - name: Run host tests
         run: cargo test --lib --tests
 
