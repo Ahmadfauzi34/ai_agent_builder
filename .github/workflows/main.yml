@@ -118,6 +118,9 @@ jobs:
       - name: Run Statistics artifact research
         run: node scripts/research_statistics.mjs pkg
 
+      - name: Run Reduction v1 artifact research
+        run: node scripts/research_reduction.mjs pkg
+
       - name: Run Probability artifact research
         run: node scripts/research_probability.mjs pkg
 
