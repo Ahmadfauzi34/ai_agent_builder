@@ -247,6 +247,16 @@ fn validate_approval_envelope(approval: &SubjectBoundApprovalSnapshot) -> Result
     if approval.approval.approver.trim().is_empty() {
         return Err("AuthorizationPolicy: approval actor must not be empty".to_string());
     }
+    let expected_approval_id = format!(
+        "{}:approval:r{}",
+        approval.approval.intent_id, approval.approval.workflow_revision
+    );
+    if approval.approval.approval_id != expected_approval_id {
+        return Err(
+            "AuthorizationPolicy: approval id does not match intent/workflow revision provenance"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 
@@ -385,6 +395,17 @@ mod tests {
         let before = policy.clone();
         let mut approval = bound_approval("intent-a", "spec:a", "customer");
         approval.schema = "wrong.subject.approval.schema".to_string();
+
+        assert!(policy.authorize(&approval).is_err());
+        assert_eq!(policy, before);
+    }
+
+    #[test]
+    fn inconsistent_approval_id_fails_closed_without_policy_mutation() {
+        let policy = AuthorizationPolicy::new("policy-a", 1, "customer", vec![]).unwrap();
+        let before = policy.clone();
+        let mut approval = bound_approval("intent-a", "spec:a", "customer");
+        approval.approval.approval_id = "intent-a:approval:r999".to_string();
 
         assert!(policy.authorize(&approval).is_err());
         assert_eq!(policy, before);
