@@ -130,6 +130,9 @@ jobs:
       - name: Run Math Program v5 artifact research
         run: node scripts/research_math_program_v5.mjs pkg
 
+      - name: Run Math Program v6 artifact research
+        run: node scripts/research_math_program_v6.mjs pkg
+
       - name: Run post-v5 Math Program flexibility audit
         run: node scripts/research_math_program_flexibility.mjs pkg
 
