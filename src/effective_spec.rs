@@ -531,7 +531,7 @@ fn canonical_identity(
         out.push('|');
         push_component(&mut out, &field.key);
         push_component(&mut out, &field.value);
-        out.push_str(match field.origin {
+        out.push_str(match &field.origin {
             EffectiveFieldOrigin::DeclaredHere => "D",
             EffectiveFieldOrigin::InheritedFrom { .. } => "I",
             EffectiveFieldOrigin::OverriddenFrom { .. } => "O",
@@ -541,7 +541,7 @@ fn canonical_identity(
     for change in changes {
         out.push('|');
         push_component(&mut out, &change.key);
-        out.push_str(match change.kind {
+        out.push_str(match &change.kind {
             SpecChangeKind::Declared => "D",
             SpecChangeKind::Inherited => "I",
             SpecChangeKind::Overridden => "O",
