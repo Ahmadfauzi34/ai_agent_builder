@@ -7,8 +7,10 @@ pub(crate) mod program_shape_params;
 pub mod program_v4;
 pub mod program_v5;
 pub mod program_v6;
+pub mod program_v7;
 pub(crate) mod program_v4_step;
 pub(crate) mod program_value_source;
+pub(crate) mod program_runtime_shape;
 pub mod program_v5_wasm;
 pub mod program_v6_wasm;
 pub mod program_wasm;
@@ -29,6 +31,10 @@ pub use program_v5::{
 pub use program_v6::{
     math_program_v6_capabilities, MathProgramV6, MathProgramV6Builder, MAX_V6_EXTERNAL_INPUTS,
     MIN_V6_EXTERNAL_INPUTS, OP_FILL_LIKE,
+};
+pub use program_v7::{
+    math_program_v7_capabilities, MathProgramV7, MathProgramV7Builder, MAX_V7_EXTERNAL_INPUTS,
+    MIN_V7_EXTERNAL_INPUTS, OP_EXPAND_LIKE,
 };
 pub use program_v5_wasm::{
     wasm_math_program_v5_capabilities, WasmMathProgramV5, WasmMathProgramV5Builder,
