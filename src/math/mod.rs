@@ -15,6 +15,7 @@ pub mod program_v5_wasm;
 pub mod program_v6_wasm;
 pub mod program_v7_wasm;
 pub mod program_wasm;
+pub mod reduction;
 pub mod statistics;
 pub mod tensor;
 
@@ -50,5 +51,6 @@ pub use program_wasm::{
     wasm_math_program_capabilities, wasm_math_program_v4_capabilities, WasmMathProgram,
     WasmMathProgramBuilder, WasmMathProgramV4, WasmMathProgramV4Builder,
 };
+pub use reduction::{reduction_capabilities, TensorReduction};
 pub use statistics::{statistics_capabilities, WasmStatistics};
 pub use tensor::{tensor_transform_capabilities, WasmTensorTransform};
