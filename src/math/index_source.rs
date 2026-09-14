@@ -9,7 +9,7 @@ use burn::tensor::TensorData;
 
 use crate::{WasmBackend, WasmTensor};
 
-/// Largest non-negative integer coordinate that is exactly representable by f32.
+/// Largest coordinate up to which every non-negative integer is exactly representable by f32.
 pub const MAX_EXACT_F32_COORDINATE: usize = 1 << 24;
 
 /// Largest supported axis length for `indicesLike` v1.
@@ -174,11 +174,11 @@ mod tests {
         let axis2 = source().indices_like(&reference, 2).unwrap();
         assert_eq!(
             axis2.to_array(),
-            [vec![0.0, 0.0, 1.0, 1.0]; 6].concat()
+            vec![0.0, 0.0, 1.0, 1.0].repeat(6)
         );
 
         let axis3 = source().indices_like(&reference, 3).unwrap();
-        assert_eq!(axis3.to_array(), [vec![0.0, 1.0]; 12].concat());
+        assert_eq!(axis3.to_array(), vec![0.0, 1.0].repeat(12));
     }
 
     #[test]
@@ -195,14 +195,14 @@ mod tests {
     #[test]
     fn invalid_axis_is_rejected_before_shape_validation() {
         let empty = WasmTensor::new(&[], &[1, 0, 1, 1]);
-        let err = source().indices_like(&empty, 4).unwrap_err();
+        let err = source().indices_like(&empty, 4).err().unwrap();
         assert!(err.contains("axis must be in 0..4"));
     }
 
     #[test]
     fn zero_sized_shape_fails_closed() {
         let empty = WasmTensor::new(&[], &[1, 0, 1, 1]);
-        let err = source().indices_like(&empty, 1).unwrap_err();
+        let err = source().indices_like(&empty, 1).err().unwrap();
         assert!(err.contains("zero-sized dimensions"));
     }
 
