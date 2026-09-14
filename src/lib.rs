@@ -7,6 +7,7 @@ pub mod agent;
 pub mod authorization;
 pub mod coprocessor;
 pub mod contracts;
+pub mod effective_spec;
 pub mod es;
 pub mod graph;
 pub mod layers;
