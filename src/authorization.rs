@@ -10,9 +10,11 @@
 //! deterministic authorization semantics over those supplied identities and fails closed when
 //! approval/schema/scope/policy provenance does not match exactly.
 
-use crate::resolution_review::APPROVAL_SNAPSHOT_SCHEMA;
+use crate::resolution_review::{ApprovalSnapshot, APPROVAL_SNAPSHOT_SCHEMA};
+use crate::resolution_revision::REVISION_APPROVAL_SCHEMA;
 use crate::resolution_subject::{
-    ApprovalSubject, SubjectBoundApprovalSnapshot, SUBJECT_BOUND_APPROVAL_SCHEMA,
+    ApprovalSubject, SubjectBoundApprovalSnapshot, SubjectBoundRevisionApprovalSnapshot,
+    SUBJECT_BOUND_APPROVAL_SCHEMA, SUBJECT_BOUND_REVISION_SCHEMA,
 };
 
 pub const AUTHORIZATION_SNAPSHOT_SCHEMA: &str = "burn-research.authorization.v1";
@@ -58,10 +60,10 @@ impl ScopedAuthorizationGrant {
         )
     }
 
-    fn matches(&self, approval: &SubjectBoundApprovalSnapshot) -> bool {
-        self.delegate == approval.approval.approver
-            && self.intent_id == approval.approval.intent_id
-            && self.subject == approval.subject
+    fn matches(&self, binding: &AuthorizationApprovalBinding) -> bool {
+        self.delegate == binding.approver()
+            && self.intent_id == binding.intent_id()
+            && &self.subject == binding.subject()
     }
 }
 
@@ -113,15 +115,50 @@ impl AuthorizationPolicy {
     }
 
     pub fn is_authorized(&self, approval: &SubjectBoundApprovalSnapshot) -> bool {
-        validate_approval_envelope(approval).is_ok() && self.actor_is_currently_authorized(approval)
+        root_binding(approval)
+            .is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
+    }
+
+    pub fn is_revision_authorized(&self, approval: &SubjectBoundRevisionApprovalSnapshot) -> bool {
+        revision_binding(approval)
+            .is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
     }
 
     pub fn authorize(
         &self,
         approval: &SubjectBoundApprovalSnapshot,
     ) -> Result<AuthorizationSnapshot, String> {
-        validate_approval_envelope(approval)?;
-        if !self.actor_is_currently_authorized(approval) {
+        self.authorize_binding(root_binding(approval)?)
+    }
+
+    pub fn authorize_revision(
+        &self,
+        approval: &SubjectBoundRevisionApprovalSnapshot,
+    ) -> Result<AuthorizationSnapshot, String> {
+        self.authorize_binding(revision_binding(approval)?)
+    }
+
+    pub fn validate_authorization(
+        &self,
+        authorization: &AuthorizationSnapshot,
+        approval: &SubjectBoundApprovalSnapshot,
+    ) -> Result<(), String> {
+        self.validate_binding(authorization, root_binding(approval)?)
+    }
+
+    pub fn validate_revision_authorization(
+        &self,
+        authorization: &AuthorizationSnapshot,
+        approval: &SubjectBoundRevisionApprovalSnapshot,
+    ) -> Result<(), String> {
+        self.validate_binding(authorization, revision_binding(approval)?)
+    }
+
+    fn authorize_binding(
+        &self,
+        binding: AuthorizationApprovalBinding,
+    ) -> Result<AuthorizationSnapshot, String> {
+        if !self.actor_is_currently_authorized(&binding) {
             return Err(
                 "AuthorizationPolicy: approval actor is outside owner/delegation scope".to_string(),
             );
@@ -131,43 +168,30 @@ impl AuthorizationPolicy {
             schema: AUTHORIZATION_SNAPSHOT_SCHEMA.to_string(),
             policy_id: self.policy_id.clone(),
             policy_revision: self.revision,
-            approval_schema: approval.schema.clone(),
-            review_approval_schema: approval.approval.schema.clone(),
-            approval_id: approval.approval.approval_id.clone(),
-            workflow_revision: approval.approval.workflow_revision,
-            intent_id: approval.approval.intent_id.clone(),
-            subject: approval.subject.clone(),
-            approver: approval.approval.approver.clone(),
+            binding,
         })
     }
 
-    pub fn validate_authorization(
+    fn validate_binding(
         &self,
         authorization: &AuthorizationSnapshot,
-        approval: &SubjectBoundApprovalSnapshot,
+        binding: AuthorizationApprovalBinding,
     ) -> Result<(), String> {
-        validate_approval_envelope(approval)?;
-
         if authorization.schema != AUTHORIZATION_SNAPSHOT_SCHEMA {
             return Err("AuthorizationPolicy: unsupported authorization snapshot schema".to_string());
         }
-        if authorization.policy_id != self.policy_id || authorization.policy_revision != self.revision {
+        if authorization.policy_id != self.policy_id
+            || authorization.policy_revision != self.revision
+        {
             return Err("AuthorizationPolicy: authorization snapshot is stale for current policy".to_string());
         }
-        if authorization.approval_schema != approval.schema
-            || authorization.review_approval_schema != approval.approval.schema
-            || authorization.approval_id != approval.approval.approval_id
-            || authorization.workflow_revision != approval.approval.workflow_revision
-            || authorization.intent_id != approval.approval.intent_id
-            || authorization.subject != approval.subject
-            || authorization.approver != approval.approval.approver
-        {
+        if authorization.binding != binding {
             return Err(
                 "AuthorizationPolicy: authorization snapshot does not match exact subject-bound approval"
                     .to_string(),
             );
         }
-        if !self.actor_is_currently_authorized(approval) {
+        if !self.actor_is_currently_authorized(&binding) {
             return Err(
                 "AuthorizationPolicy: authorization is no longer valid under current owner/delegation scope"
                     .to_string(),
@@ -177,9 +201,78 @@ impl AuthorizationPolicy {
         Ok(())
     }
 
-    fn actor_is_currently_authorized(&self, approval: &SubjectBoundApprovalSnapshot) -> bool {
-        approval.approval.approver == self.owner
-            || self.grants.iter().any(|grant| grant.matches(approval))
+    fn actor_is_currently_authorized(&self, binding: &AuthorizationApprovalBinding) -> bool {
+        binding.approver() == self.owner
+            || self.grants.iter().any(|grant| grant.matches(binding))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum AuthorizationApprovalBinding {
+    Root {
+        subject_bound_schema: String,
+        review_approval_schema: String,
+        approval_id: String,
+        workflow_revision: u64,
+        intent_id: String,
+        subject: ApprovalSubject,
+        approver: String,
+    },
+    Revision {
+        subject_bound_schema: String,
+        revision_approval_schema: String,
+        revision_approval_id: String,
+        lineage_id: String,
+        revision_id: String,
+        parent_approval_id: String,
+        supersedes_approval_id: String,
+        review_approval_schema: String,
+        review_approval_id: String,
+        workflow_revision: u64,
+        intent_id: String,
+        subject: ApprovalSubject,
+        approver: String,
+    },
+}
+
+impl AuthorizationApprovalBinding {
+    fn approval_id(&self) -> &str {
+        match self {
+            Self::Root { approval_id, .. } => approval_id,
+            Self::Revision {
+                revision_approval_id,
+                ..
+            } => revision_approval_id,
+        }
+    }
+
+    fn workflow_revision(&self) -> u64 {
+        match self {
+            Self::Root {
+                workflow_revision, ..
+            }
+            | Self::Revision {
+                workflow_revision, ..
+            } => *workflow_revision,
+        }
+    }
+
+    fn intent_id(&self) -> &str {
+        match self {
+            Self::Root { intent_id, .. } | Self::Revision { intent_id, .. } => intent_id,
+        }
+    }
+
+    fn subject(&self) -> &ApprovalSubject {
+        match self {
+            Self::Root { subject, .. } | Self::Revision { subject, .. } => subject,
+        }
+    }
+
+    fn approver(&self) -> &str {
+        match self {
+            Self::Root { approver, .. } | Self::Revision { approver, .. } => approver,
+        }
     }
 }
 
@@ -188,13 +281,7 @@ pub struct AuthorizationSnapshot {
     schema: String,
     policy_id: String,
     policy_revision: u64,
-    approval_schema: String,
-    review_approval_schema: String,
-    approval_id: String,
-    workflow_revision: u64,
-    intent_id: String,
-    subject: ApprovalSubject,
-    approver: String,
+    binding: AuthorizationApprovalBinding,
 }
 
 impl AuthorizationSnapshot {
@@ -211,70 +298,183 @@ impl AuthorizationSnapshot {
     }
 
     pub fn approval_id(&self) -> &str {
-        &self.approval_id
+        self.binding.approval_id()
     }
 
     pub fn workflow_revision(&self) -> u64 {
-        self.workflow_revision
+        self.binding.workflow_revision()
     }
 
     pub fn intent_id(&self) -> &str {
-        &self.intent_id
+        self.binding.intent_id()
     }
 
     pub fn subject(&self) -> &ApprovalSubject {
-        &self.subject
+        self.binding.subject()
     }
 
     pub fn approver(&self) -> &str {
-        &self.approver
+        self.binding.approver()
+    }
+
+    pub fn is_revision(&self) -> bool {
+        matches!(self.binding, AuthorizationApprovalBinding::Revision { .. })
     }
 }
 
-fn validate_approval_envelope(approval: &SubjectBoundApprovalSnapshot) -> Result<(), String> {
+fn root_binding(
+    approval: &SubjectBoundApprovalSnapshot,
+) -> Result<AuthorizationApprovalBinding, String> {
     if approval.schema != SUBJECT_BOUND_APPROVAL_SCHEMA {
         return Err("AuthorizationPolicy: unsupported subject-bound approval schema".to_string());
     }
-    if approval.approval.schema != APPROVAL_SNAPSHOT_SCHEMA {
+    validate_review_approval(&approval.approval)?;
+
+    Ok(AuthorizationApprovalBinding::Root {
+        subject_bound_schema: approval.schema.clone(),
+        review_approval_schema: approval.approval.schema.clone(),
+        approval_id: approval.approval.approval_id.clone(),
+        workflow_revision: approval.approval.workflow_revision,
+        intent_id: approval.approval.intent_id.clone(),
+        subject: approval.subject.clone(),
+        approver: approval.approval.approver.clone(),
+    })
+}
+
+fn revision_binding(
+    approval: &SubjectBoundRevisionApprovalSnapshot,
+) -> Result<AuthorizationApprovalBinding, String> {
+    if approval.schema != SUBJECT_BOUND_REVISION_SCHEMA {
+        return Err(
+            "AuthorizationPolicy: unsupported subject-bound revision approval schema".to_string(),
+        );
+    }
+    if approval.approval.schema != REVISION_APPROVAL_SCHEMA {
+        return Err("AuthorizationPolicy: unsupported revision approval schema".to_string());
+    }
+
+    validate_present(
+        &approval.approval.revision_approval_id,
+        "AuthorizationPolicy: revision approval id",
+    )?;
+    validate_present(
+        &approval.approval.lineage_id,
+        "AuthorizationPolicy: lineage id",
+    )?;
+    validate_present(
+        &approval.approval.revision_id,
+        "AuthorizationPolicy: revision id",
+    )?;
+    validate_present(
+        &approval.approval.parent_approval_id,
+        "AuthorizationPolicy: parent approval id",
+    )?;
+    validate_present(
+        &approval.approval.supersedes_approval_id,
+        "AuthorizationPolicy: supersedes approval id",
+    )?;
+    validate_review_approval(&approval.approval.approval)?;
+
+    if approval.approval.parent_approval_id != approval.approval.supersedes_approval_id {
+        return Err(
+            "AuthorizationPolicy: revision parent/supersedes approval provenance mismatch"
+                .to_string(),
+        );
+    }
+
+    let expected_revision_approval_id = format!(
+        "{}:approval:r{}",
+        approval.approval.revision_id, approval.approval.approval.workflow_revision
+    );
+    if approval.approval.revision_approval_id != expected_revision_approval_id {
+        return Err(
+            "AuthorizationPolicy: revision approval id does not match revision/workflow provenance"
+                .to_string(),
+        );
+    }
+
+    let expected_revision_prefix = format!("{}:revision:", approval.approval.lineage_id);
+    if !approval
+        .approval
+        .revision_id
+        .starts_with(&expected_revision_prefix)
+    {
+        return Err(
+            "AuthorizationPolicy: revision id does not belong to declared lineage".to_string(),
+        );
+    }
+
+    let expected_intent_suffix = format!("::{}", approval.approval.revision_id);
+    if !approval
+        .approval
+        .approval
+        .intent_id
+        .ends_with(&expected_intent_suffix)
+    {
+        return Err(
+            "AuthorizationPolicy: revision review intent does not bind the declared revision id"
+                .to_string(),
+        );
+    }
+
+    Ok(AuthorizationApprovalBinding::Revision {
+        subject_bound_schema: approval.schema.clone(),
+        revision_approval_schema: approval.approval.schema.clone(),
+        revision_approval_id: approval.approval.revision_approval_id.clone(),
+        lineage_id: approval.approval.lineage_id.clone(),
+        revision_id: approval.approval.revision_id.clone(),
+        parent_approval_id: approval.approval.parent_approval_id.clone(),
+        supersedes_approval_id: approval.approval.supersedes_approval_id.clone(),
+        review_approval_schema: approval.approval.approval.schema.clone(),
+        review_approval_id: approval.approval.approval.approval_id.clone(),
+        workflow_revision: approval.approval.approval.workflow_revision,
+        intent_id: approval.approval.approval.intent_id.clone(),
+        subject: approval.subject.clone(),
+        approver: approval.approval.approval.approver.clone(),
+    })
+}
+
+fn validate_review_approval(approval: &ApprovalSnapshot) -> Result<(), String> {
+    if approval.schema != APPROVAL_SNAPSHOT_SCHEMA {
         return Err("AuthorizationPolicy: unsupported review approval schema".to_string());
     }
-    if approval.approval.approval_id.trim().is_empty() {
-        return Err("AuthorizationPolicy: approval id must not be empty".to_string());
-    }
-    if approval.approval.intent_id.trim().is_empty() {
-        return Err("AuthorizationPolicy: approval intent id must not be empty".to_string());
-    }
-    if approval.approval.approver.trim().is_empty() {
-        return Err("AuthorizationPolicy: approval actor must not be empty".to_string());
-    }
+    validate_present(&approval.approval_id, "AuthorizationPolicy: review approval id")?;
+    validate_present(&approval.intent_id, "AuthorizationPolicy: approval intent id")?;
+    validate_present(&approval.approver, "AuthorizationPolicy: approval actor")?;
+
     let expected_approval_id = format!(
         "{}:approval:r{}",
-        approval.approval.intent_id, approval.approval.workflow_revision
+        approval.intent_id, approval.workflow_revision
     );
-    if approval.approval.approval_id != expected_approval_id {
+    if approval.approval_id != expected_approval_id {
         return Err(
-            "AuthorizationPolicy: approval id does not match intent/workflow revision provenance"
+            "AuthorizationPolicy: review approval id does not match intent/workflow provenance"
                 .to_string(),
         );
     }
     Ok(())
 }
 
-fn validate_nonempty(value: impl Into<String>, context: &str) -> Result<String, String> {
-    let value = value.into();
+fn validate_present(value: &str, context: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{context} must not be empty"));
     }
     if value.chars().any(char::is_control) {
         return Err(format!("{context} must not contain control characters"));
     }
+    Ok(())
+}
+
+fn validate_nonempty(value: impl Into<String>, context: &str) -> Result<String, String> {
+    let value = value.into();
+    validate_present(&value, context)?;
     Ok(value)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::resolution_subject::SubjectBoundReviewSession;
+    use crate::resolution_subject::{SubjectBoundReviewSession, SubjectBoundRevisionChain};
 
     fn subject(identity: &str) -> ApprovalSubject {
         ApprovalSubject::new("effective-spec", identity).unwrap()
@@ -289,6 +489,19 @@ mod tests {
             SubjectBoundReviewSession::new(intent_id, subject(subject_identity)).unwrap();
         review.submit("agent").unwrap();
         review.approve(approver).unwrap()
+    }
+
+    fn bound_revision_approval(approver: &str) -> SubjectBoundRevisionApprovalSnapshot {
+        let mut root = SubjectBoundReviewSession::new("intent-root", subject("spec:root")).unwrap();
+        root.submit("agent").unwrap();
+        root.approve("customer").unwrap();
+
+        let mut chain = SubjectBoundRevisionChain::from_approved_root(root.snapshot()).unwrap();
+        let revision_id = chain
+            .open_revision(None, "child", subject("spec:child"))
+            .unwrap();
+        chain.submit_revision(&revision_id, "agent").unwrap();
+        chain.approve_revision(&revision_id, approver).unwrap()
     }
 
     fn grant(delegate: &str, intent_id: &str, subject_identity: &str) -> ScopedAuthorizationGrant {
@@ -307,6 +520,7 @@ mod tests {
         assert_eq!(authorization.intent_id(), "intent-a");
         assert_eq!(authorization.subject(), &subject("spec:a"));
         assert_eq!(authorization.approver(), "customer");
+        assert!(!authorization.is_revision());
         assert!(policy.validate_authorization(&authorization, &approval).is_ok());
     }
 
@@ -336,6 +550,48 @@ mod tests {
 
         assert!(!policy.is_authorized(&approval));
         assert!(policy.authorize(&approval).is_err());
+    }
+
+    #[test]
+    fn revision_delegate_authority_preserves_exact_lineage_and_subject_provenance() {
+        let approval = bound_revision_approval("delegate");
+        let grant = ScopedAuthorizationGrant::new(
+            "delegate",
+            approval.approval.approval.intent_id.clone(),
+            approval.subject.clone(),
+        )
+        .unwrap();
+        let policy = AuthorizationPolicy::new("policy-a", 1, "customer", vec![grant]).unwrap();
+
+        let authorization = policy.authorize_revision(&approval).unwrap();
+        assert!(authorization.is_revision());
+        assert_eq!(authorization.approval_id(), approval.approval.revision_approval_id);
+        assert_eq!(authorization.intent_id(), approval.approval.approval.intent_id);
+        assert_eq!(authorization.subject(), &approval.subject);
+        assert!(policy
+            .validate_revision_authorization(&authorization, &approval)
+            .is_ok());
+    }
+
+    #[test]
+    fn root_authorization_cannot_be_reused_for_revision_approval() {
+        let root = bound_approval("intent-a", "spec:a", "customer");
+        let revision = bound_revision_approval("customer");
+        let policy = AuthorizationPolicy::new("policy-a", 1, "customer", vec![]).unwrap();
+        let root_authorization = policy.authorize(&root).unwrap();
+
+        assert!(policy
+            .validate_revision_authorization(&root_authorization, &revision)
+            .is_err());
+    }
+
+    #[test]
+    fn malformed_revision_lineage_fails_closed() {
+        let policy = AuthorizationPolicy::new("policy-a", 1, "customer", vec![]).unwrap();
+        let mut approval = bound_revision_approval("customer");
+        approval.approval.parent_approval_id = "wrong-parent".to_string();
+
+        assert!(policy.authorize_revision(&approval).is_err());
     }
 
     #[test]
