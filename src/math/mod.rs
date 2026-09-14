@@ -2,12 +2,14 @@ pub mod linalg;
 pub mod numeric;
 pub mod probability;
 pub mod program;
+pub(crate) mod program_reduction_params;
 pub(crate) mod program_select_params;
 pub(crate) mod program_shape_params;
 pub mod program_v4;
 pub mod program_v5;
 pub mod program_v6;
 pub mod program_v7;
+pub mod program_v8;
 pub(crate) mod program_v4_step;
 pub(crate) mod program_value_source;
 pub(crate) mod program_runtime_shape;
@@ -38,6 +40,10 @@ pub use program_v6::{
 pub use program_v7::{
     math_program_v7_capabilities, MathProgramV7, MathProgramV7Builder, MAX_V7_EXTERNAL_INPUTS,
     MIN_V7_EXTERNAL_INPUTS, OP_EXPAND_LIKE,
+};
+pub use program_v8::{
+    math_program_v8_capabilities, MathProgramV8, MathProgramV8Builder, MAX_V8_EXTERNAL_INPUTS,
+    MIN_V8_EXTERNAL_INPUTS, OP_MAX_AXIS, OP_MEAN_AXIS, OP_MIN_AXIS, OP_SUM_AXIS,
 };
 pub use program_v5_wasm::{
     wasm_math_program_v5_capabilities, WasmMathProgramV5, WasmMathProgramV5Builder,
