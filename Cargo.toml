@@ -26,3 +26,9 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 serde_json = "1.0"
+
+[package.metadata.wasm-pack.profile.release]
+# wasm-pack's bundled wasm-opt can reject valid multi-table output from the
+# current wasm-bindgen toolchain before packaged artifact tests can run.
+# Keep release WASM semantics unchanged and skip only that post-processing step.
+wasm-opt = false
