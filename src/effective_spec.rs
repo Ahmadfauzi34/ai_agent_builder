@@ -506,6 +506,23 @@ fn canonical_identity(
     fields: &[EffectiveField],
     changes: &[SpecChange],
 ) -> Result<String, String> {
+    let parent = match (parent_spec_identity, parent_approval_id) {
+        (None, None) => None,
+        (Some(spec_identity), Some(approval_id)) => {
+            validate_evidence(spec_identity, "parent spec identity")?;
+            validate_evidence(approval_id, "parent approval id")?;
+            Some((spec_identity, approval_id))
+        }
+        _ => {
+            return Err(
+                "EffectiveSpec: parent provenance must contain both spec identity and approval id"
+                    .to_string(),
+            )
+        }
+    };
+
+    validate_canonical_provenance(parent, fields, changes)?;
+
     let mut out = String::from("effective-spec-v1|");
     push_optional_component(&mut out, parent_spec_identity);
     push_optional_component(&mut out, parent_approval_id);
@@ -514,25 +531,11 @@ fn canonical_identity(
         out.push('|');
         push_component(&mut out, &field.key);
         push_component(&mut out, &field.value);
-        match &field.origin {
-            EffectiveFieldOrigin::DeclaredHere => out.push_str("D"),
-            EffectiveFieldOrigin::InheritedFrom {
-                approval_id,
-                spec_identity,
-            } => {
-                out.push_str("I");
-                push_component(&mut out, approval_id);
-                push_component(&mut out, spec_identity);
-            }
-            EffectiveFieldOrigin::OverriddenFrom {
-                approval_id,
-                spec_identity,
-            } => {
-                out.push_str("O");
-                push_component(&mut out, approval_id);
-                push_component(&mut out, spec_identity);
-            }
-        }
+        out.push_str(match field.origin {
+            EffectiveFieldOrigin::DeclaredHere => "D",
+            EffectiveFieldOrigin::InheritedFrom { .. } => "I",
+            EffectiveFieldOrigin::OverriddenFrom { .. } => "O",
+        });
     }
     out.push_str(&format!("|changes:{}", changes.len()));
     for change in changes {
@@ -544,8 +547,6 @@ fn canonical_identity(
             SpecChangeKind::Overridden => "O",
             SpecChangeKind::Removed => "R",
         });
-        push_optional_component(&mut out, change.parent_approval_id.as_deref());
-        push_optional_component(&mut out, change.parent_spec_identity.as_deref());
     }
 
     if out.as_bytes().len() > EFFECTIVE_SPEC_MAX_IDENTITY_BYTES {
@@ -556,6 +557,69 @@ fn canonical_identity(
         ));
     }
     Ok(out)
+}
+
+fn validate_canonical_provenance(
+    parent: Option<(&str, &str)>,
+    fields: &[EffectiveField],
+    changes: &[SpecChange],
+) -> Result<(), String> {
+    for field in fields {
+        match &field.origin {
+            EffectiveFieldOrigin::DeclaredHere => {}
+            EffectiveFieldOrigin::InheritedFrom {
+                approval_id,
+                spec_identity,
+            }
+            | EffectiveFieldOrigin::OverriddenFrom {
+                approval_id,
+                spec_identity,
+            } => {
+                let Some((parent_spec_identity, parent_approval_id)) = parent else {
+                    return Err(format!(
+                        "EffectiveSpec: field {} references parent provenance on a root specification",
+                        field.key
+                    ));
+                };
+                if approval_id != parent_approval_id || spec_identity != parent_spec_identity {
+                    return Err(format!(
+                        "EffectiveSpec: field {} provenance does not match direct parent",
+                        field.key
+                    ));
+                }
+            }
+        }
+    }
+
+    for change in changes {
+        match change.kind {
+            SpecChangeKind::Declared => {
+                if change.parent_approval_id.is_some() || change.parent_spec_identity.is_some() {
+                    return Err(format!(
+                        "EffectiveSpec: declared change {} must not carry parent provenance",
+                        change.key
+                    ));
+                }
+            }
+            SpecChangeKind::Inherited | SpecChangeKind::Overridden | SpecChangeKind::Removed => {
+                let Some((parent_spec_identity, parent_approval_id)) = parent else {
+                    return Err(format!(
+                        "EffectiveSpec: change {} references parent provenance on a root specification",
+                        change.key
+                    ));
+                };
+                if change.parent_approval_id.as_deref() != Some(parent_approval_id)
+                    || change.parent_spec_identity.as_deref() != Some(parent_spec_identity)
+                {
+                    return Err(format!(
+                        "EffectiveSpec: change {} provenance does not match direct parent",
+                        change.key
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 fn push_component(out: &mut String, value: &str) {
@@ -821,14 +885,13 @@ mod tests {
             .unwrap();
         let mut wrong = child.clone();
         wrong.parent_approval_id = Some("stale:approval".to_string());
-        wrong.identity = canonical_identity(
+        assert!(canonical_identity(
             wrong.parent_spec_identity.as_deref(),
             wrong.parent_approval_id.as_deref(),
             &wrong.fields,
             &wrong.changes,
         )
-        .unwrap();
-        assert_ne!(child.identity, wrong.identity);
+        .is_err());
     }
 
     #[test]
