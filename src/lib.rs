@@ -4,6 +4,7 @@ use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
 pub mod agent;
+pub mod authorization;
 pub mod coprocessor;
 pub mod contracts;
 pub mod es;
