@@ -16,6 +16,7 @@
     "WasmEmbedding": ["constructor", "forward", "getWeightsFlat", "get_state", "load_state", "num_params", "setWeightsFlat", "weightDims"],
     "WasmFeatureNorm": ["constructor", "forward", "newFeatureNorm", "num_params"],
     "WasmGhostModule": ["constructor", "forward", "get_state", "load_state", "num_params"],
+    "WasmIndexSource": ["constructor", "indicesLike"],
     "WasmLinear": ["constructor", "forward", "getWeightsFlat", "get_state", "load_state", "num_params", "setWeightsFlat", "weightDims"],
     "WasmLinearAlgebra": ["constructor", "cosineSimilarity", "dot", "l2Distance", "l2Norm", "matmul"],
     "WasmMathProgram": ["constructor", "fromPlan", "numInputs", "numSlots", "numSteps", "outSlot", "programIdentity", "programPlan", "run1", "run2"],
@@ -42,5 +43,5 @@
     "WasmTensorTransform": ["constructor", "permute", "reshape", "selectAxis", "slice", "transpose"]
   },
   "default_init": "__wbg_init",
-  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "esCapabilities", "exportProgramBundle", "importProgramBundle", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathProgramV8Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "reductionCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
+  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "esCapabilities", "exportProgramBundle", "importProgramBundle", "indexSourceCapabilities", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathProgramV8Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "reductionCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
 }

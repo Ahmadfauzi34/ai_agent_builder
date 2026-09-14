@@ -1,4 +1,5 @@
 pub mod index_source;
+pub mod index_source_wasm;
 pub mod linalg;
 pub mod numeric;
 pub mod probability;
@@ -28,6 +29,7 @@ pub use index_source::{
     index_source_capabilities, TensorIndexSource, MAX_EXACT_F32_COORDINATE,
     MAX_INDICES_LIKE_AXIS_LENGTH,
 };
+pub use index_source_wasm::{wasm_index_source_capabilities, WasmIndexSource};
 pub use linalg::{linear_algebra_capabilities, WasmLinearAlgebra};
 pub use numeric::{numeric_kernel_capabilities, WasmNumericKernel};
 pub use probability::{probability_capabilities, WasmProbability};

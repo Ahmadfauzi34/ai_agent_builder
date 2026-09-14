@@ -121,6 +121,9 @@ jobs:
       - name: Run Reduction v1 artifact research
         run: node scripts/research_reduction.mjs pkg
 
+      - name: Run Index Source v1 artifact research
+        run: node scripts/research_index_source.mjs pkg
+
       - name: Run Probability artifact research
         run: node scripts/research_probability.mjs pkg
 
