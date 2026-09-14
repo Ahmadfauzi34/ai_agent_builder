@@ -1,7 +1,7 @@
+use burn_research::math::program::{OP_ADD, OP_MUL};
 use burn_research::math::{
     math_program_capabilities, MathProgram, MathProgramBuilder, MathProgramV4Builder,
-    MathProgramV5, MathProgramV5Builder, MAX_V5_EXTERNAL_INPUTS, MIN_V5_EXTERNAL_INPUTS, OP_ADD,
-    OP_MUL,
+    MathProgramV5, MathProgramV5Builder, MAX_V5_EXTERNAL_INPUTS, MIN_V5_EXTERNAL_INPUTS,
 };
 use burn_research::WasmTensor;
 
