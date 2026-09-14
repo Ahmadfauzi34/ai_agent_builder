@@ -32,6 +32,7 @@
     "WasmNumericKernel": ["abs", "add", "allFinite", "clamp", "constructor", "div", "exp", "log", "mul", "sqrt", "sub"],
     "WasmPool": ["constructor", "forward", "newAdaptiveAvgPool2d", "newAvgPool1d", "newAvgPool2d", "newMaxPool1d", "newMaxPool2d", "num_params"],
     "WasmProbability": ["constructor", "crossEntropy", "entropy", "klDivergence", "normalize"],
+    "WasmReduction": ["constructor", "maxAxis", "meanAxis", "minAxis", "sumAxis"],
     "WasmSeBlock": ["constructor", "forward", "get_state", "load_state", "num_params"],
     "WasmShift": ["constructor", "forward", "newShiftDown", "newShiftLeft", "newShiftRight", "newShiftUp", "num_params"],
     "WasmStatistics": ["constructor", "max", "mean", "min", "stdPopulation", "sum", "variancePopulation"],
@@ -39,5 +40,5 @@
     "WasmTensorTransform": ["constructor", "permute", "reshape", "selectAxis", "slice", "transpose"]
   },
   "default_init": "__wbg_init",
-  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "esCapabilities", "exportProgramBundle", "importProgramBundle", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
+  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "esCapabilities", "exportProgramBundle", "importProgramBundle", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "reductionCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
 }
