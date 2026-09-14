@@ -127,6 +127,9 @@ jobs:
       - name: Run Math Program v4 artifact research
         run: node scripts/research_math_program_v4.mjs pkg
 
+      - name: Run Resolution / Effective Specification communication audit
+        run: cargo test --test audit_resolution_effective_spec -- --nocapture
+
       - name: Run host tests
         run: cargo test --lib --tests
 
