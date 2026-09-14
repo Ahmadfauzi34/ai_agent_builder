@@ -40,6 +40,15 @@ enum ExecutableStep {
     },
 }
 
+#[derive(Clone, Debug)]
+struct DecodedPlan {
+    num_inputs: u8,
+    num_slots: u8,
+    records: Vec<V4StepRecord>,
+    steps: Vec<ExecutableStep>,
+    out_slot: u8,
+}
+
 fn bit(slot: u8) -> u64 {
     1u64 << slot
 }
@@ -346,9 +355,7 @@ fn encode_plan(
     Ok(plan)
 }
 
-fn decode_plan(
-    plan: &[u8],
-) -> Result<(u8, u8, Vec<V4StepRecord>, Vec<ExecutableStep>, u8), String> {
+fn decode_plan(plan: &[u8]) -> Result<DecodedPlan, String> {
     if plan.len() < PLAN_HEADER_BYTES + PLAN_OUTPUT_BYTES {
         return Err("MathProgramV5: plan is truncated".into());
     }
@@ -416,7 +423,13 @@ fn decode_plan(
         ));
     }
 
-    Ok((num_inputs, num_slots, records, executable, out_slot))
+    Ok(DecodedPlan {
+        num_inputs,
+        num_slots,
+        records,
+        steps: executable,
+        out_slot,
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -699,7 +712,13 @@ pub struct MathProgramV5 {
 
 impl MathProgramV5 {
     pub fn from_plan(plan: &[u8]) -> Result<Self, String> {
-        let (num_inputs, num_slots, records, steps, out_slot) = decode_plan(plan)?;
+        let DecodedPlan {
+            num_inputs,
+            num_slots,
+            records,
+            steps,
+            out_slot,
+        } = decode_plan(plan)?;
         let canonical_plan = encode_plan(num_inputs, num_slots, &records, out_slot)?;
         if canonical_plan != plan {
             return Err("MathProgramV5: replay plan is not canonical".into());
