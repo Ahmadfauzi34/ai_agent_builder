@@ -93,16 +93,17 @@ const expanded = expandProgram.run2(goodSource, goodReference);
 verify(expanded, [7, 7, 7]);
 assert(expandProgram.programIdentity() === expandIdentity, 'valid retry changed identity');
 
-// v6 fillLike remains composable inside v7.
-const fillBuilder = new m.WasmMathProgramV7Builder(1, 4);
+// v6 fillLike remains composable inside v7: y = 0.5*x + 3.
+const fillBuilder = new m.WasmMathProgramV7Builder(1, 5);
 fillBuilder.addFillLike(0, 1, 0.5);
 fillBuilder.addBinary(baseCaps.opcodes.mul, 0, 1, 2);
 fillBuilder.addFillLike(0, 3, 3.0);
-fillBuilder.setOutput(2);
+fillBuilder.addBinary(baseCaps.opcodes.add, 2, 3, 4);
+fillBuilder.setOutput(4);
 const fillProgram = fillBuilder.compile();
 const fillInput = tensor([2, 4, 6]);
 const fillOut = fillProgram.run1(fillInput);
-verify(fillOut, [1, 2, 3]);
+verify(fillOut, [4, 5, 6]);
 
 // Historical decoder isolation is bidirectional.
 let v6RejectedV7 = false;
