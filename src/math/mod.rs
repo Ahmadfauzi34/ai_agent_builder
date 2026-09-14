@@ -10,6 +10,7 @@ pub mod program_v6;
 pub(crate) mod program_v4_step;
 pub(crate) mod program_value_source;
 pub mod program_v5_wasm;
+pub mod program_v6_wasm;
 pub mod program_wasm;
 pub mod statistics;
 pub mod tensor;
@@ -31,6 +32,9 @@ pub use program_v6::{
 };
 pub use program_v5_wasm::{
     wasm_math_program_v5_capabilities, WasmMathProgramV5, WasmMathProgramV5Builder,
+};
+pub use program_v6_wasm::{
+    wasm_math_program_v6_capabilities, WasmMathProgramV6, WasmMathProgramV6Builder,
 };
 pub use program_wasm::{
     wasm_math_program_capabilities, wasm_math_program_v4_capabilities, WasmMathProgram,
