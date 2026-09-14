@@ -16,6 +16,7 @@ pub(crate) mod program_runtime_shape;
 pub mod program_v5_wasm;
 pub mod program_v6_wasm;
 pub mod program_v7_wasm;
+pub mod program_v8_wasm;
 pub mod program_wasm;
 pub mod reduction;
 pub mod reduction_wasm;
@@ -53,6 +54,9 @@ pub use program_v6_wasm::{
 };
 pub use program_v7_wasm::{
     wasm_math_program_v7_capabilities, WasmMathProgramV7, WasmMathProgramV7Builder,
+};
+pub use program_v8_wasm::{
+    wasm_math_program_v8_capabilities, WasmMathProgramV8, WasmMathProgramV8Builder,
 };
 pub use program_wasm::{
     wasm_math_program_capabilities, wasm_math_program_v4_capabilities, WasmMathProgram,
