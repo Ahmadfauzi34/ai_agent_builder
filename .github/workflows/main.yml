@@ -130,6 +130,9 @@ jobs:
       - name: Run Resolution / Effective Specification communication audit
         run: cargo test --test audit_resolution_effective_spec -- --nocapture
 
+      - name: Run Resolution authorization / bulk-policy simulation audit
+        run: cargo test --test audit_resolution_policy_simulation -- --nocapture
+
       - name: Run host tests
         run: cargo test --lib --tests
 
