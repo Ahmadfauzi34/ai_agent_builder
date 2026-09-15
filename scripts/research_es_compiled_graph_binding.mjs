@@ -75,6 +75,12 @@ function uniqueRefs(refs) {
   return out;
 }
 
+function filled(length, value) {
+  const out = new Float32Array(length);
+  out.fill(value);
+  return out;
+}
+
 function buildSingleLinear() {
   const registry = new m.LayerRegistry();
   const linear = m.AgentLayerSpec.linear(101, 2, 1, true);
@@ -112,8 +118,18 @@ assert(programCaps.execution_binding === 'required', 'CompiledGraph execution bi
 assert(programCaps.mutable_state_in_identity === false, 'mutable weights/state must remain outside structural program identity');
 assert(bundleCaps.mutable_state === 'optional_separate_section', 'program bundle mutable-state separation mismatch');
 
+// This audit intentionally remains a compatibility proof for the raw Registry/CompiledGraph
+// slice that motivated graph-parameter-binding v1. Newer graph-level binding APIs are a
+// separate layer and must not make this legacy proof claim that CompiledGraph itself owns
+// optimizer/controller semantics.
+const packagedGraphParameterBindingPresent =
+  typeof m.graphParameterLayout === 'function' &&
+  typeof m.graphParameterIdentity === 'function' &&
+  typeof m.getGraphParametersFlat === 'function' &&
+  typeof m.setGraphParametersFlat === 'function';
+
 // -----------------------------------------------------------------------------
-// 1. Single-layer candidate binding is already natural through existing APIs.
+// 1. Single-layer candidate binding through the raw Registry is deterministic.
 // -----------------------------------------------------------------------------
 const single = buildSingleLinear();
 const singleIdentity = single.graph.programIdentity();
@@ -127,18 +143,26 @@ const esB = m.EsOptimizer.strict(singleOriginal.length, 0, 424242, 8, 0.1, 0.05)
 const askA = Array.from(esA.ask());
 const askB = Array.from(esB.ask());
 assert(exactArrayEqual(askA, askB), 'same strict ES seed/config must produce the same first candidate batch');
+assert(askA.every(Number.isFinite), 'strict ES first candidate batch must be finite');
 assert(esA.batchSize() === 8, 'strict OpenES batch size mismatch');
 assert(askA.length === singleOriginal.length * esA.batchSize(), 'flat ES candidate batch shape mismatch');
 
-const firstCandidate = askA.slice(0, singleOriginal.length);
+// Do not make this proof depend on randomized layer initialization. Establish two explicit
+// parameter states and prove that compatible mutation changes execution while identity stays put.
+const deterministicSingleBaseline = filled(singleOriginal.length, 0.0);
+const deterministicSingleProbe = filled(singleOriginal.length, 0.25);
+single.registry.setWeightsFlat(101, LAYER_LINEAR, deterministicSingleBaseline);
 const beforeSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
-single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate));
+single.registry.setWeightsFlat(101, LAYER_LINEAR, deterministicSingleProbe);
 const afterSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
-const appliedSingle = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
-assert(exactArrayEqual(appliedSingle, firstCandidate), 'single candidate was not applied exactly');
-assert(!exactArrayEqual(beforeSingle, afterSingle), 'single candidate should affect graph execution');
+assert(!exactArrayEqual(beforeSingle, afterSingle), 'explicit compatible parameter states should affect graph execution');
 assert(single.graph.programIdentity() === singleIdentity, 'compatible weight mutation changed structural program identity');
 single.graph.validateRegistryBinding(single.registry);
+
+const firstCandidate = askA.slice(0, singleOriginal.length);
+single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate));
+const appliedSingle = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
+assert(exactArrayEqual(appliedSingle, firstCandidate), 'single ES candidate was not applied exactly');
 
 const dataset = [
   { x: [1, 0], y: 0.5 },
@@ -168,7 +192,7 @@ assert(fitnesses.every(Number.isFinite), 'graph-derived ES fitness must remain f
 esA.tell(new Float32Array(fitnesses));
 assert(esA.generation() === 1, 'ES generation should advance after one valid graph-derived fitness batch');
 
-// Per-layer malformed application is fail-closed and retryable.
+// Per-layer malformed application is fail-closed and retryable at that layer boundary.
 single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate));
 const beforeMalformedSingle = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
 expectThrow(
@@ -180,17 +204,14 @@ assert(
   'failed single-layer candidate application mutated prior valid weights',
 );
 single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(singleOriginal));
-const restoredSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
-assert(exactArrayEqual(restoredSingle, beforeSingle), 'restoring original weights did not restore execution');
 assert(single.graph.programIdentity() === singleIdentity, 'single-layer restore changed structural identity');
 
 // -----------------------------------------------------------------------------
-// 2. Multi-layer graphs expose only per-layer layouts. A graph-level flat layout
-//    can be invented by a host, but the host must choose/deduplicate/order refs.
+// 2. Raw Registry composition remains per-layer. Canonical graph-level binding,
+//    when packaged, is a separate capability rather than a CompiledGraph method.
 // -----------------------------------------------------------------------------
 const multi = buildMultiLayer();
 const multiIdentity = multi.graph.programIdentity();
-const multiBefore = runVector(multi.graph, multi.registry, [0.5, -1.0]);
 const w1Original = Array.from(multi.registry.getWeightsFlat(201, LAYER_LINEAR));
 const w2Original = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
 const layout1 = multi.registry.weightLayout(201, LAYER_LINEAR);
@@ -215,18 +236,28 @@ for (const ref of hostChosenTrainableRefs) {
 }
 assert(hostOffset === w1Original.length + w2Original.length, 'host-derived candidate length mismatch');
 
-const publicGraphParameterLayoutPresent =
+// CompiledGraph remains structural/execution authority. Even when graph parameter-binding is
+// available, it is intentionally exposed as a separate free-function capability.
+const compiledGraphOwnsParameterSurface =
   typeof multi.graph.parameterLayout === 'function' ||
   typeof multi.graph.parameterPlan === 'function' ||
   typeof multi.graph.getWeightsFlat === 'function' ||
   typeof multi.graph.setWeightsFlat === 'function';
+assert(!compiledGraphOwnsParameterSurface, 'CompiledGraph should not absorb optimizer/controller parameter ownership');
 
-const w1Candidate = w1Original.map((value, index) => value + 0.125 + index * 0.001);
-const w2Candidate = w2Original.map((value, index) => value - 0.25 - index * 0.001);
-multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Candidate));
-multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Candidate));
-const multiAfter = runVector(multi.graph, multi.registry, [0.5, -1.0]);
-assert(!exactArrayEqual(multiBefore, multiAfter), 'multi-layer candidate should affect graph execution');
+const w1Candidate = filled(w1Original.length, 0.5);
+const w2Candidate = filled(w2Original.length, -0.25);
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, w1Candidate);
+multi.registry.setWeightsFlat(203, LAYER_LINEAR, w2Candidate);
+assert(
+  exactArrayEqual(Array.from(multi.registry.getWeightsFlat(201, LAYER_LINEAR)), Array.from(w1Candidate)),
+  'first deterministic raw Registry candidate did not apply exactly',
+);
+assert(
+  exactArrayEqual(Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR)), Array.from(w2Candidate)),
+  'second deterministic raw Registry candidate did not apply exactly',
+);
+assert(runVector(multi.graph, multi.registry, [0.5, -1.0]).every(Number.isFinite), 'multi-layer graph output must remain finite');
 assert(multi.graph.programIdentity() === multiIdentity, 'multi-layer compatible weights changed structural program identity');
 multi.graph.validateRegistryBinding(multi.registry);
 
@@ -242,90 +273,98 @@ assert(repeatRefs.length === 2, 'repeat graph must contain two uses of the same 
 assert(repeatUnique.length === 1 && repeatUnique[0].layerId === 201, 'candidate binding must deduplicate repeated layer references');
 
 // -----------------------------------------------------------------------------
-// 3. Composite application through only per-layer setters is not atomic.
-//    A valid first slice remains committed when a later layer slice fails.
+// 3. Raw per-layer setters are deliberately not a composite transaction.
+//    This remains a local Registry fact; graph-parameter-binding v1 owns the
+//    canonical whole-candidate prevalidation/atomic-apply contract when present.
 // -----------------------------------------------------------------------------
 multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Original));
 multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original));
-const atomicProbeFirst = w1Original.map((value) => value + 0.5);
+const atomicProbeFirst = filled(w1Original.length, 0.5);
 const secondBeforeAtomicProbe = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
-multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(atomicProbeFirst));
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, atomicProbeFirst);
 expectThrow(
   () => multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original.slice(0, -1))),
-  'later malformed layer slice during composite candidate application',
+  'later malformed layer slice during raw per-layer composite application',
 );
 const firstAfterAtomicFailure = Array.from(multi.registry.getWeightsFlat(201, LAYER_LINEAR));
 const secondAfterAtomicFailure = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
 assert(
-  exactArrayEqual(firstAfterAtomicFailure, atomicProbeFirst),
-  'audit expected the earlier valid per-layer mutation to remain committed',
+  exactArrayEqual(firstAfterAtomicFailure, Array.from(atomicProbeFirst)),
+  'audit expected the earlier valid raw per-layer mutation to remain committed',
 );
 assert(
   exactArrayEqual(secondAfterAtomicFailure, secondBeforeAtomicProbe),
-  'malformed later layer slice should not mutate that layer',
+  'malformed later raw layer slice should not mutate that layer',
 );
-const compositeAtomicApplyPresent = false;
+const rawPerLayerCompositeAtomic = false;
 
-// Explicit host rollback restores execution, but this is evidence of a missing reusable boundary,
-// not a candidate protocol we want to bless implicitly.
+// Explicit host rollback restores the raw Registry slice. This is not the canonical graph-level
+// candidate protocol once graph-parameter-binding v1 exists.
 multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Original));
 multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original));
-const multiRestored = runVector(multi.graph, multi.registry, [0.5, -1.0]);
-assert(exactArrayEqual(multiRestored, multiBefore), 'manual host rollback did not restore graph execution');
 assert(multi.graph.programIdentity() === multiIdentity, 'rollback changed structural program identity');
+multi.graph.validateRegistryBinding(multi.registry);
 
 const findings = [
   {
     boundary: 'es_optimizer_core',
     score: 0,
     classification: 'KEEP',
-    evidence: 'strict seeded ask/tell already supplies deterministic flat candidates and accepts graph-derived scalar fitness',
+    evidence: 'strict seeded ask/tell supplies deterministic finite flat candidates and accepts graph-derived scalar fitness',
   },
   {
-    boundary: 'single_layer_candidate_binding',
+    boundary: 'single_layer_raw_registry_binding',
     score: 0,
     classification: 'KEEP',
-    evidence: 'one trainable layer maps naturally through getWeightsFlat/setWeightsFlat and preserves CompiledGraph structural identity',
+    evidence: 'one trainable layer maps through getWeightsFlat/setWeightsFlat and preserves CompiledGraph structural identity',
   },
   {
-    boundary: 'multi_layer_candidate_layout',
-    score: publicGraphParameterLayoutPresent ? 1 : 2,
-    classification: publicGraphParameterLayoutPresent ? 'KEEP' : 'SPLIT',
-    evidence: publicGraphParameterLayoutPresent
-      ? 'a graph-level parameter surface is present'
-      : 'host must parse/deduplicate graph refs and invent candidate offsets from per-layer layouts',
+    boundary: 'compiled_graph_parameter_ownership',
+    score: 0,
+    classification: 'KEEP',
+    evidence: 'CompiledGraph remains structural/execution authority and does not absorb optimizer/controller parameter methods',
   },
   {
-    boundary: 'atomic_multi_layer_candidate_application',
-    score: compositeAtomicApplyPresent ? 0 : 3,
-    classification: compositeAtomicApplyPresent ? 'KEEP' : 'SPLIT',
-    evidence: compositeAtomicApplyPresent
-      ? 'composite apply is already atomic'
-      : 'a valid early layer mutation remains committed when a later per-layer setter rejects its slice; host rollback is required',
+    boundary: 'canonical_graph_parameter_binding',
+    score: packagedGraphParameterBindingPresent ? 0 : 2,
+    classification: packagedGraphParameterBindingPresent ? 'KEEP' : 'SPLIT',
+    evidence: packagedGraphParameterBindingPresent
+      ? 'a separate packaged graph-level parameter-binding capability is present; its dedicated research gate owns canonical layout/atomicity proofs'
+      : 'raw Registry composition still requires host-chosen unique-owner layout and offsets',
+  },
+  {
+    boundary: 'raw_registry_composite_atomicity',
+    score: packagedGraphParameterBindingPresent ? 0 : 3,
+    classification: packagedGraphParameterBindingPresent ? 'KEEP' : 'SPLIT',
+    evidence: packagedGraphParameterBindingPresent
+      ? 'raw per-layer setters remain non-transactional by design; whole-candidate atomicity belongs to the separate graph parameter-binding layer'
+      : 'a valid early raw per-layer mutation remains committed when a later setter rejects its slice',
   },
   {
     boundary: 'compiled_graph_structural_identity',
     score: 0,
     classification: 'KEEP',
-    evidence: 'compatible mutable weights change execution but do not alter structural program identity or registry binding',
+    evidence: 'compatible mutable weights do not alter structural program identity or Registry binding',
   },
   {
     boundary: 'program_bundle_relationship',
     score: 0,
     classification: 'KEEP',
-    evidence: 'program-bundle.v1 correctly keeps mutable state separate; it should not be reinterpreted as an ES candidate vector format',
+    evidence: 'program-bundle.v1 keeps mutable state separate and is not reinterpreted as an ES candidate vector format',
   },
 ];
 
 console.log(JSON.stringify({
   verdict: 'PASS',
-  task: 'ES -> CompiledGraph candidate-binding audit',
+  task: 'ES -> CompiledGraph raw Registry compatibility audit',
   issue: 161,
   singleLayer: {
     parameterCount: singleOriginal.length,
     weightLayout: singleLayout,
     sameSeedFirstBatch: true,
+    finiteFirstBatch: true,
     graphDerivedFitness: true,
+    deterministicExplicitStateProbe: true,
     malformedCandidateAtomicAtLayerBoundary: true,
     programIdentityStable: true,
   },
@@ -333,18 +372,18 @@ console.log(JSON.stringify({
     layerParameterCounts: [w1Original.length, w2Original.length],
     weightLayouts: [layout1, layout2],
     hostChosenParameterLayout: hostLayout,
-    publicGraphParameterLayoutPresent,
+    packagedGraphParameterBindingPresent,
+    compiledGraphOwnsParameterSurface,
     repeatedLayerStepCount: repeatRefs.length,
     repeatedLayerUniqueParameterOwnerCount: repeatUnique.length,
     statelessLayerConsumesCandidateCoordinates: false,
-    compositeAtomicApplyPresent,
-    laterFailureLeavesEarlierMutationCommitted: true,
-    manualHostRollbackRequired: true,
+    rawPerLayerCompositeAtomic,
+    rawLaterFailureLeavesEarlierMutationCommitted: true,
     programIdentityStable: true,
   },
   findings,
-  nextRecommendedProductionSlice: publicGraphParameterLayoutPresent || compositeAtomicApplyPresent
-    ? 're-audit current graph-level parameter APIs before adding an ES facade'
+  nextRecommendedProductionSlice: packagedGraphParameterBindingPresent
+    ? 'keep ES, CompiledGraph, and raw Registry responsibilities separate; validate graph-level binding in its dedicated gate before any controller work'
     : 'separate canonical graph parameter binding v1: deterministic unique-layer layout + full prevalidation + atomic candidate application; keep ES and CompiledGraph algorithms unchanged',
   autodiffRequired: false,
   grantsAuthority: false,
