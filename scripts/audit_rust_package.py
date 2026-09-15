@@ -132,8 +132,9 @@ fn main() {
             encoding="utf-8",
         )
 
+        run(["cargo", "generate-lockfile", "--manifest-path", str(consumer / "Cargo.toml")], cwd=consumer)
         completed = run(
-            ["cargo", "run", "--quiet", "--offline", "--manifest-path", str(consumer / "Cargo.toml")],
+            ["cargo", "run", "--quiet", "--locked", "--manifest-path", str(consumer / "Cargo.toml")],
             cwd=consumer,
         )
         lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
