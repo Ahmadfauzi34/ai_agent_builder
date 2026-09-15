@@ -110,7 +110,9 @@ assertExact(values(allowed01), expectedCausal, 'causal predicate values');
 assertCanonicalPredicate(values(allowed01), 'causal predicate');
 
 assert(typeof m.WasmBoolTensor === 'undefined', 'boolean tensor family leaked into packaged surface');
-assert(typeof m.WasmMathProgramV9 === 'undefined', 'Math Program v9 must not exist in this slice');
+// Keep this proof scoped to the Comparison adapter itself. Later independently-versioned Math
+// Program surfaces may coexist without changing Comparison v1 semantics.
+assert(typeof comparison.indicesLike === 'undefined', 'index-source semantics leaked into comparison adapter');
 
 console.log(JSON.stringify({
   verdict: 'PASS',
@@ -126,7 +128,6 @@ console.log(JSON.stringify({
   booleanTensorFamily: caps.contracts.boolean_tensor_family,
   implicitBroadcasting: false,
   grantsAuthority: caps.contracts.grants_authority,
-  mathProgramV9Present: false,
 }, null, 2));
 
 for (const t of [
