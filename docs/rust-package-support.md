@@ -90,11 +90,14 @@ cargo package
     -> extract into a temporary directory
     -> create a separate Cargo consumer project
     -> depend on the extracted package by path
-    -> compile/run offline against already resolved dependencies
+    -> resolve a fresh consumer dependency lockfile
+    -> cargo run --locked
     -> graph + binding + candidate apply + run
     -> stateful ProgramBundle export/import
     -> fresh replay
 ```
+
+The consumer deliberately resolves its own dependency graph instead of inheriting the repository `Cargo.lock`. This keeps the proof representative of a real external Cargo consumer while `--locked` keeps the resolved graph fixed for the actual build/run within the audit.
 
 The proof is deliberately separate from `tests/native_es_graph_host_orchestration.rs`:
 
