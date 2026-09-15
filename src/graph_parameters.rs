@@ -362,6 +362,18 @@ impl GraphParameterBinding {
             ));
         }
 
+        // graph-parameter-binding.v1 treats finite-only candidate values as a safety
+        // invariant. Reject the whole candidate before any owner setter can run.
+        if let Some((index, _)) = candidate
+            .iter()
+            .enumerate()
+            .find(|(_, value)| !value.is_finite())
+        {
+            return Err(format!(
+                "graph parameter apply: candidate contains non-finite value at index {index}"
+            ));
+        }
+
         // Full cross-layer prevalidation happens before the first mutation. The current
         // LayerRegistry flat setters for Linear/Conv/Embedding/Norm are length-validated
         // record replacements; after exact lengths/support have been proven here they have
