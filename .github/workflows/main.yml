@@ -124,6 +124,9 @@ jobs:
       - name: Run Index Source v1 artifact research
         run: node scripts/research_index_source.mjs pkg
 
+      - name: Run Comparison v1 artifact research
+        run: node scripts/research_comparison.mjs pkg
+
       - name: Run Probability artifact research
         run: node scripts/research_probability.mjs pkg
 

@@ -1,4 +1,5 @@
 pub mod comparison;
+pub mod comparison_wasm;
 pub mod index_source;
 pub mod index_source_wasm;
 pub mod linalg;
@@ -27,6 +28,7 @@ pub mod statistics;
 pub mod tensor;
 
 pub use comparison::{comparison_capabilities, TensorComparison};
+pub use comparison_wasm::{wasm_comparison_capabilities, WasmComparison};
 pub use index_source::{
     index_source_capabilities, TensorIndexSource, MAX_EXACT_F32_COORDINATE,
     MAX_INDICES_LIKE_AXIS_LENGTH,

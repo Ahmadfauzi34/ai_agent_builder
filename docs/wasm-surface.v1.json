@@ -12,6 +12,7 @@
     "TensorView": ["constructor", "len", "read", "setShape", "shape", "write"],
     "WasmActivation": ["constructor", "forward", "get_state", "load_state", "newGelu", "newGlu", "newHardSigmoid", "newHardSwish", "newLeakyRelu", "newLogSoftmax", "newMish", "newPRelu", "newRelu", "newSigmoid", "newSoftmax", "newSoftplus", "newSwiGlu", "newTanh", "num_params"],
     "WasmBinary": ["constructor", "forwardBinary", "newAdd", "newConcat", "newMatmul", "newMul", "newSub", "num_params"],
+    "WasmComparison": ["constructor", "lessEqual01"],
     "WasmConv": ["constructor", "forward", "getWeightsFlat", "get_state", "load_state", "newConv1d", "newConv2d", "newConvTranspose2d", "num_params", "setWeightsFlat"],
     "WasmEmbedding": ["constructor", "forward", "getWeightsFlat", "get_state", "load_state", "num_params", "setWeightsFlat", "weightDims"],
     "WasmFeatureNorm": ["constructor", "forward", "newFeatureNorm", "num_params"],
@@ -43,5 +44,5 @@
     "WasmTensorTransform": ["constructor", "permute", "reshape", "selectAxis", "slice", "transpose"]
   },
   "default_init": "__wbg_init",
-  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "esCapabilities", "exportProgramBundle", "importProgramBundle", "indexSourceCapabilities", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathProgramV8Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "reductionCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
+  "functions": ["agentCapabilities", "agentContractSchema", "agentContractSchemaVersion", "agentLayoutCompatibility", "agentLayoutContract", "agentLayoutContractVersion", "agentSpecLayout", "comparisonCapabilities", "esCapabilities", "exportProgramBundle", "importProgramBundle", "indexSourceCapabilities", "initSync", "linearAlgebraCapabilities", "mathProgramCapabilities", "mathProgramV4Capabilities", "mathProgramV5Capabilities", "mathProgramV6Capabilities", "mathProgramV7Capabilities", "mathProgramV8Capabilities", "mathVerifyVectors", "numericKernelCapabilities", "probabilityCapabilities", "programBundleCapabilities", "programCapabilities", "reductionCapabilities", "statisticsCapabilities", "tensorTransformCapabilities", "validateAgentLayoutEdge", "workspaceCapabilities", "workspaceCompile", "workspaceInitBinary", "workspaceInitUnary", "workspaceWireBinary", "workspaceWireUnary"]
 }
