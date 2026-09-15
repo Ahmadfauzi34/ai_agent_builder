@@ -91,10 +91,9 @@ expectThrow(() => source.indicesLike(reference, 4), 'axis 4');
 const empty = tensor([], [1, 0, 1, 1]);
 expectThrow(() => source.indicesLike(empty, 1), 'zero-sized shape');
 
-// This adapter is deliberately only the positional source. Predicate/comparison and Math Program
-// integration remain separate production slices.
+// Keep this proof scoped to the Index Source adapter itself. Other independently-versioned
+// packaged surfaces may coexist without changing Index Source v1 semantics.
 assert(typeof source.lessEqual01 === 'undefined', 'comparison leaked into index-source adapter');
-assert(typeof m.WasmMathProgramV9 === 'undefined', 'Math Program v9 must not exist in this slice');
 
 console.log(JSON.stringify({
   verdict: 'PASS',
@@ -109,7 +108,6 @@ console.log(JSON.stringify({
   maxSupportedAxisLength: caps.max_supported_axis_length,
   implicitBroadcasting: caps.contracts.implicit_broadcasting,
   grantsAuthority: caps.contracts.grants_authority,
-  mathProgramV9Present: false,
 }, null, 2));
 
 for (const t of [
