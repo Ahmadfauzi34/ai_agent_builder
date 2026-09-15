@@ -1,6 +1,7 @@
 // Objective = "seberapa bagus satu vektor bobot". ES tidak peduli objective-nya apa.
-// Slice ini: objective bawaan plain-Rust (MSE linear) untuk proof-of-life & test.
-// Slice compose nanti: impl Objective yang menjalankan graph burn-mu (lihat peta di akhir).
+// Trait ini tetap objective plain-Rust untuk proof-of-life & test internal ES.
+// Objective yang menjalankan CompiledGraph sengaja dikomposisikan di host dari primitive
+// EsOptimizer + GraphParameterBinding + CompiledGraph; lihat docs/es-graph-host-orchestration.md.
 
 pub trait Objective {
     /// Lebih besar = lebih baik (ES memaksimalkan).
