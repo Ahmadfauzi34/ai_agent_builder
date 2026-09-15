@@ -12,14 +12,29 @@
       "ci_smoke_required": true
     }
   },
+  "native_packages": {
+    "rust": {
+      "status": "supported",
+      "package": "burn-research",
+      "crate_type": "rlib",
+      "consumer_proof": "scripts/audit_rust_package.py",
+      "orchestration": "host_owned",
+      "ci_smoke_required": true,
+      "stable_cross_language_abi": false
+    }
+  },
   "generated_but_not_host_verified": {
     "browser": {
       "entry": "burn_research.js",
       "initialization": "wasm-bindgen_default_async"
     }
   },
+  "cross_language_abi": {
+    "status": "planned",
+    "stable_abi_published": false,
+    "first_priority_consumer": "python"
+  },
   "planned_hosts": [
-    "rust",
     "python",
     "go"
   ]
