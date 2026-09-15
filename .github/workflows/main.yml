@@ -100,6 +100,9 @@ jobs:
       - name: Run ES CompiledGraph parameter-binding audit
         run: node scripts/research_es_compiled_graph_binding.mjs pkg
 
+      - name: Run graph parameter-binding v1 artifact research
+        run: node scripts/research_graph_parameter_binding.mjs pkg
+
       - name: Run custom Shift real-task research
         run: node scripts/research_shift_lag.mjs pkg
 
