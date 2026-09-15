@@ -106,6 +106,9 @@ jobs:
       - name: Run ES graph objective loop research
         run: node scripts/research_es_graph_objective_loop.mjs pkg
 
+      - name: Run ES graph checkpoint replay research
+        run: node scripts/research_es_graph_checkpoint_replay.mjs pkg
+
       - name: Run custom Shift real-task research
         run: node scripts/research_shift_lag.mjs pkg
 
