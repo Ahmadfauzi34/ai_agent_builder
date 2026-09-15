@@ -1,0 +1,366 @@
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
+const adapter = await import(pathToFileURL(path.join(pkgDir, 'node.mjs')).href);
+const m = await adapter.loadBurnRuntime();
+
+const LAYER_LINEAR = 0x01;
+const LAYER_ACTIVATION = 0x04;
+
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+function exactArrayEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!Object.is(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+function expectThrow(fn, label) {
+  let threw = false;
+  try {
+    fn();
+  } catch {
+    threw = true;
+  }
+  assert(threw, `${label} should fail with a controlled error`);
+}
+
+function tensor(values, shape) {
+  return new m.WasmTensor(new Float32Array(values), new Uint32Array(shape));
+}
+
+function runVector(graph, registry, values) {
+  const input = tensor(values, [1, values.length, 1, 1]);
+  const output = graph.run(registry, input);
+  const result = Array.from(output.to_array());
+  output.free();
+  input.free();
+  return result;
+}
+
+function parsePlanLayerRefs(planLike) {
+  const plan = Array.from(planLike);
+  assert(plan.length >= 9, 'compiled graph plan is unexpectedly short');
+  const view = new DataView(Uint8Array.from(plan).buffer);
+  const numSteps = view.getUint32(0, true);
+  const expectedLength = 8 + numSteps * 9 + 1;
+  assert(plan.length === expectedLength, `compiled graph plan length mismatch: ${plan.length} !== ${expectedLength}`);
+  const refs = [];
+  for (let i = 0; i < numSteps; i += 1) {
+    const offset = 8 + i * 9;
+    refs.push({
+      arity: plan[offset],
+      layerType: plan[offset + 1],
+      layerId: view.getUint32(offset + 2, true),
+    });
+  }
+  return refs;
+}
+
+function uniqueRefs(refs) {
+  const seen = new Set();
+  const out = [];
+  for (const ref of refs) {
+    const key = `${ref.layerType}:${ref.layerId}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(ref);
+    }
+  }
+  return out;
+}
+
+function buildSingleLinear() {
+  const registry = new m.LayerRegistry();
+  const linear = m.AgentLayerSpec.linear(101, 2, 1, true);
+  registry.initAgentLayer(linear);
+  const builder = new m.AgentGraphBuilder(2);
+  builder.addUnary(linear, 0, 1);
+  builder.setOutput(1);
+  const graph = builder.compile(registry);
+  return { registry, linear, builder, graph };
+}
+
+function buildMultiLayer() {
+  const registry = new m.LayerRegistry();
+  const linear1 = m.AgentLayerSpec.linear(201, 2, 2, true);
+  const relu = m.AgentLayerSpec.relu(202);
+  const linear2 = m.AgentLayerSpec.linear(203, 2, 1, true);
+  registry.initAgentLayer(linear1);
+  registry.initAgentLayer(relu);
+  registry.initAgentLayer(linear2);
+  const builder = new m.AgentGraphBuilder(4);
+  builder.addUnary(linear1, 0, 1);
+  builder.addUnary(relu, 1, 2);
+  builder.addUnary(linear2, 2, 3);
+  builder.setOutput(3);
+  const graph = builder.compile(registry);
+  return { registry, linear1, relu, linear2, builder, graph };
+}
+
+const esCaps = JSON.parse(m.esCapabilities());
+const programCaps = JSON.parse(m.programCapabilities());
+const bundleCaps = JSON.parse(m.programBundleCapabilities());
+assert(esCaps.lifecycle === 'ask->tell', 'ES lifecycle capability mismatch');
+assert(esCaps.strict_factory === 'EsOptimizer.strict', 'strict ES factory capability mismatch');
+assert(programCaps.execution_binding === 'required', 'CompiledGraph execution binding must remain required');
+assert(programCaps.mutable_state_in_identity === false, 'mutable weights/state must remain outside structural program identity');
+assert(bundleCaps.mutable_state === 'optional_separate_section', 'program bundle mutable-state separation mismatch');
+
+// -----------------------------------------------------------------------------
+// 1. Single-layer candidate binding is already natural through existing APIs.
+// -----------------------------------------------------------------------------
+const single = buildSingleLinear();
+const singleIdentity = single.graph.programIdentity();
+const singleLayout = single.registry.weightLayout(101, LAYER_LINEAR);
+const singleOriginal = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
+assert(singleOriginal.length > 0, 'single Linear must expose optimizer-visible flat weights');
+assert(typeof singleLayout === 'string' && singleLayout.length > 0, 'single Linear weight layout must be discoverable');
+
+const esA = m.EsOptimizer.strict(singleOriginal.length, 0, 424242, 8, 0.1, 0.05);
+const esB = m.EsOptimizer.strict(singleOriginal.length, 0, 424242, 8, 0.1, 0.05);
+const askA = Array.from(esA.ask());
+const askB = Array.from(esB.ask());
+assert(exactArrayEqual(askA, askB), 'same strict ES seed/config must produce the same first candidate batch');
+assert(esA.batchSize() === 8, 'strict OpenES batch size mismatch');
+assert(askA.length === singleOriginal.length * esA.batchSize(), 'flat ES candidate batch shape mismatch');
+
+const firstCandidate = askA.slice(0, singleOriginal.length);
+const beforeSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
+single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate));
+const afterSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
+const appliedSingle = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
+assert(exactArrayEqual(appliedSingle, firstCandidate), 'single candidate was not applied exactly');
+assert(!exactArrayEqual(beforeSingle, afterSingle), 'single candidate should affect graph execution');
+assert(single.graph.programIdentity() === singleIdentity, 'compatible weight mutation changed structural program identity');
+single.graph.validateRegistryBinding(single.registry);
+
+const dataset = [
+  { x: [1, 0], y: 0.5 },
+  { x: [0, 1], y: -0.25 },
+  { x: [1, 1], y: 0.25 },
+  { x: [-1, 2], y: -1.0 },
+];
+function singleFitness(candidate) {
+  single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(candidate));
+  let mse = 0;
+  for (const sample of dataset) {
+    const got = runVector(single.graph, single.registry, sample.x);
+    assert(got.length === 1 && Number.isFinite(got[0]), 'single graph produced invalid scalar output');
+    const error = got[0] - sample.y;
+    mse += error * error;
+  }
+  return -(mse / dataset.length);
+}
+
+const fitnesses = [];
+for (let i = 0; i < esA.batchSize(); i += 1) {
+  const start = i * singleOriginal.length;
+  const candidate = askA.slice(start, start + singleOriginal.length);
+  fitnesses.push(singleFitness(candidate));
+}
+assert(fitnesses.every(Number.isFinite), 'graph-derived ES fitness must remain finite');
+esA.tell(new Float32Array(fitnesses));
+assert(esA.generation() === 1, 'ES generation should advance after one valid graph-derived fitness batch');
+
+// Per-layer malformed application is fail-closed and retryable.
+single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate));
+const beforeMalformedSingle = Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR));
+expectThrow(
+  () => single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(firstCandidate.slice(0, -1))),
+  'single-layer malformed candidate length',
+);
+assert(
+  exactArrayEqual(Array.from(single.registry.getWeightsFlat(101, LAYER_LINEAR)), beforeMalformedSingle),
+  'failed single-layer candidate application mutated prior valid weights',
+);
+single.registry.setWeightsFlat(101, LAYER_LINEAR, new Float32Array(singleOriginal));
+const restoredSingle = runVector(single.graph, single.registry, [0.75, -1.25]);
+assert(exactArrayEqual(restoredSingle, beforeSingle), 'restoring original weights did not restore execution');
+assert(single.graph.programIdentity() === singleIdentity, 'single-layer restore changed structural identity');
+
+// -----------------------------------------------------------------------------
+// 2. Multi-layer graphs expose only per-layer layouts. A graph-level flat layout
+//    can be invented by a host, but the host must choose/deduplicate/order refs.
+// -----------------------------------------------------------------------------
+const multi = buildMultiLayer();
+const multiIdentity = multi.graph.programIdentity();
+const multiBefore = runVector(multi.graph, multi.registry, [0.5, -1.0]);
+const w1Original = Array.from(multi.registry.getWeightsFlat(201, LAYER_LINEAR));
+const w2Original = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
+const layout1 = multi.registry.weightLayout(201, LAYER_LINEAR);
+const layout2 = multi.registry.weightLayout(203, LAYER_LINEAR);
+assert(w1Original.length > 0 && w2Original.length > 0, 'both trainable Linear layers must expose flat weights');
+assert(layout1.length > 0 && layout2.length > 0, 'both trainable Linear layers must expose layouts');
+expectThrow(
+  () => multi.registry.getWeightsFlat(202, LAYER_ACTIVATION),
+  'stateless ReLU optimizer-visible weights',
+);
+
+const multiRefs = parsePlanLayerRefs(multi.graph.programPlan());
+const multiUniqueRefs = uniqueRefs(multiRefs);
+const hostChosenTrainableRefs = multiUniqueRefs.filter((ref) => ref.layerType === LAYER_LINEAR);
+assert(hostChosenTrainableRefs.length === 2, 'audit host should discover two unique Linear refs from this plan');
+const hostLayout = [];
+let hostOffset = 0;
+for (const ref of hostChosenTrainableRefs) {
+  const weights = Array.from(multi.registry.getWeightsFlat(ref.layerId, ref.layerType));
+  hostLayout.push({ layerType: ref.layerType, layerId: ref.layerId, offset: hostOffset, length: weights.length });
+  hostOffset += weights.length;
+}
+assert(hostOffset === w1Original.length + w2Original.length, 'host-derived candidate length mismatch');
+
+const publicGraphParameterLayoutPresent =
+  typeof multi.graph.parameterLayout === 'function' ||
+  typeof multi.graph.parameterPlan === 'function' ||
+  typeof multi.graph.getWeightsFlat === 'function' ||
+  typeof multi.graph.setWeightsFlat === 'function';
+
+const w1Candidate = w1Original.map((value, index) => value + 0.125 + index * 0.001);
+const w2Candidate = w2Original.map((value, index) => value - 0.25 - index * 0.001);
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Candidate));
+multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Candidate));
+const multiAfter = runVector(multi.graph, multi.registry, [0.5, -1.0]);
+assert(!exactArrayEqual(multiBefore, multiAfter), 'multi-layer candidate should affect graph execution');
+assert(multi.graph.programIdentity() === multiIdentity, 'multi-layer compatible weights changed structural program identity');
+multi.graph.validateRegistryBinding(multi.registry);
+
+// Repeated references prove that raw step count cannot be used as candidate cardinality.
+const repeatBuilder = new m.AgentGraphBuilder(3);
+repeatBuilder.addUnary(multi.linear1, 0, 1);
+repeatBuilder.addUnary(multi.linear1, 1, 2);
+repeatBuilder.setOutput(2);
+const repeatGraph = repeatBuilder.compile(multi.registry);
+const repeatRefs = parsePlanLayerRefs(repeatGraph.programPlan()).filter((ref) => ref.layerType === LAYER_LINEAR);
+const repeatUnique = uniqueRefs(repeatRefs);
+assert(repeatRefs.length === 2, 'repeat graph must contain two uses of the same Linear layer');
+assert(repeatUnique.length === 1 && repeatUnique[0].layerId === 201, 'candidate binding must deduplicate repeated layer references');
+
+// -----------------------------------------------------------------------------
+// 3. Composite application through only per-layer setters is not atomic.
+//    A valid first slice remains committed when a later layer slice fails.
+// -----------------------------------------------------------------------------
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Original));
+multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original));
+const atomicProbeFirst = w1Original.map((value) => value + 0.5);
+const secondBeforeAtomicProbe = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(atomicProbeFirst));
+expectThrow(
+  () => multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original.slice(0, -1))),
+  'later malformed layer slice during composite candidate application',
+);
+const firstAfterAtomicFailure = Array.from(multi.registry.getWeightsFlat(201, LAYER_LINEAR));
+const secondAfterAtomicFailure = Array.from(multi.registry.getWeightsFlat(203, LAYER_LINEAR));
+assert(
+  exactArrayEqual(firstAfterAtomicFailure, atomicProbeFirst),
+  'audit expected the earlier valid per-layer mutation to remain committed',
+);
+assert(
+  exactArrayEqual(secondAfterAtomicFailure, secondBeforeAtomicProbe),
+  'malformed later layer slice should not mutate that layer',
+);
+const compositeAtomicApplyPresent = false;
+
+// Explicit host rollback restores execution, but this is evidence of a missing reusable boundary,
+// not a candidate protocol we want to bless implicitly.
+multi.registry.setWeightsFlat(201, LAYER_LINEAR, new Float32Array(w1Original));
+multi.registry.setWeightsFlat(203, LAYER_LINEAR, new Float32Array(w2Original));
+const multiRestored = runVector(multi.graph, multi.registry, [0.5, -1.0]);
+assert(exactArrayEqual(multiRestored, multiBefore), 'manual host rollback did not restore graph execution');
+assert(multi.graph.programIdentity() === multiIdentity, 'rollback changed structural program identity');
+
+const findings = [
+  {
+    boundary: 'es_optimizer_core',
+    score: 0,
+    classification: 'KEEP',
+    evidence: 'strict seeded ask/tell already supplies deterministic flat candidates and accepts graph-derived scalar fitness',
+  },
+  {
+    boundary: 'single_layer_candidate_binding',
+    score: 0,
+    classification: 'KEEP',
+    evidence: 'one trainable layer maps naturally through getWeightsFlat/setWeightsFlat and preserves CompiledGraph structural identity',
+  },
+  {
+    boundary: 'multi_layer_candidate_layout',
+    score: publicGraphParameterLayoutPresent ? 1 : 2,
+    classification: publicGraphParameterLayoutPresent ? 'KEEP' : 'SPLIT',
+    evidence: publicGraphParameterLayoutPresent
+      ? 'a graph-level parameter surface is present'
+      : 'host must parse/deduplicate graph refs and invent candidate offsets from per-layer layouts',
+  },
+  {
+    boundary: 'atomic_multi_layer_candidate_application',
+    score: compositeAtomicApplyPresent ? 0 : 3,
+    classification: compositeAtomicApplyPresent ? 'KEEP' : 'SPLIT',
+    evidence: compositeAtomicApplyPresent
+      ? 'composite apply is already atomic'
+      : 'a valid early layer mutation remains committed when a later per-layer setter rejects its slice; host rollback is required',
+  },
+  {
+    boundary: 'compiled_graph_structural_identity',
+    score: 0,
+    classification: 'KEEP',
+    evidence: 'compatible mutable weights change execution but do not alter structural program identity or registry binding',
+  },
+  {
+    boundary: 'program_bundle_relationship',
+    score: 0,
+    classification: 'KEEP',
+    evidence: 'program-bundle.v1 correctly keeps mutable state separate; it should not be reinterpreted as an ES candidate vector format',
+  },
+];
+
+console.log(JSON.stringify({
+  verdict: 'PASS',
+  task: 'ES -> CompiledGraph candidate-binding audit',
+  issue: 161,
+  singleLayer: {
+    parameterCount: singleOriginal.length,
+    weightLayout: singleLayout,
+    sameSeedFirstBatch: true,
+    graphDerivedFitness: true,
+    malformedCandidateAtomicAtLayerBoundary: true,
+    programIdentityStable: true,
+  },
+  multiLayer: {
+    layerParameterCounts: [w1Original.length, w2Original.length],
+    weightLayouts: [layout1, layout2],
+    hostChosenParameterLayout: hostLayout,
+    publicGraphParameterLayoutPresent,
+    repeatedLayerStepCount: repeatRefs.length,
+    repeatedLayerUniqueParameterOwnerCount: repeatUnique.length,
+    statelessLayerConsumesCandidateCoordinates: false,
+    compositeAtomicApplyPresent,
+    laterFailureLeavesEarlierMutationCommitted: true,
+    manualHostRollbackRequired: true,
+    programIdentityStable: true,
+  },
+  findings,
+  nextRecommendedProductionSlice: publicGraphParameterLayoutPresent || compositeAtomicApplyPresent
+    ? 're-audit current graph-level parameter APIs before adding an ES facade'
+    : 'separate canonical graph parameter binding v1: deterministic unique-layer layout + full prevalidation + atomic candidate application; keep ES and CompiledGraph algorithms unchanged',
+  autodiffRequired: false,
+  grantsAuthority: false,
+}, null, 2));
+
+repeatGraph.free();
+repeatBuilder.free();
+multi.graph.free();
+multi.builder.free();
+multi.linear1.free();
+multi.relu.free();
+multi.linear2.free();
+multi.registry.free();
+esA.free();
+esB.free();
+single.graph.free();
+single.builder.free();
+single.linear.free();
+single.registry.free();
