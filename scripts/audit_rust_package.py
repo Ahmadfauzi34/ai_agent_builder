@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -14,13 +15,22 @@ PACKAGE_VERSION = "0.1.0"
 
 
 def run(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    completed = subprocess.run(
         args,
         cwd=cwd,
-        check=True,
+        check=False,
         text=True,
         capture_output=True,
     )
+    if completed.returncode != 0:
+        if completed.stdout:
+            print(completed.stdout, end="")
+        if completed.stderr:
+            print(completed.stderr, end="", file=sys.stderr)
+        raise SystemExit(
+            f"command failed with exit code {completed.returncode}: {' '.join(args)}"
+        )
+    return completed
 
 
 def main() -> None:
