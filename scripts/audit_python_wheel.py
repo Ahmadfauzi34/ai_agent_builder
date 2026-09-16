@@ -211,9 +211,10 @@ with ExitStack() as stack:
 
     best = optimizer.best()
     assert len(best) == dim and all(math.isfinite(value) for value in best)
-    binding.apply_flat(graph, registry, array("f", best))
+    best_buffer = array("f", best)
+    binding.apply_flat(graph, registry, best_buffer)
     learned = binding.read_flat(graph, registry)
-    assert learned == list(array("f", best))
+    assert learned == list(best_buffer)
     probe_before = run_scalar(graph, registry, [1.0, 2.0])
 
     bundle = ProgramBundle.export(graph, registry, include_state=True)
@@ -236,23 +237,6 @@ with ExitStack() as stack:
 # Timing evidence only: no CI performance threshold. The large case mirrors the
 # research scale where host marshalling was previously material.
 PERF_REPS = 9
-with ExitStack() as perf_stack:
-    _, perf_graph, perf_binding = build_linear_chain(
-        perf_stack, width=64, depth=16, layer_base=88_000
-    )
-    perf_dim = perf_binding.total_len
-    assert perf_dim == 66_560
-    perf_buffer = array(
-        "f",
-        [((((i * 37) % 101) - 50) * 0.0005) for i in range(perf_dim)],
-    )
-    perf_list = list(perf_buffer)
-
-    # Warm both paths before timing.
-    perf_binding.apply_flat(perf_graph, perf_stack._exit_callbacks and next(iter([]), None), perf_buffer) if False else None
-
-    # Registry is needed explicitly; build once more with a retained name.
-
 with ExitStack() as perf_stack:
     perf_registry, perf_graph, perf_binding = build_linear_chain(
         perf_stack, width=64, depth=16, layer_base=89_000
