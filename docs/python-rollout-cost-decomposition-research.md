@@ -47,6 +47,40 @@ These percentages are research heuristics, not CI performance requirements or su
 
 `graph_run_output_copy` intentionally remains a combined bucket: it contains native graph execution, FFI crossing, output-handle creation, and output copy. This research does **not** pretend to separate those without native-side instrumentation.
 
+## Valid evidence
+
+Python Rollout Cost Decomposition Research run #1 on head `53ff25c211c0b2471ece0fcde444eef8217ad0a1` completed with `verdict = PASS` and uploaded `python-rollout-cost-decomposition-report`.
+
+The evidence classification is:
+
+```text
+GRAPH_RUN_OUTPUT_BOUNDARY_DOMINATES
+```
+
+Median timing:
+
+```text
+pure-Python environment rollout   0.046751 ms
+Tensor.vector construct + close   0.008683 ms
+Graph.run + output copy           0.100742 ms
+full policy action                0.112534 ms
+full graph rollout                7.8154145 ms
+```
+
+Descriptive ratios:
+
+```text
+Graph.run + output / full policy action   89.52%
+Tensor input / full policy action          7.72%
+Python environment / full graph rollout    0.60%
+```
+
+The zero-policy graph reward remained exactly reproducible before and after the timing loops at `-2.407589173214531`. Program identity, binding identity, finite outputs, deterministic graph rollout, deterministic Python-only rollout, installed-wheel import, and deterministic handle cleanup all passed.
+
+This rules out the Python environment loop and tensor input construction as the dominant cost for this workload. The remaining dominant bucket is specifically `Graph.run + output copy`, but that bucket still combines native graph execution, FFI crossing, output-handle creation, and output copying.
+
 ## Decision rule
 
-No ABI, facade, graph runtime, tensor representation, batching API, or Math primitive should be added from intuition. If the combined graph-run/output bucket dominates, the next justified step is a narrowly-scoped instrumentation proof to separate native compute from boundary/copy cost. If Python environment cost dominates, the graph API should remain unchanged.
+No ABI, facade, graph runtime, tensor representation, batching API, or Math primitive should be added from intuition. The evidence now justifies one narrower next step only: instrument or otherwise prove the split inside `Graph.run + output copy` so native compute can be distinguished from boundary/handle/copy cost.
+
+This result does **not** yet justify batching, a persistent tensor API, DLPack/NumPy, a new graph execution primitive, or ABI widening.
