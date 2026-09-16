@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[1]
 FFI_DIR = REPO / "ffi"
 REPORT = REPO / "python-optimizer-ask-apply-report.json"
 
-CONSUMER = r'''
+CONSUMER = r"""
 from __future__ import annotations
 
 from array import array
@@ -85,31 +85,48 @@ def new_optimizer(dim):
     )
 
 
+def ask_and_cardinality(optimizer, dim, context):
+    before = optimizer.batch_size
+    if before != 0:
+        raise AssertionError(f"{context}: expected idle batch_size 0 before ask, got {before}")
+    t0 = ns()
+    batch = optimizer.ask()
+    t1 = ns()
+    batch_size = optimizer.batch_size
+    if batch_size <= 0:
+        raise AssertionError(f"{context}: batch_size must be positive after ask")
+    if len(batch) != batch_size * dim:
+        raise AssertionError(
+            f"{context}: ask length {len(batch)} != {batch_size * dim}"
+        )
+    return batch, batch_size, t1 - t0
+
+
 def transport_variant(name, graph, registry, binding):
     dim = binding.total_len
     ask_ns, slice_ns, convert_ns, view_ns, apply_ns = [], [], [], [], []
     post_ns, total_ns, digests = [], [], []
+    observed_batch_size = None
 
     with new_optimizer(dim) as optimizer:
-        batch_size = optimizer.batch_size
-        if batch_size <= 0:
-            raise AssertionError("optimizer batch size must be positive")
         for rep in range(TRANSPORT_REPS):
             whole_start = ns()
-            t0 = ns()
-            batch = optimizer.ask()
-            t1 = ns()
-            ask_ns.append(t1 - t0)
-            if len(batch) != batch_size * dim:
+            batch, batch_size, ask_elapsed = ask_and_cardinality(
+                optimizer, dim, f"{name}/rep{rep}"
+            )
+            ask_ns.append(ask_elapsed)
+            if observed_batch_size is None:
+                observed_batch_size = batch_size
+            elif batch_size != observed_batch_size:
                 raise AssertionError(
-                    f"{name}: ask length {len(batch)} != {batch_size * dim}"
+                    f"{name}: batch_size changed {observed_batch_size} -> {batch_size}"
                 )
             digests.append(digest_f32(batch))
 
             post_start = ns()
-            expected = None
-            validation_buffer = None
-            validation_view = None
+            expected_last = None
+            converted_last = None
+            view_last = None
 
             if name == "list_slice":
                 for index in range(batch_size):
@@ -123,7 +140,7 @@ def transport_variant(name, graph, registry, binding):
                     a1 = ns()
                     apply_ns.append(a1 - a0)
                     if rep == 0 and index == batch_size - 1:
-                        expected = candidate
+                        expected_last = candidate
 
             elif name == "per_candidate_array":
                 for index in range(batch_size):
@@ -141,8 +158,8 @@ def transport_variant(name, graph, registry, binding):
                     a1 = ns()
                     apply_ns.append(a1 - a0)
                     if rep == 0 and index == batch_size - 1:
-                        expected = candidate_list
-                        validation_buffer = candidate
+                        expected_last = candidate_list
+                        converted_last = candidate
 
             elif name == "whole_batch_buffer_view":
                 c0 = ns()
@@ -176,7 +193,11 @@ def transport_variant(name, graph, registry, binding):
                     a1 = ns()
                     apply_ns.append(a1 - a0)
                     if rep == 0 and index == batch_size - 1:
-                        validation_view = candidate
+                        view_last = candidate
+                if rep == 0:
+                    if list(batch_buffer) != batch:
+                        raise AssertionError("whole-batch f32 conversion changed values")
+                    expected_last = list(view_last)
             else:
                 raise AssertionError(f"unknown transport variant {name}")
 
@@ -184,25 +205,22 @@ def transport_variant(name, graph, registry, binding):
             post_ns.append(post_end - post_start)
             total_ns.append(post_end - whole_start)
 
-            # Semantic checks are deliberately outside the aggregate transport timer.
             if rep == 0:
-                if validation_buffer is not None and list(validation_buffer) != expected:
+                if converted_last is not None and list(converted_last) != expected_last:
                     raise AssertionError("per-candidate f32 conversion changed values")
-                if name == "whole_batch_buffer_view":
-                    if list(batch_buffer) != batch:
-                        raise AssertionError("whole-batch f32 conversion changed values")
-                    if validation_view is None:
-                        raise AssertionError("missing final candidate view")
-                    expected = list(validation_view)
-                if expected is None or binding.read_flat(graph, registry) != expected:
+                if expected_last is None:
+                    raise AssertionError("missing expected final candidate")
+                if binding.read_flat(graph, registry) != expected_last:
                     raise AssertionError(f"{name}: final candidate state mismatch")
 
             optimizer.tell([0.0] * batch_size)
+            if optimizer.batch_size != 0:
+                raise AssertionError(f"{name}: batch_size did not return to idle after tell")
 
     return {
         "variant": name,
         "requested_population": REQUESTED_POPULATION,
-        "batch_size": batch_size,
+        "batch_size": observed_batch_size,
         "ask": summary(ask_ns),
         "list_slice": summary(slice_ns) if slice_ns else None,
         "f32_conversion": summary(convert_ns) if convert_ns else None,
@@ -266,7 +284,9 @@ def make_rows(width):
             0.35 * math.sin((row + 1) * (column + 2) * 0.071)
             for column in range(width)
         ]
-        target = sum((column + 1) * value for column, value in enumerate(values)) / width
+        target = sum(
+            (column + 1) * value for column, value in enumerate(values)
+        ) / width
         rows.append((values, target))
     return rows
 
@@ -297,25 +317,28 @@ def objective_variant(name):
     ask_ns, slice_ns, convert_ns, view_ns = [], [], [], []
     apply_ns, objective_ns, tell_ns, total_ns = [], [], [], []
     digests, fitness_history = [], []
+    observed_batch_size = None
 
     with ExitStack() as stack:
         registry, graph, binding = build_objective_graph(stack, 97_001)
         optimizer = stack.enter_context(new_optimizer(binding.total_len))
-        batch_size = optimizer.batch_size
-        if batch_size <= 0:
-            raise AssertionError("objective optimizer batch size must be positive")
         rows = make_rows(8)
         program_identity = graph.program_identity()
         binding_identity = binding.identity()
 
         for rep in range(OBJECTIVE_REPS):
             generation_start = ns()
-            t0 = ns()
-            batch = optimizer.ask()
-            t1 = ns()
-            ask_ns.append(t1 - t0)
-            if len(batch) != batch_size * binding.total_len:
-                raise AssertionError("objective ask cardinality mismatch")
+            batch, batch_size, ask_elapsed = ask_and_cardinality(
+                optimizer, binding.total_len, f"objective/{name}/rep{rep}"
+            )
+            ask_ns.append(ask_elapsed)
+            if observed_batch_size is None:
+                observed_batch_size = batch_size
+            elif batch_size != observed_batch_size:
+                raise AssertionError(
+                    f"objective {name}: batch_size changed "
+                    f"{observed_batch_size} -> {batch_size}"
+                )
             digests.append(digest_f32(batch))
 
             batch_buffer = None
@@ -390,14 +413,22 @@ def objective_variant(name):
             tell_ns.append(t3 - t2)
             total_ns.append(t3 - generation_start)
             fitness_history.append(fitness)
+            if optimizer.batch_size != 0:
+                raise AssertionError(
+                    f"objective {name}: batch_size did not return to idle after tell"
+                )
 
-            # Validation happens after the timed full generation.
             if rep == 0:
                 if validation_pair is not None:
                     candidate_buffer, candidate_list = validation_pair
                     if list(candidate_buffer) != candidate_list:
-                        raise AssertionError("objective per-candidate conversion changed values")
-                if name == "whole_batch_buffer_view" and list(batch_buffer) != batch:
+                        raise AssertionError(
+                            "objective per-candidate conversion changed values"
+                        )
+                if (
+                    name == "whole_batch_buffer_view"
+                    and list(batch_buffer) != batch
+                ):
                     raise AssertionError("objective whole-batch conversion changed values")
             if graph.program_identity() != program_identity:
                 raise AssertionError("objective program identity changed")
@@ -406,7 +437,9 @@ def objective_variant(name):
 
         bundle = host.ProgramBundle.export(graph, registry, include_state=True)
         replay_registry = stack.enter_context(host.Registry())
-        replay_graph = stack.enter_context(host.ProgramBundle.import_graph(replay_registry, bundle))
+        replay_graph = stack.enter_context(
+            host.ProgramBundle.import_graph(replay_registry, bundle)
+        )
         replay_binding = stack.enter_context(
             host.GraphParameterBinding.build(replay_graph, replay_registry)
         )
@@ -414,13 +447,15 @@ def objective_variant(name):
             raise AssertionError("objective replay program identity mismatch")
         if replay_binding.identity() != binding_identity:
             raise AssertionError("objective replay binding identity mismatch")
-        if replay_binding.read_flat(replay_graph, replay_registry) != binding.read_flat(graph, registry):
+        if replay_binding.read_flat(
+            replay_graph, replay_registry
+        ) != binding.read_flat(graph, registry):
             raise AssertionError("objective replay state mismatch")
 
     return {
         "variant": name,
         "requested_population": REQUESTED_POPULATION,
-        "batch_size": batch_size,
+        "batch_size": observed_batch_size,
         "ask": summary(ask_ns),
         "list_slice": summary(slice_ns) if slice_ns else None,
         "f32_conversion": summary(convert_ns) if convert_ns else None,
@@ -446,7 +481,9 @@ if host.HOST_API_SCHEMA != "burn-research.python-host.v1" or host.abi_version() 
     raise AssertionError("unexpected Python host / ABI identity")
 
 with ExitStack() as stack:
-    registry, graph, binding = build_chain(stack, LARGE_WIDTH, LARGE_DEPTH, 98_000)
+    registry, graph, binding = build_chain(
+        stack, LARGE_WIDTH, LARGE_DEPTH, 98_000
+    )
     if binding.total_len != EXPECTED_LARGE_DIM:
         raise AssertionError(
             f"large binding dim {binding.total_len} != {EXPECTED_LARGE_DIM}"
@@ -456,7 +493,11 @@ with ExitStack() as stack:
 
     transport = {
         name: transport_variant(name, graph, registry, binding)
-        for name in ("list_slice", "per_candidate_array", "whole_batch_buffer_view")
+        for name in (
+            "list_slice",
+            "per_candidate_array",
+            "whole_batch_buffer_view",
+        )
     }
     reference = transport["list_slice"]["generation_digests"]
     reference_batch_size = transport["list_slice"]["batch_size"]
@@ -475,7 +516,11 @@ with ExitStack() as stack:
 
 objective = {
     name: objective_variant(name)
-    for name in ("list_slice", "per_candidate_array", "whole_batch_buffer_view")
+    for name in (
+        "list_slice",
+        "per_candidate_array",
+        "whole_batch_buffer_view",
+    )
 }
 reference_digests = objective["list_slice"]["generation_digests"]
 reference_fitness = objective["list_slice"]["fitness_history"]
@@ -497,7 +542,6 @@ slice_median = transport["list_slice"]["list_slice"]["median_ms"]
 apply_median = transport["list_slice"]["apply"]["median_ms"]
 slice_share = slice_median / max(slice_median + apply_median, 1e-12)
 
-# Interpretation only. The threshold does not gate CI success.
 decision = (
     "PYTHON_BUFFER_RETURN_WORTH_PROTOTYPING"
     if whole_speedup >= 1.20
@@ -538,7 +582,9 @@ report = {
         "checkpoint_replay": True,
     },
     "semantic_proofs": {
-        "optimizer_batch_size_contract_used": True,
+        "optimizer_lifecycle_idle_before_ask": True,
+        "optimizer_batch_size_contract_used_after_ask": True,
+        "optimizer_returns_idle_after_tell": True,
         "optimizer_candidate_sequence_equal": True,
         "objective_fitness_equal": True,
         "program_identity_stable": True,
@@ -548,14 +594,15 @@ report = {
     },
     "notes": [
         "Timing is evidence only and never a CI threshold.",
-        "The whole-batch variant includes the cost of converting the existing ask() list to array('f').",
-        "Requested population is strategy configuration; optimizer.batch_size is the authoritative candidate cardinality.",
-        "A future optimizer buffer-return prototype would need separate semantic and installed-wheel proof before support.",
+        "The whole-batch variant includes converting the current ask() list to array('f').",
+        "Requested population is strategy configuration; batch_size is authoritative only after ask().",
+        "The proven optimizer lifecycle is ask -> batch_size -> apply/evaluate -> tell -> idle batch_size 0.",
+        "A future optimizer buffer-return prototype needs separate installed-wheel proof before support.",
         "This research does not justify an ABI batch primitive by itself.",
     ],
 }
 print(json.dumps(report, sort_keys=True))
-'''
+"""
 
 
 def run(args, *, cwd, env=None):
@@ -573,7 +620,10 @@ def main():
         root = Path(tmp)
         wheels = root / "wheels"
         wheels.mkdir()
-        run([sys.executable, "-m", "maturin", "build", "--out", str(wheels)], cwd=FFI_DIR)
+        run(
+            [sys.executable, "-m", "maturin", "build", "--out", str(wheels)],
+            cwd=FFI_DIR,
+        )
         wheel_files = sorted(wheels.glob("*.whl"))
         if len(wheel_files) != 1:
             raise SystemExit(f"expected exactly one wheel, found: {wheel_files}")
@@ -606,7 +656,8 @@ def main():
             raise SystemExit("optimizer transport research produced no output")
         report = json.loads(lines[-1])
         REPORT.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(report, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
         )
         print(json.dumps(report, sort_keys=True))
 
