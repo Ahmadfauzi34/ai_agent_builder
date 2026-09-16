@@ -115,6 +115,22 @@ with host.LinearLayerSpec(99_999, 1, 1) as scratch_layer:
     else:
         raise AssertionError("use-after-close was not rejected locally")
 
+closed_optimizer = host.EsOptimizer.strict(
+    1,
+    strategy=0,
+    seed=7,
+    population=4,
+    sigma=0.2,
+    learning_rate=0.05,
+)
+closed_optimizer.close()
+try:
+    closed_optimizer.ask_f32()
+except host.ClosedHandleError:
+    pass
+else:
+    raise AssertionError("closed optimizer ask_f32 was not rejected locally")
+
 with ExitStack() as stack:
     registry = stack.enter_context(host.Registry())
     linear = stack.enter_context(host.LinearLayerSpec(52_001, 2, 1, bias=True))
@@ -202,9 +218,52 @@ with ExitStack() as stack:
             learning_rate=0.05,
         )
     )
+    optimizer_f32 = stack.enter_context(
+        host.EsOptimizer.strict(
+            dim,
+            strategy=0,
+            seed=9917,
+            population=4,
+            sigma=0.2,
+            learning_rate=0.05,
+        )
+    )
+
+    # Existing list-returning ask() remains unchanged.
     candidates = optimizer.ask()
+    assert type(candidates) is list
     batch = optimizer.batch_size
     assert len(candidates) == batch * dim
+
+    # The additive ask_f32() performs the same ask transition but copies the
+    # ABI f32 buffer directly into standard-library native-f32 storage.
+    candidates_f32 = optimizer_f32.ask_f32()
+    assert isinstance(candidates_f32, array)
+    assert candidates_f32.typecode == "f"
+    batch_f32 = optimizer_f32.batch_size
+    assert batch_f32 == batch
+    assert len(candidates_f32) == batch_f32 * dim
+    candidates_f32_view = memoryview(candidates_f32)
+    assert candidates_f32_view.ndim == 1
+    assert candidates_f32_view.format == "f"
+    assert candidates_f32_view.itemsize == 4
+    assert candidates_f32_view.c_contiguous
+    assert not candidates_f32_view.readonly
+
+    # Same seed/config must produce byte-identical f32 candidates regardless of
+    # which Python materialization method is selected.
+    assert array("f", candidates).tobytes() == candidates_f32.tobytes()
+
+    # A candidate window from ask_f32() must hit the existing binding buffer
+    # path directly, without any list conversion or new ABI primitive.
+    first_f32_candidate = candidates_f32_view[:dim]
+    binding.apply_flat(graph, registry, first_f32_candidate)
+    assert binding.read_flat(graph, registry) == list(first_f32_candidate)
+
+    # ask_f32() uses the same optimizer lifecycle/cardinality as ask().
+    f32_report = optimizer_f32.tell([0.0] * batch_f32)
+    assert int(f32_report["gen"]) == 1
+    assert optimizer_f32.batch_size == batch_f32
 
     # Python owns the objective and evaluation schedule. The host namespace only
     # composes existing reference-machine semantics; it does not own policy.
@@ -298,6 +357,12 @@ print(json.dumps({
     "typed_marker": True,
     "f32_buffer_fast_path": True,
     "sequence_fallback": True,
+    "optimizer_ask_list_compatible": True,
+    "optimizer_ask_f32": True,
+    "optimizer_ask_f32_exact_bytes": True,
+    "optimizer_ask_f32_buffer_layout": True,
+    "optimizer_ask_f32_lifecycle": True,
+    "optimizer_ask_f32_closed_handle_guard": True,
     "performance_evidence": {
         "parameter_dim": perf_dim,
         "repetitions": PERF_REPS,
