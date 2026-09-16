@@ -26,8 +26,7 @@ import statistics
 import time
 
 import burn_research_ffi as br
-from burn_research_ffi import host
-from burn_research_ffi import ffi, lib
+from burn_research_ffi import host, ffi, lib
 
 REPS = 7
 OBJECTIVE_REPS = 5
@@ -44,6 +43,8 @@ def ns():
 
 def summary(samples):
     values = sorted(value / 1_000_000.0 for value in samples)
+    if not values:
+        raise AssertionError("empty timing sample set")
     p90 = min(len(values) - 1, math.ceil(0.90 * len(values)) - 1)
     return {
         "median_ms": statistics.median(values),
@@ -53,7 +54,7 @@ def summary(samples):
     }
 
 
-def digest(values):
+def digest_f32_buffer(values):
     return hashlib.sha256(memoryview(values).cast("B")).hexdigest()
 
 
@@ -78,14 +79,7 @@ def raw_new_optimizer(dim):
     out = ffi.new("br_v1_handle **")
     check(
         lib.br_v1_es_strict(
-            dim,
-            0,
-            SEED,
-            REQUESTED_POPULATION,
-            0.2,
-            1,
-            0.05,
-            out,
+            dim, 0, SEED, REQUESTED_POPULATION, 0.2, 1, 0.05, out
         ),
         "es strict",
     )
@@ -101,23 +95,24 @@ def raw_batch_size(optimizer):
 
 
 def raw_ask_array(optimizer):
+    """Call existing ABI v1 ask and copy its f32 handle directly into array('f')."""
     out = ffi.new("br_v1_handle **")
     check(lib.br_v1_es_ask(optimizer, out), "es ask")
-    buffer_handle = out[0]
-    if buffer_handle == ffi.NULL:
-        raise AssertionError("es ask returned null f32 buffer")
+    handle = out[0]
+    if handle == ffi.NULL:
+        raise AssertionError("es ask returned null f32 handle")
     try:
         n = ffi.new("size_t *")
-        check(lib.br_v1_f32_buffer_len(buffer_handle, n), "f32 buffer len")
+        check(lib.br_v1_f32_buffer_len(handle, n), "f32 buffer len")
         size = int(n[0])
         if size == 0:
             return array("f")
         dest = array("f", [0.0]) * size
         raw = ffi.from_buffer("float[]", dest)
-        check(lib.br_v1_f32_buffer_copy(buffer_handle, raw, size), "f32 buffer copy")
+        check(lib.br_v1_f32_buffer_copy(handle, raw, size), "f32 buffer copy")
         return dest
     finally:
-        raw_free(buffer_handle)
+        raw_free(handle)
 
 
 def raw_tell(optimizer, fitness):
@@ -156,46 +151,62 @@ def build_chain(stack, width, depth, layer_base):
     return registry, graph, binding
 
 
+def build_objective_graph(stack, layer_id):
+    registry = stack.enter_context(host.Registry())
+    layer = stack.enter_context(host.LinearLayerSpec(layer_id, 8, 1, bias=True))
+    registry.init_layer(layer)
+    builder = stack.enter_context(host.GraphBuilder(2))
+    builder.add_unary(layer, 0, 1).set_output(1)
+    graph = stack.enter_context(builder.compile(registry))
+    binding = stack.enter_context(host.GraphParameterBinding.build(graph, registry))
+    if binding.total_len != 9:
+        raise AssertionError(f"objective dim {binding.total_len} != 9")
+    return registry, graph, binding
+
+
 def run_transport(kind, graph, registry, binding):
     ask_samples = []
     window_samples = []
     apply_samples = []
     post_samples = []
     total_samples = []
-    digests = []
+    generation_digests = []
     observed_batch = None
 
-    if kind == "facade_list":
-        optimizer = new_facade_optimizer(binding.total_len)
-        raw_optimizer = None
-    else:
-        optimizer = None
-        raw_optimizer = raw_new_optimizer(binding.total_len)
-
+    facade = new_facade_optimizer(binding.total_len) if kind == "facade_list" else None
+    raw_optimizer = raw_new_optimizer(binding.total_len) if kind == "direct_f32_array" else None
     try:
-        for rep in range(REPS):
-            whole_start = ns()
+        if kind == "facade_list" and facade.batch_size != 0:
+            raise AssertionError("new facade optimizer batch_size must be 0")
+        if kind == "direct_f32_array" and raw_batch_size(raw_optimizer) != 0:
+            raise AssertionError("new raw optimizer batch_size must be 0")
+
+        for _ in range(REPS):
             a0 = ns()
             if kind == "facade_list":
-                batch = optimizer.ask()
-                batch_size = optimizer.batch_size
-                batch_bytes = array("f", batch)
+                batch = facade.ask()
+                batch_size = facade.batch_size
             else:
                 batch = raw_ask_array(raw_optimizer)
                 batch_size = raw_batch_size(raw_optimizer)
-                batch_bytes = batch
             a1 = ns()
-            ask_samples.append(a1 - a0)
+            ask_elapsed = a1 - a0
+            ask_samples.append(ask_elapsed)
 
             if batch_size <= 0 or len(batch) != batch_size * binding.total_len:
-                raise AssertionError(f"{kind}: invalid batch cardinality")
+                raise AssertionError(f"{kind}: invalid ask cardinality")
             if observed_batch is None:
                 observed_batch = batch_size
             elif batch_size != observed_batch:
-                raise AssertionError(f"{kind}: batch size changed")
-            digests.append(digest(batch_bytes))
+                raise AssertionError(f"{kind}: batch_size changed")
 
-            post_start = ns()
+            if kind == "facade_list":
+                proof_buffer = array("f", batch)
+            else:
+                proof_buffer = batch
+            generation_digests.append(digest_f32_buffer(proof_buffer))
+
+            p0 = ns()
             if kind == "facade_list":
                 for index in range(batch_size):
                     start = index * binding.total_len
@@ -203,34 +214,41 @@ def run_transport(kind, graph, registry, binding):
                     candidate = batch[start : start + binding.total_len]
                     w1 = ns()
                     window_samples.append(w1 - w0)
-                    p0 = ns()
+                    x0 = ns()
                     binding.apply_flat(graph, registry, candidate)
-                    p1 = ns()
-                    apply_samples.append(p1 - p0)
+                    x1 = ns()
+                    apply_samples.append(x1 - x0)
             else:
-                batch_view = memoryview(batch)
-                if batch_view.format != "f" or not batch_view.c_contiguous:
+                view = memoryview(batch)
+                if view.format != "f" or view.itemsize != 4 or not view.c_contiguous:
                     raise AssertionError("direct batch is not contiguous native f32")
                 for index in range(batch_size):
                     start = index * binding.total_len
                     w0 = ns()
-                    candidate = batch_view[start : start + binding.total_len]
+                    candidate = view[start : start + binding.total_len]
                     w1 = ns()
                     window_samples.append(w1 - w0)
                     if len(candidate) != binding.total_len or not candidate.c_contiguous:
-                        raise AssertionError("direct candidate view contract failed")
-                    p0 = ns()
+                        raise AssertionError("direct candidate window contract failed")
+                    x0 = ns()
                     binding.apply_flat(graph, registry, candidate)
-                    p1 = ns()
-                    apply_samples.append(p1 - p0)
-            post_end = ns()
-            post_samples.append(post_end - post_start)
-            total_samples.append(post_end - whole_start)
+                    x1 = ns()
+                    apply_samples.append(x1 - x0)
+            p1 = ns()
+            post_elapsed = p1 - p0
+            post_samples.append(post_elapsed)
+            # Deliberately excludes semantic digest work from timing.
+            total_samples.append(ask_elapsed + post_elapsed)
 
+            zeros = [0.0] * batch_size
             if kind == "facade_list":
-                optimizer.tell([0.0] * batch_size)
+                facade.tell(zeros)
+                if facade.batch_size != batch_size:
+                    raise AssertionError("facade last-candidate cardinality changed after tell")
             else:
-                raw_tell(raw_optimizer, [0.0] * batch_size)
+                raw_tell(raw_optimizer, zeros)
+                if raw_batch_size(raw_optimizer) != batch_size:
+                    raise AssertionError("raw last-candidate cardinality changed after tell")
 
         return {
             "kind": kind,
@@ -240,16 +258,16 @@ def run_transport(kind, graph, registry, binding):
             "apply": summary(apply_samples),
             "post_ask_transport": summary(post_samples),
             "ask_plus_transport": summary(total_samples),
-            "generation_digests": digests,
+            "generation_digests": generation_digests,
         }
     finally:
-        if optimizer is not None:
-            optimizer.close()
+        if facade is not None:
+            facade.close()
         if raw_optimizer is not None:
             raw_free(raw_optimizer)
 
 
-def rows():
+def objective_rows():
     result = []
     for row in range(8):
         x = [0.35 * math.sin((row + 1) * (col + 2) * 0.071) for col in range(8)]
@@ -258,71 +276,72 @@ def rows():
     return result
 
 
+ROWS = objective_rows()
+
+
 def scalar(graph, registry, values):
     with host.Tensor.vector(values) as inp:
         with graph.run(registry, inp) as out:
             data = out.to_f32()
-            if len(data) != 1:
-                raise AssertionError("objective output length mismatch")
+            if len(data) != 1 or not math.isfinite(data[0]):
+                raise AssertionError(f"invalid objective output: {data}")
             return data[0]
 
 
 def objective_variant(kind):
+    generation_digests = []
     fitness_history = []
-    digest_history = []
     total_samples = []
     with ExitStack() as stack:
-        registry, graph, binding = build_chain(stack, 8, 1, 199_000)
-        if binding.total_len != 72:
-            raise AssertionError(f"objective parameter dim {binding.total_len} != 72")
+        registry, graph, binding = build_objective_graph(stack, 199_000)
         program_identity = graph.program_identity()
         binding_identity = binding.identity()
-        if kind == "facade_list":
-            optimizer = new_facade_optimizer(binding.total_len)
-            raw_optimizer = None
-        else:
-            optimizer = None
-            raw_optimizer = raw_new_optimizer(binding.total_len)
+        facade = new_facade_optimizer(binding.total_len) if kind == "facade_list" else None
+        raw_optimizer = raw_new_optimizer(binding.total_len) if kind == "direct_f32_array" else None
         try:
             for _ in range(OBJECTIVE_REPS):
-                start_total = ns()
+                t0 = ns()
                 if kind == "facade_list":
-                    batch = optimizer.ask()
-                    batch_size = optimizer.batch_size
-                    digest_history.append(digest(array("f", batch)))
+                    batch = facade.ask()
+                    batch_size = facade.batch_size
                 else:
                     batch = raw_ask_array(raw_optimizer)
                     batch_size = raw_batch_size(raw_optimizer)
-                    digest_history.append(digest(batch))
                 if len(batch) != batch_size * binding.total_len:
-                    raise AssertionError("objective cardinality mismatch")
+                    raise AssertionError("objective ask cardinality mismatch")
 
                 if kind == "facade_list":
-                    candidate_source = batch
+                    source = batch
                 else:
-                    candidate_source = memoryview(batch)
+                    source = memoryview(batch)
 
                 fitness = []
                 for index in range(batch_size):
                     start = index * binding.total_len
-                    candidate = candidate_source[start : start + binding.total_len]
+                    candidate = source[start : start + binding.total_len]
                     binding.apply_flat(graph, registry, candidate)
                     squared = 0.0
-                    for x, target in rows():
-                        err = scalar(graph, registry, x) - target
-                        squared += err * err
-                    fitness.append(-(squared / 8))
+                    for x, target in ROWS:
+                        error = scalar(graph, registry, x) - target
+                        squared += error * error
+                    fitness.append(-(squared / len(ROWS)))
 
                 if kind == "facade_list":
-                    optimizer.tell(fitness)
+                    facade.tell(fitness)
                 else:
                     raw_tell(raw_optimizer, fitness)
+                t1 = ns()
+                total_samples.append(t1 - t0)
+
+                # Semantic digest is intentionally outside the timed generation region.
+                proof_buffer = array("f", batch) if kind == "facade_list" else batch
+                generation_digests.append(digest_f32_buffer(proof_buffer))
                 fitness_history.append(fitness)
-                total_samples.append(ns() - start_total)
+
                 if graph.program_identity() != program_identity:
-                    raise AssertionError("program identity changed")
+                    raise AssertionError("objective program identity changed")
                 if binding.identity() != binding_identity:
-                    raise AssertionError("binding identity changed")
+                    raise AssertionError("objective binding identity changed")
 
             bundle = host.ProgramBundle.export(graph, registry, include_state=True)
             replay_registry = stack.enter_context(host.Registry())
@@ -337,14 +356,14 @@ def objective_variant(kind):
             if replay_binding.read_flat(replay_graph, replay_registry) != binding.read_flat(graph, registry):
                 raise AssertionError("replay state mismatch")
         finally:
-            if optimizer is not None:
-                optimizer.close()
+            if facade is not None:
+                facade.close()
             if raw_optimizer is not None:
                 raw_free(raw_optimizer)
 
     return {
         "kind": kind,
-        "generation_digests": digest_history,
+        "generation_digests": generation_digests,
         "fitness_history": fitness_history,
         "full_generation": summary(total_samples),
         "checkpoint_replay": True,
@@ -364,11 +383,10 @@ with ExitStack() as stack:
         raise AssertionError(f"large dim {binding.total_len} != {EXPECTED_DIM}")
     program_identity = graph.program_identity()
     binding_identity = binding.identity()
-
     facade = run_transport("facade_list", graph, registry, binding)
     direct = run_transport("direct_f32_array", graph, registry, binding)
     if facade["generation_digests"] != direct["generation_digests"]:
-        raise AssertionError("direct f32 path changed optimizer candidates")
+        raise AssertionError("direct f32 path changed candidate bytes")
     if facade["batch_size"] != direct["batch_size"]:
         raise AssertionError("direct f32 path changed batch cardinality")
     if graph.program_identity() != program_identity or binding.identity() != binding_identity:
@@ -408,6 +426,7 @@ report = {
         },
     },
     "objective_case": {
+        "parameter_dim": 9,
         "facade_list": objective_facade,
         "direct_f32_array": objective_direct,
         "semantic_equivalence": True,
@@ -424,6 +443,7 @@ report = {
     "notes": [
         "Prototype uses only existing ABI v1 symbols and standard-library array('f').",
         "Existing host.EsOptimizer.ask() remains unchanged.",
+        "Semantic digest work is excluded from timing regions.",
         "Timing is evidence only and never a CI threshold.",
         "A positive decision only justifies a later additive public ask_f32 product slice.",
     ],
@@ -456,15 +476,7 @@ def main():
         run([sys.executable, "-m", "venv", str(venv)], cwd=root)
         python = venv / "bin" / "python"
         run(
-            [
-                str(python),
-                "-m",
-                "pip",
-                "install",
-                "--disable-pip-version-check",
-                "--no-cache-dir",
-                str(wheel_files[0]),
-            ],
+            [str(python), "-m", "pip", "install", "--disable-pip-version-check", "--no-cache-dir", str(wheel_files[0])],
             cwd=root,
         )
 
