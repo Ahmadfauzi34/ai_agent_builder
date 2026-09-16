@@ -23,6 +23,31 @@
       "stable_cross_language_abi": false
     }
   },
+  "verified_cross_language_consumers": {
+    "python": {
+      "status": "supported",
+      "package": "burn-research-ffi",
+      "distribution": "wheel",
+      "binding": "cffi",
+      "abi": "burn-research.ffi.v1",
+      "orchestration": "host_owned",
+      "consumer_proof": "scripts/audit_python_wheel.py",
+      "ci_workflow": "Python Wheel Proof",
+      "verified_matrix": {
+        "os": [
+          "linux"
+        ],
+        "architecture": [
+          "x86_64"
+        ],
+        "python_implementation": "cpython",
+        "python_versions": [
+          "3.12"
+        ]
+      },
+      "ci_smoke_required": true
+    }
+  },
   "generated_but_not_host_verified": {
     "browser": {
       "entry": "burn_research.js",
@@ -30,12 +55,16 @@
     }
   },
   "cross_language_abi": {
-    "status": "planned",
+    "status": "supported",
+    "abi": "burn-research.ffi.v1",
+    "stability": "versioned_experimental_v1",
     "stable_abi_published": false,
-    "first_priority_consumer": "python"
+    "first_priority_consumer": "python",
+    "verified_consumers": [
+      "python"
+    ]
   },
   "planned_hosts": [
-    "python",
     "go"
   ]
 }

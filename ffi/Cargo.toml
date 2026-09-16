@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [lib]
+name = "burn_research_ffi"
 crate-type = ["cdylib"]
 
 [dependencies]
