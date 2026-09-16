@@ -1,8 +1,8 @@
 # Python agent control-rollout research
 
-Status: **research workload; no product/API change**
+Status: **installed-wheel agent workload proven; no product/API change**
 
-Related: #184, #186, #188, #190, #192, #194, #196, #200, #203, #204, #205, #206, #207, #208, #209
+Related: #184, #186, #188, #190, #192, #194, #196, #200, #203, #204, #205, #206, #207, #208, #209, #210
 
 ## Question
 
@@ -123,4 +123,44 @@ It adds no NumPy, DLPack, PyO3, controller object, environment primitive, Go, or
 
 ## Current result
 
-No workload conclusion is recorded until the dedicated exact-head installed-wheel workflow completes successfully and uploads `python-agent-control-rollout-report.json`.
+Python Agent Control Rollout Research run #1 on head `64118cad1e5deeea0c0c46f1f7db35ff5634759a` completed successfully and uploaded `python-agent-control-rollout-report.json`.
+
+```text
+verdict  = PASS
+decision = PYTHON_HOST_AGENT_WORKLOAD_PROVEN
+```
+
+Workload:
+
+```text
+policy        = Linear(6 -> 2, bias=true)
+parameter dim = 14
+population    = 8
+generations   = 24
+scenarios     = 4
+horizon       = 16
+```
+
+Deterministic rollout reward improved from:
+
+```text
+zero policy              -2.4075891732
+first-generation champion -4.6974486753
+final champion           -0.5209996224
+checkpoint replay        -0.5209996224
+```
+
+In cost terms, the final champion improved by about 78.36% versus the zero-policy baseline and about 88.91% versus the first-generation champion. The stateful checkpoint replay reproduced the final rollout reward within the required `1e-9` tolerance, and the exported bundle was 501 bytes.
+
+Median timing evidence:
+
+```text
+ask_f32             0.0307 ms
+apply candidate     0.0975 ms
+rollout candidate  14.1544 ms
+tell                0.0913 ms
+```
+
+The important architectural signal is that Python f32 transport is not the dominant cost on this agent-style workload. Repeated rollout execution dominates by more than two orders of magnitude over `ask_f32`, `apply_flat`, or `tell`. This does **not** justify a new batch/trajectory primitive by itself; it only identifies repeated policy execution as the next area to measure if a larger real workload later shows unacceptable wall-clock cost.
+
+All proof conditions passed: native-f32 candidate storage, stable batch cardinality, finite fitness, stable program identity, stable binding identity, multi-generation optimizer lifecycle, and stateful ProgramBundle replay.
