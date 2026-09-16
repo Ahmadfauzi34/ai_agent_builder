@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from array import array
 from enum import IntEnum
 from typing import Any, Sequence
 
@@ -172,6 +173,19 @@ class _Buffer(_OwnedHandle):
         dest = ffi.new("float[]", size)
         _check(lib.br_v1_f32_buffer_copy(handle, dest, size), "f32 buffer copy")
         return [float(dest[i]) for i in range(size)]
+
+    def to_f32_array(self) -> array:
+        """Copy this ABI f32 buffer directly into standard-library f32 storage."""
+        handle = self._borrow()
+        n = ffi.new("size_t *")
+        _check(lib.br_v1_f32_buffer_len(handle, n), "f32 buffer len")
+        size = int(n[0])
+        if size == 0:
+            return array("f")
+        dest = array("f", [0.0]) * size
+        raw = ffi.from_buffer("float[]", dest)
+        _check(lib.br_v1_f32_buffer_copy(handle, raw, size), "f32 buffer copy")
+        return dest
 
 
 def abi_version() -> int:
@@ -480,6 +494,13 @@ class EsOptimizer(_OwnedHandle):
             _new_handle("es ask", lib.br_v1_es_ask, self._borrow())
         ) as buf:
             return buf.to_f32()
+
+    def ask_f32(self) -> array:
+        """Return the pending candidate batch as contiguous standard-library f32 storage."""
+        with _Buffer(
+            _new_handle("es ask", lib.br_v1_es_ask, self._borrow())
+        ) as buf:
+            return buf.to_f32_array()
 
     def tell(self, fitness: Sequence[float]) -> dict[str, Any]:
         values = [float(value) for value in fitness]
