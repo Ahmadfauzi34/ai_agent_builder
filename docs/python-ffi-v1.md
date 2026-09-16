@@ -1,8 +1,8 @@
 # Python-first FFI v1 proof boundary
 
-Status: **experimental semantic proof; Python is not yet a supported packaged host**
+Status: **semantic ABI proof complete; packaged Python support is verified only for the narrow matrix recorded in `docs/python-wheel-support.md`**
 
-Related: #182, #183, #184
+Related: #182, #183, #184, #185, #186
 
 ## Purpose
 
@@ -14,7 +14,7 @@ It deliberately preserves:
 burn-research Rust core
     != public Rust package API
     != C ABI v1
-    != Python facade
+    != Python package/glue
     != host objective/controller policy
 ```
 
@@ -113,11 +113,9 @@ The proof exports a learned graph, imports the bytes into a fresh registry, rebu
 
 No Python-specific checkpoint schema or pickle artifact becomes canonical state.
 
-## Current Python proof
+## Semantic proof
 
-`scripts/audit_python_ffi.py` is a **semantic CFFI consumer proof**, not yet a wheel support proof.
-
-It builds `ffi/Cargo.toml`, loads the produced Linux `cdylib` with CFFI, and checks:
+`scripts/audit_python_ffi.py` remains the direct CFFI semantic proof. It builds `ffi/Cargo.toml`, loads the produced Linux `cdylib` with CFFI, and checks:
 
 1. ABI version/capabilities;
 2. wrong-handle rejection;
@@ -127,34 +125,12 @@ It builds `ffi/Cargo.toml`, loads the produced Linux `cdylib` with CFFI, and che
 6. ES ask/tell with objective calculated in Python;
 7. stateful ProgramBundle replay into fresh objects.
 
-This CI proof is intentionally pinned to the Ubuntu runner first.
+The separate installed-wheel proof in `scripts/audit_python_wheel.py` verifies that the same ABI works after real wheel build/install from a fresh virtual environment outside the repository.
 
-## What this PR does not prove
+## Supported and unsupported scope
 
-It does **not** yet prove:
+Packaged Python support is intentionally narrower than the ABI itself. The currently verified installed-wheel matrix is recorded in `docs/python-wheel-support.md` and `docs/host-support.v1.json`.
 
-- an installable Python wheel;
-- Python support across multiple CPython versions;
-- macOS or Windows native libraries;
-- free-threaded Python support;
-- stable zero-copy NumPy semantics;
-- PyO3 compatibility or an ergonomic Python object facade;
-- C++/Go/Unity support;
-- long-term ABI stability beyond the explicit `v1` experimental surface.
+The current proof does not establish macOS, Windows, non-x86_64, PyPy, free-threaded Python, zero-copy NumPy/DLPack, PyO3 ergonomics, C++/Go/Unity support, or long-term ABI stability beyond the explicit versioned v1 contract.
 
-Therefore `docs/host-support.v1.json` must continue to list Python as planned until an installed-wheel proof passes.
-
-## Next gate before Python can be called supported
-
-The next slice should package the same ABI into a Python wheel and prove it from a fresh virtual environment outside the repository:
-
-```text
-build wheel
-    -> fresh venv
-    -> pip install wheel
-    -> import Python package
-    -> graph + binding + ES + Python objective
-    -> ProgramBundle replay
-```
-
-Only after that proof is green should the host-support manifest change Python from planned to supported.
+Any broader support claim requires its own external-consumer proof before the manifest is widened.
