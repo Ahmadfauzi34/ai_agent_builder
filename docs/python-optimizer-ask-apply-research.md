@@ -6,18 +6,32 @@ Related: #196, #199, #200, #203
 
 ## Question
 
-After #200, `host.GraphParameterBinding.apply_flat(...)` can borrow a compatible native-f32 buffer for one ABI call, but `host.EsOptimizer.ask()` still materializes its population as a Python `list[float]`.
+After #200, `host.GraphParameterBinding.apply_flat(...)` can borrow a compatible native-f32 buffer for one ABI call, but `host.EsOptimizer.ask()` still materializes its candidate batch as a Python `list[float]`.
 
 The remaining host path is therefore:
 
 ```text
 EsOptimizer.ask()
-    -> Python list[population * dim]
+    -> Python list[batch_size * dim]
     -> candidate extraction
     -> GraphParameterBinding.apply_flat(...)
 ```
 
 This research asks whether candidate extraction/materialization is now large enough to justify another Python product boundary. It does **not** assume that a new optimizer return type, facade helper, or ABI batch primitive is needed.
+
+## Cardinality contract
+
+The optimizer constructor accepts a `population` configuration, but consumers must not infer the returned candidate cardinality from that request. The authoritative contract is:
+
+```text
+batch_size = optimizer.batch_size
+len(optimizer.ask()) == batch_size * binding.total_len
+len(fitness passed to tell()) == batch_size
+```
+
+The first harness run correctly failed before producing evidence because it assumed `population=4` implied `batch_size=4`. The benchmark was then corrected to read `optimizer.batch_size` and to prove that the value remains consistent across all transport variants.
+
+This is a harness correction, not a product or optimizer semantic change.
 
 ## Installed-wheel methodology
 
@@ -27,11 +41,12 @@ The large transport case uses:
 
 ```text
 16 x Linear(64 -> 64, bias=true)
-parameter dim = 66,560
-population    = 4
+parameter dim       = 66,560
+requested population = 4
+candidate count      = optimizer.batch_size
 ```
 
-Three host-side paths are compared with independent optimizers using the same strategy, seed, population, sigma, and learning rate:
+Three host-side paths are compared with independent optimizers using the same strategy, seed, requested population, sigma, and learning rate:
 
 ```text
 A. current baseline
@@ -47,7 +62,7 @@ ask() list
 
 C. whole-batch conversion
 ask() list
-  -> one array('f', whole population)
+  -> one array('f', whole returned batch)
   -> contiguous memoryview candidate windows
   -> apply_flat(f32 view)
 ```
@@ -70,10 +85,10 @@ A small deterministic `Linear(8 -> 1)` workload runs all three variants through 
 
 ```text
 ask
- -> candidate extraction
+ -> candidate extraction using optimizer.batch_size
  -> apply
  -> graph objective over fixed rows
- -> tell
+ -> tell(batch_size fitness values)
 ```
 
 It records ask/slice/conversion/view/apply/objective/tell/full-generation timing separately. Timing remains evidence only.
@@ -82,7 +97,9 @@ It records ask/slice/conversion/view/apply/objective/tell/full-generation timing
 
 The research fails if transport variants change semantics. It proves:
 
-- optimizer population cardinality is unchanged;
+- `optimizer.batch_size` is used as the candidate-cardinality authority;
+- batch size is identical across same-config optimizer variants;
+- `ask()` length is exactly `batch_size * dim`;
 - same-seed candidate sequences have identical f32 digests across variants;
 - per-candidate and whole-batch f32 conversion preserve the already-f32 candidate values;
 - memoryview candidate windows remain one-dimensional, C-contiguous, native `f`, and exact length;
@@ -106,7 +123,9 @@ This research alone does not justify `BATCH_BOUNDARY_WORTH_PROTOTYPING`; no new 
 
 ## Current result
 
-Pending the first exact-head GitHub Actions run. Raw timing fields and the resulting decision will be added here only after the installed-wheel research workflow completes successfully.
+The initial harness attempt produced **no timing evidence** because it failed the cardinality assertion before measurement: requested population was incorrectly treated as returned batch size. That assumption is now removed.
+
+Raw timing fields and the resulting decision will be added here only after the corrected exact-head installed-wheel research workflow completes successfully and uploads its report.
 
 ## Non-goals
 
