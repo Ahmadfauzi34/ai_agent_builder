@@ -40,6 +40,15 @@ jobs:
       - name: Audit native Rust package consumer
         run: python3 scripts/audit_rust_package.py
 
+      - name: Install Python FFI proof dependency
+        run: python3 -m pip install --disable-pip-version-check "cffi>=1.17"
+
+      - name: Check language-neutral FFI crate
+        run: cargo check --manifest-path ffi/Cargo.toml
+
+      - name: Audit Python CFFI semantic consumer
+        run: python3 scripts/audit_python_ffi.py
+
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
