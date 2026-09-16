@@ -1,556 +1,379 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+REPO = Path(__file__).resolve().parents[1]
+FFI_DIR = REPO / "ffi"
+
+CONSUMER = r'''
 from __future__ import annotations
 
 import json
-from enum import IntEnum
-from typing import Any, Sequence
+import math
+import os
+import statistics
+import time
+from array import array
+from contextlib import ExitStack
+from pathlib import Path
 
-from .burn_research_ffi import ffi, lib
+import burn_research_ffi as br
+from burn_research_ffi import (
+    BurnResearchError,
+    ClosedHandleError,
+    EsOptimizer,
+    GraphBuilder,
+    GraphParameterBinding,
+    LinearLayerSpec,
+    ProgramBundle,
+    Registry,
+    Status,
+    Tensor,
+)
 
 
-class Status(IntEnum):
-    OK = 0
-    NULL_POINTER = 1
-    INVALID_HANDLE_TYPE = 2
-    INVALID_ARGUMENT = 3
-    CORE_ERROR = 4
-    PANIC = 5
-    BUFFER_TOO_SMALL = 6
+class BufferOnlyF32(array):
+    """f32 buffer whose Python iteration must never be used by the fast path."""
+
+    def __new__(cls, values):
+        return array.__new__(cls, "f", values)
+
+    def __iter__(self):
+        raise AssertionError("compatible f32 candidate fell back to Sequence iteration")
 
 
-class BurnResearchError(RuntimeError):
-    """Failure returned by the versioned burn-research foreign ABI."""
+def run_scalar(graph, registry, values: list[float]) -> float:
+    with Tensor.vector(values) as inp:
+        with graph.run(registry, inp) as out:
+            assert out.length == 1
+            result = out.to_f32()
+            assert len(result) == 1 and math.isfinite(result[0])
+            return result[0]
 
-    def __init__(self, status_code: int, context: str, diagnostic: str) -> None:
-        self.status_code = int(status_code)
-        try:
-            self.status: Status | int = Status(self.status_code)
-        except ValueError:
-            self.status = self.status_code
-        self.context = context
-        self.diagnostic = diagnostic
-        super().__init__(
-            f"{context}: status={self.status_code} diagnostic={diagnostic!r}"
+
+def build_linear_chain(stack: ExitStack, width: int, depth: int, layer_base: int):
+    registry = stack.enter_context(Registry())
+    builder = stack.enter_context(GraphBuilder(depth + 1))
+    for i in range(depth):
+        layer = stack.enter_context(
+            LinearLayerSpec(layer_base + i, width, width, bias=True)
         )
+        registry.init_layer(layer)
+        builder.add_unary(layer, i, i + 1)
+    builder.set_output(depth)
+    graph = stack.enter_context(builder.compile(registry))
+    binding = stack.enter_context(GraphParameterBinding.build(graph, registry))
+    return registry, graph, binding
 
 
-class ClosedHandleError(RuntimeError):
-    """Raised locally when Python tries to use a facade object after close()."""
+repo_root = Path(os.environ["BR_REPO_ROOT"]).resolve()
+module_path = Path(br.__file__).resolve()
+if repo_root == module_path or repo_root in module_path.parents:
+    raise AssertionError(f"wheel consumer imported from repository: {module_path}")
 
+# The ergonomic facade must not hide or replace the low-level ABI objects.
+assert br.ffi is not None and br.lib is not None
+assert int(br.lib.br_v1_abi_version()) == 1
+assert br.abi_version() == 1
+assert module_path.with_name("py.typed").is_file()
 
-def _last_error() -> str:
-    required = int(lib.br_v1_last_error_len())
-    buf = ffi.new("char[]", required + 1)
-    lib.br_v1_last_error_copy(buf, required + 1)
-    return ffi.string(buf).decode("utf-8", errors="replace")
+caps = br.capabilities()
+assert caps["schema"] == "burn-research.ffi.v1"
+assert caps["host_policy"] == "external"
 
-
-def _check(status: Any, context: str) -> None:
-    code = int(status)
-    if code != int(Status.OK):
-        raise BurnResearchError(code, context, _last_error())
-
-
-def _new_handle(context: str, fn: Any, *args: Any) -> Any:
-    out = ffi.new("br_v1_handle **")
-    _check(fn(*args, out), context)
-    if out[0] == ffi.NULL:
-        raise RuntimeError(f"{context}: ABI returned a null handle on success")
-    return out[0]
-
-
-def _u32(value: int, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an int")
-    if value < 0 or value > 0xFFFF_FFFF:
-        raise ValueError(f"{name} must fit uint32")
-    return value
-
-
-def _u8(value: int, name: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise TypeError(f"{name} must be an int")
-    if value < 0 or value > 0xFF:
-        raise ValueError(f"{name} must fit uint8")
-    return value
-
-
-def _f32_buffer_view(
-    candidate: object,
-    expected_len: int,
-) -> tuple[memoryview, Any] | None:
-    """Borrow a compatible native f32 buffer for exactly one ABI call.
-
-    Objects with non-f32 buffers fall back to the historical Sequence path. Once
-    an object presents itself as native f32 storage, however, malformed shape,
-    contiguity, or length fails locally rather than being silently reinterpreted.
-    """
-
+# Python ownership must be deterministic: double-close is harmless and a
+# closed object is rejected locally before another FFI call is attempted.
+closed_registry = Registry()
+closed_registry.close()
+closed_registry.close()
+assert closed_registry.closed
+with LinearLayerSpec(99_999, 1, 1) as scratch_layer:
     try:
-        view = memoryview(candidate)
-    except TypeError:
-        return None
+        closed_registry.init_layer(scratch_layer)
+    except ClosedHandleError:
+        pass
+    else:
+        raise AssertionError("use-after-close was not rejected locally")
 
-    if view.format != "f" or view.itemsize != 4:
-        return None
-    if view.ndim != 1:
-        raise ValueError("candidate f32 buffer must be one-dimensional")
-    if not view.c_contiguous:
-        raise ValueError("candidate f32 buffer must be C-contiguous")
-    if len(view) != expected_len:
-        raise ValueError(
-            f"candidate f32 buffer length must equal binding total_len "
-            f"({expected_len}), got {len(view)}"
+with ExitStack() as stack:
+    registry = stack.enter_context(Registry())
+    linear = stack.enter_context(LinearLayerSpec(52_001, 2, 1, bias=True))
+    registry.init_layer(linear)
+
+    builder = stack.enter_context(GraphBuilder(2))
+    builder.add_unary(linear, 0, 1).set_output(1)
+    graph = stack.enter_context(builder.compile(registry))
+    binding = stack.enter_context(GraphParameterBinding.build(graph, registry))
+
+    dim = binding.total_len
+    assert dim == 3
+    program_identity = graph.program_identity()
+    binding_identity = binding.identity()
+    assert binding.layout()
+
+    # Historical generic Sequence compatibility remains unchanged.
+    list_candidate = [0.125, -0.25, 0.5]
+    binding.apply_flat(graph, registry, list_candidate)
+    assert binding.read_flat(graph, registry) == list_candidate
+
+    tuple_candidate = (0.25, 0.5, -0.75)
+    binding.apply_flat(graph, registry, tuple_candidate)
+    assert binding.read_flat(graph, registry) == list(tuple_candidate)
+
+    # A non-f32 buffer-backed Sequence falls back to the generic Sequence path.
+    f64_candidate = array("d", [0.5, -0.25, 0.125])
+    binding.apply_flat(graph, registry, f64_candidate)
+    assert binding.read_flat(graph, registry) == [0.5, -0.25, 0.125]
+
+    # This candidate cannot be iterated. Success therefore proves the facade
+    # borrowed its compatible f32 buffer instead of normalizing a Sequence.
+    fast_candidate = BufferOnlyF32([0.75, -0.5, 0.25])
+    binding.apply_flat(graph, registry, fast_candidate)
+    assert binding.read_flat(graph, registry) == [0.75, -0.5, 0.25]
+
+    # A contiguous native-f32 memoryview follows the same stateless fast path.
+    memory_candidate_backing = array("f", [-0.25, 0.375, 0.625])
+    memory_candidate = memoryview(memory_candidate_backing)
+    binding.apply_flat(graph, registry, memory_candidate)
+    assert binding.read_flat(graph, registry) == list(memory_candidate_backing)
+
+    # Once an object presents native f32 storage, malformed layout/length fails
+    # locally instead of silently reinterpreting bytes through Sequence fallback.
+    wrong_length = array("f", [1.0, 2.0])
+    try:
+        binding.apply_flat(graph, registry, wrong_length)
+    except ValueError as exc:
+        assert "length" in str(exc)
+    else:
+        raise AssertionError("wrong-length f32 buffer was not rejected locally")
+
+    non_contiguous_backing = array("f", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    non_contiguous = memoryview(non_contiguous_backing)[::2]
+    assert len(non_contiguous) == dim and not non_contiguous.c_contiguous
+    try:
+        binding.apply_flat(graph, registry, non_contiguous)
+    except ValueError as exc:
+        assert "contiguous" in str(exc)
+    else:
+        raise AssertionError("non-contiguous f32 buffer was not rejected locally")
+
+    # Stable ABI status -> Python exception mapping remains intact for the new
+    # buffer path, and the core finite-only rejection remains atomic.
+    before_reject = binding.read_flat(graph, registry)
+    poisoned = array("f", [before_reject[0], math.nan, before_reject[2]])
+    try:
+        binding.apply_flat(graph, registry, poisoned)
+    except BurnResearchError as exc:
+        assert exc.status == Status.CORE_ERROR
+        assert exc.status_code == int(Status.CORE_ERROR)
+    else:
+        raise AssertionError("non-finite f32 buffer candidate unexpectedly succeeded")
+    assert binding.read_flat(graph, registry) == before_reject
+    assert graph.program_identity() == program_identity
+    assert binding.identity() == binding_identity
+
+    optimizer = stack.enter_context(
+        EsOptimizer.strict(
+            dim,
+            strategy=0,
+            seed=9917,
+            population=4,
+            sigma=0.2,
+            learning_rate=0.05,
+        )
+    )
+    candidates = optimizer.ask()
+    batch = optimizer.batch_size
+    assert len(candidates) == batch * dim
+
+    rows = [(-1.0, 0.5), (0.0, 0.0), (1.0, -0.5)]
+    fitness: list[float] = []
+    for i in range(batch):
+        candidate = candidates[i * dim : (i + 1) * dim]
+        assert all(math.isfinite(value) for value in candidate)
+        binding.apply_flat(graph, registry, candidate)
+
+        squared = 0.0
+        for x0, x1 in rows:
+            target = 1.5 * x0 - 0.75 * x1 + 0.25
+            error = run_scalar(graph, registry, [x0, x1]) - target
+            squared += error * error
+        fitness.append(-(squared / len(rows)))
+
+    report = optimizer.tell(fitness)
+    assert int(report["gen"]) == 1
+
+    best = optimizer.best()
+    assert len(best) == dim and all(math.isfinite(value) for value in best)
+    binding.apply_flat(graph, registry, array("f", best))
+    learned = binding.read_flat(graph, registry)
+    assert learned == list(array("f", best))
+    probe_before = run_scalar(graph, registry, [1.0, 2.0])
+
+    bundle = ProgramBundle.export(graph, registry, include_state=True)
+    assert bundle
+
+    imported_registry = stack.enter_context(Registry())
+    imported_graph = stack.enter_context(
+        ProgramBundle.import_graph(imported_registry, bundle)
+    )
+    imported_binding = stack.enter_context(
+        GraphParameterBinding.build(imported_graph, imported_registry)
+    )
+
+    assert imported_graph.program_identity() == program_identity
+    assert imported_binding.identity() == binding_identity
+    assert imported_binding.read_flat(imported_graph, imported_registry) == learned
+    probe_after = run_scalar(imported_graph, imported_registry, [1.0, 2.0])
+    assert abs(probe_after - probe_before) <= 1e-7
+
+# Timing evidence only: no CI performance threshold. The large case mirrors the
+# research scale where host marshalling was previously material.
+PERF_REPS = 9
+with ExitStack() as perf_stack:
+    _, perf_graph, perf_binding = build_linear_chain(
+        perf_stack, width=64, depth=16, layer_base=88_000
+    )
+    perf_dim = perf_binding.total_len
+    assert perf_dim == 66_560
+    perf_buffer = array(
+        "f",
+        [((((i * 37) % 101) - 50) * 0.0005) for i in range(perf_dim)],
+    )
+    perf_list = list(perf_buffer)
+
+    # Warm both paths before timing.
+    perf_binding.apply_flat(perf_graph, perf_stack._exit_callbacks and next(iter([]), None), perf_buffer) if False else None
+
+    # Registry is needed explicitly; build once more with a retained name.
+
+with ExitStack() as perf_stack:
+    perf_registry, perf_graph, perf_binding = build_linear_chain(
+        perf_stack, width=64, depth=16, layer_base=89_000
+    )
+    perf_dim = perf_binding.total_len
+    assert perf_dim == 66_560
+    perf_buffer = array(
+        "f",
+        [((((i * 37) % 101) - 50) * 0.0005) for i in range(perf_dim)],
+    )
+    perf_list = list(perf_buffer)
+    perf_binding.apply_flat(perf_graph, perf_registry, perf_list)
+    perf_binding.apply_flat(perf_graph, perf_registry, perf_buffer)
+
+    list_samples: list[int] = []
+    buffer_samples: list[int] = []
+    for _ in range(PERF_REPS):
+        t0 = time.perf_counter_ns()
+        perf_binding.apply_flat(perf_graph, perf_registry, perf_list)
+        t1 = time.perf_counter_ns()
+        perf_binding.apply_flat(perf_graph, perf_registry, perf_buffer)
+        t2 = time.perf_counter_ns()
+        list_samples.append(t1 - t0)
+        buffer_samples.append(t2 - t1)
+
+    list_median_ms = statistics.median(list_samples) / 1_000_000.0
+    buffer_median_ms = statistics.median(buffer_samples) / 1_000_000.0
+    performance_ratio = list_median_ms / max(buffer_median_ms, 1e-12)
+
+print(json.dumps({
+    "verdict": "PASS",
+    "consumer": "installed-wheel-python-facade",
+    "abi_version": br.abi_version(),
+    "module_path": str(module_path),
+    "parameter_dim": dim,
+    "checkpoint_bytes": len(bundle),
+    "replay_output": probe_after,
+    "raw_cffi_available": True,
+    "typed_marker": True,
+    "f32_buffer_fast_path": True,
+    "sequence_fallback": True,
+    "performance_evidence": {
+        "parameter_dim": perf_dim,
+        "repetitions": PERF_REPS,
+        "list_fallback_median_ms": list_median_ms,
+        "f32_buffer_median_ms": buffer_median_ms,
+        "list_over_buffer_ratio": performance_ratio,
+        "timing_is_ci_threshold": False,
+    },
+}, sort_keys=True))
+'''
+
+
+def run(
+    args: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    completed = subprocess.run(
+        args,
+        cwd=cwd,
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        raise SystemExit(
+            f"command failed ({completed.returncode}): {' '.join(args)}\n"
+            f"cwd: {cwd}\nstdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+    return completed
+
+
+def main() -> None:
+    with tempfile.TemporaryDirectory(prefix="burn-research-python-wheel-") as tmp:
+        root = Path(tmp)
+        wheels = root / "wheels"
+        wheels.mkdir()
+
+        run(
+            [sys.executable, "-m", "maturin", "build", "--out", str(wheels)],
+            cwd=FFI_DIR,
+        )
+        wheel_files = sorted(wheels.glob("*.whl"))
+        if len(wheel_files) != 1:
+            raise SystemExit(f"expected exactly one wheel, found: {wheel_files}")
+        wheel = wheel_files[0]
+
+        venv = root / "venv"
+        run([sys.executable, "-m", "venv", str(venv)], cwd=root)
+        venv_python = venv / "bin" / "python"
+        if not venv_python.is_file():
+            raise SystemExit(f"missing venv interpreter: {venv_python}")
+
+        run(
+            [
+                str(venv_python),
+                "-m",
+                "pip",
+                "install",
+                "--disable-pip-version-check",
+                "--no-cache-dir",
+                str(wheel),
+            ],
+            cwd=root,
         )
 
-    raw = ffi.from_buffer("float[]", view)
-    return view, raw
+        consumer = root / "consumer.py"
+        consumer.write_text(CONSUMER, encoding="utf-8")
+        env = os.environ.copy()
+        env.pop("PYTHONPATH", None)
+        env["PYTHONNOUSERSITE"] = "1"
+        env["BR_REPO_ROOT"] = str(REPO.resolve())
+        completed = run([str(venv_python), str(consumer)], cwd=root, env=env)
+
+        lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+        if not lines:
+            raise SystemExit("installed-wheel consumer produced no output")
+        print(lines[-1])
 
 
-class _OwnedHandle:
-    __slots__ = ("_handle", "_closed")
-
-    def __init__(self, handle: Any) -> None:
-        if handle == ffi.NULL:
-            raise ValueError("owned handle cannot be null")
-        self._handle = handle
-        self._closed = False
-
-    @property
-    def closed(self) -> bool:
-        return self._closed
-
-    def _borrow(self) -> Any:
-        if self._closed:
-            raise ClosedHandleError(
-                f"{type(self).__name__} has already been closed"
-            )
-        return self._handle
-
-    def close(self) -> None:
-        if self._closed:
-            return
-        handle = self._handle
-        self._handle = ffi.NULL
-        self._closed = True
-        _check(lib.br_v1_handle_free(handle), f"close {type(self).__name__}")
-
-    def __enter__(self) -> _OwnedHandle:
-        self._borrow()
-        return self
-
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
-        self.close()
-
-    def __del__(self) -> None:
-        try:
-            self.close()
-        except Exception:
-            # Destructors must never leak exceptions. Deterministic callers should
-            # use close() or a context manager and will receive the ABI error there.
-            pass
-
-
-class _Buffer(_OwnedHandle):
-    def to_bytes(self) -> bytes:
-        handle = self._borrow()
-        n = ffi.new("size_t *")
-        _check(lib.br_v1_u8_buffer_len(handle, n), "u8 buffer len")
-        size = int(n[0])
-        if size == 0:
-            return b""
-        dest = ffi.new("uint8_t[]", size)
-        _check(lib.br_v1_u8_buffer_copy(handle, dest, size), "u8 buffer copy")
-        return bytes(ffi.buffer(dest, size))
-
-    def to_f32(self) -> list[float]:
-        handle = self._borrow()
-        n = ffi.new("size_t *")
-        _check(lib.br_v1_f32_buffer_len(handle, n), "f32 buffer len")
-        size = int(n[0])
-        if size == 0:
-            return []
-        dest = ffi.new("float[]", size)
-        _check(lib.br_v1_f32_buffer_copy(handle, dest, size), "f32 buffer copy")
-        return [float(dest[i]) for i in range(size)]
-
-
-def abi_version() -> int:
-    return int(lib.br_v1_abi_version())
-
-
-def capabilities() -> dict[str, Any]:
-    with _Buffer(_new_handle("capabilities", lib.br_v1_capabilities_json)) as buf:
-        return json.loads(buf.to_bytes().decode("utf-8"))
-
-
-class LinearLayerSpec(_OwnedHandle):
-    def __init__(
-        self,
-        layer_id: int,
-        in_dim: int,
-        out_dim: int,
-        *,
-        bias: bool = True,
-    ) -> None:
-        handle = _new_handle(
-            "linear layer spec",
-            lib.br_v1_layer_linear,
-            _u32(layer_id, "layer_id"),
-            _u32(in_dim, "in_dim"),
-            _u32(out_dim, "out_dim"),
-            1 if bias else 0,
-        )
-        super().__init__(handle)
-
-
-class Registry(_OwnedHandle):
-    def __init__(self) -> None:
-        super().__init__(_new_handle("registry new", lib.br_v1_registry_new))
-
-    def init_layer(self, layer: LinearLayerSpec) -> None:
-        if not isinstance(layer, LinearLayerSpec):
-            raise TypeError("layer must be LinearLayerSpec")
-        _check(
-            lib.br_v1_registry_init_layer(self._borrow(), layer._borrow()),
-            "registry init layer",
-        )
-
-
-class Tensor(_OwnedHandle):
-    @classmethod
-    def from_f32(
-        cls,
-        values: Sequence[float],
-        shape: tuple[int, int, int, int],
-    ) -> Tensor:
-        if len(shape) != 4:
-            raise ValueError("shape must contain exactly four dimensions")
-        dims = tuple(_u32(dim, f"shape[{i}]") for i, dim in enumerate(shape))
-        data = [float(value) for value in values]
-        raw = ffi.new("float[]", data)
-        return cls(
-            _new_handle(
-                "tensor new f32",
-                lib.br_v1_tensor_new_f32,
-                raw,
-                len(data),
-                dims[0],
-                dims[1],
-                dims[2],
-                dims[3],
-            )
-        )
-
-    @classmethod
-    def vector(cls, values: Sequence[float]) -> Tensor:
-        data = [float(value) for value in values]
-        return cls.from_f32(data, (1, len(data), 1, 1))
-
-    @property
-    def length(self) -> int:
-        out = ffi.new("size_t *")
-        _check(lib.br_v1_tensor_len(self._borrow(), out), "tensor len")
-        return int(out[0])
-
-    def to_f32(self) -> list[float]:
-        size = self.length
-        if size == 0:
-            return []
-        dest = ffi.new("float[]", size)
-        _check(
-            lib.br_v1_tensor_copy_f32(self._borrow(), dest, size),
-            "tensor copy f32",
-        )
-        return [float(dest[i]) for i in range(size)]
-
-
-class Graph(_OwnedHandle):
-    def program_identity(self) -> str:
-        with _Buffer(
-            _new_handle(
-                "graph program identity",
-                lib.br_v1_graph_program_identity,
-                self._borrow(),
-            )
-        ) as buf:
-            return buf.to_bytes().decode("utf-8")
-
-    def run(self, registry: Registry, input_tensor: Tensor) -> Tensor:
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        if not isinstance(input_tensor, Tensor):
-            raise TypeError("input_tensor must be Tensor")
-        return Tensor(
-            _new_handle(
-                "graph run",
-                lib.br_v1_graph_run,
-                self._borrow(),
-                registry._borrow(),
-                input_tensor._borrow(),
-            )
-        )
-
-
-class GraphBuilder(_OwnedHandle):
-    def __init__(self, num_slots: int) -> None:
-        super().__init__(
-            _new_handle(
-                "graph builder new",
-                lib.br_v1_graph_builder_new,
-                _u32(num_slots, "num_slots"),
-            )
-        )
-
-    def add_unary(
-        self,
-        layer: LinearLayerSpec,
-        input_slot: int,
-        output_slot: int,
-    ) -> GraphBuilder:
-        if not isinstance(layer, LinearLayerSpec):
-            raise TypeError("layer must be LinearLayerSpec")
-        _check(
-            lib.br_v1_graph_builder_add_unary(
-                self._borrow(),
-                layer._borrow(),
-                _u8(input_slot, "input_slot"),
-                _u8(output_slot, "output_slot"),
-            ),
-            "graph builder add unary",
-        )
-        return self
-
-    def set_output(self, output_slot: int) -> GraphBuilder:
-        _check(
-            lib.br_v1_graph_builder_set_output(
-                self._borrow(), _u8(output_slot, "output_slot")
-            ),
-            "graph builder set output",
-        )
-        return self
-
-    def compile(self, registry: Registry) -> Graph:
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        return Graph(
-            _new_handle(
-                "graph builder compile",
-                lib.br_v1_graph_builder_compile,
-                self._borrow(),
-                registry._borrow(),
-            )
-        )
-
-
-class GraphParameterBinding(_OwnedHandle):
-    @classmethod
-    def build(cls, graph: Graph, registry: Registry) -> GraphParameterBinding:
-        if not isinstance(graph, Graph):
-            raise TypeError("graph must be Graph")
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        return cls(
-            _new_handle(
-                "binding build",
-                lib.br_v1_binding_build,
-                graph._borrow(),
-                registry._borrow(),
-            )
-        )
-
-    @property
-    def total_len(self) -> int:
-        out = ffi.new("size_t *")
-        _check(lib.br_v1_binding_total_len(self._borrow(), out), "binding total len")
-        return int(out[0])
-
-    def layout(self) -> dict[str, Any]:
-        with _Buffer(
-            _new_handle(
-                "binding layout",
-                lib.br_v1_binding_layout_json,
-                self._borrow(),
-            )
-        ) as buf:
-            return json.loads(buf.to_bytes().decode("utf-8"))
-
-    def identity(self) -> str:
-        with _Buffer(
-            _new_handle(
-                "binding identity",
-                lib.br_v1_binding_identity_json,
-                self._borrow(),
-            )
-        ) as buf:
-            return buf.to_bytes().decode("utf-8")
-
-    def read_flat(self, graph: Graph, registry: Registry) -> list[float]:
-        if not isinstance(graph, Graph):
-            raise TypeError("graph must be Graph")
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        with _Buffer(
-            _new_handle(
-                "binding read flat",
-                lib.br_v1_binding_read_flat,
-                self._borrow(),
-                graph._borrow(),
-                registry._borrow(),
-            )
-        ) as buf:
-            return buf.to_f32()
-
-    def apply_flat(
-        self,
-        graph: Graph,
-        registry: Registry,
-        candidate: Sequence[float],
-    ) -> None:
-        if not isinstance(graph, Graph):
-            raise TypeError("graph must be Graph")
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-
-        expected_len = self.total_len
-        borrowed = _f32_buffer_view(candidate, expected_len)
-        if borrowed is not None:
-            # Keep both the memoryview and CFFI cdata alive until the ABI call
-            # returns. No pointer/view is stored on the facade object.
-            view, raw = borrowed
-            _check(
-                lib.br_v1_binding_apply_flat(
-                    self._borrow(),
-                    graph._borrow(),
-                    registry._borrow(),
-                    raw,
-                    len(view),
-                ),
-                "binding apply flat",
-            )
-            return
-
-        values = [float(value) for value in candidate]
-        raw = ffi.new("float[]", values)
-        _check(
-            lib.br_v1_binding_apply_flat(
-                self._borrow(),
-                graph._borrow(),
-                registry._borrow(),
-                raw,
-                len(values),
-            ),
-            "binding apply flat",
-        )
-
-
-class EsOptimizer(_OwnedHandle):
-    @classmethod
-    def strict(
-        cls,
-        dim: int,
-        *,
-        strategy: int = 0,
-        seed: int = 0,
-        population: int = 4,
-        sigma: float = 0.2,
-        learning_rate: float | None = None,
-    ) -> EsOptimizer:
-        return cls(
-            _new_handle(
-                "es strict",
-                lib.br_v1_es_strict,
-                _u32(dim, "dim"),
-                _u8(strategy, "strategy"),
-                _u32(seed, "seed"),
-                _u32(population, "population"),
-                float(sigma),
-                0 if learning_rate is None else 1,
-                0.0 if learning_rate is None else float(learning_rate),
-            )
-        )
-
-    @property
-    def batch_size(self) -> int:
-        out = ffi.new("uint32_t *")
-        _check(lib.br_v1_es_batch_size(self._borrow(), out), "es batch size")
-        return int(out[0])
-
-    def ask(self) -> list[float]:
-        with _Buffer(
-            _new_handle("es ask", lib.br_v1_es_ask, self._borrow())
-        ) as buf:
-            return buf.to_f32()
-
-    def tell(self, fitness: Sequence[float]) -> dict[str, Any]:
-        values = [float(value) for value in fitness]
-        raw = ffi.new("float[]", values)
-        with _Buffer(
-            _new_handle(
-                "es tell",
-                lib.br_v1_es_tell,
-                self._borrow(),
-                raw,
-                len(values),
-            )
-        ) as buf:
-            return json.loads(buf.to_bytes().decode("utf-8"))
-
-    def best(self) -> list[float]:
-        with _Buffer(
-            _new_handle("es best", lib.br_v1_es_best, self._borrow())
-        ) as buf:
-            return buf.to_f32()
-
-
-class ProgramBundle:
-    """Canonical ProgramBundle bytes exposed through the existing ABI v1."""
-
-    @staticmethod
-    def export(graph: Graph, registry: Registry, *, include_state: bool = True) -> bytes:
-        if not isinstance(graph, Graph):
-            raise TypeError("graph must be Graph")
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        with _Buffer(
-            _new_handle(
-                "program bundle export",
-                lib.br_v1_program_bundle_export,
-                graph._borrow(),
-                registry._borrow(),
-                1 if include_state else 0,
-            )
-        ) as buf:
-            return buf.to_bytes()
-
-    @staticmethod
-    def import_graph(registry: Registry, payload: bytes | bytearray | memoryview) -> Graph:
-        if not isinstance(registry, Registry):
-            raise TypeError("registry must be Registry")
-        data = bytes(payload)
-        raw = ffi.new("uint8_t[]", data)
-        return Graph(
-            _new_handle(
-                "program bundle import",
-                lib.br_v1_program_bundle_import,
-                registry._borrow(),
-                raw,
-                len(data),
-            )
-        )
-
-
-__all__ = [
-    "BurnResearchError",
-    "ClosedHandleError",
-    "EsOptimizer",
-    "Graph",
-    "GraphBuilder",
-    "GraphParameterBinding",
-    "LinearLayerSpec",
-    "ProgramBundle",
-    "Registry",
-    "Status",
-    "Tensor",
-    "abi_version",
-    "capabilities",
-]
+if __name__ == "__main__":
+    main()

@@ -26,7 +26,13 @@
   "verified_cross_language_consumers": {
     "python": {
       "status": "supported",
+      "role": "first_class_host_layer",
       "package": "burn-research-ffi",
+      "public_namespace": "burn_research_ffi.host",
+      "host_api": "burn-research.python-host.v1",
+      "typed": true,
+      "raw_ffi_primary": false,
+      "raw_ffi_escape_hatch": "burn_research_ffi.ffi/lib",
       "distribution": "wheel",
       "binding": "cffi",
       "abi": "burn-research.ffi.v1",
@@ -64,7 +70,5 @@
       "python"
     ]
   },
-  "planned_hosts": [
-    "go"
-  ]
+  "planned_hosts": []
 }
