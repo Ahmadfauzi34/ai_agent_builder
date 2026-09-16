@@ -1,6 +1,6 @@
 # Python candidate apply decomposition research
 
-Status: **research candidate pending CI evidence**
+Status: **evidence captured — prefer host transport investigation before core cache**
 
 Related: #190, #192, #193
 
@@ -109,7 +109,7 @@ The report records median/min/p90/max plus descriptive ratios/deltas. Timing is 
 
 ## Semantic proof
 
-For every case, the research must prove:
+For every case, the research proves:
 
 1. the installed module comes from `site-packages`, not the repository checkout;
 2. raw ABI version remains v1;
@@ -124,12 +124,51 @@ For every case, the research must prove:
 
 Checkpoint replay is already covered by #192 and the existing regression workflows, so this micro-decomposition does not duplicate that proof.
 
-## Decision rule
+## Observed evidence
 
-Do not infer the next optimization until the decomposition is observed.
+The first CI evidence run passed all semantic assertions. Median timings were:
 
-If raw preallocated ABI/core apply remains close to facade end-to-end cost, the next investigation may target the core apply path while preserving atomicity and identity validation.
+| Case | Params | Python normalize | CFFI alloc/copy | Raw preallocated apply | Raw allocate+apply | Facade end-to-end |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 owner / w64 | 4,160 | 0.055 ms | 0.034 ms | 0.084 ms | 0.119 ms | 0.175 ms |
+| 1 owner / w128 | 16,512 | 0.220 ms | 0.133 ms | 0.232 ms | 0.370 ms | 0.665 ms |
+| 4 owners / w64 | 16,640 | 0.221 ms | 0.134 ms | 0.335 ms | 0.482 ms | 0.698 ms |
+| 16 owners / w64 | 66,560 | 0.850 ms | 0.532 ms | 1.317 ms | 1.863 ms | 2.716 ms |
 
-If Python normalization and CFFI allocation account for a substantial share, prefer a host-side transport improvement before touching core semantics. Any transport proposal should first consider standard Python buffer-capable objects and should not add a third-party dependency or ABI widening without a separate proof.
+The decomposition is internally consistent. For the largest case:
 
-If neither side is sufficiently dominant relative to graph execution, keep the current implementation unchanged.
+```text
+Python normalization      0.850 ms
+CFFI allocation/copy     0.532 ms
+raw ABI/core apply       1.317 ms
+-------------------------------
+component sum            2.698 ms
+facade end-to-end        2.716 ms
+```
+
+The component sum is within about 0.018 ms of the observed facade median. Separately, `raw allocate+apply - raw preallocated apply` is about 0.546 ms, closely matching the independently measured 0.532 ms CFFI allocation/copy cost.
+
+This means the facade cost is not dominated by a hidden single layer. At 66,560 parameters, raw preallocated ABI/core apply accounts for about **48.5%** of facade median time, while Python normalization plus CFFI allocation/copy account for roughly the other half.
+
+The same broad pattern appears across the matrix. Owner count increases raw/core work, but the previous #192 scaling evidence already showed approximately linear behavior rather than a pathological owner-count explosion.
+
+## Decision
+
+Current evidence does **not** justify adding a `GraphParameterBinding` cache or weakening validation/atomicity.
+
+The next investigation should target the Python transport boundary first because it represents a comparable or slightly larger share of facade cost and can potentially be improved without changing ABI v1 or core binding semantics.
+
+The preferred next proof is a standard-Python contiguous f32 buffer path, such as `array('f')` or another buffer-protocol-compatible object used with CFFI `from_buffer`, while retaining the existing list/Sequence path for compatibility.
+
+That proposal must be measured before modifying the facade. It must prove lifetime safety, contiguity/type checks, exact state application, unchanged status/error semantics, and no new third-party dependency.
+
+Do **not** add NumPy, DLPack, PyO3, a new `br_v1_*` symbol, or a binding cache from this result alone.
+
+## Current decision labels
+
+```text
+KEEP_ABI_V1_UNCHANGED
+KEEP_BINDING_ATOMICITY_AND_IDENTITY_VALIDATION
+DO_NOT_ADD_BINDING_CACHE_YET
+INVESTIGATE_STANDARD_PYTHON_F32_BUFFER_FAST_PATH_NEXT
+```
