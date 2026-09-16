@@ -25,6 +25,7 @@ uint32_t br_v1_abi_version(void);
 size_t br_v1_last_error_len(void);
 size_t br_v1_last_error_copy(char *dest, size_t capacity);
 br_v1_status br_v1_handle_free(br_v1_handle *handle);
+br_v1_status br_v1_capabilities_json(br_v1_handle **out);
 
 br_v1_status br_v1_registry_new(br_v1_handle **out);
 br_v1_status br_v1_layer_linear(uint32_t layer_id, uint32_t in_dim, uint32_t out_dim, uint8_t bias, br_v1_handle **out);
