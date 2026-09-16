@@ -1,6 +1,6 @@
 # Python optimizer direct-f32 prototype research
 
-Status: **prototype measurement; supported product API unchanged**
+Status: **measured; supported product API unchanged**
 
 Related: #200, #203, #204, #205, #206
 
@@ -56,7 +56,7 @@ The large case reuses the established workload:
 16 x Linear(64 -> 64, bias=true)
 parameter dimension = 66,560
 requested population = 4
-candidate count = optimizer batch_size after ask
+observed batch size = 4
 ```
 
 Two same-seed optimizer paths are compared:
@@ -83,9 +83,11 @@ The prototype records separately:
 - `apply_flat` time;
 - post-ask transport time;
 - `ask + transport` time;
-- complete deterministic objective-generation time.
+- complete deterministic objective-generation time as a descriptive control.
 
 Semantic digest computation is deliberately outside the timed regions.
+
+The product decision uses only the large-case `ask + transport` comparison. The objective control is not used to select the product verdict because the direct prototype invokes the existing low-level `tell` ABI directly while the baseline invokes the facade `tell()` path. Objective timing is therefore descriptive only; objective candidate digests, fitness history, identities, and replay are the semantic evidence that matters.
 
 ## Semantic proof boundary
 
@@ -101,10 +103,11 @@ No timing result is accepted unless the installed-wheel run proves:
 - direct candidate windows are one-dimensional, C-contiguous native f32 views of exact parameter length;
 - graph program identity remains stable;
 - GraphParameterBinding identity remains stable;
-- parameter application continues to use existing core finite/fail-closed semantics;
 - deterministic objective fitness history is identical across variants;
 - stateful ProgramBundle replay preserves program identity, binding identity, and final parameter state;
 - every raw ABI optimizer/buffer/report handle opened by the prototype is deterministically freed.
+
+Finite/fail-closed parameter application is not reimplemented by this prototype. It continues to be owned by the existing `GraphParameterBinding.apply_flat` core/ABI boundary, and the exact-head Python Wheel Proof plus Python F32 Buffer Fast Path Research remain the regression guards for wrong-length/non-finite atomic rejection on that same buffer path.
 
 Timing is evidence only and never a CI correctness threshold.
 
@@ -126,19 +129,76 @@ KEEP_LIST_API_ONLY
 
 The 10% trigger is not a performance guarantee or support threshold. It is only a conservative signal for whether a later additive Python product slice is worth implementing and proving separately.
 
-## Positive-result continuation
+## Valid measurement
 
-If the prototype returns `PUBLIC_ASK_F32_WORTH_IMPLEMENTING`, the next product PR should remain narrow:
+The first valid installed-wheel measurement came from **Python Optimizer Direct F32 Research run #2** on head:
+
+```text
+fc4297c5fa096c971baf9ba770bd5d8067ab63fa
+```
+
+The report returned:
+
+```text
+verdict  = PASS
+decision = PUBLIC_ASK_F32_WORTH_IMPLEMENTING
+```
+
+Large-case medians:
+
+| Path / component | Facade list | Direct f32 |
+| --- | ---: | ---: |
+| `ask` / materialization | 35.516 ms | 11.062 ms |
+| candidate window | 0.187 ms | 0.0026 ms |
+| `apply_flat` per candidate | 5.476 ms | 2.872 ms |
+| post-ask transport | 23.227 ms | 11.656 ms |
+| `ask + transport` | 58.544 ms | 22.869 ms |
+
+Derived evidence:
+
+```text
+direct ask speedup             = 3.211x
+direct ask + transport speedup = 2.560x
+```
+
+So the direct-buffer prototype reduces median `ask + transport` from about **58.54 ms to 22.87 ms**, roughly a **61% reduction**, while avoiding any ABI widening. The optimizer-side materialization alone improves from about **35.52 ms to 11.06 ms**, showing that Python-list construction was a substantial part of the remaining host cost at this parameter dimension.
+
+The direct candidate bytes are exactly identical to the facade-list candidate bytes across all seven measured generations. Both paths observed batch size 4, and program identity plus binding identity remained stable.
+
+## Objective semantic control
+
+The deterministic 9-parameter objective workload produced identical candidate digests and identical fitness history for all five generations. Stateful ProgramBundle replay preserved program identity, binding identity, and final parameter state in both variants.
+
+The measured full-generation medians were close:
+
+```text
+facade list       10.809 ms
+direct f32        10.702 ms
+```
+
+These numbers are descriptive only and are not part of the product decision, because the prototype and facade use different Python wrappers around the same existing `tell` ABI. The important objective result is semantic equivalence, not the small timing difference.
+
+## Decision
+
+The evidence supports:
+
+```text
+PUBLIC_ASK_F32_WORTH_IMPLEMENTING
+```
+
+This means a separate additive Python product slice is justified. It does **not** mean this research PR itself changes the supported facade.
+
+The narrow continuation is:
 
 ```text
 existing ask() -> list[float]      remains unchanged
-new additive ask_f32()             returns standard-library f32 buffer
+new additive ask_f32()             returns standard-library array('f')
 ABI v1                              unchanged
 Rust optimizer algorithm           unchanged
 GraphParameterBinding core         unchanged
 ```
 
-Any product promotion must add first-class installed-wheel proof for compatibility, lifecycle, exact candidate bytes, malformed/closed-handle behavior, and checkpoint/objective semantics. The prototype itself does not add that API.
+A product PR should implement the direct-copy operation behind the typed facade rather than requiring callers to use the raw `ffi/lib` escape hatch. It should reuse existing `br_v1_es_ask`, `br_v1_f32_buffer_len`, and `br_v1_f32_buffer_copy`, and add first-class installed-wheel proof for exact byte equivalence, lifecycle/cardinality, ordinary `ask()` compatibility, deterministic handle cleanup, and closed-handle/error behavior.
 
 ## Non-goals
 
@@ -156,6 +216,17 @@ This slice does not change:
 
 It adds no NumPy, DLPack, PyO3, persistent CFFI pointer cache, native batch graph primitive, Go, or C++ support.
 
-## Current result
+## Final merge requirements
 
-No performance conclusion is recorded until the dedicated exact-head installed-wheel workflow completes successfully and uploads `python-optimizer-direct-f32-report.json`.
+On the exact documentation head require:
+
+- Python Optimizer Direct F32 Research green with report upload;
+- Python Optimizer Ask Apply Research green;
+- Python Wheel Proof green;
+- Python F32 Buffer Fast Path Research green;
+- Python Apply Decomposition Research green;
+- Python Binding Scaling Research green;
+- Python Workload Research green;
+- full Rust AI CI green through native package, FFI/CFFI, WASM/Node, graph/ES/checkpoint, Math v1-v9, Resolution, host tests, and artifact upload;
+- no blocking reviews or unresolved review threads;
+- diff remains exactly the three research/prototype files for #206.
