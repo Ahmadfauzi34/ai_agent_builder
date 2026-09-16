@@ -74,6 +74,38 @@ def _u8(value: int, name: str) -> int:
     return value
 
 
+def _f32_buffer_view(
+    candidate: object,
+    expected_len: int,
+) -> tuple[memoryview, Any] | None:
+    """Borrow a compatible native f32 buffer for exactly one ABI call.
+
+    Objects with non-f32 buffers fall back to the historical Sequence path. Once
+    an object presents itself as native f32 storage, however, malformed shape,
+    contiguity, or length fails locally rather than being silently reinterpreted.
+    """
+
+    try:
+        view = memoryview(candidate)
+    except TypeError:
+        return None
+
+    if view.format != "f" or view.itemsize != 4:
+        return None
+    if view.ndim != 1:
+        raise ValueError("candidate f32 buffer must be one-dimensional")
+    if not view.c_contiguous:
+        raise ValueError("candidate f32 buffer must be C-contiguous")
+    if len(view) != expected_len:
+        raise ValueError(
+            f"candidate f32 buffer length must equal binding total_len "
+            f"({expected_len}), got {len(view)}"
+        )
+
+    raw = ffi.from_buffer("float[]", view)
+    return view, raw
+
+
 class _OwnedHandle:
     __slots__ = ("_handle", "_closed")
 
@@ -378,6 +410,25 @@ class GraphParameterBinding(_OwnedHandle):
             raise TypeError("graph must be Graph")
         if not isinstance(registry, Registry):
             raise TypeError("registry must be Registry")
+
+        expected_len = self.total_len
+        borrowed = _f32_buffer_view(candidate, expected_len)
+        if borrowed is not None:
+            # Keep both the memoryview and CFFI cdata alive until the ABI call
+            # returns. No pointer/view is stored on the facade object.
+            view, raw = borrowed
+            _check(
+                lib.br_v1_binding_apply_flat(
+                    self._borrow(),
+                    graph._borrow(),
+                    registry._borrow(),
+                    raw,
+                    len(view),
+                ),
+                "binding apply flat",
+            )
+            return
+
         values = [float(value) for value in candidate]
         raw = ffi.new("float[]", values)
         _check(
