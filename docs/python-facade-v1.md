@@ -1,8 +1,8 @@
 # Python facade v1 boundary
 
-Status: **candidate pending installed-wheel proof**
+Status: **proven on the verified installed-wheel Python slice**
 
-Related: #184, #185, #186, #187
+Related: #184, #185, #186, #187, #188
 
 ## Purpose
 
@@ -119,9 +119,9 @@ program identity
 
 ## Installed-wheel proof
 
-`scripts/audit_python_wheel.py` is changed so the real workload runs through the facade after installing the wheel into a fresh external venv.
+`scripts/audit_python_wheel.py` runs the real workload through the facade after installing the wheel into a fresh external venv.
 
-Required proof:
+The proof verifies:
 
 1. import comes from `site-packages`, not checkout;
 2. raw `ffi` / `lib` remain available;
@@ -131,6 +131,14 @@ Required proof:
 6. non-finite parameter candidate becomes `BurnResearchError(Status.CORE_ERROR)` and leaves parameters unchanged;
 7. graph + binding + ES + Python objective executes through facade methods;
 8. stateful `ProgramBundle` replay preserves program identity, binding identity, learned flat state, and output.
+
+Initial proof on PR #188 head `d7ab7b066324cedd62059d3e4d418c1fe8ccd6fb`:
+
+- Python Wheel Proof #9: green;
+- Rust AI CI #460: full green;
+- no core `src/` or ABI header/implementation changes were required.
+
+Because this documentation update changes the PR head, the same installed-wheel and full regression workflows must also be green on the final documentation head before merge.
 
 ## Non-goals
 
@@ -149,4 +157,4 @@ This slice does not add:
 
 ## Promotion rule
 
-Do not describe the facade as proven merely because the Python source imports in-tree. Require the installed-wheel workflow and the full existing Rust AI CI to pass on the exact PR head first.
+The facade is considered supported only within the Python wheel support matrix already recorded in `docs/host-support.v1.json`. This proof does not widen the OS, architecture, or Python-version matrix and does not change the experimental/versioned status of the underlying ABI.
