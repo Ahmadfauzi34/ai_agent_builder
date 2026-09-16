@@ -31,7 +31,7 @@ from burn_research_ffi import host
 TRANSPORT_REPS = 7
 CONTROL_REPS = 11
 OBJECTIVE_REPS = 5
-POPULATION = 4
+REQUESTED_POPULATION = 4
 LARGE_WIDTH = 64
 LARGE_DEPTH = 16
 EXPECTED_LARGE_DIM = 66_560
@@ -79,7 +79,7 @@ def new_optimizer(dim):
         dim,
         strategy=0,
         seed=SEED,
-        population=POPULATION,
+        population=REQUESTED_POPULATION,
         sigma=0.2,
         learning_rate=0.05,
     )
@@ -91,16 +91,19 @@ def transport_variant(name, graph, registry, binding):
     post_ns, total_ns, digests = [], [], []
 
     with new_optimizer(dim) as optimizer:
-        if optimizer.batch_size != POPULATION:
-            raise AssertionError("optimizer batch size mismatch")
+        batch_size = optimizer.batch_size
+        if batch_size <= 0:
+            raise AssertionError("optimizer batch size must be positive")
         for rep in range(TRANSPORT_REPS):
             whole_start = ns()
             t0 = ns()
             batch = optimizer.ask()
             t1 = ns()
             ask_ns.append(t1 - t0)
-            if len(batch) != POPULATION * dim:
-                raise AssertionError(f"{name}: ask cardinality mismatch")
+            if len(batch) != batch_size * dim:
+                raise AssertionError(
+                    f"{name}: ask length {len(batch)} != {batch_size * dim}"
+                )
             digests.append(digest_f32(batch))
 
             post_start = ns()
@@ -109,7 +112,7 @@ def transport_variant(name, graph, registry, binding):
             validation_view = None
 
             if name == "list_slice":
-                for index in range(POPULATION):
+                for index in range(batch_size):
                     start = index * dim
                     s0 = ns()
                     candidate = batch[start : start + dim]
@@ -119,11 +122,11 @@ def transport_variant(name, graph, registry, binding):
                     binding.apply_flat(graph, registry, candidate)
                     a1 = ns()
                     apply_ns.append(a1 - a0)
-                    if rep == 0 and index == POPULATION - 1:
+                    if rep == 0 and index == batch_size - 1:
                         expected = candidate
 
             elif name == "per_candidate_array":
-                for index in range(POPULATION):
+                for index in range(batch_size):
                     start = index * dim
                     s0 = ns()
                     candidate_list = batch[start : start + dim]
@@ -137,7 +140,7 @@ def transport_variant(name, graph, registry, binding):
                     binding.apply_flat(graph, registry, candidate)
                     a1 = ns()
                     apply_ns.append(a1 - a0)
-                    if rep == 0 and index == POPULATION - 1:
+                    if rep == 0 and index == batch_size - 1:
                         expected = candidate_list
                         validation_buffer = candidate
 
@@ -154,7 +157,7 @@ def transport_variant(name, graph, registry, binding):
                     or whole_view.itemsize != 4
                 ):
                     raise AssertionError("whole-batch buffer is not native contiguous f32")
-                for index in range(POPULATION):
+                for index in range(batch_size):
                     start = index * dim
                     v0 = ns()
                     candidate = whole_view[start : start + dim]
@@ -172,7 +175,7 @@ def transport_variant(name, graph, registry, binding):
                     binding.apply_flat(graph, registry, candidate)
                     a1 = ns()
                     apply_ns.append(a1 - a0)
-                    if rep == 0 and index == POPULATION - 1:
+                    if rep == 0 and index == batch_size - 1:
                         validation_view = candidate
             else:
                 raise AssertionError(f"unknown transport variant {name}")
@@ -194,10 +197,12 @@ def transport_variant(name, graph, registry, binding):
                 if expected is None or binding.read_flat(graph, registry) != expected:
                     raise AssertionError(f"{name}: final candidate state mismatch")
 
-            optimizer.tell([0.0] * POPULATION)
+            optimizer.tell([0.0] * batch_size)
 
     return {
         "variant": name,
+        "requested_population": REQUESTED_POPULATION,
+        "batch_size": batch_size,
         "ask": summary(ask_ns),
         "list_slice": summary(slice_ns) if slice_ns else None,
         "f32_conversion": summary(convert_ns) if convert_ns else None,
@@ -296,6 +301,9 @@ def objective_variant(name):
     with ExitStack() as stack:
         registry, graph, binding = build_objective_graph(stack, 97_001)
         optimizer = stack.enter_context(new_optimizer(binding.total_len))
+        batch_size = optimizer.batch_size
+        if batch_size <= 0:
+            raise AssertionError("objective optimizer batch size must be positive")
         rows = make_rows(8)
         program_identity = graph.program_identity()
         binding_identity = binding.identity()
@@ -306,6 +314,8 @@ def objective_variant(name):
             batch = optimizer.ask()
             t1 = ns()
             ask_ns.append(t1 - t0)
+            if len(batch) != batch_size * binding.total_len:
+                raise AssertionError("objective ask cardinality mismatch")
             digests.append(digest_f32(batch))
 
             batch_buffer = None
@@ -326,7 +336,7 @@ def objective_variant(name):
                     raise AssertionError("objective whole-batch buffer layout mismatch")
 
             fitness = []
-            for index in range(POPULATION):
+            for index in range(batch_size):
                 start = index * binding.total_len
                 if name == "list_slice":
                     s0 = ns()
@@ -342,7 +352,7 @@ def objective_variant(name):
                     candidate = array("f", candidate_list)
                     c1 = ns()
                     convert_ns.append(c1 - c0)
-                    if rep == 0 and index == POPULATION - 1:
+                    if rep == 0 and index == batch_size - 1:
                         validation_pair = (candidate, candidate_list)
                 elif name == "whole_batch_buffer_view":
                     v0 = ns()
@@ -409,6 +419,8 @@ def objective_variant(name):
 
     return {
         "variant": name,
+        "requested_population": REQUESTED_POPULATION,
+        "batch_size": batch_size,
         "ask": summary(ask_ns),
         "list_slice": summary(slice_ns) if slice_ns else None,
         "f32_conversion": summary(convert_ns) if convert_ns else None,
@@ -447,9 +459,12 @@ with ExitStack() as stack:
         for name in ("list_slice", "per_candidate_array", "whole_batch_buffer_view")
     }
     reference = transport["list_slice"]["generation_digests"]
+    reference_batch_size = transport["list_slice"]["batch_size"]
     for name, result in transport.items():
         if result["generation_digests"] != reference:
             raise AssertionError(f"{name}: optimizer candidate sequence changed")
+        if result["batch_size"] != reference_batch_size:
+            raise AssertionError(f"{name}: optimizer batch-size contract changed")
     if graph.program_identity() != program_identity:
         raise AssertionError("large program identity changed")
     if binding.identity() != binding_identity:
@@ -464,11 +479,14 @@ objective = {
 }
 reference_digests = objective["list_slice"]["generation_digests"]
 reference_fitness = objective["list_slice"]["fitness_history"]
+reference_objective_batch_size = objective["list_slice"]["batch_size"]
 for name, result in objective.items():
     if result["generation_digests"] != reference_digests:
         raise AssertionError(f"{name}: objective optimizer sequence changed")
     if result["fitness_history"] != reference_fitness:
         raise AssertionError(f"{name}: objective fitness changed")
+    if result["batch_size"] != reference_objective_batch_size:
+        raise AssertionError(f"{name}: objective batch-size contract changed")
 
 baseline_post = transport["list_slice"]["post_ask_transport"]["median_ms"]
 whole_post = transport["whole_batch_buffer_view"]["post_ask_transport"]["median_ms"]
@@ -498,7 +516,8 @@ report = {
         "width": LARGE_WIDTH,
         "depth": LARGE_DEPTH,
         "parameter_dim": EXPECTED_LARGE_DIM,
-        "population": POPULATION,
+        "requested_population": REQUESTED_POPULATION,
+        "batch_size": reference_batch_size,
         "repetitions": TRANSPORT_REPS,
         "transport": transport,
         "apply_control": control,
@@ -511,13 +530,15 @@ report = {
     "objective_case": {
         "input_width": 8,
         "parameter_dim": 9,
-        "population": POPULATION,
+        "requested_population": REQUESTED_POPULATION,
+        "batch_size": reference_objective_batch_size,
         "repetitions": OBJECTIVE_REPS,
         "variants": objective,
         "semantic_equivalence": True,
         "checkpoint_replay": True,
     },
     "semantic_proofs": {
+        "optimizer_batch_size_contract_used": True,
         "optimizer_candidate_sequence_equal": True,
         "objective_fitness_equal": True,
         "program_identity_stable": True,
@@ -528,6 +549,7 @@ report = {
     "notes": [
         "Timing is evidence only and never a CI threshold.",
         "The whole-batch variant includes the cost of converting the existing ask() list to array('f').",
+        "Requested population is strategy configuration; optimizer.batch_size is the authoritative candidate cardinality.",
         "A future optimizer buffer-return prototype would need separate semantic and installed-wheel proof before support.",
         "This research does not justify an ABI batch primitive by itself.",
     ],
