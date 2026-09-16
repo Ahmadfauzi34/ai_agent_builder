@@ -37,6 +37,9 @@ jobs:
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
 
+      - name: Audit native Rust package consumer
+        run: python3 scripts/audit_rust_package.py
+
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
