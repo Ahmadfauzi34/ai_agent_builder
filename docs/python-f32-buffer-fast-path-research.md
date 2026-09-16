@@ -1,6 +1,6 @@
 # Python standard-library f32 buffer fast-path research
 
-Status: **research candidate pending CI evidence**
+Status: **evidence captured — stateless native-f32 buffer fast path justified**
 
 Related: #192, #194, #195
 
@@ -8,7 +8,7 @@ Related: #192, #194, #195
 
 The candidate-apply decomposition proved that Python host marshalling is a material share of typed-facade `GraphParameterBinding.apply_flat` cost at larger parameter counts.
 
-For the 66,560-parameter case, the evidence was approximately:
+For the 66,560-parameter case, the prior evidence was approximately:
 
 ```text
 Python normalization      0.850 ms
@@ -17,7 +17,7 @@ raw ABI/core apply       1.317 ms
 facade end-to-end        2.716 ms
 ```
 
-The host side therefore deserves a cheaper proof before any core cache, ABI widening, NumPy dependency, DLPack path, or PyO3 redesign is considered.
+The host side therefore deserved a cheaper proof before any core cache, ABI widening, NumPy dependency, DLPack path, or PyO3 redesign was considered.
 
 ## Research question
 
@@ -114,36 +114,96 @@ After warm-up, repeated samples record:
 
 Timing is evidence only. It is not a CI threshold, SLA, or cross-machine benchmark contract.
 
-## Required semantic proof
+## Semantic proof
 
-Every measured case must prove:
+The first CI evidence run passed every required semantic assertion:
 
-1. package import comes from installed `site-packages`, not the checkout;
-2. ABI version remains v1;
-3. `array('f').itemsize == 4` on the runner;
-4. raw and facade bindings expose the exact expected canonical parameter count;
-5. raw and facade program identities match;
-6. raw and facade binding identities match;
-7. list-backed and `array('f')`-backed ABI apply both read back the exact deterministic f32 candidate;
-8. program/binding identities remain stable across mutation and timing;
-9. graph output remains finite;
-10. raw buffer-backed execution output exactly matches the typed-facade/list-compatible path after the same candidate state;
-11. persistent-view backing storage remains strongly referenced;
-12. incompatible/non-contiguous/wrong-length buffers are rejected before ABI use;
-13. no private facade handle access occurs.
+1. package import came from installed `site-packages`, not the checkout;
+2. ABI version remained v1;
+3. `array('f').itemsize == 4`;
+4. raw and facade bindings exposed the expected canonical parameter count;
+5. raw and facade program identities matched;
+6. raw and facade binding identities matched;
+7. list-backed and `array('f')`-backed ABI apply read back the exact deterministic f32 candidate;
+8. program/binding identities remained stable across mutation and timing;
+9. graph output remained finite;
+10. raw buffer-backed execution output exactly matched the typed-facade/list-compatible path after the same state;
+11. persistent-view backing storage remained strongly referenced;
+12. incompatible/non-contiguous/wrong-length buffers were rejected before ABI use;
+13. no private facade handle access occurred.
 
-A `memoryview` path is optional evidence. If CFFI rejects its representation, the research records that limitation rather than weakening validation or forcing support.
+CFFI also accepted a contiguous `memoryview(array('f'))` on the measured Python 3.12/Linux runner. That is useful evidence, but the standard-library `array('f')` path remains the cleanest primary proof because its element type and ownership are explicit.
 
-## Decision rule
+## Observed evidence
 
-If `array('f') + ffi.from_buffer` fresh-view or persistent-view apply removes a substantial fraction of the host marshalling cost while preserving the above semantic and lifetime proof, open a **separate facade implementation issue**.
+Median timings from the first CI run were:
 
-Any later facade change must:
+| Case | Params | Facade end-to-end | Fresh `array('f')` view + apply | Persistent view + apply | Validation | `from_buffer` |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 owner / w64 | 4,160 | 0.369 ms | 0.188 ms | 0.183 ms | 0.00047 ms | 0.00037 ms |
+| 4 owners / w64 | 16,640 | 1.387 ms | 0.735 ms | 0.729 ms | 0.00044 ms | 0.00036 ms |
+| 16 owners / w64 | 66,560 | 5.542 ms | 2.864 ms | 2.857 ms | 0.00048 ms | 0.00034 ms |
 
-- preserve the current generic `Sequence[float]` compatibility path;
-- make the fast path explicit and fail closed on incompatible buffers;
-- preserve stable ABI/error semantics and finite/atomic core behavior;
-- add no mandatory third-party dependency;
-- keep ABI v1 unchanged.
+The fresh stateless buffer path saved approximately:
 
-If the measured gain is small, unstable, or depends on fragile buffer lifetime/type assumptions, retain the current facade and stop this optimization line.
+```text
+4,160 params    0.181 ms  (~49%)
+16,640 params   0.652 ms  (~47%)
+66,560 params   2.679 ms  (~48%)
+```
+
+Most importantly, holding a persistent CFFI view did **not** provide a meaningful additional benefit. The fresh-view / persistent-view median ratios were approximately:
+
+```text
+4,160 params    1.025x
+16,640 params   1.007x
+66,560 params   1.0025x
+```
+
+At the largest case, fresh view cost only about 0.007 ms more than persistent view. Buffer validation and `ffi.from_buffer` acquisition themselves were sub-microsecond medians and effectively negligible relative to core apply.
+
+The raw preallocated CFFI-list pointer and persistent `array('f')` pointer also had nearly identical apply medians, confirming that `from_buffer` does not add a hidden per-element copy before the ABI call.
+
+### Construction cost matters
+
+Building a new `array('f')` from a generic Python sequence is still O(N):
+
+```text
+4,160 params    ~0.079 ms
+16,640 params   ~0.315 ms
+66,560 params   ~1.272 ms
+```
+
+Therefore the fast path should **not** silently convert every generic `Sequence[float]` into an array. Its strongest use case is when the caller/optimizer already owns a compatible contiguous native-f32 buffer. The current generic Sequence/list path remains the compatibility fallback.
+
+## Decision
+
+The evidence justifies a **stateless optional native-f32 buffer fast path in the Python facade**, but does not justify a persistent pointer/session API.
+
+A later implementation should detect/accept an explicitly compatible one-dimensional C-contiguous native-f32 buffer, validate it fail-closed, acquire a fresh CFFI view for that one call, invoke the unchanged `br_v1_binding_apply_flat`, and release the temporary CFFI view when the call returns.
+
+This keeps lifetime ownership simple:
+
+```text
+Python backing buffer alive
+    -> validate
+    -> ffi.from_buffer
+    -> synchronous ABI call
+    -> temporary CFFI view released
+```
+
+No pointer is cached across calls.
+
+The implementation must preserve the existing generic `Sequence[float]` path unchanged as a fallback. It should not auto-convert arbitrary sequences to `array('f')` merely to enter the fast path.
+
+Do **not** add NumPy, DLPack, PyO3, a new `br_v1_*` symbol, a persistent binding session, or a core binding cache based on this result.
+
+## Current decision labels
+
+```text
+KEEP_ABI_V1_UNCHANGED
+KEEP_GENERIC_SEQUENCE_FALLBACK
+ADD_STATELESS_COMPATIBLE_F32_BUFFER_FAST_PATH_NEXT
+DO_NOT_CACHE_CFFI_POINTERS_ACROSS_CALLS
+DO_NOT_ADD_BINDING_CACHE_YET
+```
