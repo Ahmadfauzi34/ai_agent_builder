@@ -86,9 +86,6 @@ def new_optimizer(dim):
 
 
 def ask_and_cardinality(optimizer, dim, context):
-    before = optimizer.batch_size
-    if before != 0:
-        raise AssertionError(f"{context}: expected idle batch_size 0 before ask, got {before}")
     t0 = ns()
     batch = optimizer.ask()
     t1 = ns()
@@ -109,6 +106,8 @@ def transport_variant(name, graph, registry, binding):
     observed_batch_size = None
 
     with new_optimizer(dim) as optimizer:
+        if optimizer.batch_size != 0:
+            raise AssertionError("new optimizer must have empty last_candidates")
         for rep in range(TRANSPORT_REPS):
             whole_start = ns()
             batch, batch_size, ask_elapsed = ask_and_cardinality(
@@ -214,8 +213,10 @@ def transport_variant(name, graph, registry, binding):
                     raise AssertionError(f"{name}: final candidate state mismatch")
 
             optimizer.tell([0.0] * batch_size)
-            if optimizer.batch_size != 0:
-                raise AssertionError(f"{name}: batch_size did not return to idle after tell")
+            if optimizer.batch_size != batch_size:
+                raise AssertionError(
+                    f"{name}: batch_size no longer reflects last candidate batch after tell"
+                )
 
     return {
         "variant": name,
@@ -322,6 +323,8 @@ def objective_variant(name):
     with ExitStack() as stack:
         registry, graph, binding = build_objective_graph(stack, 97_001)
         optimizer = stack.enter_context(new_optimizer(binding.total_len))
+        if optimizer.batch_size != 0:
+            raise AssertionError("new objective optimizer must have empty last_candidates")
         rows = make_rows(8)
         program_identity = graph.program_identity()
         binding_identity = binding.identity()
@@ -413,9 +416,9 @@ def objective_variant(name):
             tell_ns.append(t3 - t2)
             total_ns.append(t3 - generation_start)
             fitness_history.append(fitness)
-            if optimizer.batch_size != 0:
+            if optimizer.batch_size != batch_size:
                 raise AssertionError(
-                    f"objective {name}: batch_size did not return to idle after tell"
+                    f"objective {name}: batch_size no longer reflects last batch after tell"
                 )
 
             if rep == 0:
@@ -582,9 +585,9 @@ report = {
         "checkpoint_replay": True,
     },
     "semantic_proofs": {
-        "optimizer_lifecycle_idle_before_ask": True,
+        "optimizer_initial_batch_size_zero": True,
         "optimizer_batch_size_contract_used_after_ask": True,
-        "optimizer_returns_idle_after_tell": True,
+        "optimizer_batch_size_persists_after_tell": True,
         "optimizer_candidate_sequence_equal": True,
         "objective_fitness_equal": True,
         "program_identity_stable": True,
@@ -595,8 +598,9 @@ report = {
     "notes": [
         "Timing is evidence only and never a CI threshold.",
         "The whole-batch variant includes converting the current ask() list to array('f').",
-        "Requested population is strategy configuration; batch_size is authoritative only after ask().",
-        "The proven optimizer lifecycle is ask -> batch_size -> apply/evaluate -> tell -> idle batch_size 0.",
+        "Requested population is strategy configuration; batch_size is authoritative after the first ask().",
+        "batch_size exposes last_candidates.len(): it starts at 0, becomes positive after ask(), and persists after tell().",
+        "A later ask() may replace the previous candidate batch, as allowed by the optimizer contract.",
         "A future optimizer buffer-return prototype needs separate installed-wheel proof before support.",
         "This research does not justify an ABI batch primitive by itself.",
     ],
