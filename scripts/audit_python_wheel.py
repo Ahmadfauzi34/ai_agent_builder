@@ -17,11 +17,22 @@ from __future__ import annotations
 import json
 import math
 import os
+from array import array
 from contextlib import ExitStack
 from pathlib import Path
 
 import burn_research_ffi as br
 from burn_research_ffi import host
+
+
+class BufferOnlyF32(array):
+    """Writable native-f32 buffer whose Python iteration must never be used."""
+
+    def __new__(cls, values):
+        return array.__new__(cls, "f", values)
+
+    def __iter__(self):
+        raise AssertionError("compatible f32 candidate fell back to Sequence iteration")
 
 
 def run_scalar(graph, registry, values: list[float]) -> float:
@@ -103,16 +114,70 @@ with ExitStack() as stack:
     binding_identity = binding.identity()
     assert binding.layout()
 
-    # Stable ABI status -> Python exception mapping, while preserving atomicity.
-    before_reject = binding.read_flat(graph, registry)
+    # Historical generic Sequence behavior remains intact.
+    list_candidate = [0.125, -0.25, 0.5]
+    binding.apply_flat(graph, registry, list_candidate)
+    assert binding.read_flat(graph, registry) == list_candidate
+
+    tuple_candidate = (0.25, 0.5, -0.75)
+    binding.apply_flat(graph, registry, tuple_candidate)
+    assert binding.read_flat(graph, registry) == list(tuple_candidate)
+
+    # A non-f32 buffer-backed Sequence must not be reinterpreted as f32. It uses
+    # the generic conversion path and therefore remains compatible.
+    f64_candidate = array("d", [0.5, -0.25, 0.125])
+    binding.apply_flat(graph, registry, f64_candidate)
+    assert binding.read_flat(graph, registry) == [0.5, -0.25, 0.125]
+
+    # This object deliberately cannot be iterated. Success proves the public
+    # method borrowed its compatible native-f32 buffer instead of normalizing it.
+    fast_candidate = BufferOnlyF32([0.75, -0.5, 0.25])
+    binding.apply_flat(graph, registry, fast_candidate)
+    assert binding.read_flat(graph, registry) == [0.75, -0.5, 0.25]
+
+    # A writable contiguous native-f32 memoryview follows the same stateless path.
+    memory_candidate_backing = array("f", [-0.25, 0.375, 0.625])
+    memory_candidate = memoryview(memory_candidate_backing)
+    binding.apply_flat(graph, registry, memory_candidate)
+    assert binding.read_flat(graph, registry) == list(memory_candidate_backing)
+
+    # Non-contiguous native-f32 storage is not borrowed as a raw pointer. Because
+    # this memoryview is still a valid Python sequence, compatibility fallback
+    # applies it element-by-element without changing public behavior.
+    non_contiguous_backing = array("f", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    non_contiguous = memoryview(non_contiguous_backing)[::2]
+    assert len(non_contiguous) == dim and not non_contiguous.c_contiguous
+    binding.apply_flat(graph, registry, non_contiguous)
+    assert binding.read_flat(graph, registry) == [1.0, 3.0, 5.0]
+
+    # Length validation still belongs to the existing ABI/core boundary. The
+    # transport fast path forwards the actual buffer length rather than creating
+    # a new local ValueError contract, and structural rejection remains atomic.
+    before_wrong_length = binding.read_flat(graph, registry)
+    wrong_length = array("f", [1.0, 2.0])
     try:
-        binding.apply_flat(graph, registry, [math.nan, 0.0, 0.0])
+        binding.apply_flat(graph, registry, wrong_length)
     except host.BurnResearchError as exc:
         assert exc.status == host.Status.CORE_ERROR
         assert exc.status_code == int(host.Status.CORE_ERROR)
     else:
-        raise AssertionError("non-finite candidate unexpectedly succeeded")
+        raise AssertionError("wrong-length f32 buffer unexpectedly succeeded")
+    assert binding.read_flat(graph, registry) == before_wrong_length
+
+    # Stable ABI status -> Python exception mapping remains intact on the fast
+    # path, and the core finite-only rejection remains atomic.
+    before_reject = binding.read_flat(graph, registry)
+    poisoned = array("f", [before_reject[0], math.nan, before_reject[2]])
+    try:
+        binding.apply_flat(graph, registry, poisoned)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.CORE_ERROR
+        assert exc.status_code == int(host.Status.CORE_ERROR)
+    else:
+        raise AssertionError("non-finite f32 buffer candidate unexpectedly succeeded")
     assert binding.read_flat(graph, registry) == before_reject
+    assert graph.program_identity() == program_identity
+    assert binding.identity() == binding_identity
 
     optimizer = stack.enter_context(
         host.EsOptimizer.strict(
@@ -128,8 +193,8 @@ with ExitStack() as stack:
     batch = optimizer.batch_size
     assert len(candidates) == batch * dim
 
-    # Python owns the objective and evaluation schedule. The host namespace only
-    # composes existing reference-machine semantics; it does not own policy.
+    # Python owns the objective and evaluation schedule. Optimizer-generated
+    # Python lists continue to exercise the compatibility Sequence path.
     rows = [(-1.0, 0.5), (0.0, 0.0), (1.0, -0.5)]
     fitness: list[float] = []
     for i in range(batch):
@@ -149,9 +214,12 @@ with ExitStack() as stack:
 
     best = optimizer.best()
     assert len(best) == dim and all(math.isfinite(value) for value in best)
-    binding.apply_flat(graph, registry, best)
+    best_buffer = array("f", best)
+    binding.apply_flat(graph, registry, best_buffer)
     learned = binding.read_flat(graph, registry)
-    assert learned == best
+    assert learned == list(best_buffer)
+    assert graph.program_identity() == program_identity
+    assert binding.identity() == binding_identity
     probe_before = run_scalar(graph, registry, [1.0, 2.0])
 
     bundle = host.ProgramBundle.export(graph, registry, include_state=True)
@@ -185,6 +253,9 @@ print(json.dumps({
     "orchestration": host_caps["orchestration"],
     "raw_cffi_available": True,
     "typed_marker": True,
+    "f32_buffer_fast_path_proven": True,
+    "f32_buffer_fast_path_stateless": True,
+    "sequence_fallback_proven": True,
 }, sort_keys=True))
 '''
 
