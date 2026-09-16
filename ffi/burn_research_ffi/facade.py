@@ -74,6 +74,37 @@ def _u8(value: int, name: str) -> int:
     return value
 
 
+def _f32_buffer_view(candidate: object) -> tuple[memoryview, Any] | None:
+    """Borrow compatible native f32 storage for one ABI call only.
+
+    Eligibility is deliberately strict. Any object that cannot prove a writable,
+    one-dimensional, C-contiguous native-f32 buffer falls back to the historical
+    Sequence conversion path. Length and numeric validity remain ABI/core
+    responsibilities so this transport optimization does not change their error
+    semantics.
+    """
+
+    try:
+        view = memoryview(candidate)
+    except TypeError:
+        return None
+
+    if (
+        view.format != "f"
+        or view.itemsize != 4
+        or view.ndim != 1
+        or not view.c_contiguous
+        or view.readonly
+    ):
+        return None
+
+    try:
+        raw = ffi.from_buffer("float[]", view)
+    except (TypeError, BufferError):
+        return None
+    return view, raw
+
+
 class _OwnedHandle:
     __slots__ = ("_handle", "_closed")
 
@@ -378,6 +409,24 @@ class GraphParameterBinding(_OwnedHandle):
             raise TypeError("graph must be Graph")
         if not isinstance(registry, Registry):
             raise TypeError("registry must be Registry")
+
+        borrowed = _f32_buffer_view(candidate)
+        if borrowed is not None:
+            # `view` and `raw` both remain strongly referenced until this ABI
+            # call returns. Nothing is cached on the binding or registry.
+            view, raw = borrowed
+            _check(
+                lib.br_v1_binding_apply_flat(
+                    self._borrow(),
+                    graph._borrow(),
+                    registry._borrow(),
+                    raw,
+                    len(view),
+                ),
+                "binding apply flat",
+            )
+            return
+
         values = [float(value) for value in candidate]
         raw = ffi.new("float[]", values)
         _check(
