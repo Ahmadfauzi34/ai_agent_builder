@@ -5,7 +5,7 @@ build-backend = "maturin"
 [project]
 name = "burn-research-ffi"
 version = "0.1.0"
-description = "Experimental Python-first CFFI consumer for the burn-research ABI v1"
+description = "Python host package for the burn-research reference machine over ABI v1"
 requires-python = ">=3.10"
 dependencies = ["cffi>=1.17"]
 

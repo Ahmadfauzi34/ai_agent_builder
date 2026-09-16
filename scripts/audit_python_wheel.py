@@ -21,22 +21,11 @@ from contextlib import ExitStack
 from pathlib import Path
 
 import burn_research_ffi as br
-from burn_research_ffi import (
-    BurnResearchError,
-    ClosedHandleError,
-    EsOptimizer,
-    GraphBuilder,
-    GraphParameterBinding,
-    LinearLayerSpec,
-    ProgramBundle,
-    Registry,
-    Status,
-    Tensor,
-)
+from burn_research_ffi import host
 
 
 def run_scalar(graph, registry, values: list[float]) -> float:
-    with Tensor.vector(values) as inp:
+    with host.Tensor.vector(values) as inp:
         with graph.run(registry, inp) as out:
             assert out.length == 1
             result = out.to_f32()
@@ -46,42 +35,67 @@ def run_scalar(graph, registry, values: list[float]) -> float:
 
 repo_root = Path(os.environ["BR_REPO_ROOT"]).resolve()
 module_path = Path(br.__file__).resolve()
+host_path = Path(host.__file__).resolve()
 if repo_root == module_path or repo_root in module_path.parents:
     raise AssertionError(f"wheel consumer imported from repository: {module_path}")
+if repo_root == host_path or repo_root in host_path.parents:
+    raise AssertionError(f"host namespace imported from repository: {host_path}")
 
-# The ergonomic facade must not hide or replace the low-level ABI objects.
+# The first-class host namespace is the primary typed surface, while the raw
+# ABI remains separately available for diagnostics/escape-hatch consumers.
+assert br.host is host
 assert br.ffi is not None and br.lib is not None
 assert int(br.lib.br_v1_abi_version()) == 1
 assert br.abi_version() == 1
+assert host.abi_version() == 1
+assert host.HOST_API_VERSION == 1
+assert host.HOST_API_SCHEMA == "burn-research.python-host.v1"
 assert module_path.with_name("py.typed").is_file()
 
-caps = br.capabilities()
-assert caps["schema"] == "burn-research.ffi.v1"
-assert caps["host_policy"] == "external"
+# Root-level facade exports remain compatibility aliases, not a second engine.
+assert br.Registry is host.Registry
+assert br.GraphBuilder is host.GraphBuilder
+assert br.GraphParameterBinding is host.GraphParameterBinding
+assert br.EsOptimizer is host.EsOptimizer
+assert br.ProgramBundle is host.ProgramBundle
+
+foreign_caps = br.capabilities()
+assert foreign_caps["schema"] == "burn-research.ffi.v1"
+assert foreign_caps["host_policy"] == "external"
+host_caps = host.host_capabilities()
+assert host_caps == {
+    "schema": "burn-research.python-host.v1",
+    "version": 1,
+    "abi_version": 1,
+    "abi_schema": "burn-research.ffi.v1",
+    "orchestration": "host_owned",
+    "typed": True,
+    "raw_ffi_primary": False,
+}
 
 # Python ownership must be deterministic: double-close is harmless and a
 # closed object is rejected locally before another FFI call is attempted.
-closed_registry = Registry()
+closed_registry = host.Registry()
 closed_registry.close()
 closed_registry.close()
 assert closed_registry.closed
-with LinearLayerSpec(99_999, 1, 1) as scratch_layer:
+with host.LinearLayerSpec(99_999, 1, 1) as scratch_layer:
     try:
         closed_registry.init_layer(scratch_layer)
-    except ClosedHandleError:
+    except host.ClosedHandleError:
         pass
     else:
         raise AssertionError("use-after-close was not rejected locally")
 
 with ExitStack() as stack:
-    registry = stack.enter_context(Registry())
-    linear = stack.enter_context(LinearLayerSpec(52_001, 2, 1, bias=True))
+    registry = stack.enter_context(host.Registry())
+    linear = stack.enter_context(host.LinearLayerSpec(52_001, 2, 1, bias=True))
     registry.init_layer(linear)
 
-    builder = stack.enter_context(GraphBuilder(2))
+    builder = stack.enter_context(host.GraphBuilder(2))
     builder.add_unary(linear, 0, 1).set_output(1)
     graph = stack.enter_context(builder.compile(registry))
-    binding = stack.enter_context(GraphParameterBinding.build(graph, registry))
+    binding = stack.enter_context(host.GraphParameterBinding.build(graph, registry))
 
     dim = binding.total_len
     assert dim == 3
@@ -93,15 +107,15 @@ with ExitStack() as stack:
     before_reject = binding.read_flat(graph, registry)
     try:
         binding.apply_flat(graph, registry, [math.nan, 0.0, 0.0])
-    except BurnResearchError as exc:
-        assert exc.status == Status.CORE_ERROR
-        assert exc.status_code == int(Status.CORE_ERROR)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.CORE_ERROR
+        assert exc.status_code == int(host.Status.CORE_ERROR)
     else:
         raise AssertionError("non-finite candidate unexpectedly succeeded")
     assert binding.read_flat(graph, registry) == before_reject
 
     optimizer = stack.enter_context(
-        EsOptimizer.strict(
+        host.EsOptimizer.strict(
             dim,
             strategy=0,
             seed=9917,
@@ -114,6 +128,8 @@ with ExitStack() as stack:
     batch = optimizer.batch_size
     assert len(candidates) == batch * dim
 
+    # Python owns the objective and evaluation schedule. The host namespace only
+    # composes existing reference-machine semantics; it does not own policy.
     rows = [(-1.0, 0.5), (0.0, 0.0), (1.0, -0.5)]
     fitness: list[float] = []
     for i in range(batch):
@@ -138,15 +154,15 @@ with ExitStack() as stack:
     assert learned == best
     probe_before = run_scalar(graph, registry, [1.0, 2.0])
 
-    bundle = ProgramBundle.export(graph, registry, include_state=True)
+    bundle = host.ProgramBundle.export(graph, registry, include_state=True)
     assert bundle
 
-    imported_registry = stack.enter_context(Registry())
+    imported_registry = stack.enter_context(host.Registry())
     imported_graph = stack.enter_context(
-        ProgramBundle.import_graph(imported_registry, bundle)
+        host.ProgramBundle.import_graph(imported_registry, bundle)
     )
     imported_binding = stack.enter_context(
-        GraphParameterBinding.build(imported_graph, imported_registry)
+        host.GraphParameterBinding.build(imported_graph, imported_registry)
     )
 
     assert imported_graph.program_identity() == program_identity
@@ -157,12 +173,16 @@ with ExitStack() as stack:
 
 print(json.dumps({
     "verdict": "PASS",
-    "consumer": "installed-wheel-python-facade",
-    "abi_version": br.abi_version(),
+    "consumer": "installed-wheel-python-host-v1",
+    "host_api": host.HOST_API_SCHEMA,
+    "host_api_version": host.HOST_API_VERSION,
+    "abi_version": host.abi_version(),
     "module_path": str(module_path),
+    "host_module_path": str(host_path),
     "parameter_dim": dim,
     "checkpoint_bytes": len(bundle),
     "replay_output": probe_after,
+    "orchestration": host_caps["orchestration"],
     "raw_cffi_available": True,
     "typed_marker": True,
 }, sort_keys=True))
