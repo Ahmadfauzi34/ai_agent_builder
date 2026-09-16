@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "burn-research-ffi"
+version = "0.1.0"
+description = "Experimental Python-first CFFI consumer for the burn-research ABI v1"
+requires-python = ">=3.10"
+dependencies = ["cffi>=1.17"]
+
+[tool.maturin]
+bindings = "cffi"
+compatibility = "linux"
