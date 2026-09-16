@@ -1,8 +1,8 @@
 # Python optimizer ask-to-apply transport research
 
-Status: **measurement slice; product API unchanged**
+Status: **measured; product API unchanged**
 
-Related: #196, #199, #200, #203
+Related: #196, #199, #200, #203, #204
 
 ## Question
 
@@ -17,13 +17,13 @@ EsOptimizer.ask()
     -> GraphParameterBinding.apply_flat(...)
 ```
 
-This research asks whether candidate extraction/materialization is now large enough to justify another Python product boundary. It does **not** assume that a new optimizer return type, facade helper, or ABI batch primitive is needed.
+This research asks whether candidate extraction/materialization is large enough to justify another Python product boundary. It does **not** assume that a new optimizer return type, facade helper, or ABI batch primitive is needed.
 
 ## Optimizer lifecycle and cardinality contract
 
 The optimizer constructor accepts a `population` configuration, but consumers must not infer returned candidate cardinality from that request. The core implementation defines `batch_size()` as `last_candidates.len()`, while `awaiting_fitness` separately tracks whether `tell()` is currently legal.
 
-The contract used by this research is therefore:
+The contract used by this research is:
 
 ```text
 new optimizer:
@@ -47,13 +47,13 @@ next ask:
   may replace the previous last_candidates batch
 ```
 
-Three harness attempts produced no timing evidence while this lifecycle was being made explicit:
+Three earlier harness attempts produced no timing evidence while this lifecycle was being made explicit:
 
 1. requested `population=4` was incorrectly treated as returned `batch_size=4`;
 2. `batch_size` was then read before the first `ask()`, when `last_candidates` is empty and the value is correctly zero;
 3. the harness then incorrectly expected `tell()` to clear `last_candidates`, but the implementation intentionally keeps the last candidate batch while only clearing the internal `awaiting_fitness` flag.
 
-The benchmark now follows the implementation-backed lifecycle directly: initial zero -> `ask()` -> read/validate positive `batch_size` -> apply/evaluate -> `tell()` -> verify the same last-batch cardinality remains available. This is a harness correction and proof strengthening, not a product or optimizer semantic change.
+Those runs were harness discoveries only and were not used as performance evidence.
 
 ## Installed-wheel methodology
 
@@ -65,7 +65,7 @@ The large transport case uses:
 16 x Linear(64 -> 64, bias=true)
 parameter dim        = 66,560
 requested population = 4
-candidate count       = optimizer.batch_size after ask()
+observed batch_size   = 4
 ```
 
 Three host-side paths are compared with independent optimizers using the same strategy, seed, requested population, sigma, and learning rate:
@@ -89,21 +89,53 @@ ask() list
   -> apply_flat(f32 view)
 ```
 
-The script records separately:
+The script records separately `ask()`, list slicing, f32 conversion, memoryview-window creation, `apply_flat()`, post-ask transport, and combined ask+transport time. Timing is evidence only and never a CI threshold.
 
-- `ask()` time;
-- list-slice time;
-- list-to-f32 conversion time;
-- memoryview-window creation time;
-- `apply_flat()` time;
-- post-ask transport time;
-- combined ask + transport time.
+## Valid measurement
 
-A fixed-candidate control also records list-fallback versus f32-buffer `apply_flat()` cost so candidate extraction/conversion can be interpreted separately from the already-proven #200 transport fast path.
+The first valid exact-head report came from Python Optimizer Ask Apply Research run #7 on head `a66ab14b423df6568f4ba64082c6dbd79fe453d3` and reported `verdict = PASS`.
+
+Large-case medians:
+
+| Path / component | Median |
+| --- | ---: |
+| `ask()` — list baseline | 35.539 ms |
+| list slice per candidate | 0.183 ms |
+| list `apply_flat()` per candidate | 5.513 ms |
+| baseline post-ask transport | 23.746 ms |
+| baseline ask + transport | 67.808 ms |
+| per-candidate `array('f')` conversion | 1.281 ms |
+| per-candidate buffer apply | 2.905 ms |
+| per-candidate-array post-ask transport | 18.525 ms |
+| whole-batch list -> `array('f')` conversion | 5.112 ms |
+| memoryview candidate window | 0.0010 ms |
+| whole-batch-view buffer apply per candidate | 2.871 ms |
+| whole-batch-view post-ask transport | 16.944 ms |
+| whole-batch-view ask + transport | 60.499 ms |
+
+Fixed-candidate control at the same 66,560-parameter dimension:
+
+```text
+list fallback apply median = 5.406 ms
+f32 buffer apply median    = 2.863 ms
+list / buffer ratio        = 1.888x
+```
+
+Derived results:
+
+```text
+per-candidate array post-ask speedup = 1.282x
+whole-batch buffer post-ask speedup  = 1.402x
+list-slice share of slice+apply      = 3.22%
+```
+
+So list slicing itself is **not** the primary remaining problem. The material cost is the list-based apply/marshalling path. The whole-batch buffer variant reduced post-ask transport from 23.746 ms to 16.944 ms, about **28.6%**, even though it still paid about 5.112 ms to convert the already-materialized Python list into `array('f')`.
+
+The full `ask + transport` median improved from 67.808 ms to 60.499 ms, about **10.8%**. This also shows that optimizer `ask()` work itself remains the largest single component in this workload; transport optimization should remain narrow rather than expanding into a new native batch execution model.
 
 ## Objective-loop control
 
-A small deterministic `Linear(8 -> 1)` workload runs all three variants through complete optimizer generations:
+A small deterministic `Linear(8 -> 1)` workload ran all three variants through complete optimizer generations:
 
 ```text
 initial batch_size == 0
@@ -116,11 +148,19 @@ initial batch_size == 0
  -> batch_size still reflects the last candidate batch
 ```
 
-It records ask/slice/conversion/view/apply/objective/tell/full-generation timing separately. Timing remains evidence only.
+Median full-generation times were approximately:
+
+```text
+list slice                 9.238 ms
+per-candidate array        9.255 ms
+whole-batch buffer view    9.207 ms
+```
+
+At only 9 parameters, transport choice is effectively irrelevant relative to the objective work. This reinforces that the fast path matters primarily at larger parameter dimensions rather than justifying a universal API expansion.
 
 ## Semantic proof boundary
 
-The research fails if transport variants change semantics. It proves:
+The valid report proved:
 
 - a new optimizer begins with `batch_size == 0` because `last_candidates` is empty;
 - `optimizer.batch_size` after `ask()` is the candidate-cardinality authority;
@@ -128,31 +168,33 @@ The research fails if transport variants change semantics. It proves:
 - batch size is stable across generations and same-config transport variants;
 - `tell()` consumes exactly `batch_size` fitness values and does not erase the last candidate batch;
 - same-seed candidate sequences have identical f32 digests across variants;
-- per-candidate and whole-batch f32 conversion preserve the already-f32 candidate values;
+- per-candidate and whole-batch f32 conversion preserve candidate values at the binding boundary;
 - memoryview candidate windows remain one-dimensional, C-contiguous, native `f`, and exact length;
 - graph program identity remains stable;
 - binding identity remains stable;
 - non-finite f32 candidates still receive the existing atomic core rejection;
 - the deterministic objective produces identical fitness history across variants;
-- a stateful `ProgramBundle` round-trip preserves program identity, binding identity, and final learned state.
+- stateful `ProgramBundle` round-trip preserves program identity, binding identity, and final learned state.
 
-The benchmark never treats timing as a correctness condition.
+## Decision
 
-## Interpretation rule
+The report decision is:
 
-The JSON report always uses `verdict = PASS` only for semantic/proof success. A separate research `decision` interprets timing.
+```text
+PYTHON_BUFFER_RETURN_WORTH_PROTOTYPING
+```
 
-For this first slice, `PYTHON_BUFFER_RETURN_WORTH_PROTOTYPING` is emitted only if the current whole-batch list-to-`array('f')` path still improves median post-ask transport by at least 20% versus the current list-slice/list-apply path. Otherwise the report emits `KEEP_CURRENT_API`.
+Reason: the whole-batch buffer path improves median post-ask transport by about 28.6% **despite** paying an extra list -> `array('f')` conversion. That is enough evidence to justify a separate **Python-only prototype** that asks whether `EsOptimizer` can expose the already-returned native f32 batch through a typed buffer surface without first materializing a Python list.
 
-That 20% value is **not** a CI threshold and does not make timing a support guarantee. It is only a conservative research trigger: if a buffer path wins even while paying the extra list-to-array conversion that a future direct buffer return could avoid, a narrow Python-only optimizer-buffer prototype becomes worth measuring separately.
+The next prototype should preserve current `ask() -> list[float]` compatibility and should first test a separate method/helper such as a buffer-return path. It should reuse the existing ABI v1 f32-buffer handle/copy machinery if possible and should not widen the native ABI unless a separate proof demonstrates that Python-only transport cannot solve the measured cost.
 
-This research alone does not justify `BATCH_BOUNDARY_WORTH_PROTOTYPING`; no new native batch primitive is being measured here.
+This research does **not** justify:
 
-## Current result
-
-No valid timing report has been accepted yet. The first three failed runs were lifecycle-harness discoveries, not performance evidence. The current harness is now aligned with the core implementation (`batch_size == last_candidates.len()`), and it will only emit a timing report after lifecycle, semantic-equivalence, identity, atomicity, and replay checks all pass.
-
-Raw timing fields and the resulting decision will be added here only after the corrected exact-head installed-wheel research workflow completes successfully and uploads its report.
+- changing the existing `EsOptimizer.ask()` return type;
+- an ABI batch primitive;
+- a graph-owned controller;
+- a core binding cache;
+- NumPy/DLPack/PyO3 dependencies.
 
 ## Non-goals
 
