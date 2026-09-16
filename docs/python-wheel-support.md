@@ -1,12 +1,12 @@
 # Python installed-wheel support proof
 
-Status: **candidate support contract pending installed-wheel CI proof**
+Status: **supported for the verified initial matrix only**
 
-Related: #183, #184, #185
+Related: #183, #184, #185, #186
 
 ## Purpose
 
-This slice advances the Python-first foreign boundary from **semantic CFFI proof** (#185) to a real Python distribution proof.
+This slice advances the Python-first foreign boundary from the semantic CFFI proof in #185 to a real installed-wheel distribution proof.
 
 It does not change ABI semantics. It packages the existing `br_v1_*` ABI into a wheel, installs that wheel into a fresh virtual environment outside the repository, and runs the established graph/binding/ES/checkpoint path through the installed package.
 
@@ -23,11 +23,11 @@ language-neutral ABI v1
 
 `ffi/pyproject.toml` uses Maturin with `bindings = "cffi"`.
 
-The existing `ffi/include/burn_research_ffi.h` remains the ABI contract. `ffi/build.rs` copies that explicit versioned header to Cargo's target root as `header.h`, which is the supported Maturin override path for CFFI header generation.
+The canonical ABI contract remains `ffi/include/burn_research_ffi.h`. Maturin feeds `target/header.h` directly to `cffi.FFI().cdef()`, which does not run a C preprocessor. Therefore `ffi/build.rs` derives a declaration-only CFFI view from the canonical header by removing preprocessor directives and the C++ `extern "C"` wrapper. The versioned declarations themselves are not rewritten.
 
-This prevents wheel packaging from silently deriving a second foreign contract from Rust implementation details.
+This preserves one reviewed foreign contract while adapting only its packaging representation for CFFI.
 
-The Python package exposes Maturin's generated CFFI `ffi` and `lib` objects only:
+The Python package exposes Maturin's generated CFFI `ffi` and `lib` objects:
 
 ```python
 from burn_research_ffi import ffi, lib
@@ -48,9 +48,9 @@ maturin build
     -> import from site-packages
     -> ABI capabilities/version
     -> graph + GraphParameterBinding
-    -> ES ask
+    -> EsOptimizer.ask
     -> Python-owned objective
-    -> ES tell
+    -> EsOptimizer.tell
     -> apply canonical best vector
     -> ProgramBundle export(include_state=true)
     -> fresh registry import
@@ -60,32 +60,29 @@ maturin build
 
 The consumer asserts that the imported module path is not inside the repository checkout.
 
-It must not rely on:
+It does not rely on repository-relative Python imports, `PYTHONPATH` pointing at the checkout, `ffi/target` at runtime, Rust `pub(crate)` APIs, or an editable/develop install.
 
-- repository-relative Python imports;
-- `PYTHONPATH` pointing at the checkout;
-- `ffi/target` at runtime;
-- Rust `pub(crate)` APIs;
-- an in-tree editable/develop install.
+## Verified support matrix
 
-## Initial support matrix
-
-This proof is deliberately narrow:
+The support claim is deliberately narrow:
 
 ```text
 OS:            Linux (GitHub ubuntu-latest)
-architecture:  x86_64 runner
+architecture:  x86_64
 Python:        CPython 3.12
 binding:       CFFI
 ABI:           burn-research.ffi.v1
-wheel tag:     native Linux wheel produced by Maturin
+package:       burn-research-ffi wheel
+orchestration: host-owned
 ```
 
-A green result proves this installed-wheel slice only. It must not be interpreted as proof for macOS, Windows, other architectures, PyPy, free-threaded Python, or every CPython version accepted by package metadata.
+The installed-wheel proof passed on this matrix. `docs/host-support.v1.json` records only this verified slice.
+
+This must not be interpreted as proof for macOS, Windows, other architectures, PyPy, free-threaded Python, or every CPython version accepted by package metadata.
 
 ## Inherited boundaries
 
-The wheel must preserve all existing boundaries:
+The wheel preserves the existing boundaries:
 
 - Rust core remains Python-independent;
 - graph structure/identity remains core-owned;
@@ -97,9 +94,9 @@ The wheel must preserve all existing boundaries:
 - no Rust panic is intended to unwind across the foreign ABI;
 - tensor transfer remains explicit copy-based rank-4 f32 in v1.
 
-## Non-goals
+## Non-goals / unverified scope
 
-This proof does not add:
+This support proof does not add or verify:
 
 - PyO3;
 - a graph-owning controller;
@@ -108,11 +105,12 @@ This proof does not add:
 - new optimizer algorithms;
 - Python-specific checkpoint/state identity;
 - C++/Go/engine support;
-- a broad multi-platform wheel matrix;
-- a PyPI publication claim.
+- macOS or Windows wheels;
+- non-x86_64 wheels;
+- PyPy or free-threaded Python;
+- a broad CPython version matrix;
+- PyPI publication.
 
 ## Support-status rule
 
-Do not change `docs/host-support.v1.json` from Python `planned` to `supported` merely because the packaging files exist.
-
-First require the installed-wheel workflow to pass on the exact PR head. After that proof is green, record only the narrow verified Python support slice and keep all untested platforms/interpreters explicitly unverified.
+Python is `supported` only for the explicit matrix above. Any broader support claim requires its own installed-consumer proof and CI matrix expansion before the manifest is widened.
