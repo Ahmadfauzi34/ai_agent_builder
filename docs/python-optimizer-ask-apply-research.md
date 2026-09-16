@@ -19,19 +19,32 @@ EsOptimizer.ask()
 
 This research asks whether candidate extraction/materialization is now large enough to justify another Python product boundary. It does **not** assume that a new optimizer return type, facade helper, or ABI batch primitive is needed.
 
-## Cardinality contract
+## Optimizer lifecycle and cardinality contract
 
-The optimizer constructor accepts a `population` configuration, but consumers must not infer the returned candidate cardinality from that request. The authoritative contract is:
+The optimizer constructor accepts a `population` configuration, but consumers must not infer returned candidate cardinality from that request. The observed and now explicitly proven lifecycle contract is:
 
 ```text
-batch_size = optimizer.batch_size
-len(optimizer.ask()) == batch_size * binding.total_len
-len(fitness passed to tell()) == batch_size
+idle:
+  optimizer.batch_size == 0
+
+ask:
+  batch = optimizer.ask()
+  batch_size = optimizer.batch_size
+  batch_size > 0
+  len(batch) == batch_size * binding.total_len
+
+consume/evaluate:
+  apply exactly batch_size candidates
+
+tell:
+  len(fitness) == batch_size
+  optimizer.tell(fitness)
+  optimizer.batch_size == 0
 ```
 
-The first harness run correctly failed before producing evidence because it assumed `population=4` implied `batch_size=4`. The benchmark was then corrected to read `optimizer.batch_size` and to prove that the value remains consistent across all transport variants.
+The first harness run correctly failed before producing evidence because it assumed `population=4` implied `batch_size=4`. The second harness run also correctly failed before evidence because it read `optimizer.batch_size` before `ask()`, when the optimizer is idle and reports zero.
 
-This is a harness correction, not a product or optimizer semantic change.
+The benchmark now follows the lifecycle directly: `ask -> read batch_size -> validate returned length -> apply/evaluate -> tell -> assert idle`. This is a harness correction and proof strengthening, not a product or optimizer semantic change.
 
 ## Installed-wheel methodology
 
@@ -41,9 +54,9 @@ The large transport case uses:
 
 ```text
 16 x Linear(64 -> 64, bias=true)
-parameter dim       = 66,560
+parameter dim        = 66,560
 requested population = 4
-candidate count      = optimizer.batch_size
+candidate count       = optimizer.batch_size after ask()
 ```
 
 Three host-side paths are compared with independent optimizers using the same strategy, seed, requested population, sigma, and learning rate:
@@ -84,11 +97,14 @@ A fixed-candidate control also records list-fallback versus f32-buffer `apply_fl
 A small deterministic `Linear(8 -> 1)` workload runs all three variants through complete optimizer generations:
 
 ```text
-ask
- -> candidate extraction using optimizer.batch_size
+idle batch_size == 0
+ -> ask
+ -> read positive batch_size
+ -> candidate extraction
  -> apply
  -> graph objective over fixed rows
  -> tell(batch_size fitness values)
+ -> idle batch_size == 0
 ```
 
 It records ask/slice/conversion/view/apply/objective/tell/full-generation timing separately. Timing remains evidence only.
@@ -97,9 +113,11 @@ It records ask/slice/conversion/view/apply/objective/tell/full-generation timing
 
 The research fails if transport variants change semantics. It proves:
 
-- `optimizer.batch_size` is used as the candidate-cardinality authority;
-- batch size is identical across same-config optimizer variants;
+- optimizer is idle with `batch_size == 0` before each `ask()`;
+- `optimizer.batch_size` is read only after `ask()` and is then the candidate-cardinality authority;
 - `ask()` length is exactly `batch_size * dim`;
+- batch size is stable across generations and same-config transport variants;
+- `tell()` consumes exactly `batch_size` fitness values and returns the optimizer to idle `batch_size == 0`;
 - same-seed candidate sequences have identical f32 digests across variants;
 - per-candidate and whole-batch f32 conversion preserve the already-f32 candidate values;
 - memoryview candidate windows remain one-dimensional, C-contiguous, native `f`, and exact length;
@@ -123,7 +141,12 @@ This research alone does not justify `BATCH_BOUNDARY_WORTH_PROTOTYPING`; no new 
 
 ## Current result
 
-The initial harness attempt produced **no timing evidence** because it failed the cardinality assertion before measurement: requested population was incorrectly treated as returned batch size. That assumption is now removed.
+Two harness attempts produced **no timing evidence** and therefore no product conclusion:
+
+1. requested `population` was incorrectly treated as returned `batch_size`;
+2. `batch_size` was then read before `ask()`, while the optimizer was idle and correctly reported zero.
+
+Both assumptions have been removed. The current harness follows the proven lifecycle and will only emit a timing report after all lifecycle, semantic-equivalence, identity, atomicity, and replay checks pass.
 
 Raw timing fields and the resulting decision will be added here only after the corrected exact-head installed-wheel research workflow completes successfully and uploads its report.
 
