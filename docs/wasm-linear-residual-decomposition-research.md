@@ -1,6 +1,6 @@
 # WasmLinear Residual Decomposition Research
 
-Status: research boundary for issue #227; evidence pending.
+Status: evidence complete for issue #227.
 
 ## Context
 
@@ -54,11 +54,50 @@ Timing is accepted only if:
 - public wrapper dimensions remain exact;
 - no timing threshold is used as a CI SLA.
 
-## Interpretation
+## Evidence
 
-- Burn Linear clearly dominates the analogue pipeline while both reshape controls remain small -> wrapper overhead is sufficiently small; stop optimizing `WasmLinear` and treat the remaining cost as useful model computation;
-- one or both reshape controls are material -> investigate shape-transition mechanics before any kernel work;
-- mixed or strongly size-dependent -> repeat at a larger representative policy dimension before optimization.
+The first successful release-mode run on PR #228 produced:
+
+| case | reshape 4D->2D | Burn Linear | reshape 2D->4D | analogue pipeline | full WasmLinear |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 32->32 | 0.000872 ms | 0.022828 ms | 0.000541 ms | 0.023439 ms | 0.025312 ms |
+| 128->128 | 0.001202 ms | 0.044554 ms | 0.000712 ms | 0.045270 ms | 0.047409 ms |
+
+Derived descriptive ratios:
+
+```text
+32 -> 32
+Burn Linear / analogue pipeline      ~= 97.39%
+reshape-in + reshape-out / pipeline  ~= 6.03%
+analogue pipeline / full wrapper     ~= 92.60%
+
+128 -> 128
+Burn Linear / analogue pipeline      ~= 98.42%
+reshape-in + reshape-out / pipeline  ~= 4.23%
+analogue pipeline / full wrapper     ~= 95.49%
+```
+
+Because the individually timed controls are not assumed perfectly additive, percentages can overlap slightly. The important signal is consistent across both dimensions: Burn Linear execution overwhelmingly dominates the equivalent pipeline, while both shape transitions remain small and the analogue pipeline is already close to the public wrapper cost.
+
+All proof checks passed: Burn analogue outputs remained finite/stable, public wrapper outputs remained exact/stable, and wrapper weights/dimensions were unchanged.
+
+## Decision
+
+```text
+STOP_LINEAR_WRAPPER_OPTIMIZATION
+```
+
+The remaining `WasmLinear` wrapper overhead is sufficiently small relative to useful Burn Linear execution that no further wrapper-specific optimization is justified by current evidence.
+
+In particular:
+
+- do not optimize input cloning further;
+- do not add reshape caches or persistent shape-transition state;
+- do not add registry/dispatch caches;
+- do not introduce fused/custom Linear kernels;
+- do not widen Math or ABI surfaces for this path.
+
+Future Linear performance work should only reopen if a larger real agent workload demonstrates a new material bottleneck. Otherwise the remaining cost is treated as useful model computation rather than architectural overhead.
 
 ## Scope
 
