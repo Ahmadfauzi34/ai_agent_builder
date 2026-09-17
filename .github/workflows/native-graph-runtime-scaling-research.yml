@@ -1,0 +1,33 @@
+name: Native Graph Runtime Scaling Research
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/native-graph-runtime-scaling-research.yml"
+      - "docs/native-graph-runtime-scaling-research.md"
+      - "scripts/research_native_graph_runtime_scaling.py"
+      - "Cargo.toml"
+      - "src/**"
+
+jobs:
+  native-graph-runtime-scaling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run native graph runtime scaling research
+        run: python scripts/research_native_graph_runtime_scaling.py
+
+      - name: Upload native graph runtime scaling report
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-graph-runtime-scaling-report
+          path: native-graph-runtime-scaling-report.json
