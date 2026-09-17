@@ -1,6 +1,6 @@
 # Native Graph Run Decomposition Research
 
-Status: research boundary for issue #215.
+Status: proven research result for issue #215.
 
 ## Context
 
@@ -56,6 +56,35 @@ Timing evidence is accepted only if direct Rust and raw ABI consumers have exact
 
 Both sides must also prove finite deterministic output and stable identities after repeated execution. Raw output handles must be deterministically freed.
 
+## Proven result
+
+Native Graph Run Decomposition Research run #1 completed successfully on the PR head and produced this median decomposition over 800 repetitions:
+
+```text
+CompiledGraph::run                  0.0217005 ms
+CompiledGraph::run + Box<WasmTensor> 0.0219855 ms
+Box<WasmTensor>                      0.0000400 ms
+raw br_v1_graph_run                  0.0281675 ms
+boundary residual                    0.0061820 ms
+```
+
+Derived shares:
+
+```text
+native run / raw FFI             77.04%
+native run+box / raw FFI         78.05%
+boundary residual / raw FFI      21.95%
+box / native run+box              0.18%
+```
+
+The report verdict was `PASS` and the descriptive classification was:
+
+```text
+COMPILED_GRAPH_RUN_DOMINATES
+```
+
+Correctness proofs were all true: exact program identity, exact binding identity, exact finite output, deterministic repeated execution, stable identities, deterministic handle cleanup, installed-wheel raw FFI, public-Rust-surface-only comparison, and unchanged production ABI.
+
 ## Derived decomposition
 
 The report computes:
@@ -100,17 +129,13 @@ otherwise
     -> MIXED_NATIVE_GRAPH_RUN_COST
 ```
 
-### If `COMPILED_GRAPH_RUN_DOMINATES`
+### Proven decision: `COMPILED_GRAPH_RUN_DOMINATES`
 
-Investigate graph/runtime execution against representative graph shapes before changing the ABI. The next slice should test whether the micro-policy result scales with graph depth/width and layer composition.
+The native run+box share is about 78.05%, above the descriptive 70% branch, while boundary residual is about 21.95%. Output boxing itself is negligible relative to native execution.
 
-### If `FFI_BOUNDARY_RESIDUAL_MATERIAL`
+Therefore the next justified evidence slice is **graph/runtime execution scaling across representative graph shapes**, not deeper private FFI instrumentation and not ABI widening. The next research should test depth, width, and layer composition while preserving the current public execution contract and proof boundaries.
 
-Only then is deeper private/cfg(test) instrumentation inside the existing FFI boundary justified to split validation/lookup from handle wrapping and `ffi_status` overhead.
-
-### If mixed
-
-Keep the implementation unchanged until a larger representative agent workload yields a clearer signal.
+Do **not** interpret the residual as zero or irrelevant. It is material enough to keep observable, but this micro-policy does not justify optimizing it ahead of native graph execution.
 
 ## Scope
 
