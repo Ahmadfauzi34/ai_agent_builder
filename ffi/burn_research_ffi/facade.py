@@ -197,7 +197,11 @@ def capabilities() -> dict[str, Any]:
         return json.loads(buf.to_bytes().decode("utf-8"))
 
 
-class LinearLayerSpec(_OwnedHandle):
+class _LayerSpec(_OwnedHandle):
+    """Internal type boundary for layer-spec handles accepted by registry/graph APIs."""
+
+
+class LinearLayerSpec(_LayerSpec):
     def __init__(
         self,
         layer_id: int,
@@ -217,13 +221,24 @@ class LinearLayerSpec(_OwnedHandle):
         super().__init__(handle)
 
 
+class ReluLayerSpec(_LayerSpec):
+    def __init__(self, layer_id: int) -> None:
+        super().__init__(
+            _new_handle(
+                "relu layer spec",
+                lib.br_v1_layer_relu,
+                _u32(layer_id, "layer_id"),
+            )
+        )
+
+
 class Registry(_OwnedHandle):
     def __init__(self) -> None:
         super().__init__(_new_handle("registry new", lib.br_v1_registry_new))
 
-    def init_layer(self, layer: LinearLayerSpec) -> None:
-        if not isinstance(layer, LinearLayerSpec):
-            raise TypeError("layer must be LinearLayerSpec")
+    def init_layer(self, layer: _LayerSpec) -> None:
+        if not isinstance(layer, _LayerSpec):
+            raise TypeError("layer must be a layer spec")
         _check(
             lib.br_v1_registry_init_layer(self._borrow(), layer._borrow()),
             "registry init layer",
@@ -317,12 +332,12 @@ class GraphBuilder(_OwnedHandle):
 
     def add_unary(
         self,
-        layer: LinearLayerSpec,
+        layer: _LayerSpec,
         input_slot: int,
         output_slot: int,
     ) -> GraphBuilder:
-        if not isinstance(layer, LinearLayerSpec):
-            raise TypeError("layer must be LinearLayerSpec")
+        if not isinstance(layer, _LayerSpec):
+            raise TypeError("layer must be a layer spec")
         _check(
             lib.br_v1_graph_builder_add_unary(
                 self._borrow(),
@@ -570,6 +585,7 @@ __all__ = [
     "LinearLayerSpec",
     "ProgramBundle",
     "Registry",
+    "ReluLayerSpec",
     "Status",
     "Tensor",
     "abi_version",
