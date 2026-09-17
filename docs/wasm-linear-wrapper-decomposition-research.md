@@ -1,6 +1,6 @@
 # WasmLinear Wrapper Decomposition Research
 
-Status: research boundary for issue #223; evidence pending.
+Status: evidence recorded; `WEIGHT_DIMS_RECORD_ACCESS_MATERIAL_AT_WIDER_LINEAR`.
 
 ## Context
 
@@ -20,7 +20,7 @@ reshape 2D -> 4D
 wrap WasmTensor
 ```
 
-Before adding private instrumentation or changing production code, this research measures the public wrapper controls that can be isolated from an external packaged Rust consumer.
+This research measures the public wrapper controls that can be isolated from an external packaged Rust consumer before any production change.
 
 ## Cases
 
@@ -45,6 +45,49 @@ Measurement order rotates every repetition to reduce fixed ordering and thermal 
 
 The controls are descriptive and are not assumed to be perfectly additive. No timing threshold is used as a CI SLA.
 
+## Evidence
+
+The first green research run produced:
+
+| case | full forward median | input clone median | clone share | `weight_dims()` median | `weight_dims()` share |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 32→32 | 0.0249715 ms | 0.0002270 ms | 0.91% | 0.0012065 ms | 4.83% |
+| 128→128 | 0.0525185 ms | 0.0002140 ms | 0.41% | 0.0056975 ms | 10.85% |
+
+The semantic proof remained green for both cases:
+
+- packaged public Rust surface only;
+- finite deterministic output;
+- exact stable flat weights;
+- stable input shape;
+- stable exact `weight_dims()`.
+
+## Interpretation
+
+The evidence does **not** support tensor-clone optimization: the clone control remains below 1% of full forward in both measured cases.
+
+`weight_dims()` is different. It grows from roughly 4.8% of full forward at 32→32 to roughly 10.9% at 128→128. The current implementation obtains that value by cloning the module record solely to inspect immutable weight dimensions. That is large enough to justify one narrow product slice before deeper kernel instrumentation.
+
+Decision:
+
+```text
+WEIGHT_DIMS_RECORD_ACCESS_MATERIAL_AT_WIDER_LINEAR
+KEEP_INPUT_CLONE_PATH_UNCHANGED
+DO_NOT_CHANGE_REGISTRY_DISPATCH
+NEXT: STORE_IMMUTABLE_LINEAR_DIMS_AND_AVOID_RECORD_CLONE_ON_FORWARD
+```
+
+The next product change should preserve the existing proof boundary:
+
+- constructor establishes immutable `in_dim` / `out_dim` metadata;
+- `weight_dims()` returns those immutable dimensions without reconstructing a module record;
+- forward feature validation uses the same immutable `in_dim`;
+- `load_state()` continues rejecting shape changes;
+- flat weight layout/order and `set_weights_flat()` semantics remain unchanged;
+- graph, registry, ABI, Python, optimizer, checkpoint, and Math semantics remain unchanged.
+
+After that narrow change, rerun this research workload before considering deeper reshape/Burn-kernel instrumentation.
+
 ## Semantic proof boundary
 
 Timing is accepted only if:
@@ -56,15 +99,6 @@ Timing is accepted only if:
 - weights remain exactly unchanged after timing;
 - input shape remains stable;
 - `weight_dims()` remains stable and exact.
-
-## Interpretation
-
-Evidence is reviewed after the report is produced:
-
-- `weight_dims()` is material relative to full forward -> investigate immutable cached Linear dimensions while preserving weight/layout/state semantics;
-- input clone is material -> investigate tensor ownership/borrow path;
-- both controls are small -> residual reshape + Burn Linear kernel path dominates, justifying deeper research-only instrumentation;
-- mixed or strongly size-dependent -> repeat at a larger representative policy dimension before optimization.
 
 ## Scope
 
