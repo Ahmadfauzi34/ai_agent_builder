@@ -1,6 +1,6 @@
 # Python Graph Run / Output Decomposition Research
 
-Status: research boundary for issue #213.
+Status: proven research evidence for issue #213.
 
 ## Why this exists
 
@@ -50,6 +50,69 @@ The installed-wheel research measures independently:
 
 This gives a useful split without adding native instrumentation.
 
+## Valid evidence
+
+Python Graph Run Output Decomposition Research run #1 on head `44f9ea7731c010836adada72a9f6bf06a439b239` completed successfully and uploaded the report with:
+
+```text
+verdict  = PASS
+decision = GRAPH_RUN_HANDLE_BOUNDARY_DOMINATES
+```
+
+Median timing:
+
+```text
+raw graph_run -> output handle          0.2416795 ms
+typed Graph.run -> output handle        0.2870490 ms
+raw tensor_len                           0.0057700 ms
+raw tensor_copy_f32 preallocated         0.0060110 ms
+Python list materialization              0.0005210 ms
+typed Tensor.to_f32                      0.0142160 ms
+raw run + copy + close                   0.2850410 ms
+typed run + copy + close                 0.2956250 ms
+```
+
+Descriptive ratios:
+
+```text
+raw graph_run / typed full path          81.75%
+typed output copy / typed full path       4.81%
+raw copy / typed Tensor.to_f32            42.28%
+Python materialization / typed to_f32      3.66%
+```
+
+Typed `Graph.run` adds about `0.04537 ms` over the raw `br_v1_graph_run` median, but the dominant bucket is already present in the raw ABI call.
+
+Semantic proof passed simultaneously:
+
+- installed-wheel import;
+- host API `burn-research.python-host.v1` and ABI v1;
+- exact raw/typed program identity equality;
+- exact raw/typed binding identity equality;
+- exact finite raw/typed output equality;
+- stable program/binding identities through the timing loops;
+- deterministic repeated execution;
+- deterministic raw/typed handle cleanup;
+- no private facade handles used in the raw proof.
+
+## Decision
+
+```text
+GRAPH_RUN_HANDLE_BOUNDARY_DOMINATES
+```
+
+The evidence does **not** justify output-copy optimization, tensor zero-copy, NumPy/DLPack, graph batching, or ABI widening. On this workload, typed output copying is only about 4.8% of the full typed policy step, while the raw graph-run/output-handle call is about 81.8%.
+
+The next justified evidence slice is therefore narrow native instrumentation inside the existing `br_v1_graph_run` path to separate:
+
+```text
+FFI/handle validation
+CompiledGraph::run(...)
+output-handle boxing/allocation
+```
+
+That instrumentation should remain research-only and must not change execution semantics or create a new public ABI primitive.
+
 ## What the measurements mean
 
 `raw_graph_run_handle` still intentionally contains several operations:
@@ -61,7 +124,7 @@ ABI crossing
 + output-handle allocation
 ```
 
-Therefore, if that bucket dominates after output copying is isolated, the next justified research step may be **native instrumentation** inside the existing graph-run boundary. It would not justify a new execution primitive by itself.
+Therefore this result selects native instrumentation as the next research step; it does not identify which operation inside that bucket dominates yet.
 
 `raw_tensor_copy_preallocated` includes the current native `WasmTensor::to_array()` materialization performed by `br_v1_tensor_copy_f32` plus the copy into the supplied f32 destination.
 
