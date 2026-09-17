@@ -38,6 +38,8 @@ impl<B: Backend> LinearLayer<B> {
 #[wasm_bindgen]
 pub struct WasmLinear {
     inner: LinearLayer<WasmBackend>,
+    in_dim: usize,
+    out_dim: usize,
 }
 
 #[wasm_bindgen]
@@ -47,10 +49,14 @@ impl WasmLinear {
         let device = Default::default();
         let config = LinearLayerConfig { 
             d_input: in_dim, 
-            d_output: out_dim, 
+            d_output: out_dim,
             bias 
         };
-        WasmLinear { inner: config.init(&device) }
+        WasmLinear {
+            inner: config.init(&device),
+            in_dim,
+            out_dim,
+        }
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
@@ -109,8 +115,7 @@ impl WasmLinear {
         let x = input.inner.clone();
         let shape = x.dims();
         require_singleton_spatial(shape, "Linear forward")?;
-        let expected_features = self.weight_dims()[0];
-        require_axis_size(shape, 1, expected_features, "Linear forward")?;
+        require_axis_size(shape, 1, self.in_dim, "Linear forward")?;
 
         let [b, d, _, _] = shape;
         let x_2d = x.reshape([b, d]);
@@ -134,8 +139,7 @@ impl WasmLinear {
     /// [in_dim, out_dim] — supaya JS tahu cara memotong vektor flat.
     #[wasm_bindgen(js_name = weightDims)]
     pub fn weight_dims(&self) -> Vec<usize> {
-        let rec = self.inner.inner.clone().into_record();
-        rec.weight.dims().to_vec()
+        vec![self.in_dim, self.out_dim]
     }
 
     #[wasm_bindgen(js_name = getWeightsFlat)]
@@ -161,8 +165,9 @@ impl WasmLinear {
     pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
         let mut rec = self.inner.inner.clone().into_record();
         let wd = rec.weight.dims(); // [in, out]
-        let in_d = wd[0];
-        let out_d = wd[1];
+        debug_assert_eq!(wd, [self.in_dim, self.out_dim]);
+        let in_d = self.in_dim;
+        let out_d = self.out_dim;
         let has_bias = rec.bias.is_some();
         let need = in_d * out_d + if has_bias { out_d } else { 0 };
         if data.len() != need {
@@ -205,5 +210,65 @@ impl WasmLinear {
 
     pub fn weight_layout(&self) -> String {
         crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deterministic_weights(len: usize) -> Vec<f32> {
+        (0..len)
+            .map(|index| {
+                let bucket = ((index * 29 + 7) % 61) as i32 - 30;
+                bucket as f32 * 0.002
+            })
+            .collect()
+    }
+
+    #[test]
+    fn immutable_dims_survive_weight_and_state_updates() {
+        let mut layer = WasmLinear::new(3, 2, true);
+        assert_eq!(layer.weight_dims(), vec![3, 2]);
+
+        let weights = deterministic_weights(3 * 2 + 2);
+        layer.set_weights_flat(&weights).expect("set weights");
+        assert_eq!(layer.weight_dims(), vec![3, 2]);
+        assert_eq!(layer.get_weights_flat().expect("read weights"), weights);
+
+        let input = WasmTensor::new(&[0.25, -0.5, 0.75], &[1, 3, 1, 1]);
+        let expected_output = layer.forward(&input).to_array();
+        let state = layer.get_state().expect("serialize state");
+
+        layer
+            .set_weights_flat(&vec![0.0; 3 * 2 + 2])
+            .expect("replace weights");
+        layer.load_state(&state).expect("restore valid state");
+
+        assert_eq!(layer.weight_dims(), vec![3, 2]);
+        assert_eq!(layer.get_weights_flat().expect("restored weights"), weights);
+        assert_eq!(layer.forward(&input).to_array(), expected_output);
+    }
+
+    #[test]
+    fn mismatched_state_is_rejected_without_mutation() {
+        let mut target = WasmLinear::new(3, 2, true);
+        let weights = deterministic_weights(3 * 2 + 2);
+        target.set_weights_flat(&weights).expect("set target weights");
+        let before = target.get_weights_flat().expect("read target weights");
+
+        let mismatched_shape = WasmLinear::new(4, 2, true)
+            .get_state()
+            .expect("serialize mismatched state");
+        assert!(target.load_state(&mismatched_shape).is_err());
+        assert_eq!(target.weight_dims(), vec![3, 2]);
+        assert_eq!(target.get_weights_flat().expect("weights after rejection"), before);
+
+        let mismatched_bias = WasmLinear::new(3, 2, false)
+            .get_state()
+            .expect("serialize bias-mismatched state");
+        assert!(target.load_state(&mismatched_bias).is_err());
+        assert_eq!(target.weight_dims(), vec![3, 2]);
+        assert_eq!(target.get_weights_flat().expect("weights after bias rejection"), before);
     }
 }
