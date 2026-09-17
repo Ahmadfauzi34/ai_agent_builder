@@ -1,0 +1,31 @@
+name: WasmLinear Wrapper Decomposition Research
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wasm-linear-wrapper-decomposition:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run WasmLinear wrapper decomposition research
+        run: python scripts/research_wasm_linear_wrapper_decomposition.py
+
+      - name: Upload WasmLinear wrapper decomposition report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-linear-wrapper-decomposition-report
+          path: wasm-linear-wrapper-decomposition-report.json
+          if-no-files-found: error
