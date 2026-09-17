@@ -1,0 +1,32 @@
+name: Linear Registry Dispatch Decomposition Research
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/linear-registry-dispatch-decomposition-research.yml'
+      - 'docs/linear-registry-dispatch-decomposition-research.md'
+      - 'scripts/research_linear_registry_dispatch_decomposition.py'
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linear-registry-dispatch-decomposition:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run Linear registry dispatch decomposition research
+        run: python scripts/research_linear_registry_dispatch_decomposition.py
+      - name: Upload Linear registry dispatch decomposition report
+        uses: actions/upload-artifact@v4
+        with:
+          name: linear-registry-dispatch-decomposition-report
+          path: linear-registry-dispatch-decomposition-report.json
