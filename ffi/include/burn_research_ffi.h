@@ -29,6 +29,7 @@ br_v1_status br_v1_capabilities_json(br_v1_handle **out);
 
 br_v1_status br_v1_registry_new(br_v1_handle **out);
 br_v1_status br_v1_layer_linear(uint32_t layer_id, uint32_t in_dim, uint32_t out_dim, uint8_t bias, br_v1_handle **out);
+br_v1_status br_v1_layer_relu(uint32_t layer_id, br_v1_handle **out);
 br_v1_status br_v1_registry_init_layer(br_v1_handle *registry, const br_v1_handle *layer_spec);
 
 br_v1_status br_v1_graph_builder_new(uint32_t num_slots, br_v1_handle **out);
