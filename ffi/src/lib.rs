@@ -417,6 +417,17 @@ pub unsafe extern "C" fn br_v1_layer_linear(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn br_v1_layer_relu(
+    layer_id: u32,
+    out: *mut *mut BrV1Handle,
+) -> i32 {
+    ffi_status(|| {
+        let spec = AgentLayerSpec::relu(layer_id);
+        put_handle(out, HandleObject::LayerSpec(spec), "br_v1_layer_relu")
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn br_v1_registry_init_layer(
     registry: *mut BrV1Handle,
     layer_spec: *const BrV1Handle,
