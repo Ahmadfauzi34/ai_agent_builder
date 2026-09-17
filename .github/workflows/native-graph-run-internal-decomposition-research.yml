@@ -1,0 +1,32 @@
+name: Native Graph Run Internal Decomposition Research
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/native-graph-run-internal-decomposition-research.yml'
+      - 'docs/native-graph-run-internal-decomposition-research.md'
+      - 'scripts/research_native_graph_run_internal_decomposition.py'
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-graph-run-internal-decomposition:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run native graph run internal decomposition research
+        run: python scripts/research_native_graph_run_internal_decomposition.py
+      - name: Upload native graph run internal decomposition report
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-graph-run-internal-decomposition-report
+          path: native-graph-run-internal-decomposition-report.json
