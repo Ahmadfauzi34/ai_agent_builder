@@ -79,6 +79,60 @@ Exactly three research-only files:
 
 No production Rust, ABI/facade, OpenES algorithm/adaptive schedule, graph/binding semantics, model/activation surface, Linear runtime, Math v1-v9, ProgramBundle schema, Resolution/Authorization, or support-matrix change.
 
-## Status
+## Observed evidence
 
-Candidate research slice. Evidence will be recorded only after the exact PR head produces a successful report artifact and all regression gates remain green.
+The dedicated installed-wheel run passed all semantic, cardinality, identity, and final checkpoint-replay proofs.
+
+| Milestone | Evaluations | Champion reward | Interval improvements | Interval longest plateau |
+| ---: | ---: | ---: | ---: | ---: |
+| 48 | 384 | -0.645007 | 17 | 7 gen |
+| 96 | 768 | -0.390989 | 16 | 4 gen |
+| 144 | 1152 | -0.324997 | 13 | 10 gen |
+| 192 | 1536 | **-0.309271** | **8** | **14 gen** |
+
+Higher reward (less negative) is better.
+
+The trajectory continues to improve after generation 96:
+
+```text
+48  -> 96   cost magnitude reduction ≈ 39.38%
+96  -> 144  cost magnitude reduction ≈ 16.88%
+144 -> 192  cost magnitude reduction ≈  4.84%
+```
+
+The improvement count also declines by interval:
+
+```text
+1–48    : 17 champion improvements
+49–96   : 16
+97–144  : 13
+145–192 : 8
+```
+
+This is a clear diminishing-return pattern, but not full saturation. The final interval still produces eight new champions, with the last improvement at generation 178. The final 14 generations form the longest observed plateau.
+
+The report therefore classifies the run as:
+
+```text
+DEPTH_SATURATION_NOT_OBSERVED_AT_192
+DEPTH_RETURNS_DIMINISHING_BUT_ACTIVE
+```
+
+The final champion reward is `-0.3092712352204114`, corresponding to an ~87.15% cost reduction versus the zero-policy baseline `-2.407589173214531`.
+
+The final state replays exactly through stateful `ProgramBundle`, including exact parameter state and reward replay within `1e-9`.
+
+Median candidate rollout remains the dominant cost (~35.51 ms). Median parameter apply (~0.221 ms), `ask_f32` (~0.057 ms), and `tell` (~0.117 ms) remain secondary. Total training wall time is ~63.2 s for 1536 candidate evaluations.
+
+## Decision
+
+```text
+KEEP_OPENES_ALGORITHM_UNCHANGED
+KEEP_SIGMA_0_08_FOR_THIS_RESEARCH_LINEAGE
+DEPTH_RETURNS_DIMINISHING_BUT_ACTIVE
+DEPTH_SATURATION_NOT_OBSERVED_AT_192
+DO_NOT_WIDEN_MODEL_OR_ACTIVATION_SURFACE
+MEASURE_ONE_DEEPER_CONTINUATION_BEFORE_ALGORITHM_CHANGE
+```
+
+The next evidence slice should extend the same fixed-population, fixed-sigma lineage one step further before considering adaptive sigma, annealing, or optimizer-algorithm changes.
