@@ -136,3 +136,8 @@ MEASURE_ONE_DEEPER_CONTINUATION_BEFORE_ALGORITHM_CHANGE
 ```
 
 The next evidence slice should extend the same fixed-population, fixed-sigma lineage one step further before considering adaptive sigma, annealing, or optimizer-algorithm changes.
+
+## CI trigger note
+
+After #244/#245, this historical research workflow is intentionally slice-local on pull requests. It reruns when shared production boundaries change or when this workflow/script/document slice changes, while `workflow_dispatch` remains available for explicit reruns. Rust AI CI and Python Wheel Proof remain global pull-request gates.
+
