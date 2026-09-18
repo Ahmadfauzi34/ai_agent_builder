@@ -1,0 +1,41 @@
+name: Python OpenES Fixed Learning Rate Refinement Research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-openes-fixed-learning-rate-refinement-research.yml"
+      - "scripts/research_python_openes_fixed_learning_rate_refinement.py"
+      - "docs/python-openes-fixed-learning-rate-refinement-research.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openes-fixed-learning-rate-refinement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install research tooling
+        run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
+      - name: Run fixed OpenES learning-rate refinement research
+        run: python3 scripts/research_python_openes_fixed_learning_rate_refinement.py
+      - name: Upload fixed OpenES learning-rate refinement report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-openes-fixed-learning-rate-refinement-report
+          path: python-openes-fixed-learning-rate-refinement-report.json
+          if-no-files-found: error
