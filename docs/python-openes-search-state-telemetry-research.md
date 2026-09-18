@@ -37,6 +37,8 @@ Every `EsOptimizer.tell()` report already returns:
 - lifetime-best parameter norm;
 - diagnostic flags.
 
+The host also already owns the evaluated candidate-fitness vector. Because OpenES emits candidates as antithetic `(+epsilon, -epsilon)` pairs, the research derives the absolute pair-fitness contrast and the same contrast normalized by the generation fitness std. This is descriptive telemetry only; candidate ordering and `tell()` input remain unchanged.
+
 The research records these values every generation through the typed host API. No raw ABI or new facade method is needed.
 
 ## Interval analysis
@@ -56,7 +58,9 @@ Each interval records champion progress plus:
 - median generation-best fitness;
 - maximum stagnation;
 - search mean-norm start/end/delta and norm-path length;
-- champion best-norm start/end/delta.
+- champion best-norm start/end/delta;
+- raw antithetic pair-fitness contrast;
+- fitness-std-normalized antithetic pair contrast.
 
 The final lifetime-champion plateau is also summarized separately.
 
