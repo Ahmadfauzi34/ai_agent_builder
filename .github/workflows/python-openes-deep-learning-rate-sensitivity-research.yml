@@ -1,0 +1,41 @@
+name: Python OpenES Deep Learning Rate Sensitivity Research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-openes-deep-learning-rate-sensitivity-research.yml"
+      - "scripts/research_python_openes_deep_learning_rate_sensitivity.py"
+      - "docs/python-openes-deep-learning-rate-sensitivity-research.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openes-deep-learning-rate-sensitivity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install research tooling
+        run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
+      - name: Run deep OpenES learning-rate sensitivity research
+        run: python3 scripts/research_python_openes_deep_learning_rate_sensitivity.py
+      - name: Upload deep OpenES learning-rate sensitivity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-openes-deep-learning-rate-sensitivity-report
+          path: python-openes-deep-learning-rate-sensitivity-report.json
+          if-no-files-found: error
