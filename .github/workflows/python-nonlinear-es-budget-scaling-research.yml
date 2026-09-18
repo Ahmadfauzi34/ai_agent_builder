@@ -3,6 +3,18 @@ name: Python Nonlinear ES Budget Scaling Research
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-nonlinear-es-budget-scaling-research.yml"
+      - "scripts/research_python_nonlinear_es_budget_scaling.py"
+      - "docs/python-nonlinear-es-budget-scaling-research.md"
   workflow_dispatch:
 
 permissions:

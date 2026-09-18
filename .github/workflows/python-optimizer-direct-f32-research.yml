@@ -2,7 +2,19 @@ name: Python Optimizer Direct F32 Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-optimizer-direct-f32-research.yml"
+      - "scripts/research_python_optimizer_direct_f32.py"
+      - "docs/python-optimizer-direct-f32-research.md"
   workflow_dispatch:
 
 jobs:

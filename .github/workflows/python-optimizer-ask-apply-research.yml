@@ -2,7 +2,19 @@ name: Python Optimizer Ask Apply Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-optimizer-ask-apply-research.yml"
+      - "scripts/research_python_optimizer_ask_apply.py"
+      - "docs/python-optimizer-ask-apply-research.md"
   workflow_dispatch:
 
 jobs:

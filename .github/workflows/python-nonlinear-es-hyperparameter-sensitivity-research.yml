@@ -3,6 +3,18 @@ name: Python Nonlinear ES Hyperparameter Sensitivity Research
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-nonlinear-es-hyperparameter-sensitivity-research.yml"
+      - "scripts/research_python_nonlinear_es_hyperparameter_sensitivity.py"
+      - "docs/python-nonlinear-es-hyperparameter-sensitivity-research.md"
   workflow_dispatch:
 
 permissions:

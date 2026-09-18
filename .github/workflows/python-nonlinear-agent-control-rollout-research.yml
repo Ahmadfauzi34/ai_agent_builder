@@ -3,6 +3,18 @@ name: Python Nonlinear Agent Control Rollout Research
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-nonlinear-agent-control-rollout-research.yml"
+      - "scripts/research_python_nonlinear_agent_control_rollout.py"
+      - "docs/python-nonlinear-agent-control-rollout-research.md"
   workflow_dispatch:
 
 permissions:

@@ -2,7 +2,19 @@ name: Python Binding Scaling Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-binding-scaling-research.yml"
+      - "scripts/research_python_binding_scaling.py"
+      - "docs/python-binding-scaling-research.md"
   workflow_dispatch:
 
 jobs:

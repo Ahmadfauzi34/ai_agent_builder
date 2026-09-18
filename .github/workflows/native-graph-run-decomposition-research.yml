@@ -2,7 +2,19 @@ name: Native Graph Run Decomposition Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/native-graph-run-decomposition-research.yml"
+      - "scripts/research_native_graph_run_decomposition.py"
+      - "docs/native-graph-run-decomposition-research.md"
   workflow_dispatch:
 
 jobs:

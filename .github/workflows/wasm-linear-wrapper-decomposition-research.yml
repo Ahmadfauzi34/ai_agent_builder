@@ -3,6 +3,18 @@ name: WasmLinear Wrapper Decomposition Research
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/wasm-linear-wrapper-decomposition-research.yml"
+      - "scripts/research_wasm_linear_wrapper_decomposition.py"
+      - "docs/wasm-linear-wrapper-decomposition-research.md"
   workflow_dispatch:
 
 permissions:

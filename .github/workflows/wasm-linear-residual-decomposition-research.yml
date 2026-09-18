@@ -3,6 +3,18 @@ name: WasmLinear Residual Decomposition Research
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/wasm-linear-residual-decomposition-research.yml"
+      - "scripts/research_wasm_linear_residual_decomposition.py"
+      - "docs/wasm-linear-residual-decomposition-research.md"
   workflow_dispatch:
 
 permissions:

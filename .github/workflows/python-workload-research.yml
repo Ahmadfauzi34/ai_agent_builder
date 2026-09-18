@@ -2,7 +2,19 @@ name: Python Workload Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-workload-research.yml"
+      - "scripts/research_python_batch_workload.py"
+      - "docs/python-batch-workload-research.md"
   workflow_dispatch:
 
 jobs:

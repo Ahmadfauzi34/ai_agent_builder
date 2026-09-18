@@ -2,7 +2,19 @@ name: Python F32 Buffer Fast Path Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-f32-buffer-fast-path-research.yml"
+      - "scripts/research_python_f32_buffer_fast_path.py"
+      - "docs/python-f32-buffer-fast-path-research.md"
   workflow_dispatch:
 
 jobs:

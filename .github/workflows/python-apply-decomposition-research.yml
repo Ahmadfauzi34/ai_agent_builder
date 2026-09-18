@@ -2,7 +2,19 @@ name: Python Apply Decomposition Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-apply-decomposition-research.yml"
+      - "scripts/research_python_apply_decomposition.py"
+      - "docs/python-apply-decomposition-research.md"
   workflow_dispatch:
 
 jobs:

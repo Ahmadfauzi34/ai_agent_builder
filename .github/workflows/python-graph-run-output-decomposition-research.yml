@@ -2,7 +2,19 @@ name: Python Graph Run Output Decomposition Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-graph-run-output-decomposition-research.yml"
+      - "scripts/research_python_graph_run_output_decomposition.py"
+      - "docs/python-graph-run-output-decomposition-research.md"
   workflow_dispatch:
 
 jobs:
