@@ -81,6 +81,59 @@ No production Rust, ABI/facade, optimizer algorithm, adaptive sigma/learning-rat
 
 Timing and training-quality values are descriptive evidence only, never CI performance thresholds.
 
-## Status
+## Observed evidence
 
-Candidate research slice. Results are not recorded here until the exact PR head produces a successful report artifact and all regression gates remain green.
+The dedicated installed-wheel research run passed all semantic/cardinality/identity/checkpoint proofs.
+
+| Case | Evaluations | Final champion reward | Improvements | Longest plateau | Last improvement | Training wall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| C_LOW_SIGMA | 384 | -0.645007 | 17 | 7 gen | 47 | 16.57 s |
+| D_LOW_SIGMA | 768 | -0.652304 | 20 | 5 gen | 48 | 33.01 s |
+| E_LOW_SIGMA | 768 | **-0.390989** | **33** | 7 gen | **96** | 32.94 s |
+
+Higher reward (less negative) is better.
+
+The equal-768 result is decisive:
+
+```text
+D_LOW_SIGMA: population 16 × 48 generations -> -0.652304
+E_LOW_SIGMA: population  8 × 96 generations -> -0.390989
+```
+
+Therefore:
+
+```text
+DEPTH_BETTER_AT_768_EVALS_AFTER_SIGMA_CORRECTION
+```
+
+At the same 768 candidate evaluations, E reduces final cost magnitude by about **40.1%** relative to D.
+
+Extending only depth from C to E also reduces final cost magnitude by about **39.4%**:
+
+```text
+C_LOW_SIGMA: 8 × 48 -> -0.645007
+E_LOW_SIGMA: 8 × 96 -> -0.390989
+```
+
+The C result exactly reproduces the preceding #238 low-sigma 8×48 evidence, which gives a useful continuity check between the studies.
+
+For additional context, the established simple Linear-policy control workload finished around `-0.5210`. E therefore also reduces cost magnitude by about **25.0%** relative to that earlier Linear-policy champion on the same task. This removes the earlier evidence that the simple task necessarily favors the smaller policy under the tested search dynamics.
+
+The strongest saturation signal is actually the absence of saturation: E records **33 champion improvements**, and its final improvement occurs at **generation 96**, the final generation measured. Its longest plateau is still only 7 generations. The current evidence therefore does **not** justify changing the OpenES algorithm yet; generation depth under corrected sigma is still producing useful progress.
+
+Median rollout cost remains the dominant runtime bucket (~36.6–39.6 ms/candidate), and total training wall time scales approximately with candidate-evaluation count. No new transport/runtime pathology appears.
+
+The selected E state replays exactly through stateful `ProgramBundle`, with reward `-0.3909893173088647` reproduced within `1e-9`.
+
+## Decision
+
+```text
+KEEP_OPENES_ALGORITHM_UNCHANGED
+KEEP_SIGMA_0_08_FOR_THIS_RESEARCH_LINEAGE
+DEPTH_REMAINS_STRONGER_THAN_BREADTH
+DEPTH_SATURATION_NOT_YET_OBSERVED
+MEASURE_DEEPER_FIXED_POPULATION_SEARCH_NEXT
+DO_NOT_WIDEN_MODEL_OR_ACTIVATION_SURFACE_YET
+```
+
+The next research slice should measure **depth saturation** at fixed population 8, sigma 0.08, and learning rate 0.06 before considering adaptive schedules or optimizer-algorithm changes.
