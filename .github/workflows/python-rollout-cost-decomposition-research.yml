@@ -2,7 +2,19 @@ name: Python Rollout Cost Decomposition Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-rollout-cost-decomposition-research.yml"
+      - "scripts/research_python_rollout_cost_decomposition.py"
+      - "docs/python-rollout-cost-decomposition-research.md"
   workflow_dispatch:
 
 jobs:
