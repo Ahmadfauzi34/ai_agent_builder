@@ -1,0 +1,35 @@
+name: Python Nonlinear ES Depth 768 Research
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nonlinear-es-depth-768:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install research tooling
+        run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
+
+      - name: Run equal-768 nonlinear ES depth research
+        run: python3 scripts/research_python_nonlinear_es_depth_768.py
+
+      - name: Upload nonlinear ES depth-768 report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-nonlinear-es-depth-768-report
+          path: python-nonlinear-es-depth-768-report.json
+          if-no-files-found: error
