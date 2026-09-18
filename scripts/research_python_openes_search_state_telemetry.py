@@ -280,7 +280,6 @@ def train_case(
             "worst",
             "mean",
             "std",
-            "improvement",
             "diversity",
             "sigma",
             "lr",
@@ -292,6 +291,23 @@ def train_case(
             if not math.isfinite(value):
                 raise AssertionError(
                     f"case {label}: telemetry field {field} is non-finite: {value}"
+                )
+
+        raw_improvement = report["improvement"]
+        if generation == 0:
+            if raw_improvement is not None and not math.isfinite(
+                float(raw_improvement)
+            ):
+                raise AssertionError(
+                    f"case {label}: first-generation improvement is invalid"
+                )
+        else:
+            if raw_improvement is None or not math.isfinite(
+                float(raw_improvement)
+            ):
+                raise AssertionError(
+                    f"case {label}: telemetry improvement must be finite "
+                    f"after generation 1"
                 )
         if int(report["dim"]) != binding.total_len:
             raise AssertionError(f"case {label}: telemetry dim mismatch")
@@ -315,7 +331,11 @@ def train_case(
                 "generation_worst_fitness": float(report["worst"]),
                 "population_mean_fitness": float(report["mean"]),
                 "fitness_std": float(report["std"]),
-                "lifetime_best_improvement": float(report["improvement"]),
+                "lifetime_best_improvement": (
+                    None
+                    if raw_improvement is None
+                    else float(raw_improvement)
+                ),
                 "stagnation": int(report["stagnation"]),
                 "diversity": float(report["diversity"]),
                 "sigma": float(report["sigma"]),
