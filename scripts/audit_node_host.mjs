@@ -6,6 +6,9 @@ const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
 const adapterPath = path.join(pkgDir, 'node.mjs');
 const typesPath = path.join(pkgDir, 'node.d.mts');
 const supportPath = path.join(pkgDir, 'host-support.v1.json');
+const packageJsonPath = path.join(pkgDir, 'package.json');
+const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
+const backgroundTypesPath = path.join(pkgDir, 'burn_research_bg.wasm.d.ts');
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -14,6 +17,31 @@ function assert(condition, message) {
 assert(fs.existsSync(adapterPath), 'packaged node.mjs is missing');
 assert(fs.existsSync(typesPath), 'packaged node.d.mts is missing');
 assert(fs.existsSync(supportPath), 'packaged host-support.v1.json is missing');
+assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
+assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
+assert(fs.existsSync(backgroundTypesPath), 'packaged burn_research_bg.wasm.d.ts is missing');
+
+const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+assert(Array.isArray(manifest.files), 'package.json files allowlist is missing');
+const requiredPackageFiles = [
+  'burn_research_bg.wasm',
+  'burn_research.js',
+  'burn_research.d.ts',
+  'burn_research_bg.wasm.d.ts',
+  'wasm-surface.actual.json',
+  'node.mjs',
+  'node.d.mts',
+  'host-support.v1.json',
+];
+for (const file of requiredPackageFiles) {
+  assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
+}
+
+const actualSurface = JSON.parse(fs.readFileSync(surfaceActualPath, 'utf8'));
+assert(
+  actualSurface.artifact === 'pkg/burn_research.d.ts',
+  `surface diagnostic artifact mismatch: ${actualSurface.artifact}`,
+);
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
 assert(support.schema === 'burn-research.host-support.v1', 'host support schema mismatch');
@@ -60,4 +88,7 @@ console.log(JSON.stringify({
   execution: got,
   programIdentitySchema: programCaps.identity_schema,
   programBundleSchema: bundleCaps.schema,
+  packageFiles: requiredPackageFiles,
+  surfaceDiagnostic: path.basename(surfaceActualPath),
+  backgroundTypes: path.basename(backgroundTypesPath),
 }, null, 2));
