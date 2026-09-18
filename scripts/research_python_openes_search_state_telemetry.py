@@ -322,6 +322,22 @@ def train_case(
         if abs(float(report["best"]) - generation_best_rewards[-1]) > 1e-6:
             raise AssertionError(f"case {label}: report generation-best mismatch")
 
+        if batch % 2 != 0:
+            raise AssertionError(f"case {label}: OpenES antithetic batch must be even")
+        pair_diffs = [
+            fitness[index] - fitness[index + 1]
+            for index in range(0, batch, 2)
+        ]
+        pair_abs_diffs = [abs(value) for value in pair_diffs]
+        fitness_scale = max(float(report["std"]), 1e-8)
+        normalized_pair_abs_diffs = [
+            value / fitness_scale for value in pair_abs_diffs
+        ]
+        normalized_pair_rms = math.sqrt(
+            sum(value * value for value in normalized_pair_abs_diffs)
+            / len(normalized_pair_abs_diffs)
+        )
+
         flags = list(report.get("flags", []))
         report_flags.append(flags)
         telemetry_history.append(
@@ -342,6 +358,13 @@ def train_case(
                 "learning_rate": float(report["lr"]),
                 "mean_norm": float(report["mean_norm"]),
                 "best_norm": float(report["best_norm"]),
+                "antithetic_raw_abs_diff_median": statistics.median(
+                    pair_abs_diffs
+                ),
+                "antithetic_normalized_abs_diff_median": statistics.median(
+                    normalized_pair_abs_diffs
+                ),
+                "antithetic_normalized_rms": normalized_pair_rms,
                 "flags": flags,
             }
         )
@@ -448,6 +471,18 @@ def train_case(
         ]
         mean_norm_values = [float(item["mean_norm"]) for item in telemetry_slice]
         best_norm_values = [float(item["best_norm"]) for item in telemetry_slice]
+        antithetic_raw_values = [
+            float(item["antithetic_raw_abs_diff_median"])
+            for item in telemetry_slice
+        ]
+        antithetic_normalized_values = [
+            float(item["antithetic_normalized_abs_diff_median"])
+            for item in telemetry_slice
+        ]
+        antithetic_normalized_rms_values = [
+            float(item["antithetic_normalized_rms"])
+            for item in telemetry_slice
+        ]
 
         interval_reports.append(
             {
@@ -483,6 +518,15 @@ def train_case(
                     "best_norm_start": best_norm_values[0],
                     "best_norm_end": best_norm_values[-1],
                     "best_norm_delta": best_norm_values[-1] - best_norm_values[0],
+                    "antithetic_raw_abs_diff_median": numeric_summary(
+                        antithetic_raw_values
+                    ),
+                    "antithetic_normalized_abs_diff_median": numeric_summary(
+                        antithetic_normalized_values
+                    ),
+                    "antithetic_normalized_rms": numeric_summary(
+                        antithetic_normalized_rms_values
+                    ),
                 },
             }
         )
@@ -516,6 +560,18 @@ def train_case(
         plateau_mean_norm = [
             float(item["mean_norm"]) for item in final_plateau_telemetry
         ]
+        plateau_antithetic_raw = [
+            float(item["antithetic_raw_abs_diff_median"])
+            for item in final_plateau_telemetry
+        ]
+        plateau_antithetic_normalized = [
+            float(item["antithetic_normalized_abs_diff_median"])
+            for item in final_plateau_telemetry
+        ]
+        plateau_antithetic_rms = [
+            float(item["antithetic_normalized_rms"])
+            for item in final_plateau_telemetry
+        ]
         plateau_flags = [
             flag
             for item in final_plateau_telemetry
@@ -546,6 +602,15 @@ def train_case(
                 "ALL_FITNESS_EQUAL"
             ),
             "no_improvement_flags": plateau_flags.count("NO_IMPROVEMENT"),
+            "antithetic_raw_abs_diff_median": numeric_summary(
+                plateau_antithetic_raw
+            ),
+            "antithetic_normalized_abs_diff_median": numeric_summary(
+                plateau_antithetic_normalized
+            ),
+            "antithetic_normalized_rms": numeric_summary(
+                plateau_antithetic_rms
+            ),
         }
 
     return (
@@ -745,6 +810,7 @@ report = {
         "The final 192-generation champion alone is used for stateful ProgramBundle replay.",
         "Timing and training-quality comparisons are evidence only and are not CI performance thresholds.",
         "Search-state telemetry comes only from the existing typed-host tell() report; ABI v1 and facade methods are unchanged.",
+        "Host-side antithetic pair contrast is derived from the already-evaluated (+epsilon, -epsilon) fitness ordering; it does not alter candidates or tell().",
         "mean_norm is only the norm of the optimizer search mean, not the full mean vector; this research does not infer mean-vector direction or exact mean-to-champion distance.",
         "No optimizer algorithm, adaptive schedule, ABI, graph/controller, activation surface, or support claim changes in this research.",
     ],
