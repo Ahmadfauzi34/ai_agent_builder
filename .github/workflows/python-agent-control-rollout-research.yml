@@ -2,7 +2,19 @@ name: Python Agent Control Rollout Research
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-agent-control-rollout-research.yml"
+      - "scripts/research_python_agent_control_rollout.py"
+      - "docs/python-agent-control-rollout-research.md"
   workflow_dispatch:
 
 jobs:
