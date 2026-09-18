@@ -3,6 +3,18 @@ name: Python ReLU Layer Spec Proof
 on:
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-relu-layer-spec-proof.yml"
+      - "scripts/audit_python_relu_layer_spec.py"
+      - "docs/python-relu-layer-spec-proof.md"
   workflow_dispatch:
 
 permissions:
