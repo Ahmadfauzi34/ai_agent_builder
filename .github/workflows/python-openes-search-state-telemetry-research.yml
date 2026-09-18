@@ -1,0 +1,46 @@
+name: Python OpenES Search State Telemetry Research
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "ffi/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "rust-toolchain"
+      - "rust-toolchain.toml"
+      - ".cargo/**"
+      - ".github/workflows/python-openes-search-state-telemetry-research.yml"
+      - "scripts/research_python_openes_search_state_telemetry.py"
+      - "docs/python-openes-search-state-telemetry-research.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openes-search-state-telemetry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install research tooling
+        run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
+
+      - name: Run OpenES search-state telemetry research
+        run: python3 scripts/research_python_openes_search_state_telemetry.py
+
+      - name: Upload OpenES search-state telemetry report
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-openes-search-state-telemetry-report
+          path: python-openes-search-state-telemetry-report.json
+          if-no-files-found: error
