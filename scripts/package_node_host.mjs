@@ -10,8 +10,31 @@ const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
 const hostSupportTarget = path.join(pkgDir, 'host-support.v1.json');
 
+const generatedPackageFiles = [
+  'burn_research_bg.wasm.d.ts',
+  'wasm-surface.actual.json',
+];
+
+const packagedHostFiles = [
+  'node.mjs',
+  'node.d.mts',
+  'host-support.v1.json',
+];
+
+const requiredManifestFiles = [
+  ...generatedPackageFiles,
+  ...packagedHostFiles,
+];
+
 if (!fs.existsSync(packageJsonPath)) {
   throw new Error(`package.json not found in ${pkgDir}`);
+}
+
+for (const file of generatedPackageFiles) {
+  const generatedPath = path.join(pkgDir, file);
+  if (!fs.existsSync(generatedPath)) {
+    throw new Error(`required generated package file is missing: ${generatedPath}`);
+  }
 }
 
 fs.copyFileSync(nodeAdapterSource, nodeAdapterTarget);
@@ -20,7 +43,7 @@ fs.copyFileSync(hostSupportSource, hostSupportTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const files = Array.isArray(manifest.files) ? [...manifest.files] : [];
-for (const file of ['node.mjs', 'node.d.mts', 'host-support.v1.json']) {
+for (const file of requiredManifestFiles) {
   if (!files.includes(file)) files.push(file);
 }
 manifest.files = files;
@@ -29,5 +52,5 @@ fs.writeFileSync(packageJsonPath, `${JSON.stringify(manifest, null, 2)}\n`);
 console.log(JSON.stringify({
   packaged: true,
   pkgDir,
-  files: ['node.mjs', 'node.d.mts', 'host-support.v1.json'],
+  files: requiredManifestFiles,
 }, null, 2));
