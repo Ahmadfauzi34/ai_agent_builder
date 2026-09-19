@@ -47,6 +47,7 @@ br_v1_status br_v1_binding_apply_flat(const br_v1_handle *binding, const br_v1_h
 br_v1_status br_v1_es_strict(uint32_t dim, uint8_t strategy, uint32_t seed, uint32_t pop, float sigma, uint8_t has_lr, float lr, br_v1_handle **out_optimizer);
 br_v1_status br_v1_es_ask(br_v1_handle *optimizer, br_v1_handle **out_f32);
 br_v1_status br_v1_es_batch_size(const br_v1_handle *optimizer, uint32_t *out_batch_size);
+br_v1_status br_v1_es_set_learning_rate(br_v1_handle *optimizer, float learning_rate);
 br_v1_status br_v1_es_tell(br_v1_handle *optimizer, const float *fitness, size_t fitness_len, br_v1_handle **out_report_utf8);
 br_v1_status br_v1_es_best(const br_v1_handle *optimizer, br_v1_handle **out_f32);
 
@@ -219,6 +220,79 @@ def main() -> None:
         )
         after_reject_h = new_handle(lib.br_v1_binding_read_flat, binding, graph, registry)
         assert read_f32(after_reject_h) == initial
+
+        # In-place OpenES learning-rate control preserves search/RNG state.
+        lr_control = new_handle(lib.br_v1_es_strict, 3, 0, 4242, 8, 0.08, 1, 0.10)
+        lr_changed = new_handle(lib.br_v1_es_strict, 3, 0, 4242, 8, 0.08, 1, 0.10)
+
+        first_control_h = new_handle(lib.br_v1_es_ask, lr_control)
+        first_changed_h = new_handle(lib.br_v1_es_ask, lr_changed)
+        assert read_f32(first_control_h) == read_f32(first_changed_h)
+
+        continuity_fitness_1 = ffi.new(
+            "float[]", [2.0, -2.0, 1.5, -1.5, 1.0, -1.0, 0.5, -0.5]
+        )
+        first_control_report_h = new_handle(
+            lib.br_v1_es_tell, lr_control, continuity_fitness_1, 8
+        )
+        first_changed_report_h = new_handle(
+            lib.br_v1_es_tell, lr_changed, continuity_fitness_1, 8
+        )
+        assert json.loads(read_u8(first_control_report_h).decode("utf-8"))["gen"] == 1
+        assert json.loads(read_u8(first_changed_report_h).decode("utf-8"))["gen"] == 1
+
+        expect_status(
+            lib.br_v1_es_set_learning_rate(lr_changed, 0.0),
+            BR_V1_INVALID_ARGUMENT,
+            "invalid learning rate",
+        )
+        check(
+            lib.br_v1_es_set_learning_rate(lr_changed, 0.08),
+            "set OpenES learning rate between generations",
+        )
+
+        # LR is not part of ask(), so unchanged mean + RNG must produce an
+        # exactly identical next batch after an in-place LR mutation.
+        second_control_h = new_handle(lib.br_v1_es_ask, lr_control)
+        second_changed_h = new_handle(lib.br_v1_es_ask, lr_changed)
+        assert read_f32(second_control_h) == read_f32(second_changed_h)
+
+        # A pending batch is immutable with respect to optimizer control.
+        expect_status(
+            lib.br_v1_es_set_learning_rate(lr_changed, 0.07),
+            BR_V1_CORE_ERROR,
+            "pending-batch learning-rate mutation",
+        )
+
+        continuity_fitness_2 = ffi.new(
+            "float[]", [3.0, -3.0, 2.0, -2.0, 1.0, -1.0, 0.25, -0.25]
+        )
+        second_control_report_h = new_handle(
+            lib.br_v1_es_tell, lr_control, continuity_fitness_2, 8
+        )
+        second_changed_report_h = new_handle(
+            lib.br_v1_es_tell, lr_changed, continuity_fitness_2, 8
+        )
+        second_control_report = json.loads(
+            read_u8(second_control_report_h).decode("utf-8")
+        )
+        second_changed_report = json.loads(
+            read_u8(second_changed_report_h).decode("utf-8")
+        )
+        assert second_control_report["gen"] == second_changed_report["gen"] == 2
+        assert abs(float(second_control_report["lr"]) - 0.10) <= 1e-6
+        assert abs(float(second_changed_report["lr"]) - 0.08) <= 1e-6
+
+        third_control_h = new_handle(lib.br_v1_es_ask, lr_control)
+        third_changed_h = new_handle(lib.br_v1_es_ask, lr_changed)
+        assert read_f32(third_control_h) != read_f32(third_changed_h)
+
+        mu_lambda = new_handle(lib.br_v1_es_strict, 3, 1, 4242, 8, 0.08, 0, 0.0)
+        expect_status(
+            lib.br_v1_es_set_learning_rate(mu_lambda, 0.08),
+            BR_V1_CORE_ERROR,
+            "mu-lambda learning-rate mutation",
+        )
 
         optimizer = new_handle(lib.br_v1_es_strict, 3, 0, 1777, 8, 0.2, 1, 0.05)
         rows = [
