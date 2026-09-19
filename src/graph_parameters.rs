@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use crate::graph::CompiledGraph;
+use crate::graph_plan::decode_graph_plan;
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
@@ -10,9 +9,6 @@ use crate::protocol::{
 };
 use crate::registry::LayerRegistry;
 
-const PLAN_HEADER_BYTES: usize = 8;
-const PLAN_STEP_BYTES: usize = 9;
-const PLAN_OUTPUT_BYTES: usize = 1;
 const BINDING_SCHEMA: &str = "burn-research.graph-parameter-binding.v1";
 const LAYOUT_SCHEMA: &str = "burn-research.graph-parameter-layout.v1";
 const ORDERING: &str = "unique_first_use_graph_plan";
@@ -70,56 +66,13 @@ enum ParameterClass {
     Stateless,
 }
 
-fn read_u32_at(bytes: &[u8], offset: usize, context: &str) -> Result<u32, String> {
-    let end = offset
-        .checked_add(4)
-        .ok_or_else(|| format!("{context}: offset overflow"))?;
-    let slice = bytes
-        .get(offset..end)
-        .ok_or_else(|| format!("{context}: truncated u32 at offset {offset}"))?;
-    Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
-}
-
-// This deliberately mirrors the frozen program-bundle.v1 owner ordering:
-// structural graph step order, deduplicated by (layer_type, layer_id) on first use.
+// Structural graph step order, deduplicated by (layer_type, layer_id) on first use.
 // Candidate coordinates must never be derived from raw graph step count because one
 // trainable owner may be referenced by multiple steps.
 fn referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
-    if plan.len() < PLAN_HEADER_BYTES + PLAN_OUTPUT_BYTES {
-        return Err("graph parameter binding: graph plan is truncated".into());
-    }
-    let num_steps = read_u32_at(plan, 0, "graph parameter binding plan")?;
-    let expected_len = (num_steps as usize)
-        .checked_mul(PLAN_STEP_BYTES)
-        .and_then(|steps| PLAN_HEADER_BYTES.checked_add(steps))
-        .and_then(|bytes| bytes.checked_add(PLAN_OUTPUT_BYTES))
-        .ok_or_else(|| "graph parameter binding: graph plan length overflow".to_string())?;
-    if plan.len() != expected_len {
-        return Err(format!(
-            "graph parameter binding: malformed graph plan length: expected {expected_len}, got {}",
-            plan.len()
-        ));
-    }
-
-    let mut seen = HashSet::new();
-    let mut keys = Vec::new();
-    for index in 0..num_steps as usize {
-        let offset = PLAN_HEADER_BYTES
-            .checked_add(
-                index
-                    .checked_mul(PLAN_STEP_BYTES)
-                    .ok_or_else(|| "graph parameter binding: step offset overflow".to_string())?,
-            )
-            .ok_or_else(|| "graph parameter binding: step offset overflow".to_string())?;
-        let layer_type = *plan
-            .get(offset + 1)
-            .ok_or_else(|| "graph parameter binding: truncated layer type".to_string())?;
-        let layer_id = read_u32_at(plan, offset + 2, "graph parameter binding layer id")?;
-        if seen.insert((layer_type, layer_id)) {
-            keys.push((layer_type, layer_id));
-        }
-    }
-    Ok(keys)
+    decode_graph_plan(plan)
+        .map(|decoded| decoded.unique_first_use_layer_keys())
+        .map_err(|error| format!("graph parameter binding: {error}"))
 }
 
 fn fingerprint_variant(fingerprint: &str) -> Result<u8, String> {
