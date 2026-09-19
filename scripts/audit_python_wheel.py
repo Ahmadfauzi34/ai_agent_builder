@@ -265,6 +265,83 @@ with ExitStack() as stack:
     assert int(f32_report["gen"]) == 1
     assert optimizer_f32.batch_size == batch_f32
 
+    # In-place learning-rate control must preserve the current optimizer
+    # trajectory until the next tell() consumes an identical candidate batch.
+    lr_control = stack.enter_context(
+        host.EsOptimizer.strict(
+            dim,
+            strategy=0,
+            seed=19_917,
+            population=4,
+            sigma=0.08,
+            learning_rate=0.10,
+        )
+    )
+    lr_changed = stack.enter_context(
+        host.EsOptimizer.strict(
+            dim,
+            strategy=0,
+            seed=19_917,
+            population=4,
+            sigma=0.08,
+            learning_rate=0.10,
+        )
+    )
+
+    lr_first_control = lr_control.ask_f32()
+    lr_first_changed = lr_changed.ask_f32()
+    assert lr_first_control.tobytes() == lr_first_changed.tobytes()
+    lr_fitness_1 = [2.0, -2.0, 1.0, -1.0]
+    lr_control.tell(lr_fitness_1)
+    lr_changed.tell(lr_fitness_1)
+
+    try:
+        lr_changed.set_learning_rate(0.0)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.INVALID_ARGUMENT
+    else:
+        raise AssertionError("invalid learning rate unexpectedly succeeded")
+
+    lr_changed.set_learning_rate(0.08)
+
+    lr_second_control = lr_control.ask_f32()
+    lr_second_changed = lr_changed.ask_f32()
+    assert lr_second_control.tobytes() == lr_second_changed.tobytes()
+
+    try:
+        lr_changed.set_learning_rate(0.07)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.CORE_ERROR
+    else:
+        raise AssertionError("pending-batch learning-rate mutation unexpectedly succeeded")
+
+    lr_fitness_2 = [3.0, -3.0, 1.5, -1.5]
+    lr_control_report = lr_control.tell(lr_fitness_2)
+    lr_changed_report = lr_changed.tell(lr_fitness_2)
+    assert int(lr_control_report["gen"]) == int(lr_changed_report["gen"]) == 2
+    assert abs(float(lr_control_report["lr"]) - 0.10) <= 1e-6
+    assert abs(float(lr_changed_report["lr"]) - 0.08) <= 1e-6
+
+    lr_third_control = lr_control.ask_f32()
+    lr_third_changed = lr_changed.ask_f32()
+    assert lr_third_control.tobytes() != lr_third_changed.tobytes()
+
+    mu_lambda = stack.enter_context(
+        host.EsOptimizer.strict(
+            dim,
+            strategy=1,
+            seed=19_917,
+            population=4,
+            sigma=0.08,
+        )
+    )
+    try:
+        mu_lambda.set_learning_rate(0.08)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.CORE_ERROR
+    else:
+        raise AssertionError("mu/lambda learning-rate mutation unexpectedly succeeded")
+
     # Python owns the objective and evaluation schedule. The host namespace only
     # composes existing reference-machine semantics; it does not own policy.
     rows = [(-1.0, 0.5), (0.0, 0.0), (1.0, -0.5)]
@@ -363,6 +440,9 @@ print(json.dumps({
     "optimizer_ask_f32_buffer_layout": True,
     "optimizer_ask_f32_lifecycle": True,
     "optimizer_ask_f32_closed_handle_guard": True,
+    "optimizer_learning_rate_control": True,
+    "optimizer_learning_rate_state_continuity": True,
+    "optimizer_learning_rate_pending_batch_guard": True,
     "performance_evidence": {
         "parameter_dim": perf_dim,
         "repetitions": PERF_REPS,
