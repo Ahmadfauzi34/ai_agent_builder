@@ -351,6 +351,7 @@ impl EsOptimizer {
 #[cfg(test)]
 mod tests {
     use super::{es_capabilities, EsOptimizer};
+    use crate::es::strategy::EsStrategy;
 
     fn optimizer(dim: u32) -> EsOptimizer {
         EsOptimizer::new(dim, 0, 123, Some(8), Some(0.1), Some(0.05))
@@ -445,7 +446,7 @@ mod tests {
         assert_eq!(control.generation(), 2);
         assert_eq!(changed.generation(), 2);
         assert_ne!(control.mean(), changed.mean());
-        assert!(changed.report().contains("\"lr\":0.08"));
+        assert!((changed.strategy.lr() - 0.08).abs() <= f32::EPSILON);
     }
 
     #[test]
