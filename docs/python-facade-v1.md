@@ -93,6 +93,22 @@ Registry
 
 Python still owns dataset selection, objective calculation, evaluation scheduling, stopping/promotion policy, experiment bookkeeping, and application integration. There is intentionally no giant graph-owning controller object.
 
+### In-place OpenES learning-rate control
+
+`EsOptimizer.set_learning_rate(value)` is a narrow host-control operation over the additive ABI v1 setter.
+
+The method:
+
+- accepts only finite positive values;
+- is valid only for OpenES;
+- is valid only after a generation has completed and before the next `ask()`;
+- rejects mutation while a candidate batch is pending;
+- preserves the current optimizer trajectory instead of constructing a new optimizer.
+
+The installed-wheel proof uses two identical seeded optimizers to verify that changing LR between generations leaves the next `ask_f32()` candidate bytes exactly unchanged. After those identical candidates receive identical fitness, their later trajectories diverge only because the `tell()` update uses different learning rates.
+
+This operation does not implement an automatic learning-rate schedule. Python remains responsible for deciding whether and when to call it.
+
 ## GraphParameterBinding candidate transport
 
 `GraphParameterBinding.apply_flat(...)` preserves one public method and two Python-side transport paths over the same `br_v1_binding_apply_flat` ABI call.
@@ -195,14 +211,14 @@ These are runner-specific evidence, not a performance SLA.
 
 This slice does not add:
 
-- new `br_v1_*` ABI symbols;
+- ABI version changes or breaking changes to existing `br_v1_*` symbols;
 - PyO3;
 - NumPy/DLPack tensor integration;
 - persistent CFFI pointer/view caches;
 - `GraphParameterBinding` cache/reusable core validation state;
 - a training-loop/controller abstraction;
 - Math Program changes;
-- optimizer changes;
+- optimizer algorithm changes or automatic adaptive schedules;
 - Python-specific checkpoint identity;
 - broader Python/platform support;
 - PyPI publication;
