@@ -100,10 +100,10 @@ impl CompiledGraph {
         debug_assert_eq!(decoded.num_slots, num_slots);
 
         let out_slot = u32::from(decoded.output_slot);
-        let mut steps: Vec<GraphPlanStep> = Vec::with_capacity(num_steps as usize);
+        let steps = decoded.steps;
         let mut init_fingerprints: Vec<String> = Vec::with_capacity(num_steps as usize);
         let mut filled: u64 = 1;
-        for s in decoded.steps {
+        for s in &steps {
             let in_slot = s.in_slot as u32;
             let in_slot2 = s.in_slot2 as u32;
             let step_out_slot = s.out_slot as u32;
@@ -151,7 +151,6 @@ impl CompiledGraph {
                 .layer_init_fingerprint(s.layer_type, s.layer_id)
                 .map_err(|error| format!("compile_graph: {error}"))?;
             filled |= 1u64 << step_out_slot;
-            steps.push(s);
             init_fingerprints.push(fingerprint);
         }
         if out_slot >= num_slots {
