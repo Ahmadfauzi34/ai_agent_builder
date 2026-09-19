@@ -8,6 +8,7 @@
 use crate::math::comparison::TensorComparison;
 use crate::math::index_source::TensorIndexSource;
 use crate::math::program_index_params::{IndexAxisParams, PARAM_INDEX_AXIS};
+use crate::math::program_step_record::{ProgramStepRecord, STEP_HEADER_BYTES};
 use crate::math::program_v8::{MathProgramV8, MathProgramV8Builder};
 use crate::WasmTensor;
 
@@ -16,9 +17,7 @@ const PLAN_VERSION_V8: u8 = 8;
 const PLAN_VERSION_V9: u8 = 9;
 const PLAN_HEADER_BYTES: usize = 8;
 const PLAN_OUTPUT_BYTES: usize = 1;
-const STEP_HEADER_BYTES: usize = 10;
 const MAX_STEPS: usize = u8::MAX as usize;
-const MAX_PARAM_BYTES: usize = 8 + (u16::MAX as usize) * 4;
 const MAX_PLAN_BYTES: usize = 4 * 1024 * 1024;
 const MAX_SLOTS: u8 = 64;
 const PARAM_NONE: u8 = 0;
@@ -28,8 +27,10 @@ pub const MAX_V9_EXTERNAL_INPUTS: u8 = 8;
 pub const OP_INDICES_LIKE: u8 = 0x70;
 pub const OP_LESS_EQUAL_01: u8 = 0x71;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct RawStepRecord {
+type RawStepRecord = ProgramStepRecord;
+const STEP_CONTEXT: &str = "MathProgramV9 step";
+
+fn raw_step_record(
     op: u8,
     arity: u8,
     in_a: u8,
@@ -37,88 +38,21 @@ struct RawStepRecord {
     out: u8,
     param_kind: u8,
     payload: Vec<u8>,
+) -> Result<RawStepRecord, String> {
+    ProgramStepRecord::new(
+        op,
+        arity,
+        in_a,
+        in_b,
+        out,
+        param_kind,
+        payload,
+        STEP_CONTEXT,
+    )
 }
 
-impl RawStepRecord {
-    fn new(
-        op: u8,
-        arity: u8,
-        in_a: u8,
-        in_b: u8,
-        out: u8,
-        param_kind: u8,
-        payload: Vec<u8>,
-    ) -> Result<Self, String> {
-        if payload.len() > MAX_PARAM_BYTES {
-            return Err(format!(
-                "MathProgramV9 step: payload length {} exceeds maximum {MAX_PARAM_BYTES}",
-                payload.len()
-            ));
-        }
-        Ok(Self {
-            op,
-            arity,
-            in_a,
-            in_b,
-            out,
-            param_kind,
-            payload,
-        })
-    }
-
-    fn encoded_len(&self) -> usize {
-        STEP_HEADER_BYTES + self.payload.len()
-    }
-
-    fn encode(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(self.encoded_len());
-        bytes.push(self.op);
-        bytes.push(self.arity);
-        bytes.push(self.in_a);
-        bytes.push(self.in_b);
-        bytes.push(self.out);
-        bytes.push(self.param_kind);
-        bytes.extend_from_slice(&(self.payload.len() as u32).to_le_bytes());
-        bytes.extend_from_slice(&self.payload);
-        bytes
-    }
-
-    fn decode_prefix(bytes: &[u8]) -> Result<(Self, usize), String> {
-        if bytes.len() < STEP_HEADER_BYTES {
-            return Err(format!(
-                "MathProgramV9 step: truncated header: expected at least {STEP_HEADER_BYTES} bytes, got {}",
-                bytes.len()
-            ));
-        }
-        let payload_len = u32::from_le_bytes([bytes[6], bytes[7], bytes[8], bytes[9]]) as usize;
-        if payload_len > MAX_PARAM_BYTES {
-            return Err(format!(
-                "MathProgramV9 step: payload length {payload_len} exceeds maximum {MAX_PARAM_BYTES}"
-            ));
-        }
-        let record_len = STEP_HEADER_BYTES
-            .checked_add(payload_len)
-            .ok_or_else(|| "MathProgramV9 step: record length overflow".to_string())?;
-        if bytes.len() < record_len {
-            return Err(format!(
-                "MathProgramV9 step: truncated payload: record needs {record_len} bytes, got {}",
-                bytes.len()
-            ));
-        }
-        let record = Self::new(
-            bytes[0],
-            bytes[1],
-            bytes[2],
-            bytes[3],
-            bytes[4],
-            bytes[5],
-            bytes[STEP_HEADER_BYTES..record_len].to_vec(),
-        )?;
-        if record.encode().as_slice() != &bytes[..record_len] {
-            return Err("MathProgramV9 step: noncanonical record encoding".into());
-        }
-        Ok((record, record_len))
-    }
+fn decode_raw_step_prefix(bytes: &[u8]) -> Result<(RawStepRecord, usize), String> {
+    ProgramStepRecord::decode_prefix(bytes, STEP_CONTEXT)
 }
 
 #[derive(Clone, Debug)]
@@ -184,7 +118,7 @@ fn extract_single_v8_record(program: MathProgramV8) -> Result<RawStepRecord, Str
         return Err("MathProgramV9: expected canonical one-step v8 plan".into());
     }
     let record_bytes = &plan[PLAN_HEADER_BYTES..plan.len() - PLAN_OUTPUT_BYTES];
-    let (record, consumed) = RawStepRecord::decode_prefix(record_bytes)?;
+    let (record, consumed) = decode_raw_step_prefix(record_bytes)?;
     if consumed != record_bytes.len() {
         return Err("MathProgramV9: one-step v8 plan contained trailing record bytes".into());
     }
@@ -236,7 +170,7 @@ fn canonical_one_step_v8_plan(record: &RawStepRecord) -> Result<Vec<u8>, String>
         ));
     }
     let out = record.arity;
-    let local = RawStepRecord::new(
+    let local = raw_step_record(
         record.op,
         record.arity,
         0,
@@ -450,7 +384,7 @@ fn decode_plan(plan: &[u8]) -> Result<DecodedPlan, String> {
         if offset >= plan.len().saturating_sub(PLAN_OUTPUT_BYTES) {
             return Err(format!("MathProgramV9: plan is truncated before step {index}"));
         }
-        let (record, consumed) = RawStepRecord::decode_prefix(&plan[offset..])?;
+        let (record, consumed) = decode_raw_step_prefix(&plan[offset..])?;
         let step = compile_record(&record)?;
         (filled, written) = validate_topology(
             &record,
@@ -719,7 +653,7 @@ impl MathProgramV9Builder {
     ) -> Result<(), String> {
         let params = IndexAxisParams::new(axis)?;
         self.push_record(
-            RawStepRecord::new(
+            raw_step_record(
                 OP_INDICES_LIKE,
                 1,
                 reference,
@@ -734,7 +668,7 @@ impl MathProgramV9Builder {
 
     pub fn add_less_equal_01(&mut self, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
         self.push_record(
-            RawStepRecord::new(
+            raw_step_record(
                 OP_LESS_EQUAL_01,
                 2,
                 lhs,
