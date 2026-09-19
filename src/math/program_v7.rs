@@ -6,7 +6,7 @@
 
 use crate::math::program_v6::{MathProgramV6, MathProgramV6Builder};
 use crate::math::program_runtime_shape::expand_like;
-use crate::math::program_step_record::ProgramStepRecord;
+use crate::math::program_step_record::{ProgramStepRecord, STEP_HEADER_BYTES};
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
