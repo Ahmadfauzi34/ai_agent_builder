@@ -93,6 +93,22 @@ Registry
 
 Python still owns dataset selection, objective calculation, evaluation scheduling, stopping/promotion policy, experiment bookkeeping, and application integration. There is intentionally no giant graph-owning controller object.
 
+### In-place OpenES learning-rate control
+
+`EsOptimizer.set_learning_rate(value)` is a narrow host-control operation over the additive ABI v1 setter.
+
+The method:
+
+- accepts only finite positive values;
+- is valid only for OpenES;
+- is valid only after a generation has completed and before the next `ask()`;
+- rejects mutation while a candidate batch is pending;
+- preserves the current optimizer trajectory instead of constructing a new optimizer.
+
+The installed-wheel proof uses two identical seeded optimizers to verify that changing LR between generations leaves the next `ask_f32()` candidate bytes exactly unchanged. After those identical candidates receive identical fitness, their later trajectories diverge only because the `tell()` update uses different learning rates.
+
+This operation does not implement an automatic learning-rate schedule. Python remains responsible for deciding whether and when to call it.
+
 ## GraphParameterBinding candidate transport
 
 `GraphParameterBinding.apply_flat(...)` preserves one public method and two Python-side transport paths over the same `br_v1_binding_apply_flat` ABI call.
@@ -121,7 +137,7 @@ format == 'f'
 itemsize == 4
 ndim == 1
 C-contiguous
-len == binding.total_len
+writable
 ```
 
 The path is:
@@ -138,8 +154,9 @@ Required invariants:
 
 - no CFFI pointer/view is cached on a facade or host object;
 - the backing Python object and memoryview remain strongly referenced for the complete ABI call;
-- compatible f32 buffers with wrong length fail locally with `ValueError`;
-- malformed native-f32 layout, including non-contiguous storage, fails locally rather than being silently reinterpreted;
+- the fast path does not pre-read `binding.total_len`;
+- wrong-length borrowed f32 buffers reach the existing ABI/core length validation and preserve its error mapping;
+- native-f32 layouts that cannot be borrowed, including non-contiguous storage, fall back to the historical Sequence path when iterable;
 - objects exposing a non-f32 buffer remain eligible for the historical Sequence fallback;
 - NaN/Inf buffer candidates still reach the existing core finite-only atomic rejection;
 - ABI v1, canonical parameter ordering, binding identity, graph identity, and mutation semantics are unchanged.
@@ -174,12 +191,14 @@ The proof verifies:
 7. non-f32 buffer-backed Sequence fallback;
 8. a compatible f32 buffer whose iterator raises still succeeds, proving the buffer fast path is actually used;
 9. contiguous native-f32 `memoryview` uses the same stateless path;
-10. wrong-length and non-contiguous native-f32 buffers fail locally;
-11. non-finite f32 buffer candidates become `BurnResearchError(Status.CORE_ERROR)` and leave state unchanged;
-12. program/binding identities remain stable;
-13. graph + ES + Python-owned objective executes through the host surface;
-14. stateful `ProgramBundle` replay preserves identities, learned flat state, and output;
-15. large-candidate list-vs-buffer timing is recorded as evidence only, never as a CI performance threshold.
+10. wrong-length borrowed f32 buffers fail through ABI/core with `BurnResearchError(Status.CORE_ERROR)` and no mutation;
+11. non-contiguous f32 memoryviews fall back to the Sequence path when iterable;
+12. non-finite f32 buffer candidates become `BurnResearchError(Status.CORE_ERROR)` and leave state unchanged;
+13. program/binding identities remain stable;
+14. graph + ES + Python-owned objective executes through the host surface;
+15. in-place OpenES learning-rate mutation preserves the next candidate batch, rejects pending-batch mutation, and changes only subsequent `tell()` update scale;
+16. stateful `ProgramBundle` replay preserves identities, learned flat state, and output;
+17. large-candidate list-vs-buffer timing is recorded as evidence only, never as a CI performance threshold.
 
 On the first implementation proof for #200, the 66,560-parameter installed-wheel workload measured approximately:
 
@@ -195,14 +214,14 @@ These are runner-specific evidence, not a performance SLA.
 
 This slice does not add:
 
-- new `br_v1_*` ABI symbols;
+- ABI version changes or breaking changes to existing `br_v1_*` symbols;
 - PyO3;
 - NumPy/DLPack tensor integration;
 - persistent CFFI pointer/view caches;
 - `GraphParameterBinding` cache/reusable core validation state;
 - a training-loop/controller abstraction;
 - Math Program changes;
-- optimizer changes;
+- optimizer algorithm changes or automatic adaptive schedules;
 - Python-specific checkpoint identity;
 - broader Python/platform support;
 - PyPI publication;
