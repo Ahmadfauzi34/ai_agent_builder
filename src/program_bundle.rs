@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use wasm_bindgen::prelude::*;
 
 use crate::graph::CompiledGraph;
+use crate::graph_plan::decode_graph_plan;
 use crate::protocol::{PacketHeader, OP_INIT};
 use crate::registry::LayerRegistry;
 
@@ -9,9 +9,6 @@ const BUNDLE_MAGIC: &[u8; 8] = b"BRPGBNDL";
 const BUNDLE_SCHEMA_VERSION: u32 = 1;
 const BUNDLE_FLAG_STATE_INCLUDED: u32 = 1 << 0;
 const BUNDLE_KNOWN_FLAGS: u32 = BUNDLE_FLAG_STATE_INCLUDED;
-const PLAN_HEADER_BYTES: usize = 8;
-const PLAN_STEP_BYTES: usize = 9;
-const PLAN_OUTPUT_BYTES: usize = 1;
 
 fn push_u32(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_le_bytes());
@@ -32,33 +29,9 @@ fn read_u32_at(bytes: &[u8], offset: usize, context: &str) -> Result<u32, String
 }
 
 fn referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
-    if plan.len() < PLAN_HEADER_BYTES + PLAN_OUTPUT_BYTES {
-        return Err("program bundle: graph plan is truncated".into());
-    }
-    let num_steps = read_u32_at(plan, 0, "program bundle plan")?;
-    let expected_len = (num_steps as usize)
-        .checked_mul(PLAN_STEP_BYTES)
-        .and_then(|steps| PLAN_HEADER_BYTES.checked_add(steps))
-        .and_then(|bytes| bytes.checked_add(PLAN_OUTPUT_BYTES))
-        .ok_or_else(|| "program bundle: graph plan length overflow".to_string())?;
-    if plan.len() != expected_len {
-        return Err(format!(
-            "program bundle: malformed graph plan length: expected {expected_len}, got {}",
-            plan.len()
-        ));
-    }
-
-    let mut seen = HashSet::new();
-    let mut keys = Vec::new();
-    for index in 0..num_steps as usize {
-        let offset = PLAN_HEADER_BYTES + index * PLAN_STEP_BYTES;
-        let layer_type = plan[offset + 1];
-        let layer_id = read_u32_at(plan, offset + 2, "program bundle plan layer id")?;
-        if seen.insert((layer_type, layer_id)) {
-            keys.push((layer_type, layer_id));
-        }
-    }
-    Ok(keys)
+    decode_graph_plan(plan)
+        .map(|decoded| decoded.unique_first_use_layer_keys())
+        .map_err(|error| format!("program bundle: {error}"))
 }
 
 fn parse_hex_u8(value: &str, context: &str) -> Result<u8, String> {
@@ -501,6 +474,39 @@ mod tests {
         assert_eq!(imported.program_identity(), graph.program_identity());
         assert!(!target.layer_exists(existing.layer_type(), existing.layer_id()));
         assert!(target.layer_exists(LAYER_LINEAR, 7));
+    }
+
+    #[test]
+    fn malformed_embedded_graph_plan_is_rejected_without_target_mutation() {
+        let mut source = LayerRegistry::new();
+        let (_spec, _builder, graph) = linear_graph(&mut source);
+        let mut corrupt = export_program_bundle(&graph, &source, false).unwrap();
+
+        // Bundle v1 header is 28 bytes. The embedded graph plan starts immediately
+        // afterward and begins with num_steps:u32. Inflate the declared step count
+        // while leaving the exact plan byte envelope unchanged.
+        let plan_start = 28usize;
+        let original_steps = u32::from_le_bytes(
+            corrupt[plan_start..plan_start + 4]
+                .try_into()
+                .unwrap(),
+        );
+        corrupt[plan_start..plan_start + 4]
+            .copy_from_slice(&(original_steps + 1).to_le_bytes());
+
+        let mut target = LayerRegistry::new();
+        let existing = AgentLayerSpec::relu(99);
+        target.init_agent_layer(&existing).unwrap();
+
+        let error = match import_program_bundle(&mut target, &corrupt) {
+            Ok(_) => panic!("expected malformed embedded graph plan to fail"),
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("malformed plan length"),
+            "unexpected malformed embedded-plan error: {error}"
+        );
+        assert!(target.layer_exists(existing.layer_type(), existing.layer_id()));
     }
 
     #[test]
