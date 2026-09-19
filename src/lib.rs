@@ -11,6 +11,7 @@ pub mod effective_spec;
 pub mod effective_spec_inherit_remainder;
 pub mod es;
 pub mod graph;
+mod graph_plan;
 pub mod graph_parameters;
 pub mod graph_parameters_wasm;
 pub mod layers;

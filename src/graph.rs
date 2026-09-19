@@ -1,9 +1,8 @@
 use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_report;
-use crate::protocol::{
-    PayloadCursor, LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK,
-};
+use crate::graph_plan::{decode_graph_plan, decode_graph_plan_header, GraphPlanStep};
+use crate::protocol::{LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
 
@@ -15,17 +14,6 @@ pub(crate) const ARITY_UNARY: u8 = 1;
 pub(crate) const ARITY_BINARY: u8 = 2;
 
 const CG_MAX_SLOTS: u32 = 64;
-const PLAN_HEADER_BYTES: usize = 8; // num_steps:u32 + num_slots:u32
-const PLAN_STEP_BYTES: usize = 9;
-const PLAN_OUTPUT_BYTES: usize = 1;
-
-fn expected_plan_len(num_steps: u32) -> Result<usize, String> {
-    (num_steps as usize)
-        .checked_mul(PLAN_STEP_BYTES)
-        .and_then(|steps| PLAN_HEADER_BYTES.checked_add(steps))
-        .and_then(|bytes| bytes.checked_add(PLAN_OUTPUT_BYTES))
-        .ok_or_else(|| "plan length overflow".to_string())
-}
 
 fn bytes_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().saturating_mul(2));
@@ -35,19 +23,9 @@ fn bytes_hex(bytes: &[u8]) -> String {
     out
 }
 
-#[derive(Clone, Copy)]
-struct CompiledStep {
-    arity: u8,
-    layer_type: u8,
-    layer_id: u32,
-    in_slot: u8,
-    in_slot2: u8,
-    out_slot: u8,
-}
-
 #[wasm_bindgen]
 pub struct CompiledGraph {
-    steps: Vec<CompiledStep>,
+    steps: Vec<GraphPlanStep>,
     num_slots: u32,
     out_slot: u8,
     canonical_plan: Vec<u8>,
@@ -55,17 +33,6 @@ pub struct CompiledGraph {
 }
 
 impl CompiledGraph {
-    fn read_step(c: &mut PayloadCursor) -> Result<CompiledStep, String> {
-        Ok(CompiledStep {
-            arity: c.read_u8()?,
-            layer_type: c.read_u8()?,
-            layer_id: c.read_u32()?,
-            in_slot: c.read_u8()?,
-            in_slot2: c.read_u8()?,
-            out_slot: c.read_u8()?,
-        })
-    }
-
     fn structural_identity_json(&self) -> String {
         let layer_identities = self
             .init_fingerprints
@@ -110,41 +77,48 @@ impl CompiledGraph {
     }
 
     pub(crate) fn build(reg: &LayerRegistry, plan: &[u8]) -> Result<CompiledGraph, String> {
-        let mut c = PayloadCursor::new(plan);
-        let num_steps = c.read_u32()?;
-        let num_slots = c.read_u32()?;
+        // Preserve the historical validation order: header readability and the
+        // execution-profile checks happen before exact-envelope decoding.
+        let header = decode_graph_plan_header(plan)?;
+        let num_steps = header.num_steps;
+        let num_slots = header.num_slots;
         if num_steps == 0 {
             return Err("compile_graph: plan has no steps".into());
         }
         if !(1..=CG_MAX_SLOTS).contains(&num_slots) {
-            return Err(format!("compile_graph: num_slots must be 1..={}, got {}", CG_MAX_SLOTS, num_slots));
-        }
-
-        let expected_len = expected_plan_len(num_steps)
-            .map_err(|e| format!("compile_graph: {}", e))?;
-        if plan.len() != expected_len {
             return Err(format!(
-                "compile_graph: malformed plan length: expected {} bytes for {} steps, got {}",
-                expected_len,
-                num_steps,
-                plan.len()
+                "compile_graph: num_slots must be 1..={}, got {}",
+                CG_MAX_SLOTS, num_slots
             ));
         }
 
-        let mut steps: Vec<CompiledStep> = Vec::with_capacity(num_steps as usize);
+        // The shared decoder owns only frozen byte structure. Registry, arity,
+        // slot-lifecycle and execution policy remain below in CompiledGraph.
+        let decoded =
+            decode_graph_plan(plan).map_err(|error| format!("compile_graph: {error}"))?;
+        debug_assert_eq!(decoded.num_steps, num_steps);
+        debug_assert_eq!(decoded.num_slots, num_slots);
+
+        let out_slot = u32::from(decoded.output_slot);
+        let steps = decoded.steps;
         let mut init_fingerprints: Vec<String> = Vec::with_capacity(num_steps as usize);
         let mut filled: u64 = 1;
-        for _ in 0..num_steps {
-            let s = Self::read_step(&mut c)?;
+        for s in &steps {
             let in_slot = s.in_slot as u32;
             let in_slot2 = s.in_slot2 as u32;
-            let out_slot = s.out_slot as u32;
-            if in_slot >= num_slots || in_slot2 >= num_slots || out_slot >= num_slots {
-                return Err(format!("compile_graph: slot index out of range (num_slots={})", num_slots));
+            let step_out_slot = s.out_slot as u32;
+            if in_slot >= num_slots || in_slot2 >= num_slots || step_out_slot >= num_slots {
+                return Err(format!(
+                    "compile_graph: slot index out of range (num_slots={})",
+                    num_slots
+                ));
             }
             if s.arity == ARITY_BINARY {
                 if s.layer_type != LAYER_BINARY {
-                    return Err(format!("compile_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}", s.layer_type));
+                    return Err(format!(
+                        "compile_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}",
+                        s.layer_type
+                    ));
                 }
                 if (filled >> in_slot) & 1 == 0 {
                     return Err(format!("compile_graph: input slot {} is empty", in_slot));
@@ -154,30 +128,42 @@ impl CompiledGraph {
                 }
             } else if s.arity == ARITY_UNARY {
                 if s.layer_type == LAYER_BINARY {
-                    return Err("compile_graph: arity 1 cannot use LAYER_BINARY (needs 2 inputs)".into());
+                    return Err(
+                        "compile_graph: arity 1 cannot use LAYER_BINARY (needs 2 inputs)".into(),
+                    );
                 }
                 if (filled >> in_slot) & 1 == 0 {
                     return Err(format!("compile_graph: input slot {} is empty", in_slot));
                 }
             } else {
-                return Err(format!("compile_graph: invalid arity {} (expected 1 or 2)", s.arity));
+                return Err(format!(
+                    "compile_graph: invalid arity {} (expected 1 or 2)",
+                    s.arity
+                ));
             }
             if !reg.layer_exists(s.layer_type, s.layer_id) {
-                return Err(format!("compile_graph: layer type 0x{:02X} id {} not found", s.layer_type, s.layer_id));
+                return Err(format!(
+                    "compile_graph: layer type 0x{:02X} id {} not found",
+                    s.layer_type, s.layer_id
+                ));
             }
             let fingerprint = reg
                 .layer_init_fingerprint(s.layer_type, s.layer_id)
                 .map_err(|error| format!("compile_graph: {error}"))?;
-            filled |= 1u64 << out_slot;
-            steps.push(s);
+            filled |= 1u64 << step_out_slot;
             init_fingerprints.push(fingerprint);
         }
-        let out_slot = c.read_u8()? as u32;
         if out_slot >= num_slots {
-            return Err(format!("compile_graph: output slot {} out of range", out_slot));
+            return Err(format!(
+                "compile_graph: output slot {} out of range",
+                out_slot
+            ));
         }
         if (filled >> out_slot) & 1 == 0 {
-            return Err(format!("compile_graph: output slot {} is never written", out_slot));
+            return Err(format!(
+                "compile_graph: output slot {} is never written",
+                out_slot
+            ));
         }
         Ok(CompiledGraph {
             steps,
