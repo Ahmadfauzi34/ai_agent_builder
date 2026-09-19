@@ -504,6 +504,16 @@ class EsOptimizer(_OwnedHandle):
         _check(lib.br_v1_es_batch_size(self._borrow(), out), "es batch size")
         return int(out[0])
 
+    def set_learning_rate(self, learning_rate: float) -> None:
+        """Change OpenES learning rate between completed generations without resetting state."""
+        _check(
+            lib.br_v1_es_set_learning_rate(
+                self._borrow(),
+                float(learning_rate),
+            ),
+            "es set learning rate",
+        )
+
     def ask(self) -> list[float]:
         with _Buffer(
             _new_handle("es ask", lib.br_v1_es_ask, self._borrow())
