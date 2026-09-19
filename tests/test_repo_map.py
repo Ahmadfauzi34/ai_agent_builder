@@ -137,12 +137,12 @@ core = { path = ".." }
             )
             self.write(
                 root,
-                "ffi/pkg/__init__.py",
+                "ffi/pyhost/__init__.py",
                 "from .facade import Thing\n",
             )
             self.write(
                 root,
-                "ffi/pkg/facade.py",
+                "ffi/pyhost/facade.py",
                 "class Thing:\n    pass\n",
             )
             self.write(root, "scripts/check.py", "print('ok')\n")
@@ -179,8 +179,8 @@ jobs:
             )
             self.assertIn(
                 {
-                    "from": "pkg",
-                    "to": "pkg.facade",
+                    "from": "pyhost",
+                    "to": "pyhost.facade",
                     "kind": "import",
                     "resolved": True,
                 },
