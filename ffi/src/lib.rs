@@ -787,7 +787,6 @@ pub unsafe extern "C" fn br_v1_es_batch_size(
 }
 
 #[no_mangle]
-#[no_mangle]
 pub unsafe extern "C" fn br_v1_es_set_learning_rate(
     optimizer: *mut BrV1Handle,
     learning_rate: f32,
