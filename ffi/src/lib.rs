@@ -787,6 +787,23 @@ pub unsafe extern "C" fn br_v1_es_batch_size(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn br_v1_es_set_learning_rate(
+    optimizer: *mut BrV1Handle,
+    learning_rate: f32,
+) -> i32 {
+    ffi_status(|| {
+        if !learning_rate.is_finite() || learning_rate <= 0.0 {
+            return Err(FfiError::invalid_argument(format!(
+                "br_v1_es_set_learning_rate: learning_rate must be finite and > 0, got {learning_rate}"
+            )));
+        }
+        optimizer_mut(optimizer, "br_v1_es_set_learning_rate")?
+            .set_learning_rate(learning_rate)
+            .map_err(FfiError::core)
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn br_v1_es_tell(
     optimizer: *mut BrV1Handle,
     fitness: *const f32,

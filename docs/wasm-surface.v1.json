@@ -6,7 +6,7 @@
     "AgentLayerSpec": ["adaptiveAvgPool2d", "add", "avgPool1d", "avgPool2d", "batchNorm", "concat", "constructor", "conv1d", "conv2d", "convTranspose2d", "embedding", "featureNorm", "gelu", "ghost", "glu", "groupNorm", "hardSigmoid", "hardSwish", "instanceNorm", "layerId", "layerNorm", "layerType", "leakyRelu", "linear", "logSoftmax", "matmul", "maxPool1d", "maxPool2d", "mish", "mul", "prelu", "relu", "rmsNorm", "seBlock", "shiftDown", "shiftLeft", "shiftRight", "shiftUp", "sigmoid", "softmax", "softplus", "sub", "swiGlu", "tanh", "variant"],
     "AgentWorkspace": ["constructor", "forgetLayer", "get", "limits", "put", "query", "recordEvent", "recordProof", "releaseSlot", "remove", "reserveLayerId", "reserveSlot", "snapshot", "syncLayer", "tableNames"],
     "CompiledGraph": ["constructor", "numSlots", "numSteps", "outSlot", "programIdentity", "programPlan", "run", "validateRegistryBinding", "verifyFlat"],
-    "EsOptimizer": ["ask", "batchSize", "best", "constructor", "dim", "generation", "mean", "report", "runLinearDemo", "strict", "tell"],
+    "EsOptimizer": ["ask", "batchSize", "best", "constructor", "dim", "generation", "mean", "report", "runLinearDemo", "setLearningRate", "strict", "tell"],
     "LayerRegistry": ["compileGraph", "constructor", "destroyLayer", "forwardBinaryLayer", "forwardLayer", "getLayerState", "getWeightsFlat", "initAgentLayer", "initLayer", "layerExists", "layerInitFingerprint", "loadLayerState", "runGraph", "setWeightsFlat", "totalParams", "weightLayout"],
     "PacketHeader": ["constructor", "flags", "has_bias", "is_training", "layer_type", "opcode", "payload_len", "to_bytes", "variant"],
     "TensorView": ["constructor", "len", "read", "setShape", "shape", "write"],
