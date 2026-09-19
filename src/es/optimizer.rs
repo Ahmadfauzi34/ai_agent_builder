@@ -78,6 +78,7 @@ pub fn es_capabilities() -> String {
         "\"openes\":{\"pop_min\":2,\"pop_even\":true,\"sigma\":\"finite>0\",\"lr\":\"finite>0\"},",
         "\"mu_lambda\":{\"pop_min\":2,\"sigma\":\"finite>0\",\"lr\":\"omit\"}},",
         "\"lifecycle\":\"ask->tell\",",
+        "\"controls\":{\"set_learning_rate\":{\"method\":\"setLearningRate\",\"strategy\":\"openes\",\"lr\":\"finite>0\",\"lifecycle\":\"between_completed_generations\"}},",
         "\"linear_demo\":{\"method\":\"runLinearDemo\",\"optimizer_dim\":6,\"gens_min\":1}",
         "}"
     )
@@ -167,6 +168,22 @@ impl EsOptimizer {
 
     #[wasm_bindgen(js_name = batchSize)]
     pub fn batch_size(&self) -> u32 { self.last_candidates.len() as u32 }
+
+    /// Ubah learning rate OpenES tanpa mereset search state.
+    ///
+    /// Mutation hanya sah di antara generasi yang sudah selesai. Jika ada batch ask()
+    /// yang masih menunggu fitness, operasi ditolak supaya candidate batch tetap dapat
+    /// diselesaikan dengan konfigurasi yang konsisten.
+    #[wasm_bindgen(js_name = setLearningRate)]
+    pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
+        if self.awaiting_fitness {
+            return Err(
+                "setLearningRate: cannot change learning rate while a candidate batch is pending; call tell() first"
+                    .into(),
+            );
+        }
+        self.strategy.set_learning_rate(lr)
+    }
 
     /// Minta kandidat generasi ini. Mengembalikan Float32Array flat (n_kandidat * dim).
     /// JS slice per `dim()`. Panggil `tell()` sesudahnya dengan fitness seurut kandidat.
@@ -353,6 +370,85 @@ mod tests {
     }
 
     #[test]
+    fn learning_rate_mutation_rejects_invalid_values_and_non_openes_strategy() {
+        let mut openes =
+            EsOptimizer::strict(3, 0, 7, Some(8), Some(0.08), Some(0.10)).unwrap();
+        for lr in [0.0, -0.01, f32::NAN, f32::INFINITY] {
+            assert!(openes.set_learning_rate(lr).is_err());
+            assert_eq!(openes.generation(), 0);
+        }
+
+        let mut mu_lambda =
+            EsOptimizer::strict(3, 1, 7, Some(8), Some(0.08), None).unwrap();
+        let err = mu_lambda.set_learning_rate(0.10).unwrap_err();
+        assert!(err.contains("only supported by OpenES"));
+        assert_eq!(mu_lambda.generation(), 0);
+    }
+
+    #[test]
+    fn learning_rate_mutation_rejects_pending_batch_without_consuming_it() {
+        let mut optimizer =
+            EsOptimizer::strict(3, 0, 11, Some(8), Some(0.08), Some(0.10)).unwrap();
+
+        let pending = optimizer.ask();
+        assert_eq!(pending.len(), 24);
+        let before_best = optimizer.best();
+        let before_generation = optimizer.generation();
+
+        let err = optimizer.set_learning_rate(0.08).unwrap_err();
+        assert!(err.contains("candidate batch is pending"));
+        assert_eq!(optimizer.generation(), before_generation);
+        assert_eq!(optimizer.best(), before_best);
+        assert_eq!(optimizer.batch_size(), 8);
+
+        let fitness = [2.0, -2.0, 1.5, -1.5, 1.0, -1.0, 0.5, -0.5];
+        optimizer.tell(&fitness).unwrap();
+        assert_eq!(optimizer.generation(), 1);
+    }
+
+    #[test]
+    fn learning_rate_mutation_preserves_search_state_until_next_tell() {
+        let mut control =
+            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut changed =
+            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+
+        let first_control = control.ask();
+        let first_changed = changed.ask();
+        assert_eq!(first_control, first_changed);
+
+        let first_fitness = [2.0, -2.0, 1.5, -1.5, 1.0, -1.0, 0.5, -0.5];
+        control.tell(&first_fitness).unwrap();
+        changed.tell(&first_fitness).unwrap();
+
+        let mean_before = control.mean();
+        assert_eq!(changed.mean(), mean_before);
+        assert_eq!(changed.best(), control.best());
+        assert_eq!(changed.generation(), control.generation());
+
+        changed.set_learning_rate(0.08).unwrap();
+
+        assert_eq!(changed.mean(), mean_before);
+        assert_eq!(changed.best(), control.best());
+        assert_eq!(changed.generation(), control.generation());
+
+        // Learning rate does not participate in ask(), so preserving mean + RNG
+        // must yield an exactly identical next candidate batch.
+        let second_control = control.ask();
+        let second_changed = changed.ask();
+        assert_eq!(second_control, second_changed);
+
+        let second_fitness = [3.0, -3.0, 2.0, -2.0, 1.0, -1.0, 0.25, -0.25];
+        control.tell(&second_fitness).unwrap();
+        changed.tell(&second_fitness).unwrap();
+
+        assert_eq!(control.generation(), 2);
+        assert_eq!(changed.generation(), 2);
+        assert_ne!(control.mean(), changed.mean());
+        assert!(changed.report().contains("\"lr\":0.08"));
+    }
+
+    #[test]
     fn strict_openes_preserves_requested_dimension_and_population() {
         let mut opt = EsOptimizer::strict(3, 0, 7, Some(8), Some(0.2), Some(0.1)).unwrap();
         assert_eq!(opt.dim(), 3);
@@ -382,6 +478,9 @@ mod tests {
         assert!(manifest.contains("\"strict_factory\":\"EsOptimizer.strict\""));
         assert!(manifest.contains("legacy_forgiving"));
         assert!(manifest.contains("openes_odd_pop_truncates_to_pairs"));
+        assert!(manifest.contains("\"set_learning_rate\""));
+        assert!(manifest.contains("\"method\":\"setLearningRate\""));
+        assert!(manifest.contains("\"between_completed_generations\""));
         assert!(manifest.contains("\"optimizer_dim\":6"));
     }
 
