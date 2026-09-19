@@ -107,15 +107,17 @@ For a compatible native-f32 buffer, the transport path is:
 
 ```text
 host.GraphParameterBinding.apply_flat(...)
-    -> validate 1-D C-contiguous native f32 buffer
+    -> prove writable 1-D C-contiguous native f32 storage
     -> fresh ffi.from_buffer view
     -> existing br_v1_binding_apply_flat
     -> discard borrowed view after call
 ```
 
-Generic `Sequence[float]` remains the compatibility fallback. No persistent CFFI pointer, binding cache, ABI widening, NumPy dependency, or DLPack path is introduced.
+If a buffer cannot prove that borrowing contract, the facade falls back to the historical `Sequence[float]` conversion path when the object is otherwise iterable. The fast path does not pre-read `binding.total_len`; actual candidate length and finite-only validation remain owned by the existing ABI/core apply boundary.
 
-This optimization belongs to Python transport only; atomic finite validation and mutation semantics remain owned by the Rust/core binding implementation.
+No persistent CFFI pointer, binding cache, ABI widening, NumPy dependency, or DLPack path is introduced.
+
+This optimization belongs to Python transport only; structural length errors, atomic finite validation, and mutation semantics remain owned by the Rust/core binding implementation.
 
 ## Optimizer candidate materialization
 
@@ -171,8 +173,8 @@ The supported Python claim requires a wheel installed into a fresh venv outside 
 6. stable ABI status -> Python exception mapping;
 7. list/tuple and non-f32-buffer Sequence compatibility;
 8. stateless compatible-f32 binding fast-path use;
-9. malformed native-f32 buffers fail locally;
-10. non-finite f32 candidates remain atomically rejected by core semantics;
+9. non-borrowable f32 layouts fall back to Sequence conversion when compatible;
+10. wrong-length and non-finite borrowed f32 candidates remain atomically rejected by core semantics;
 11. historical `EsOptimizer.ask()` still returns `list[float]`;
 12. additive `EsOptimizer.ask_f32()` returns writable, one-dimensional, C-contiguous standard-library `array('f')` storage;
 13. same strict optimizer config/seed produces byte-identical candidates between `ask()` and `ask_f32()`;

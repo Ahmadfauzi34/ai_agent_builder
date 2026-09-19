@@ -173,28 +173,29 @@ with ExitStack() as stack:
     binding.apply_flat(graph, registry, memory_candidate)
     assert binding.read_flat(graph, registry) == list(memory_candidate_backing)
 
-    # Native-f32 storage with malformed layout/length fails locally instead of
-    # being silently reinterpreted through the Sequence fallback.
+    # A structurally wrong-length native-f32 buffer still uses the borrowed
+    # transport path, but length validation remains owned by the ABI/core.
+    before_wrong_length = binding.read_flat(graph, registry)
     wrong_length = array("f", [1.0, 2.0])
     try:
         binding.apply_flat(graph, registry, wrong_length)
-    except ValueError as exc:
-        assert "length" in str(exc)
+    except host.BurnResearchError as exc:
+        assert exc.status == host.Status.CORE_ERROR
+        assert exc.status_code == int(host.Status.CORE_ERROR)
     else:
-        raise AssertionError("wrong-length f32 buffer was not rejected locally")
+        raise AssertionError("wrong-length f32 buffer unexpectedly succeeded")
+    assert binding.read_flat(graph, registry) == before_wrong_length
 
+    # A native-f32 buffer that is not eligible for zero-copy borrowing falls
+    # back to the historical Sequence conversion path when iteration is valid.
     non_contiguous_backing = array("f", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
     non_contiguous = memoryview(non_contiguous_backing)[::2]
     assert len(non_contiguous) == dim and not non_contiguous.c_contiguous
-    try:
-        binding.apply_flat(graph, registry, non_contiguous)
-    except ValueError as exc:
-        assert "contiguous" in str(exc)
-    else:
-        raise AssertionError("non-contiguous f32 buffer was not rejected locally")
+    binding.apply_flat(graph, registry, non_contiguous)
+    assert binding.read_flat(graph, registry) == [1.0, 3.0, 5.0]
 
-    # Stable ABI status -> Python exception mapping remains intact for the new
-    # transport path, while core finite-only rejection remains atomic.
+    # Stable ABI status -> Python exception mapping remains intact for the
+    # borrowed transport path, while core finite-only rejection stays atomic.
     before_reject = binding.read_flat(graph, registry)
     poisoned = array("f", [before_reject[0], math.nan, before_reject[2]])
     try:

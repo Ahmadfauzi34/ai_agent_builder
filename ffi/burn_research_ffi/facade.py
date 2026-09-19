@@ -75,15 +75,14 @@ def _u8(value: int, name: str) -> int:
     return value
 
 
-def _f32_buffer_view(
-    candidate: object,
-    expected_len: int,
-) -> tuple[memoryview, Any] | None:
-    """Borrow a compatible native f32 buffer for exactly one ABI call.
+def _f32_buffer_view(candidate: object) -> tuple[memoryview, Any] | None:
+    """Borrow compatible native f32 storage for one ABI call only.
 
-    Objects with non-f32 buffers fall back to the historical Sequence path. Once
-    an object presents itself as native f32 storage, malformed shape,
-    contiguity, or length fails locally rather than being silently reinterpreted.
+    Eligibility is deliberately strict. Anything that cannot prove a writable,
+    one-dimensional, C-contiguous native-f32 buffer falls back to the historical
+    Sequence conversion path. Structural length and numeric validity remain
+    ABI/core responsibilities so this transport optimization does not create a
+    competing Python-side error contract.
     """
 
     try:
@@ -91,19 +90,19 @@ def _f32_buffer_view(
     except TypeError:
         return None
 
-    if view.format != "f" or view.itemsize != 4:
+    if (
+        view.format != "f"
+        or view.itemsize != 4
+        or view.ndim != 1
+        or not view.c_contiguous
+        or view.readonly
+    ):
         return None
-    if view.ndim != 1:
-        raise ValueError("candidate f32 buffer must be one-dimensional")
-    if not view.c_contiguous:
-        raise ValueError("candidate f32 buffer must be C-contiguous")
-    if len(view) != expected_len:
-        raise ValueError(
-            f"candidate f32 buffer length must equal binding total_len "
-            f"({expected_len}), got {len(view)}"
-        )
 
-    raw = ffi.from_buffer("float[]", view)
+    try:
+        raw = ffi.from_buffer("float[]", view)
+    except (TypeError, BufferError):
+        return None
     return view, raw
 
 
@@ -440,8 +439,7 @@ class GraphParameterBinding(_OwnedHandle):
         if not isinstance(registry, Registry):
             raise TypeError("registry must be Registry")
 
-        expected_len = self.total_len
-        borrowed = _f32_buffer_view(candidate, expected_len)
+        borrowed = _f32_buffer_view(candidate)
         if borrowed is not None:
             # Keep both the memoryview and CFFI cdata alive until the ABI call
             # returns. No pointer/view is stored on the facade object.
