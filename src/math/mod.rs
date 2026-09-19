@@ -10,6 +10,7 @@ pub(crate) mod program_index_params;
 pub(crate) mod program_reduction_params;
 pub(crate) mod program_select_params;
 pub(crate) mod program_shape_params;
+pub(crate) mod program_step_record;
 pub mod program_v4;
 pub mod program_v5;
 pub mod program_v6;
