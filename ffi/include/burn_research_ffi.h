@@ -53,6 +53,7 @@ br_v1_status br_v1_binding_apply_flat(const br_v1_handle *binding, const br_v1_h
 br_v1_status br_v1_es_strict(uint32_t dim, uint8_t strategy, uint32_t seed, uint32_t pop, float sigma, uint8_t has_lr, float lr, br_v1_handle **out_optimizer);
 br_v1_status br_v1_es_ask(br_v1_handle *optimizer, br_v1_handle **out_f32);
 br_v1_status br_v1_es_batch_size(const br_v1_handle *optimizer, uint32_t *out_batch_size);
+br_v1_status br_v1_es_set_learning_rate(br_v1_handle *optimizer, float learning_rate);
 br_v1_status br_v1_es_tell(br_v1_handle *optimizer, const float *fitness, size_t fitness_len, br_v1_handle **out_report_utf8);
 br_v1_status br_v1_es_best(const br_v1_handle *optimizer, br_v1_handle **out_f32);
 
