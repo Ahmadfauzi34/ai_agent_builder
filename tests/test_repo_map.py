@@ -85,6 +85,40 @@ use crate::alpha::Thing;
                 data["rust_edges"],
             )
 
+    def test_current_repository_cross_surface_boundaries_are_visible(self) -> None:
+        data = repo_map.build_cross_surface_map(REPO_ROOT)
+
+        self.assertEqual(data["schema"], "ai-agent-builder.repo-map.v2")
+        self.assertIn(
+            {
+                "from": "burn-research-ffi",
+                "to": "burn-research",
+                "kind": "path",
+                "dependency": "burn-research",
+                "dependency_kind": "dependencies",
+                "from_manifest": "ffi/Cargo.toml",
+                "to_manifest": "Cargo.toml",
+            },
+            data["cargo_edges"],
+        )
+        self.assertIn(
+            {
+                "from": "burn_research_ffi.host",
+                "to": "burn_research_ffi.facade",
+                "kind": "import",
+                "resolved": True,
+            },
+            data["python_edges"],
+        )
+        self.assertIn(
+            {
+                "from": ".github/workflows/python-wheel.yml",
+                "to": "scripts/audit_python_wheel.py",
+                "kind": "workflow_script",
+            },
+            data["workflow_script_edges"],
+        )
+
     def test_cross_surface_profile_maps_evidence_edges_deterministically(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
