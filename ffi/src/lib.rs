@@ -803,6 +803,7 @@ pub unsafe extern "C" fn br_v1_es_set_learning_rate(
     })
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn br_v1_es_tell(
     optimizer: *mut BrV1Handle,
     fitness: *const f32,
