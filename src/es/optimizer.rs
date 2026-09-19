@@ -331,6 +331,22 @@ impl EsOptimizer {
     }
 }
 
+/// Core OpenES control boundary.
+///
+/// This method is intentionally outside the wasm-bindgen impl. Surface exposure
+/// is staged separately after the state-continuity proof is green.
+impl EsOptimizer {
+    pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
+        if self.awaiting_fitness {
+            return Err(
+                "set_learning_rate: cannot change learning rate while a candidate batch is pending; call tell() first"
+                    .into(),
+            );
+        }
+        self.strategy.set_learning_rate(lr)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{es_capabilities, EsOptimizer};
@@ -350,6 +366,84 @@ mod tests {
         assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(0.0)).is_err());
         assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(f32::INFINITY)).is_err());
         assert!(EsOptimizer::strict(2, 1, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+    }
+
+    #[test]
+    fn learning_rate_mutation_rejects_invalid_values_and_non_openes_strategy() {
+        let mut openes =
+            EsOptimizer::strict(3, 0, 7, Some(8), Some(0.08), Some(0.10)).unwrap();
+        for lr in [0.0, -0.01, f32::NAN, f32::INFINITY] {
+            assert!(openes.set_learning_rate(lr).is_err());
+            assert_eq!(openes.generation(), 0);
+        }
+
+        let mut mu_lambda =
+            EsOptimizer::strict(3, 1, 7, Some(8), Some(0.08), None).unwrap();
+        let err = mu_lambda.set_learning_rate(0.10).unwrap_err();
+        assert!(err.contains("only supported by OpenES"));
+        assert_eq!(mu_lambda.generation(), 0);
+    }
+
+    #[test]
+    fn learning_rate_mutation_rejects_pending_batch_without_consuming_it() {
+        let mut optimizer =
+            EsOptimizer::strict(3, 0, 11, Some(8), Some(0.08), Some(0.10)).unwrap();
+
+        let pending = optimizer.ask();
+        assert_eq!(pending.len(), 24);
+        let before_best = optimizer.best();
+        let before_generation = optimizer.generation();
+
+        let err = optimizer.set_learning_rate(0.08).unwrap_err();
+        assert!(err.contains("candidate batch is pending"));
+        assert_eq!(optimizer.generation(), before_generation);
+        assert_eq!(optimizer.best(), before_best);
+        assert_eq!(optimizer.batch_size(), 8);
+
+        let fitness = [2.0, -2.0, 1.5, -1.5, 1.0, -1.0, 0.5, -0.5];
+        optimizer.tell(&fitness).unwrap();
+        assert_eq!(optimizer.generation(), 1);
+    }
+
+    #[test]
+    fn learning_rate_mutation_preserves_search_state_until_next_tell() {
+        let mut control =
+            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut changed =
+            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+
+        let first_control = control.ask();
+        let first_changed = changed.ask();
+        assert_eq!(first_control, first_changed);
+
+        let first_fitness = [2.0, -2.0, 1.5, -1.5, 1.0, -1.0, 0.5, -0.5];
+        control.tell(&first_fitness).unwrap();
+        changed.tell(&first_fitness).unwrap();
+
+        let mean_before = control.mean();
+        assert_eq!(changed.mean(), mean_before);
+        assert_eq!(changed.best(), control.best());
+        assert_eq!(changed.generation(), control.generation());
+
+        changed.set_learning_rate(0.08).unwrap();
+
+        assert_eq!(changed.mean(), mean_before);
+        assert_eq!(changed.best(), control.best());
+        assert_eq!(changed.generation(), control.generation());
+
+        // Learning rate does not participate in ask(). Preserved mean + RNG must
+        // therefore produce an exactly identical next candidate batch.
+        let second_control = control.ask();
+        let second_changed = changed.ask();
+        assert_eq!(second_control, second_changed);
+
+        let second_fitness = [3.0, -3.0, 2.0, -2.0, 1.0, -1.0, 0.25, -0.25];
+        control.tell(&second_fitness).unwrap();
+        changed.tell(&second_fitness).unwrap();
+
+        assert_eq!(control.generation(), 2);
+        assert_eq!(changed.generation(), 2);
+        assert_ne!(control.mean(), changed.mean());
     }
 
     #[test]
