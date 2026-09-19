@@ -25,6 +25,16 @@ impl OpenEs {
         let mean = (0..dim).map(|_| rng.gaussian() * 0.1).collect();
         Self { dim, half, sigma, lr, mean, eps: Vec::new() }
     }
+
+    pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
+        if !lr.is_finite() || lr <= 0.0 {
+            return Err(format!(
+                "OpenES learning rate must be finite and > 0, got {lr}"
+            ));
+        }
+        self.lr = lr;
+        Ok(())
+    }
 }
 
 impl EsStrategy for OpenEs {
@@ -158,6 +168,15 @@ impl Strategy {
     }
     pub fn mu_lambda(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut Rng) -> Self {
         Strategy::MuLambda(MuLambda::new(dim, mu, lambda, sigma, rng))
+    }
+
+    pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
+        match self {
+            Strategy::OpenEs(strategy) => strategy.set_learning_rate(lr),
+            Strategy::MuLambda(_) => {
+                Err("learning-rate mutation is only supported by OpenES".into())
+            }
+        }
     }
 }
 
