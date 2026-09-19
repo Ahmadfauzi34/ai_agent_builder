@@ -25,6 +25,9 @@ jobs:
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
 
+      - name: Audit repository mapper
+        run: python3 -m unittest tests/test_repo_map.py
+
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
