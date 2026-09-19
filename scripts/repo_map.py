@@ -591,14 +591,14 @@ def render_dot(data: dict) -> str:
             lines.append(
                 f"  {dot_quote(node)} [label={dot_quote(label_value)}, shape=ellipse];"
             )
-        cargo_by_name = {
-            row["name"]: f"cargo:{row['manifest']}"
+        cargo_by_manifest = {
+            row["manifest"]: f"cargo:{row['manifest']}"
             for row in data["cargo_packages"]
         }
         for edge in data["cargo_edges"]:
             lines.append(
-                f"  {dot_quote(cargo_by_name[edge['from']])} -> "
-                f"{dot_quote(cargo_by_name[edge['to']])} "
+                f"  {dot_quote(cargo_by_manifest[edge['from_manifest']])} -> "
+                f"{dot_quote(cargo_by_manifest[edge['to_manifest']])} "
                 f"[label={dot_quote('cargo:path')}, style=bold];"
             )
 
