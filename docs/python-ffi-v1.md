@@ -2,7 +2,7 @@
 
 Status: **semantic ABI proof complete; packaged Python support is verified only for the narrow matrix recorded in `docs/python-wheel-support.md`**
 
-Related: #182, #183, #184, #185, #186
+Related: #182, #183, #184, #185, #186, #258
 
 ## Purpose
 
@@ -100,6 +100,24 @@ Python owns dataset selection, objective calculation, evaluation scheduling, sto
 
 No graph-owning controller is introduced.
 
+### In-place OpenES learning-rate control
+
+ABI v1 now includes the additive symbol:
+
+```text
+br_v1_es_set_learning_rate(optimizer, learning_rate)
+```
+
+Its contract is deliberately narrow:
+
+- OpenES only; `mu_lambda` rejects the operation;
+- learning rate must be finite and strictly positive;
+- mutation is allowed only between completed `ask -> tell` generations;
+- if an `ask()` batch is pending, mutation fails without consuming or replacing that batch;
+- successful mutation changes only the OpenES learning-rate scalar and preserves search mean, RNG state, generation, lifetime best, stagnation, sigma, dimension, and population.
+
+The symbol is additive, so `br_v1_abi_version() == 1` remains unchanged. This is a host-controlled optimizer setting, not an adaptive schedule implemented by the core.
+
 ## Checkpoint / replay
 
 The foreign boundary reuses the existing stateful `ProgramBundle` bytes.
@@ -122,8 +140,9 @@ No Python-specific checkpoint schema or pickle artifact becomes canonical state.
 3. invalid tensor-shape rejection before native tensor construction;
 4. canonical graph parameter dimension;
 5. non-finite candidate rejection without mutation;
-6. ES ask/tell with objective calculated in Python;
-7. stateful ProgramBundle replay into fresh objects.
+6. in-place OpenES learning-rate validation, pending-batch rejection, and exact next-ask continuity;
+7. ES ask/tell with objective calculated in Python;
+8. stateful ProgramBundle replay into fresh objects.
 
 The separate installed-wheel proof in `scripts/audit_python_wheel.py` verifies that the same ABI works after real wheel build/install from a fresh virtual environment outside the repository.
 
