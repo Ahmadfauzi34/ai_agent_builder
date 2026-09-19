@@ -155,7 +155,10 @@ fn malformed_graph_plan_error_category_remains_stable() {
 
     let mut trailing = plan.clone();
     trailing.push(0xFF);
-    let trailing_err = registry.compile_graph(&trailing).unwrap_err();
+    let trailing_err = match registry.compile_graph(&trailing) {
+        Ok(_) => panic!("expected trailing graph plan bytes to fail"),
+        Err(err) => err,
+    };
     assert!(
         trailing_err.contains("malformed plan length"),
         "unexpected trailing-byte error: {trailing_err}"
@@ -163,7 +166,10 @@ fn malformed_graph_plan_error_category_remains_stable() {
 
     let mut truncated = plan.clone();
     truncated.pop();
-    let truncated_err = registry.compile_graph(&truncated).unwrap_err();
+    let truncated_err = match registry.compile_graph(&truncated) {
+        Ok(_) => panic!("expected truncated graph plan to fail"),
+        Err(err) => err,
+    };
     assert!(
         truncated_err.contains("malformed plan length"),
         "unexpected truncated-plan error: {truncated_err}"
