@@ -194,8 +194,9 @@ The proof verifies:
 11. non-finite f32 buffer candidates become `BurnResearchError(Status.CORE_ERROR)` and leave state unchanged;
 12. program/binding identities remain stable;
 13. graph + ES + Python-owned objective executes through the host surface;
-14. stateful `ProgramBundle` replay preserves identities, learned flat state, and output;
-15. large-candidate list-vs-buffer timing is recorded as evidence only, never as a CI performance threshold.
+14. in-place OpenES learning-rate mutation preserves the next candidate batch, rejects pending-batch mutation, and changes only subsequent `tell()` update scale;
+15. stateful `ProgramBundle` replay preserves identities, learned flat state, and output;
+16. large-candidate list-vs-buffer timing is recorded as evidence only, never as a CI performance threshold.
 
 On the first implementation proof for #200, the 66,560-parameter installed-wheel workload measured approximately:
 
