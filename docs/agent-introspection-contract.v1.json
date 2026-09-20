@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-introspection.v1",
+  "role": "read_only_semantic_projection",
+  "state_ownership": "none",
+  "purpose": "Let agents discover typed layer constructors and inspect current workspace/graph state without reading generated glue or reconstructing semantics from binary plans.",
+  "authorities": {
+    "constructors": "AgentLayerSpec implementation",
+    "layouts": "agentLayoutContract",
+    "workspace_control": "AgentWorkspace",
+    "graph_topology": "AgentGraphBuilder",
+    "execution_binding": "LayerRegistry",
+    "numerical_semantics": "Burn"
+  },
+  "surfaces": {
+    "agentLayerCatalog": {
+      "mutation": "none",
+      "returns": "embedded docs/agent-layer-catalog.v1.json",
+      "guarantee": "covers every constructor advertised by agentCapabilities"
+    },
+    "describeWorkspace": {
+      "mutation": "none",
+      "arguments": [
+        "AgentWorkspace",
+        "LayerRegistry"
+      ],
+      "returns": "semantic slot/layer/proof/event/custom-table projection",
+      "registry_role": "binding observation only"
+    },
+    "describeGraph": {
+      "mutation": "none",
+      "arguments": [
+        "AgentWorkspace",
+        "AgentGraphBuilder",
+        "LayerRegistry"
+      ],
+      "returns": "ordered semantic graph topology plus live registry binding",
+      "metadata_policy": "workspace metadata is used when present; missing variant/constructor metadata is null and is never guessed"
+    }
+  },
+  "graph_description": {
+    "step_fields": [
+      "index",
+      "arity",
+      "constructor",
+      "layer_type",
+      "variant",
+      "layer_id",
+      "input_slots",
+      "output_slot",
+      "workspace_metadata",
+      "metadata_type_matches_builder",
+      "registry_present",
+      "registry_fingerprint",
+      "layout_lookup"
+    ],
+    "configured_output": "AgentGraphBuilder configured output, or null if unset",
+    "topology_authority": "AgentGraphBuilder",
+    "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile"
+  },
+  "workspace_description": {
+    "slot_fields": [
+      "slot",
+      "state",
+      "owner",
+      "readable",
+      "releasable"
+    ],
+    "layer_fields": [
+      "layer_id",
+      "state",
+      "label",
+      "layer_type",
+      "variant",
+      "constructor",
+      "registry_present",
+      "registry_fingerprint"
+    ],
+    "proof_scope": "summary only; does not upgrade caller-recorded proof rows into verifier authority"
+  },
+  "invariants": [
+    "all introspection surfaces are read-only",
+    "no hidden mutable introspection state is introduced",
+    "missing semantic metadata is reported as null/unknown rather than inferred",
+    "registry presence is observation, not ownership transfer",
+    "constructor catalog success does not replace constructor or runtime validation",
+    "binary program plan and CompiledGraph identity remain canonical machine execution identity"
+  ],
+  "deferred": [
+    "optional input shape/layout contracts",
+    "verifier receipt provenance",
+    "full raw-protocol semantic decoding",
+    "automatic graph repair or action selection"
+  ]
+}
