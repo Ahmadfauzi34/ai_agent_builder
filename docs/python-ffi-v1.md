@@ -1,4 +1,4 @@
-# Python-first FFI v1 proof boundary
+# Python FFI v1 proof boundary
 
 Status: **semantic ABI proof complete; packaged Python support is verified only for the narrow matrix recorded in `docs/python-wheel-support.md`**
 
@@ -6,7 +6,7 @@ Related: #182, #183, #184, #185, #186, #258
 
 ## Purpose
 
-This slice proves the smallest language-neutral foreign boundary needed to exercise the already-supported Rust orchestration path from Python.
+This slice proves the smallest language-neutral foreign boundary needed to exercise the already-supported Rust orchestration path from Python. Python is the currently verified consumer of this ABI, not an architectural priority or execution authority.
 
 It deliberately preserves:
 
@@ -153,3 +153,7 @@ Packaged Python support is intentionally narrower than the ABI itself. The curre
 The current proof does not establish macOS, Windows, non-x86_64, PyPy, free-threaded Python, zero-copy NumPy/DLPack, PyO3 ergonomics, C++/Go/Unity support, or long-term ABI stability beyond the explicit versioned v1 contract.
 
 Any broader support claim requires its own external-consumer proof before the manifest is widened.
+
+## Consumer role
+
+The FFI is language-neutral and Python is a verified consumer through CFFI. Python does not route through the WASM surface. Historical implementation order must not be interpreted as host ranking. See [WASM host communication](wasm-host-communication.md).
