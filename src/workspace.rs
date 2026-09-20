@@ -60,6 +60,13 @@ pub(crate) struct WorkspaceLayerIntrospection {
     pub(crate) metadata_valid: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceInputContract {
+    pub(crate) shape: [u32; 4],
+    pub(crate) layout: String,
+    pub(crate) semantics: String,
+}
+
 fn validate_text(
     value: &str,
     max_bytes: usize,
@@ -128,6 +135,7 @@ pub struct AgentWorkspace {
     next_layer_id: u32,
     next_proof_id: u32,
     next_event_id: u32,
+    input_contract: Option<WorkspaceInputContract>,
     rows: Vec<WorkspaceRow>,
 }
 
@@ -217,6 +225,18 @@ impl AgentWorkspace {
 
     pub(crate) fn interaction_num_slots(&self) -> u32 {
         self.num_slots
+    }
+
+    pub(crate) fn input_contract(&self) -> Option<&WorkspaceInputContract> {
+        self.input_contract.as_ref()
+    }
+
+    pub(crate) fn set_input_contract(&mut self, contract: WorkspaceInputContract) {
+        self.input_contract = Some(contract);
+    }
+
+    pub(crate) fn clear_input_contract_internal(&mut self) -> bool {
+        self.input_contract.take().is_some()
     }
 
     pub(crate) fn interaction_row_capacity_available(&self) -> bool {
@@ -435,6 +455,7 @@ impl AgentWorkspace {
             next_layer_id: 1,
             next_proof_id: 1,
             next_event_id: 1,
+            input_contract: None,
             rows: Vec::new(),
         };
 
@@ -725,8 +746,23 @@ impl AgentWorkspace {
             .iter()
             .filter(|row| row.table == TABLE_SLOTS && row.state == "free")
             .count();
+        let input_contract = self
+            .input_contract
+            .as_ref()
+            .map(|contract| {
+                format!(
+                    "{{\"shape\":[{},{},{},{}],\"layout\":\"{}\",\"semantics\":\"{}\"}}",
+                    contract.shape[0],
+                    contract.shape[1],
+                    contract.shape[2],
+                    contract.shape[3],
+                    json_escape(&contract.layout),
+                    json_escape(&contract.semantics),
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
@@ -734,6 +770,7 @@ impl AgentWorkspace {
             count(TABLE_EVENTS),
             custom_tables,
             self.rows.len(),
+            input_contract,
         )
     }
 }

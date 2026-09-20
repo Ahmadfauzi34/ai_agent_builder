@@ -49,6 +49,31 @@ fn u8_or_null(value: Option<u8>) -> String {
         .unwrap_or_else(|| "null".to_string())
 }
 
+fn input_contract_json(workspace: &AgentWorkspace) -> String {
+    match workspace.input_contract() {
+        Some(contract) => format!(
+            concat!(
+                "{{",
+                "\"status\":\"bound\",",
+                "\"slot\":0,",
+                "\"dtype\":\"f32\",",
+                "\"shape\":[{},{},{},{}],",
+                "\"layout\":\"{}\",",
+                "\"semantics\":\"{}\"",
+                "}}"
+            ),
+            contract.shape[0],
+            contract.shape[1],
+            contract.shape[2],
+            contract.shape[3],
+            json_escape(&contract.layout),
+            json_escape(&contract.semantics),
+        ),
+        None => "{\"status\":\"unbound\",\"slot\":0,\"policy\":\"defer_to_runtime\"}"
+            .to_string(),
+    }
+}
+
 fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str> {
     match layer_type {
         LAYER_LINEAR => Some("linear"),
@@ -250,6 +275,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
                 "\"execution_binding\":\"LayerRegistry\"",
             "}},",
             "\"num_slots\":{},",
+            "\"external_input_contract\":{},",
             "\"slots\":[{}],",
             "\"layers\":[{}],",
             "\"proof_summary\":{{",
@@ -262,6 +288,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
             "}}"
         ),
         workspace.interaction_num_slots(),
+        input_contract_json(workspace),
         slots_json,
         layers_json,
         proofs_passed,
@@ -385,6 +412,7 @@ pub fn describe_graph(
             "}},",
             "\"unknown_metadata_policy\":\"report_null_do_not_infer\",",
             "\"num_slots\":{},",
+            "\"external_input_contract\":{},",
             "\"num_steps\":{},",
             "\"configured_output_slot\":{},",
             "\"written_slots\":[{}],",
@@ -392,6 +420,7 @@ pub fn describe_graph(
             "}}"
         ),
         builder.num_slots(),
+        input_contract_json(workspace),
         builder.num_steps(),
         builder
             .introspection_output_slot()

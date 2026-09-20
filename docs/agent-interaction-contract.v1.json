@@ -82,19 +82,34 @@
     },
     "interactionValidActions": {
       "mutation": "none",
-      "arguments": ["AgentWorkspace", "AgentGraphBuilder", "LayerRegistry"],
+      "arguments": [
+        "AgentWorkspace",
+        "AgentGraphBuilder",
+        "LayerRegistry"
+      ],
       "returns": "action projection JSON"
     },
     "interactionSnapshot": {
       "mutation": "none",
-      "arguments": ["AgentWorkspace", "AgentGraphBuilder", "LayerRegistry"],
+      "arguments": [
+        "AgentWorkspace",
+        "AgentGraphBuilder",
+        "LayerRegistry"
+      ],
       "returns": "point-in-time planning projection JSON"
     }
   },
   "future_extensions": {
     "structured_faults": "separate runtime/control failures from semantic ResolutionDiagnostic ambiguity",
     "graph_description": "semantic graph projection without replacing canonical program identity",
-    "input_contracts": "optional shape/layout declarations that strengthen preflight while unknown remains allowed",
     "proof_provenance": "distinguish caller attestation from verifier-generated receipt"
+  },
+  "input_contract": {
+    "capability": "inputContractCapabilities",
+    "binding": "workspaceBindInputContract",
+    "clearing": "workspaceClearInputContract",
+    "inspection": "workspaceInputContract",
+    "compatibility": "inputContractCompatibility",
+    "policy": "optional; unbound and unknown defer unless shape/layout proves incompatibility"
   }
 }

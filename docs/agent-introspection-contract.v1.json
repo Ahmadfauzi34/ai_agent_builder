@@ -62,7 +62,8 @@
     ],
     "configured_output": "AgentGraphBuilder configured output, or null if unset",
     "topology_authority": "AgentGraphBuilder",
-    "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile"
+    "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile",
+    "external_input_contract": "the same optional external input contract is surfaced alongside topology"
   },
   "workspace_description": {
     "slot_fields": [
@@ -83,7 +84,8 @@
       "registry_present",
       "registry_fingerprint"
     ],
-    "proof_scope": "summary only; does not upgrade caller-recorded proof rows into verifier authority"
+    "proof_scope": "summary only; does not upgrade caller-recorded proof rows into verifier authority",
+    "external_input_contract": "optional slot-0 f32 rank-4 metadata projected from AgentWorkspace; unbound remains explicit"
   },
   "invariants": [
     "all introspection surfaces are read-only",
@@ -94,7 +96,6 @@
     "binary program plan and CompiledGraph identity remain canonical machine execution identity"
   ],
   "deferred": [
-    "optional input shape/layout contracts",
     "verifier receipt provenance",
     "full raw-protocol semantic decoding",
     "automatic graph repair or action selection"

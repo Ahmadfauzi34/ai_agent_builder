@@ -1102,6 +1102,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
+            "\"input_contract\":\"inputContractCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
@@ -1214,6 +1215,7 @@ mod tests {
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
+        assert!(manifest.contains("\"input_contract\":\"inputContractCapabilities\""));
         assert!(manifest.contains("\"constructor_catalog\":\"agentLayerCatalog\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));

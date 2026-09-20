@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-input-contract.v1",
+  "role": "optional_external_input_metadata",
+  "authority": {
+    "metadata": "AgentWorkspace",
+    "graph": "AgentGraphBuilder",
+    "execution": "LayerRegistry",
+    "numerics": "Burn"
+  },
+  "scope": {
+    "slot": 0,
+    "dtype": "f32",
+    "rank": 4,
+    "optional": true
+  },
+  "policy": {
+    "unbound": "defer_to_runtime",
+    "unknown_layout": "shape checks may still prove incompatibility; otherwise continue",
+    "known_mismatch": "reject before graph mutation",
+    "implicit_relayout": "forbidden",
+    "zero_dimensions": "reject",
+    "runtime_authority": "Burn remains final authority for execution semantics"
+  },
+  "layouts": {
+    "unknown": "semantic layout unspecified",
+    "any_rank4": "rank-4 tensor with no narrower semantic commitment",
+    "feature_axis1_singleton": "[B,F,1,1]",
+    "channel_first": "[B,C,H,W]",
+    "channel_first_singleton_width": "[B,C,L,1]",
+    "feature_last": "[B,*,*,F]",
+    "token_ids_axis1_singleton": "[B,S,1,1]",
+    "sequence_feature_axis2_singleton_width": "[B,S,F,1]"
+  },
+  "surfaces": {
+    "inputContractCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "workspaceBindInputContract": {
+      "mutation": "AgentWorkspace metadata only",
+      "arguments": [
+        "workspace",
+        "dim0",
+        "dim1",
+        "dim2",
+        "dim3",
+        "layout",
+        "semantics"
+      ],
+      "effect": "bind contract to external slot 0"
+    },
+    "workspaceClearInputContract": {
+      "mutation": "AgentWorkspace metadata only",
+      "effect": "return to explicit unbound state"
+    },
+    "workspaceInputContract": {
+      "mutation": "none",
+      "returns": "bound contract or unbound marker"
+    },
+    "inputContractCompatibility": {
+      "mutation": "none",
+      "arguments": [
+        "workspace",
+        "AgentLayerSpec"
+      ],
+      "statuses": [
+        "unbound",
+        "compatible",
+        "unknown",
+        "shape_compatible_layout_unknown",
+        "incompatible"
+      ]
+    }
+  },
+  "integration": {
+    "workspace_init": "workspaceInitUnary/workspaceInitBinary consult the contract through canonical layout preflight when slot 0 is consumed",
+    "structured_fault": "interactionCheckInitUnary/interactionCheckInitBinary surface proven mismatches as E_LAYOUT_PREFLIGHT",
+    "introspection": "describeWorkspace and describeGraph expose the current external input contract"
+  },
+  "invariants": [
+    "binding does not allocate tensors",
+    "binding does not initialize or mutate LayerRegistry",
+    "binding does not alter AgentGraphBuilder topology",
+    "unbound behavior remains backward compatible",
+    "unknown layout is not treated as failure unless shape alone proves incompatibility",
+    "known incompatibility fails before graph/workspace/registry mutation"
+  ]
+}
