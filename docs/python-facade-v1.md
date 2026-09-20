@@ -6,7 +6,7 @@ Related: #184, #185, #186, #187, #188, #195, #196, #197, #199, #200
 
 ## Purpose
 
-The language-neutral ABI, installed Python wheel, typed facade, and first-class Python host namespace are separate layers over the same Rust reference machine.
+The language-neutral ABI, installed Python wheel, typed facade, and verified external Python host namespace are separate layers over the same Rust reference machine.
 
 Keep the dependency direction explicit:
 
@@ -23,7 +23,7 @@ The facade is not a second reference machine. It owns Python handle lifetime, st
 
 ## Public Python surface
 
-The primary typed host namespace is:
+The public typed host namespace is:
 
 ```python
 from burn_research_ffi import host
@@ -230,3 +230,7 @@ This slice does not add:
 ## Promotion rule
 
 The typed facade/host is supported only within the matrix recorded in `docs/host-support.v1.json`. This transport optimization does not widen OS, architecture, or Python-version support and does not change the experimental/versioned status of ABI v1.
+
+## Host-role clarification
+
+This facade is a supported external host surface, not the primary runtime and not a WASM host. Python reaches the Rust reference machine through CFFI over `burn-research.ffi.v1`; see [WASM host communication](wasm-host-communication.md).
