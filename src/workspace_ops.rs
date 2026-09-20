@@ -9,7 +9,7 @@ use crate::workspace::AgentWorkspace;
 
 const MAX_WORKSPACE_OP_LABEL_BYTES: usize = 4000;
 
-fn validate_builder_slot(
+pub(crate) fn validate_builder_slot(
     builder: &AgentGraphBuilder,
     slot: u8,
     context: &str,
@@ -23,7 +23,7 @@ fn validate_builder_slot(
     Ok(())
 }
 
-fn validate_workspace_input_slot(
+pub(crate) fn validate_workspace_input_slot(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
     slot: u8,
@@ -93,7 +93,7 @@ fn workspace_slot_producer_identity(
     Ok(Some((layer_type, variant)))
 }
 
-fn validate_workspace_layout_input(
+pub(crate) fn validate_workspace_layout_input(
     workspace: &AgentWorkspace,
     slot: u8,
     consumer: &AgentLayerSpec,
@@ -109,7 +109,7 @@ fn validate_workspace_layout_input(
         .map_err(|err| format!("{context}: {err}"))
 }
 
-fn validate_spec_is_new(
+pub(crate) fn validate_spec_is_new(
     registry: &LayerRegistry,
     spec: &AgentLayerSpec,
     context: &str,
@@ -124,7 +124,7 @@ fn validate_spec_is_new(
     Ok(())
 }
 
-fn validate_workspace_op_label(label: &str, context: &str) -> Result<(), String> {
+pub(crate) fn validate_workspace_op_label(label: &str, context: &str) -> Result<(), String> {
     if label.len() > MAX_WORKSPACE_OP_LABEL_BYTES {
         return Err(format!(
             "{context}: label {} bytes exceeds helper limit {MAX_WORKSPACE_OP_LABEL_BYTES}",
@@ -134,7 +134,7 @@ fn validate_workspace_op_label(label: &str, context: &str) -> Result<(), String>
     Ok(())
 }
 
-fn ensure_workspace_layer_reserved(
+pub(crate) fn ensure_workspace_layer_reserved(
     workspace: &AgentWorkspace,
     spec: &AgentLayerSpec,
     context: &str,

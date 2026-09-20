@@ -244,6 +244,22 @@ impl AgentWorkspace {
         self.layer_ids_with_state("initialized")
     }
 
+    pub(crate) fn interaction_slot_state(&self, slot: u8) -> Option<&str> {
+        let key = slot.to_string();
+        self.rows
+            .iter()
+            .find(|row| row.table == TABLE_SLOTS && row.key == key)
+            .map(|row| row.state.as_str())
+    }
+
+    pub(crate) fn interaction_layer_state(&self, layer_id: u32) -> Option<&str> {
+        let key = layer_id.to_string();
+        self.rows
+            .iter()
+            .find(|row| row.table == TABLE_LAYERS && row.key == key)
+            .map(|row| row.state.as_str())
+    }
+
     fn slot_ids_with_state(&self, state: &str) -> Vec<u8> {
         let mut slots = self
             .rows
