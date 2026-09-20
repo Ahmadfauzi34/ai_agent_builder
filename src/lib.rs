@@ -29,6 +29,7 @@ pub mod resolution_review;
 pub mod resolution_revision;
 pub mod resolution_runtime_bridge;
 pub mod resolution_subject;
+pub mod runtime_resolution_evidence;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]
