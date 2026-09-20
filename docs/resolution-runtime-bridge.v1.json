@@ -38,7 +38,7 @@
     "mutation": "AgentWorkspace control metadata only",
     "identity_policy": "No bridge-generated authoritative runtime_subject_id. Existing intent, approval, subject identity, and authorization policy tuple is carried verbatim.",
     "wasm_validation_scope": "shape/syntax/bounds of the supplied tuple only; WASM does not re-run Resolution or AuthorizationPolicy",
-    "lifecycle": "binding must occur before runtime layer/slot reservation; exact rebinding is idempotent, different rebinding is rejected for the workspace lifetime"
+    "lifecycle": "binding must occur before runtime layer/slot reservation or proof/attestation/receipt state; exact rebinding is idempotent, different rebinding is rejected for the workspace lifetime"
   },
   "receipt_binding": {
     "policy": "Verifier receipts may carry the current workspace runtime-subject tuple as execution context.",
@@ -54,7 +54,7 @@
     "runtime binding participates in AgentWorkspace.snapshot so no-mutation checks can observe it",
     "unknown semantic fields remain opaque rather than guessed",
     "runtime subject binding is immutable once established for a workspace",
-    "runtime subject binding must precede canonical runtime layer/slot reservation"
+    "runtime subject binding must precede canonical runtime layer/slot reservation and proof evidence"
   ],
   "deferred": [
     "automatic semantic-field to layer-plan compilation",
