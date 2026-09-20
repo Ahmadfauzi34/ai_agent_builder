@@ -97,7 +97,7 @@ impl RuntimeEvidenceSubject {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RuntimeEvidencePayload {
+enum RuntimeEvidencePayload {
     AgentFault {
         code: String,
         class: String,
@@ -239,11 +239,27 @@ impl RuntimeEvidencePayload {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RuntimeEvidence {
-    pub subject: Option<RuntimeEvidenceSubject>,
-    pub payload: RuntimeEvidencePayload,
+    subject: Option<RuntimeEvidenceSubject>,
+    payload: RuntimeEvidencePayload,
 }
 
 impl RuntimeEvidence {
+    pub fn subject(&self) -> Option<&RuntimeEvidenceSubject> {
+        self.subject.as_ref()
+    }
+
+    pub fn authority(&self) -> &'static str {
+        self.payload.authority()
+    }
+
+    pub fn kind(&self) -> &'static str {
+        self.payload.kind()
+    }
+
+    pub fn outcome(&self) -> &'static str {
+        self.payload.outcome()
+    }
+
     pub fn agent_fault(
         subject: Option<RuntimeEvidenceSubject>,
         code: impl Into<String>,
