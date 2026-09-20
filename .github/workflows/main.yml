@@ -44,6 +44,9 @@ jobs:
       - name: Check host target
         run: cargo check --lib --verbose
 
+      - name: Build native resolution runtime bridge probe
+        run: cargo build --release --bin resolution_runtime_bridge_probe
+
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
 
@@ -212,6 +215,12 @@ jobs:
           du -sh pkg
           echo "=== wasm binary ==="
           ls -lh pkg/*.wasm || true
+
+      - name: Upload native resolution runtime bridge probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolution-runtime-bridge-native-probe
+          path: target/release/resolution_runtime_bridge_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
