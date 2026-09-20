@@ -122,12 +122,20 @@ enum RuntimeEvidencePayload {
 }
 
 impl RuntimeEvidencePayload {
-    pub fn authority(&self) -> &'static str {
+    pub fn source_authority(&self) -> &'static str {
         match self {
             Self::AgentFault { .. } => "agent_fault_preflight",
             Self::GraphVerifierReceipt { .. } => "wasm_verifier",
             Self::VectorVerifierReceipt { .. } => "wasm_comparator",
         }
+    }
+
+    pub fn evidence_authority(&self) -> &'static str {
+        "observation_only"
+    }
+
+    pub fn transport_integrity(&self) -> &'static str {
+        "host_structured_unverified"
     }
 
     pub fn kind(&self) -> &'static str {
@@ -165,7 +173,9 @@ impl RuntimeEvidencePayload {
                 concat!(
                     "{{",
                     "\"kind\":\"agent_fault\",",
-                    "\"authority\":\"agent_fault_preflight\",",
+                    "\"evidence_authority\":\"observation_only\",",
+                    "\"source_authority\":\"agent_fault_preflight\",",
+                    "\"transport_integrity\":\"host_structured_unverified\","
                     "\"outcome\":\"fault\",",
                     "\"code\":\"{}\",",
                     "\"class\":\"{}\",",
@@ -192,7 +202,9 @@ impl RuntimeEvidencePayload {
                 concat!(
                     "{{",
                     "\"kind\":\"graph_verifier_receipt\",",
-                    "\"authority\":\"wasm_verifier\",",
+                    "\"evidence_authority\":\"observation_only\",",
+                    "\"source_authority\":\"wasm_verifier\",",
+                    "\"transport_integrity\":\"host_structured_unverified\",",
                     "\"reference_authority\":\"burn_compiled_graph\",",
                     "\"outcome\":\"{}\",",
                     "\"receipt_id\":{},",
@@ -218,7 +230,9 @@ impl RuntimeEvidencePayload {
                 concat!(
                     "{{",
                     "\"kind\":\"vector_verifier_receipt\",",
-                    "\"authority\":\"wasm_comparator\",",
+                    "\"evidence_authority\":\"observation_only\",",
+                    "\"source_authority\":\"wasm_comparator\",",
+                    "\"transport_integrity\":\"host_structured_unverified\",",
                     "\"reference_authority\":\"caller_supplied\",",
                     "\"outcome\":\"{}\",",
                     "\"receipt_id\":{},",
