@@ -43,6 +43,22 @@ struct WorkspaceRow {
     value: String,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceSlotIntrospection {
+    pub(crate) slot: u8,
+    pub(crate) state: String,
+    pub(crate) owner: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceLayerIntrospection {
+    pub(crate) layer_id: u32,
+    pub(crate) state: String,
+    pub(crate) label: String,
+    pub(crate) layer_type: Option<u8>,
+    pub(crate) variant: Option<u8>,
+}
+
 fn validate_text(
     value: &str,
     max_bytes: usize,
@@ -258,6 +274,86 @@ impl AgentWorkspace {
             .iter()
             .find(|row| row.table == TABLE_LAYERS && row.key == key)
             .map(|row| row.state.as_str())
+    }
+
+    pub(crate) fn introspection_slots(&self) -> Vec<WorkspaceSlotIntrospection> {
+        let mut slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS)
+            .filter_map(|row| {
+                row.key.parse::<u8>().ok().map(|slot| WorkspaceSlotIntrospection {
+                    slot,
+                    state: row.state.clone(),
+                    owner: row.value.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        slots.sort_by_key(|row| row.slot);
+        slots
+    }
+
+    pub(crate) fn introspection_layers(&self) -> Vec<WorkspaceLayerIntrospection> {
+        let mut layers = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_LAYERS)
+            .filter_map(|row| {
+                let layer_id = row.key.parse::<u32>().ok()?;
+                if row.state == "initialized" {
+                    let (before_variant, variant) = row.value.rsplit_once(";variant=")?;
+                    let (before_type, layer_type) = before_variant.rsplit_once(";type=")?;
+                    let label = before_type.strip_prefix("label=").unwrap_or(before_type);
+                    Some(WorkspaceLayerIntrospection {
+                        layer_id,
+                        state: row.state.clone(),
+                        label: label.to_string(),
+                        layer_type: layer_type.parse::<u8>().ok(),
+                        variant: variant.parse::<u8>().ok(),
+                    })
+                } else {
+                    Some(WorkspaceLayerIntrospection {
+                        layer_id,
+                        state: row.state.clone(),
+                        label: row.value.clone(),
+                        layer_type: None,
+                        variant: None,
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
+        layers.sort_by_key(|row| row.layer_id);
+        layers
+    }
+
+    pub(crate) fn introspection_proof_counts(&self) -> (usize, usize, usize) {
+        let mut passed = 0usize;
+        let mut failed = 0usize;
+        let mut other = 0usize;
+        for row in self.rows.iter().filter(|row| row.table == TABLE_PROOFS) {
+            match row.state.as_str() {
+                "passed" => passed += 1,
+                "failed" => failed += 1,
+                _ => other += 1,
+            }
+        }
+        (passed, failed, other)
+    }
+
+    pub(crate) fn introspection_event_count(&self) -> usize {
+        self.rows.iter().filter(|row| row.table == TABLE_EVENTS).count()
+    }
+
+    pub(crate) fn introspection_custom_tables(&self) -> Vec<String> {
+        let mut names = self
+            .rows
+            .iter()
+            .filter(|row| !row.table.starts_with(INTERNAL_PREFIX))
+            .map(|row| row.table.clone())
+            .collect::<Vec<_>>();
+        names.sort();
+        names.dedup();
+        names
     }
 
     fn slot_ids_with_state(&self, state: &str) -> Vec<u8> {
