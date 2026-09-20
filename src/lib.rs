@@ -16,6 +16,7 @@ pub mod graph_parameters;
 pub mod graph_parameters_wasm;
 pub mod interaction;
 pub mod interaction_fault;
+pub mod introspection;
 pub mod layers;
 pub mod math;
 pub mod program_bundle;
