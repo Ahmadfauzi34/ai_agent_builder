@@ -109,8 +109,9 @@ fn ledger_receipt_json(
             "\"label\":\"{}\",",
             "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
             "\"{}\":\"{}\",",
-            "\"candidate_fingerprint\":\"{}\"", 
-            "{}", 
+            "\"candidate_fingerprint\":\"{}\"" 
+            "{}",
+            "{}",
             ",\"tolerances\":{},",
             "\"result\":{}",
             "}}"
