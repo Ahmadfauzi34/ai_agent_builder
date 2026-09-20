@@ -3,6 +3,7 @@ use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_metrics;
 use crate::graph::CompiledGraph;
 use crate::registry::LayerRegistry;
+use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
@@ -85,12 +86,16 @@ fn ledger_receipt_json(
     primary_fingerprint: &str,
     candidate_fingerprint: &str,
     program_identity_fingerprint: Option<&str>,
+    runtime_subject_json: Option<&str>,
     abs_tol: f64,
     rel_tol: f64,
     result_json: &str,
 ) -> String {
     let program = program_identity_fingerprint
         .map(|value| format!(",\"program_identity_fingerprint\":\"{}\"", json_escape(value)))
+        .unwrap_or_default();
+    let runtime_subject = runtime_subject_json
+        .map(|value| format!(",\"runtime_subject\":{value}"))
         .unwrap_or_default();
     format!(
         concat!(
@@ -104,8 +109,9 @@ fn ledger_receipt_json(
             "\"label\":\"{}\",",
             "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
             "\"{}\":\"{}\",",
-            "\"candidate_fingerprint\":\"{}\"", 
-            "{}", 
+            "\"candidate_fingerprint\":\"{}\"",
+            "{}",
+            "{}",
             ",\"tolerances\":{},",
             "\"result\":{}",
             "}}"
@@ -119,6 +125,7 @@ fn ledger_receipt_json(
         json_escape(primary_fingerprint),
         json_escape(candidate_fingerprint),
         program,
+        runtime_subject,
         tolerances_json(abs_tol, rel_tol),
         result_json,
     )
@@ -186,7 +193,7 @@ pub fn workspace_verify_vector_receipt(
     let candidate_fingerprint = f32_fingerprint(candidate);
     let result_json = report.to_json();
 
-    let receipt = ledger_receipt_json(
+    let compact = ledger_receipt_json(
         receipt_id,
         "wasm_comparator",
         "mathVerifyVectors",
@@ -196,6 +203,7 @@ pub fn workspace_verify_vector_receipt(
         &reference_fingerprint,
         &candidate_fingerprint,
         None,
+        None,
         abs_tol,
         rel_tol,
         &result_json,
@@ -204,10 +212,26 @@ pub fn workspace_verify_vector_receipt(
     let stored = workspace.record_verifier_receipt_internal(
         "mathVerifyVectors".into(),
         report.passed,
-        receipt.clone(),
+        compact,
     )?;
     debug_assert_eq!(stored, receipt_id);
-    Ok(receipt)
+
+    let runtime_subject = runtime_subject_binding_json(workspace);
+    Ok(ledger_receipt_json(
+        receipt_id,
+        "wasm_comparator",
+        "mathVerifyVectors",
+        "caller_supplied",
+        &label,
+        "reference_fingerprint",
+        &reference_fingerprint,
+        &candidate_fingerprint,
+        None,
+        Some(&runtime_subject),
+        abs_tol,
+        rel_tol,
+        &result_json,
+    ))
 }
 
 /// Execute the compiled Burn graph as reference, compare the candidate, and record the receipt.
@@ -227,11 +251,16 @@ pub fn workspace_verify_graph_receipt(
 ) -> Result<String, String> {
     validate_label(&label, "workspaceVerifyGraphReceipt")?;
 
+    let program_identity = graph.program_identity();
+    workspace.require_runtime_program_identity_if_bound(
+        &program_identity,
+        "workspaceVerifyGraphReceipt",
+    )?;
+
     let reference = graph.run(registry, input)?.to_array();
     let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
     let receipt_id = workspace.next_verifier_receipt_id();
 
-    let program_identity = graph.program_identity();
     let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
     let input_fingerprint = tensor_fingerprint(input);
     let reference_fingerprint = f32_fingerprint(&reference);
@@ -248,6 +277,7 @@ pub fn workspace_verify_graph_receipt(
         &input_fingerprint,
         &candidate_fingerprint,
         Some(&program_identity_fingerprint),
+        None,
         abs_tol,
         rel_tol,
         &result_json,
@@ -274,6 +304,7 @@ pub fn workspace_verify_graph_receipt(
             "\"program_identity\":{},",
             "\"program_identity_fingerprint\":\"{}\",",
             "\"mutable_state_in_program_identity\":false,",
+            "\"runtime_subject\":{},",
             "\"input_fingerprint\":\"{}\",",
             "\"reference_fingerprint\":\"{}\",",
             "\"candidate_fingerprint\":\"{}\",",
@@ -285,6 +316,7 @@ pub fn workspace_verify_graph_receipt(
         json_escape(&label),
         program_identity,
         json_escape(&program_identity_fingerprint),
+        runtime_subject_binding_json(workspace),
         json_escape(&input_fingerprint),
         json_escape(&reference_fingerprint),
         json_escape(&candidate_fingerprint),

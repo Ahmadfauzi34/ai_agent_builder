@@ -60,9 +60,30 @@
       "parameter_specific_validation": true
     },
     "workspaceCompile": {
-      "class": "canonical",
+      "class": "legacy_escape_hatch",
       "authority": "AgentGraphBuilder plus LayerRegistry",
-      "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry"
+      "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry",
+      "subject_bound_policy": "does not create subject-program binding; a bound-subject graph receipt will fail unless the exact identity was already bound canonically"
+    },
+    "workspaceBindRuntimeSubject": {
+      "class": "optional_semantic_context",
+      "authority": "ResolutionRuntimeBridge host projection -> AgentWorkspace metadata",
+      "availability": "workspace unbound and canonical runtime layer/slot reservation has not started",
+      "effect": "bind exact intent/approval/subject/authorization-policy tuple; no LayerRegistry or graph mutation",
+      "lifecycle": "exact repeat is idempotent; different rebind is rejected"
+    },
+    "workspaceCompileForRuntimeSubject": {
+      "class": "canonical_subject_bound",
+      "authority": "AgentGraphBuilder + LayerRegistry compile, then AgentWorkspace exact programIdentity binding",
+      "availability": "runtime subject bound and normal compile candidates exist",
+      "success": "returns CompiledGraph and records exact programIdentity idempotently",
+      "failure": "controlled error with no program-binding mutation; builder/registry remain reusable",
+      "requires": [
+        "runtime_subject_bound",
+        "workspace_builder_slot_domain_match",
+        "registry_complete_for_builder",
+        "runtime_program_binding_admissible"
+      ]
     }
   },
   "conditional_rejoin_actions": {
@@ -99,10 +120,6 @@
       "returns": "point-in-time planning projection JSON"
     }
   },
-  "future_extensions": {
-    "structured_faults": "separate runtime/control failures from semantic ResolutionDiagnostic ambiguity",
-    "graph_description": "semantic graph projection without replacing canonical program identity"
-  },
   "input_contract": {
     "capability": "inputContractCapabilities",
     "binding": "workspaceBindInputContract",
@@ -118,5 +135,14 @@
     "graph_receipt": "workspaceVerifyGraphReceipt",
     "ledger": "workspaceProofLedger",
     "policy": "legacy recordProof, caller attestation, and verifier receipts remain distinct authority classes"
+  },
+  "resolution_runtime_bridge": {
+    "capability": "resolutionRuntimeBridgeCapabilities",
+    "native_projection": "RuntimeSubjectProjection::from_authorized",
+    "runtime_binding": "workspaceBindRuntimeSubject",
+    "inspection": "workspaceRuntimeSubject",
+    "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority",
+    "lifecycle": "bind before runtime planning state is reserved; binding is immutable for the workspace lifetime",
+    "program_binding": "workspaceCompileForRuntimeSubject + workspaceRuntimeProgramBinding"
   }
 }

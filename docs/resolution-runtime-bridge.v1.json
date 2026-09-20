@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.resolution-runtime-bridge.v1",
+  "role": "typed_semantic_to_runtime_projection",
+  "state_ownership": "none",
+  "purpose": "Carry an already resolved, subject-bound, approved and currently authorized semantic specification into runtime execution context without giving the runtime authority to resolve, approve, authorize, or plan semantics.",
+  "authorities": {
+    "semantic_resolution": "ResolutionWorkflow and review/revision layers",
+    "immutable_subject": "ApprovalSubject / EffectiveSpec.identity",
+    "approval": "SubjectBoundApprovalSnapshot or SubjectBoundRevisionApprovalSnapshot",
+    "authorization": "AuthorizationPolicy + AuthorizationSnapshot",
+    "runtime_control": "AgentWorkspace / AgentGraphBuilder",
+    "execution": "LayerRegistry / Burn",
+    "verification": "verifier receipt"
+  },
+  "native_projection": {
+    "entry": "RuntimeSubjectProjection::from_authorized",
+    "requires": [
+      "ApprovedEffectiveSpec",
+      "current AuthorizationPolicy",
+      "AuthorizationSnapshot matching the exact subject-bound approval"
+    ],
+    "rejects": [
+      "stale authorization policy revision",
+      "approval mismatch",
+      "subject mismatch",
+      "intent/workflow revision mismatch",
+      "effective-spec identity mismatch"
+    ],
+    "interpretation_policy": "EffectiveSpec fields are transported as opaque semantic facts with provenance; the bridge never chooses AgentLayerSpec constructors or graph topology."
+  },
+  "runtime_binding": {
+    "surfaces": [
+      "resolutionRuntimeBridgeCapabilities",
+      "workspaceBindRuntimeSubject",
+      "workspaceRuntimeSubject"
+    ],
+    "mutation": "AgentWorkspace control metadata only",
+    "identity_policy": "No bridge-generated authoritative runtime_subject_id. Existing intent, approval, subject identity, and authorization policy tuple is carried verbatim.",
+    "wasm_validation_scope": "shape/syntax/bounds of the supplied tuple only; WASM does not re-run Resolution or AuthorizationPolicy",
+    "lifecycle": "binding must occur before runtime layer/slot reservation or proof/attestation/receipt state; exact rebinding is idempotent, different rebinding is rejected for the workspace lifetime"
+  },
+  "receipt_binding": {
+    "policy": "Verifier receipts may carry the current workspace runtime-subject tuple as execution context.",
+    "meaning": "The verifier proves the numerical comparison under the supplied bound execution context; it does not independently prove that Resolution or AuthorizationPolicy was legitimate.",
+    "unbound": "Legacy/unbridged runtime execution remains representable as runtime_subject.status=unbound."
+  },
+  "invariants": [
+    "bridge does not execute math",
+    "bridge does not select layers or graph topology",
+    "bridge does not create approval or authorization",
+    "bridge does not create a replacement semantic identity",
+    "runtime binding is control metadata and does not mutate LayerRegistry",
+    "runtime binding participates in AgentWorkspace.snapshot so no-mutation checks can observe it",
+    "unknown semantic fields remain opaque rather than guessed",
+    "runtime subject binding is immutable once established for a workspace",
+    "runtime subject binding must precede canonical runtime layer/slot reservation and proof evidence",
+    "subject-bound graph verification requires exact CompiledGraph.programIdentity previously recorded by workspaceCompileForRuntimeSubject",
+    "program binding authority is the exact programIdentity string; noncryptographic fingerprints are never accepted as binding authority",
+    "cross-context graph relabeling is rejected before numerical execution and before verifier receipt allocation",
+    "subject-bound compilation rejects workspace/builder slot-domain mismatch before program binding"
+  ],
+  "deferred": [
+    "automatic semantic-field to layer-plan compilation",
+    "automatic runtime fault to ResolutionDiagnostic conversion",
+    "cryptographic identity/signature binding"
+  ],
+  "audit_artifacts": {
+    "native_probe": {
+      "artifact_name": "resolution-runtime-bridge-native-probe",
+      "executable": "resolution_runtime_bridge_probe",
+      "proves": [
+        "approved+authorized root projection",
+        "stale policy rejection",
+        "foreign immutable subject rejection",
+        "revision projection and field provenance",
+        "no bridge-generated planner/subject replacement identity"
+      ]
+    },
+    "wasm_package": {
+      "artifact_name": "burn-wasm-output",
+      "proves": [
+        "runtime subject binding lifecycle",
+        "interaction/introspection visibility",
+        "no-mutation on rejected rebind/late bind",
+        "subject context preserved in returned verifier receipts",
+        "cross-context graph relabeling rejection through exact subject-program identity binding"
+      ]
+    },
+    "acceptance": "run both downloaded artifacts outside CI"
+  },
+  "runtime_program_binding": {
+    "canonical_compile": "workspaceCompileForRuntimeSubject",
+    "inspection": "workspaceRuntimeProgramBinding",
+    "authoritative_identity": "CompiledGraph.programIdentity exact string",
+    "storage": "bounded exact identities owned by AgentWorkspace under its immutable runtime subject",
+    "max_bindings": 32,
+    "max_identity_bytes": 16384,
+    "duplicate_policy": "idempotent",
+    "legacy_compile": "workspaceCompile remains an escape hatch but does not create a subject-program binding",
+    "verification": "workspaceVerifyGraphReceipt fails closed before graph execution when a runtime subject is bound and the exact program identity is absent",
+    "control_domain": "workspaceCompileForRuntimeSubject requires AgentWorkspace.num_slots == AgentGraphBuilder.numSlots before compilation"
+  }
+}

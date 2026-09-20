@@ -45,7 +45,10 @@ fn public_interaction_surface_is_projection_only_and_state_aware() {
     assert!(ready.contains("\"phase\":\"graph_ready\""));
     assert!(ready.contains(&format!("\"compile_candidate_slots\":[{output}]")));
     assert!(ready.contains(
-        "\"operation\":\"workspaceCompile\",\"class\":\"canonical\",\"available\":true"
+        "\"operation\":\"workspaceCompileForRuntimeSubject\",\"class\":\"canonical_subject_bound\",\"available\":false"
+    ));
+    assert!(ready.contains(
+        "\"operation\":\"workspaceCompile\",\"class\":\"legacy_escape_hatch\",\"available\":true"
     ));
 }
 
