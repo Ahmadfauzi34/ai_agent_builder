@@ -55,5 +55,28 @@
     "graph verifier evidence retains exact programIdentity as provenance",
     "vector comparator evidence remains explicitly caller-reference authority",
     "the inbox is bounded and duplicate insertion is idempotent"
-  ]
+  ],
+  "audit_artifacts": {
+    "native_probe": {
+      "artifact_name": "runtime-resolution-evidence-native-probe",
+      "executable": "runtime_resolution_evidence_probe",
+      "proves": [
+        "actual forward RuntimeSubjectProjection matches the compile-eligible ResolutionSnapshot",
+        "structured AgentFault can rejoin as observation without becoming ResolutionDiagnostic",
+        "graph verifier authority/outcome remains verifier evidence",
+        "Resolution state remains unchanged after evidence recording",
+        "stale revision, foreign subject, and unbound evidence are rejected",
+        "duplicate evidence is idempotent",
+        "inbox capacity is bounded at 64 entries"
+      ]
+    },
+    "wasm_package": {
+      "artifact_name": "burn-wasm-output",
+      "proves": [
+        "runtimeResolutionEvidenceCapabilities is discoverable from the packaged WASM surface",
+        "reverse bridge state is not owned by WASM"
+      ]
+    },
+    "acceptance": "run downloaded exact-head native probe and packaged WASM capability surface outside CI"
+  }
 }
