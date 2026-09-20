@@ -63,7 +63,8 @@
     "configured_output": "AgentGraphBuilder configured output, or null if unset",
     "topology_authority": "AgentGraphBuilder",
     "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile",
-    "external_input_contract": "the same optional external input contract is surfaced alongside topology"
+    "external_input_contract": "the same optional external input contract is surfaced alongside topology",
+    "runtime_subject": "the same bound runtime subject is surfaced alongside graph topology for state-loss recovery and receipt correlation"
   },
   "workspace_description": {
     "slot_fields": [
@@ -85,7 +86,8 @@
       "registry_fingerprint"
     ],
     "proof_scope": "legacy recordProof, caller attestations, and verifier receipts are counted separately; authority classes are never merged",
-    "external_input_contract": "optional slot-0 f32 rank-4 metadata projected from AgentWorkspace; unbound remains explicit"
+    "external_input_contract": "optional slot-0 f32 rank-4 metadata projected from AgentWorkspace; unbound remains explicit",
+    "runtime_subject": "optional Resolution↔Runtime execution-context tuple carried by AgentWorkspace; authorization remains owned by the semantic host boundary"
   },
   "invariants": [
     "all introspection surfaces are read-only",
