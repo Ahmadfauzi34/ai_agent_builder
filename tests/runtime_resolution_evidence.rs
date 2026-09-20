@@ -152,3 +152,46 @@ fn stale_projection_cannot_receive_current_resolution_evidence() {
     let error = ResolutionEvidenceInbox::new(&snapshot, &stale).unwrap_err();
     assert!(error.contains("revision"));
 }
+
+#[test]
+fn canonical_inbox_revalidates_current_authorization_policy() {
+    let spec = EffectiveSpec::root(vec![
+        SpecDeclaration::new("objective", "feature_transform").unwrap(),
+    ])
+    .unwrap();
+    let subject = spec.approval_subject().unwrap();
+
+    let mut review =
+        SubjectBoundReviewSession::new("intent-canonical-evidence", subject).unwrap();
+    review.submit("agent").unwrap();
+    let approval = review.approve("owner").unwrap();
+    let resolution = review.snapshot().review.workflow;
+
+    let approved = ApprovedEffectiveSpec::bind_root(spec, approval.clone()).unwrap();
+    let policy = AuthorizationPolicy::new("runtime-policy", 21, "owner", vec![]).unwrap();
+    let authorization = policy.authorize(&approval).unwrap();
+
+    let inbox = ResolutionEvidenceInbox::from_authorized(
+        &resolution,
+        &approved,
+        &policy,
+        &authorization,
+    )
+    .unwrap();
+    assert!(inbox.is_empty());
+
+    let newer_policy =
+        AuthorizationPolicy::new("runtime-policy", 22, "owner", vec![]).unwrap();
+    let error = ResolutionEvidenceInbox::from_authorized(
+        &resolution,
+        &approved,
+        &newer_policy,
+        &authorization,
+    )
+    .unwrap_err();
+    assert!(
+        error.contains("stale")
+            || error.contains("policy")
+            || error.contains("authorization")
+    );
+}
