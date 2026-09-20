@@ -343,13 +343,13 @@ pub fn workspace_capabilities() -> String {
         "\"execution_truth\":\"LayerRegistry\",",
         "\"graph\":\"AgentGraphBuilder\",",
         "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"exact_identity_metadata_only_not_canonical_orchestration\",\"layout_preflight\":\"canonical_slot_owner_to_layer_type_variant\"},",
-        "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
+        "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"subject_bound_compile\":\"bind_exact_program_identity_only_after_successful_compile\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
         "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
         "\"layout_policy\":{\"known_incompatible\":\"reject_before_mutation\",\"unknown\":\"defer_to_runtime\",\"implicit_relayout\":\"forbidden\"},",
-        "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\"],",
+        "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\",\"workspaceCompileForRuntimeSubject\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
-        "\"recommended_flow\":[\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"compile\",\"run\",\"verify\"]",
+        "\"recommended_flow\":[\"bind_runtime_subject_if_used\",\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"subject_bound_compile_if_bound\",\"run\",\"verify\"],"
         "}"
     )
     .to_string()
@@ -558,6 +558,33 @@ pub fn workspace_compile(
 ) -> Result<CompiledGraph, String> {
     validate_builder_slot(builder, output_slot, "workspaceCompile")?;
     builder.compile_with_output(registry, output_slot)
+}
+
+/// Compile and bind the exact CompiledGraph.programIdentity to the immutable runtime subject.
+///
+/// This is the canonical compile path for subject-bound verification. The historical
+/// workspaceCompile surface remains available as an explicit unbound/legacy escape hatch.
+#[wasm_bindgen(js_name = workspaceCompileForRuntimeSubject)]
+pub fn workspace_compile_for_runtime_subject(
+    workspace: &mut AgentWorkspace,
+    builder: &AgentGraphBuilder,
+    registry: &LayerRegistry,
+    output_slot: u8,
+) -> Result<CompiledGraph, String> {
+    if workspace.runtime_subject_binding().is_none() {
+        return Err(
+            "workspaceCompileForRuntimeSubject: workspace has no bound runtime subject".to_string(),
+        );
+    }
+
+    validate_builder_slot(
+        builder,
+        output_slot,
+        "workspaceCompileForRuntimeSubject",
+    )?;
+    let graph = builder.compile_with_output(registry, output_slot)?;
+    workspace.bind_runtime_program_identity(graph.program_identity())?;
+    Ok(graph)
 }
 
 #[cfg(test)]
