@@ -279,6 +279,8 @@ mod tests {
 
         let snapshot = interaction_snapshot(&workspace, &builder, &registry).unwrap();
         assert!(snapshot.contains("\"phase\":\"workspace_ready\""));
+        assert!(snapshot.contains("\"runtime_subject\":{\"status\":\"unbound\"}"));
+        assert!(snapshot.contains("\"operation\":\"workspaceBindRuntimeSubject\",\"class\":\"optional_semantic_context\",\"available\":true"));
         assert!(snapshot.contains("\"operation\":\"reserveLayerId\",\"class\":\"setup\",\"available\":true"));
         assert!(snapshot.contains("\"operation\":\"workspaceCompile\",\"class\":\"canonical\",\"available\":false"));
     }
