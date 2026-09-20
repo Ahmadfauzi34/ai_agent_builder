@@ -8,7 +8,7 @@
   "authority": {
     "fault_codes": "derived from explicit checked predicates",
     "operation_semantics": "existing AgentWorkspace, AgentGraphBuilder, LayerRegistry, workspace_ops, and Burn boundaries remain authoritative",
-    "resolution_boundary": "semantic ambiguity belongs to ResolutionDiagnostic, not AgentFault"
+    "resolution_boundary": "semantic ambiguity belongs to ResolutionDiagnostic; AgentFault may rejoin only as typed observation through ResolutionEvidenceInbox"
   },
   "envelope": {
     "schema_version": 1,
@@ -99,5 +99,10 @@
     "fault codes are selected by explicit predicate checks rather than legacy error-string parsing",
     "legacy operation error messages remain unchanged",
     "a successful preflight does not replace authoritative validation at the actual operation boundary"
-  ]
+  ],
+  "runtime_resolution_rejoin": {
+    "contract": "burn-research.runtime-resolution-evidence.v1",
+    "policy": "structured AgentFault fields may be transported as agent_fault_preflight evidence, but remain distinct from ResolutionDiagnostic and never create one automatically",
+    "authority": "preflight observation only; not numerical proof"
+  }
 }
