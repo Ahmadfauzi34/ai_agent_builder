@@ -349,7 +349,7 @@ pub fn workspace_capabilities() -> String {
         "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\",\"workspaceCompileForRuntimeSubject\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
-        "\"recommended_flow\":[\"bind_runtime_subject_if_used\",\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"subject_bound_compile_if_bound\",\"run\",\"verify\"],"
+        "\"recommended_flow\":[\"bind_runtime_subject_if_used\",\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"subject_bound_compile_if_bound\",\"run\",\"verify\"]",
         "}"
     )
     .to_string()
