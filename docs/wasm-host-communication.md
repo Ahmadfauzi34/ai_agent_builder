@@ -212,6 +212,23 @@ The following are deliberate:
 - support claims not implying bundled interpreters or toolchains;
 - exact declared-vs-generated WASM surface conformance.
 
+## Standalone artifact copy
+
+The verified Node package carries this document as:
+
+`pkg/wasm-host-communication.md`
+
+and the packaged `host-support.v1.json` exposes the artifact-local pointer:
+
+```text
+support_semantics.packaged_communication_contract
+    = wasm-host-communication.md
+```
+
+This is intentional so an agent that receives only the packaged artifact can still recover the communication and failure-classification contract without access to the repository checkout.
+
+The Node package audit fails if the file, package allowlist entry, manifest pointer, or core communication statements are missing.
+
 ## Authority
 
 For support status and verified matrices, use `docs/host-support.v1.json`.
