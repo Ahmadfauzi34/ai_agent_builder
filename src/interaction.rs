@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
 use crate::registry::LayerRegistry;
+use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 
 const INTERACTION_SCHEMA_ID: &str = "burn-research.agent-interaction.v1";
@@ -89,6 +90,7 @@ fn actions_json(
     let reserved_layers = workspace.interaction_reserved_layer_ids();
     let compile_slots = compile_candidates(builder, registry);
 
+    let runtime_subject_bind_available = workspace.runtime_subject_bind_available();
     let reserve_layer_available = workspace.interaction_row_capacity_available();
     let reserve_slot_available = !free_slots.is_empty();
     let init_available =
@@ -99,6 +101,8 @@ fn actions_json(
     format!(
         concat!(
             "[",
+            "{{\"operation\":\"workspaceBindRuntimeSubject\",\"class\":\"optional_semantic_context\",\"available\":{},",
+            "\"authority\":\"ResolutionRuntimeBridge host projection\",\"note\":\"bind before runtime reservation; optional for legacy workflows\"}},",
             "{{\"operation\":\"reserveLayerId\",\"class\":\"setup\",\"available\":{},",
             "\"authority\":\"AgentWorkspace\",\"note\":\"allocates metadata identity only\"}},",
             "{{\"operation\":\"reserveSlot\",\"class\":\"contracted_direct\",\"available\":{},",
@@ -113,6 +117,7 @@ fn actions_json(
             "\"candidate_output_slots\":{},\"requires\":[\"registry_complete_for_builder\"]}}",
             "]"
         ),
+        bool_json(runtime_subject_bind_available),
         bool_json(reserve_layer_available),
         bool_json(reserve_slot_available),
         u8_array_json(&free_slots),
@@ -147,7 +152,7 @@ pub fn interaction_capabilities() -> String {
         "},",
         "\"availability_semantics\":\"at_least_one_argument_assignment_satisfies_known_state_predicates; per-spec and runtime predicates still apply\",",
         "\"canonical_actions\":[\"reserveSlot\",\"releaseSlot\",\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceCompile\"],",
-        "\"setup_actions\":[\"reserveLayerId\",\"AgentLayerSpec constructors\"],",
+        "\"setup_actions\":[\"workspaceBindRuntimeSubject (optional semantic context)\",\"reserveLayerId\",\"AgentLayerSpec constructors\"],",
         "\"conditional_rejoin_actions\":[\"workspaceWireUnary\",\"workspaceWireBinary\"],",
         "\"introspection\":[\"introspectionCapabilities\",\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
         "\"input_contract\":\"inputContractCapabilities\",",
@@ -208,6 +213,7 @@ pub fn interaction_snapshot(
             "\"phase\":\"{}\",",
             "\"workspace\":{{",
                 "\"num_slots\":{},",
+                "\"runtime_subject\":{},",
                 "\"free_slots\":{},",
                 "\"readable_slots\":{},",
                 "\"releasable_slots\":{},",
@@ -228,6 +234,7 @@ pub fn interaction_snapshot(
         INTERACTION_SCHEMA_ID,
         phase(workspace, builder, registry),
         workspace.interaction_num_slots(),
+        runtime_subject_binding_json(workspace),
         u8_array_json(&free_slots),
         u8_array_json(&readable_slots),
         u8_array_json(&releasable_slots),
