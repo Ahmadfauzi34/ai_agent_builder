@@ -198,6 +198,76 @@ impl AgentWorkspace {
         }
     }
 
+    pub(crate) fn interaction_num_slots(&self) -> u32 {
+        self.num_slots
+    }
+
+    pub(crate) fn interaction_row_capacity_available(&self) -> bool {
+        self.rows.len() < MAX_ROWS
+    }
+
+    pub(crate) fn interaction_free_slots(&self) -> Vec<u8> {
+        self.slot_ids_with_state("free")
+    }
+
+    pub(crate) fn interaction_readable_slots(&self) -> Vec<u8> {
+        let mut slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS)
+            .filter(|row| matches!(row.state.as_str(), "input" | "reserved"))
+            .filter_map(|row| row.key.parse::<u8>().ok())
+            .collect::<Vec<_>>();
+        slots.sort_unstable();
+        slots.dedup();
+        slots
+    }
+
+    pub(crate) fn interaction_releasable_slots(&self) -> Vec<u8> {
+        let mut slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS && row.state == "reserved")
+            .filter(|row| !row.value.starts_with("layer:"))
+            .filter_map(|row| row.key.parse::<u8>().ok())
+            .collect::<Vec<_>>();
+        slots.sort_unstable();
+        slots.dedup();
+        slots
+    }
+
+    pub(crate) fn interaction_reserved_layer_ids(&self) -> Vec<u32> {
+        self.layer_ids_with_state("reserved")
+    }
+
+    pub(crate) fn interaction_initialized_layer_ids(&self) -> Vec<u32> {
+        self.layer_ids_with_state("initialized")
+    }
+
+    fn slot_ids_with_state(&self, state: &str) -> Vec<u8> {
+        let mut slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS && row.state == state)
+            .filter_map(|row| row.key.parse::<u8>().ok())
+            .collect::<Vec<_>>();
+        slots.sort_unstable();
+        slots.dedup();
+        slots
+    }
+
+    fn layer_ids_with_state(&self, state: &str) -> Vec<u32> {
+        let mut layers = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_LAYERS && row.state == state)
+            .filter_map(|row| row.key.parse::<u32>().ok())
+            .collect::<Vec<_>>();
+        layers.sort_unstable();
+        layers.dedup();
+        layers
+    }
+
     fn query_rows(&self, table: &str, kind: Option<&str>, state: Option<&str>) -> String {
         let rows = self
             .rows
