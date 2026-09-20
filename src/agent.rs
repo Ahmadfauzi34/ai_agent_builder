@@ -1100,7 +1100,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"engine\":\"burn-research\",",
             "\"purpose\":\"agent_math_coprocessor\",",
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
-            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
+            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
