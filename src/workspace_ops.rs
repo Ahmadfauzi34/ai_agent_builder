@@ -1,7 +1,9 @@
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
-use crate::contracts::validate_agent_layout_identity_edge;
+use crate::contracts::{
+    validate_agent_layout_identity_edge, validate_external_input_contract_for_spec,
+};
 use crate::graph::CompiledGraph;
 use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
@@ -99,6 +101,17 @@ pub(crate) fn validate_workspace_layout_input(
     consumer: &AgentLayerSpec,
     context: &str,
 ) -> Result<(), String> {
+    if slot == 0 {
+        if let Some(contract) = workspace.input_contract() {
+            validate_external_input_contract_for_spec(
+                contract.shape,
+                &contract.layout,
+                consumer,
+            )
+            .map_err(|err| format!("{context}: {err}"))?;
+        }
+    }
+
     let Some((producer_layer_type, producer_variant)) =
         workspace_slot_producer_identity(workspace, slot, context)?
     else {
