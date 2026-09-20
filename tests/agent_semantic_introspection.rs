@@ -1,10 +1,21 @@
 use std::collections::BTreeSet;
 
 use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
-use burn_research::introspection::{agent_layer_catalog, describe_graph, describe_workspace};
+use burn_research::introspection::{
+    agent_layer_catalog, describe_graph, describe_workspace, introspection_capabilities,
+};
 use burn_research::registry::LayerRegistry;
 use burn_research::workspace::AgentWorkspace;
 use burn_research::workspace_ops::workspace_init_unary;
+
+#[test]
+fn public_introspection_contract_is_embedded_and_machine_readable() {
+    let contract: serde_json::Value =
+        serde_json::from_str(&introspection_capabilities()).unwrap();
+    assert_eq!(contract["schema_id"], "burn-research.agent-introspection.v1");
+    assert_eq!(contract["role"], "read_only_semantic_projection");
+    assert_eq!(contract["state_ownership"], "none");
+}
 
 #[test]
 fn public_layer_catalog_is_complete_and_machine_readable() {
