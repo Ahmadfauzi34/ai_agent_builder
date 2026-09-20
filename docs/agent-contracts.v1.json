@@ -631,6 +631,9 @@
           "predicate": "runtime_subject.bound"
         },
         {
+          "predicate": "control_domain.slot_count_match"
+        },
+        {
           "predicate": "builder.output_written",
           "bind": {
             "slot": "output_slot"
@@ -652,7 +655,7 @@
         "authority": "CompiledGraph.programIdentity exact string"
       },
       "failure": {
-        "state_change": "none_on_compile_or_binding_failure",
+        "state_change": "none_on_subject_domain_compile_or_binding_failure",
         "builder_output_selection": "unchanged",
         "reusable": true
       },
