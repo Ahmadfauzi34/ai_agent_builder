@@ -134,21 +134,25 @@ pub fn input_contract_compatibility(
     };
 
     match validate_external_input_contract_for_spec(contract.shape, &contract.layout, consumer) {
-        Ok(result) => format!(
-            concat!(
-                "{{",
-                "\"status\":\"{}\",",
-                "\"compatible\":true,",
-                "\"consumer_layer_type\":{},",
-                "\"consumer_layer_id\":{},",
-                "\"contract\":{}",
-                "}}"
-            ),
-            json_escape(result),
-            consumer.layer_type(),
-            consumer.layer_id(),
-            contract_json(contract),
-        ),
+        Ok(result) => {
+            let compatible = if result == "compatible" { "true" } else { "null" };
+            format!(
+                concat!(
+                    "{{",
+                    "\"status\":\"{}\",",
+                    "\"compatible\":{},",
+                    "\"consumer_layer_type\":{},",
+                    "\"consumer_layer_id\":{},",
+                    "\"contract\":{}",
+                    "}}"
+                ),
+                json_escape(result),
+                compatible,
+                consumer.layer_type(),
+                consumer.layer_id(),
+                contract_json(contract),
+            )
+        },
         Err(message) => format!(
             concat!(
                 "{{",
@@ -214,7 +218,7 @@ mod tests {
         let linear = AgentLayerSpec::linear(1, 2, 1, false).unwrap();
         let result = input_contract_compatibility(&workspace, &linear);
         assert!(result.contains("\"status\":\"shape_compatible_layout_unknown\""));
-        assert!(result.contains("\"compatible\":true"));
+        assert!(result.contains("\"compatible\":null"));
     }
 
     #[test]
