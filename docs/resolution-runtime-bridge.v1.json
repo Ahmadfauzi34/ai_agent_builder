@@ -60,5 +60,28 @@
     "automatic semantic-field to layer-plan compilation",
     "automatic runtime fault to ResolutionDiagnostic conversion",
     "cryptographic identity/signature binding"
-  ]
+  ],
+  "audit_artifacts": {
+    "native_probe": {
+      "artifact_name": "resolution-runtime-bridge-native-probe",
+      "executable": "resolution_runtime_bridge_probe",
+      "proves": [
+        "approved+authorized root projection",
+        "stale policy rejection",
+        "foreign immutable subject rejection",
+        "revision projection and field provenance",
+        "no bridge-generated planner/subject replacement identity"
+      ]
+    },
+    "wasm_package": {
+      "artifact_name": "burn-wasm-output",
+      "proves": [
+        "runtime subject binding lifecycle",
+        "interaction/introspection visibility",
+        "no-mutation on rejected rebind/late bind",
+        "subject context preserved in returned verifier receipts"
+      ]
+    },
+    "acceptance": "run both downloaded artifacts outside CI"
+  }
 }
