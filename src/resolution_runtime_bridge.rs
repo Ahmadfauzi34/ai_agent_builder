@@ -127,7 +127,7 @@ impl RuntimeSubjectProjection {
                 subject.kind()
             ));
         }
-        if subject.identity() != approved.spec.identity {
+        if subject.identity() != approved.spec.identity.as_str() {
             return Err(
                 "ResolutionRuntimeBridge: approval subject identity does not match EffectiveSpec.identity"
                     .to_string(),
@@ -158,6 +158,28 @@ impl RuntimeSubjectProjection {
                 "ResolutionRuntimeBridge: root/revision authorization class mismatch".to_string(),
             );
         }
+
+        validate_nonempty_bounded(intent_id, MAX_ID_BYTES, "ResolutionRuntimeBridge.intent_id")?;
+        validate_nonempty_bounded(
+            approved.approval_id(),
+            MAX_ID_BYTES,
+            "ResolutionRuntimeBridge.approval_id",
+        )?;
+        validate_nonempty_bounded(
+            subject.kind(),
+            MAX_SUBJECT_KIND_BYTES,
+            "ResolutionRuntimeBridge.subject_kind",
+        )?;
+        validate_nonempty_bounded(
+            subject.identity(),
+            MAX_SUBJECT_IDENTITY_BYTES,
+            "ResolutionRuntimeBridge.subject_identity",
+        )?;
+        validate_nonempty_bounded(
+            authorization.policy_id(),
+            MAX_ID_BYTES,
+            "ResolutionRuntimeBridge.authorization_policy_id",
+        )?;
 
         let fields = approved
             .spec
