@@ -252,6 +252,9 @@ mod tests {
         assert!(capabilities.contains("\"role\":\"projection_only\""));
         assert!(capabilities.contains("\"state_ownership\":\"none\""));
         assert!(capabilities.contains("\"execution\":\"LayerRegistry\""));
+        assert!(capabilities.contains("introspectionCapabilities"));
+        assert!(capabilities.contains("describeWorkspace"));
+        assert!(capabilities.contains("describeGraph"));
         assert!(capabilities.contains("raw_protocol"));
     }
 
