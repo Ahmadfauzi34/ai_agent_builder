@@ -42,7 +42,12 @@
       "consumer_proof": "scripts/audit_rust_package.py",
       "orchestration": "host_owned",
       "ci_smoke_required": true,
-      "stable_cross_language_abi": false
+      "stable_cross_language_abi": false,
+      "runtime_resolution_evidence": {
+        "contract": "burn-research.runtime-resolution-evidence.v1",
+        "ownership": "native host-side bounded inbox",
+        "wasm_role": "capability discovery only; ResolutionEvidenceInbox is not WASM-owned"
+      }
     }
   },
   "verified_cross_language_consumers": {
