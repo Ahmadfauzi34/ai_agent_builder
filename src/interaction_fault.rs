@@ -15,8 +15,8 @@ fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
     for ch in value.chars() {
         match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\""),
+            '\\' => out.push_str("\\\"),
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
@@ -30,7 +30,7 @@ fn json_escape(value: &str) -> String {
 fn string_array_json(values: &[&str]) -> String {
     let body = values
         .iter()
-        .map(|value| format!("\\"{}\\"", json_escape(value)))
+        .map(|value| format!("\"{}\"", json_escape(value)))
         .collect::<Vec<_>>()
         .join(",");
     format!("[{body}]")
@@ -38,7 +38,7 @@ fn string_array_json(values: &[&str]) -> String {
 
 fn ok(operation: &str) -> String {
     format!(
-        "{{\\"schema_version\\":1,\\"schema_id\\":\\"{FAULT_SCHEMA_ID}\\",\\"status\\":\\"ok\\",\\"operation\\":\\"{}\\",\\"mutation\\":\\"none\\"}}",
+        "{{\"schema_version\":1,\"schema_id\":\"{FAULT_SCHEMA_ID}\",\"status\":\"ok\",\"operation\":\"{}\",\"mutation\":\"none\"}}",
         json_escape(operation)
     )
 }
@@ -60,20 +60,20 @@ impl Fault<'_> {
         format!(
             concat!(
                 "{{",
-                "\\"schema_version\\":1,",
-                "\\"schema_id\\":\\"{}\\",",
-                "\\"status\\":\\"fault\\",",
-                "\\"fault\\":{{",
-                    "\\"code\\":\\"{}\\",",
-                    "\\"class\\":\\"{}\\",",
-                    "\\"operation\\":\\"{}\\",",
-                    "\\"predicate\\":\\"{}\\",",
-                    "\\"expected\\":\\"{}\\",",
-                    "\\"actual\\":\\"{}\\",",
-                    "\\"mutation\\":\\"none\\",",
-                    "\\"recoverable\\":{},",
-                    "\\"suggested_actions\\":{},",
-                    "\\"message\\":\\"{}\\"",
+                "\"schema_version\":1,",
+                "\"schema_id\":\"{}\",",
+                "\"status\":\"fault\",",
+                "\"fault\":{{",
+                    "\"code\":\"{}\",",
+                    "\"class\":\"{}\",",
+                    "\"operation\":\"{}\",",
+                    "\"predicate\":\"{}\",",
+                    "\"expected\":\"{}\",",
+                    "\"actual\":\"{}\",",
+                    "\"mutation\":\"none\",",
+                    "\"recoverable\":{},",
+                    "\"suggested_actions\":{},",
+                    "\"message\":\"{}\"",
                 "}}",
                 "}}"
             ),
