@@ -5,8 +5,8 @@ use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
 use crate::workspace::AgentWorkspace;
 use crate::workspace_ops::{
-    validate_spec_is_new, validate_workspace_input_slot, validate_workspace_layout_input,
-    validate_workspace_op_label, workspace_compile,
+    ensure_workspace_layer_reserved, validate_spec_is_new, validate_workspace_input_slot,
+    validate_workspace_layout_input, validate_workspace_op_label, workspace_compile,
 };
 
 const FAULT_SCHEMA_ID: &str = "burn-research.agent-fault.v1";
@@ -414,40 +414,18 @@ pub fn interaction_check_init_unary(
         );
     }
 
-    match workspace.interaction_layer_state(spec.layer_id()) {
-        Some("reserved") => {}
-        Some(state) => {
-            return fault(
-                "E_LAYER_NOT_RESERVED",
-                "control_precondition",
-                OP,
-                "workspace.layer_reserved",
-                "reserved",
-                state,
-                format!(
-                    "{OP}: layer id {} must be reserved through AgentWorkspace.reserveLayerId before initialization",
-                    spec.layer_id()
-                ),
-                true,
-                vec!["reserveLayerId"],
-            )
-        }
-        None => {
-            return fault(
-                "E_LAYER_NOT_RESERVED",
-                "control_precondition",
-                OP,
-                "workspace.layer_reserved",
-                "reserved",
-                "missing",
-                format!(
-                    "{OP}: layer id {} must be reserved through AgentWorkspace.reserveLayerId before initialization",
-                    spec.layer_id()
-                ),
-                true,
-                vec!["reserveLayerId"],
-            )
-        }
+    if let Err(message) = ensure_workspace_layer_reserved(workspace, spec, OP) {
+        return fault(
+            "E_LAYER_NOT_RESERVED",
+            "control_precondition",
+            OP,
+            "workspace.layer_reserved",
+            "reserved",
+            workspace.interaction_layer_state(spec.layer_id()).unwrap_or("missing"),
+            message,
+            true,
+            vec!["reserveLayerId"],
+        );
     }
 
     if let Err(message) = validate_workspace_op_label(&label, OP) {
@@ -563,7 +541,7 @@ pub fn interaction_check_init_binary(
         );
     }
 
-    if workspace.interaction_layer_state(spec.layer_id()) != Some("reserved") {
+    if let Err(message) = ensure_workspace_layer_reserved(workspace, spec, OP) {
         return fault(
             "E_LAYER_NOT_RESERVED",
             "control_precondition",
@@ -571,10 +549,7 @@ pub fn interaction_check_init_binary(
             "workspace.layer_reserved",
             "reserved",
             workspace.interaction_layer_state(spec.layer_id()).unwrap_or("missing"),
-            format!(
-                "{OP}: layer id {} must be reserved through AgentWorkspace.reserveLayerId before initialization",
-                spec.layer_id()
-            ),
+            message,
             true,
             vec!["reserveLayerId"],
         );
@@ -596,6 +571,37 @@ pub fn interaction_check_init_binary(
 
     if let Some(problem) = free_output_fault(OP, workspace) {
         return problem;
+    }
+
+    if let Err(message) =
+        validate_workspace_input_slot(workspace, builder, left_slot, "workspaceInitBinary.left")
+    {
+        return fault(
+            "E_INPUT_PRECONDITION",
+            "control_precondition",
+            OP,
+            "slot.left_readable",
+            "readable slot",
+            "rejected",
+            message,
+            true,
+            vec!["interactionSnapshot"],
+        );
+    }
+    if let Err(message) =
+        validate_workspace_input_slot(workspace, builder, right_slot, "workspaceInitBinary.right")
+    {
+        return fault(
+            "E_INPUT_PRECONDITION",
+            "control_precondition",
+            OP,
+            "slot.right_readable",
+            "readable slot",
+            "rejected",
+            message,
+            true,
+            vec!["interactionSnapshot"],
+        );
     }
 
     ok(OP)
