@@ -613,6 +613,7 @@
     "proofProvenanceCapabilities",
     "reductionCapabilities",
     "resolutionRuntimeBridgeCapabilities",
+    "runtimeResolutionEvidenceCapabilities",
     "setGraphParametersFlat",
     "statisticsCapabilities",
     "tensorTransformCapabilities",
