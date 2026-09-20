@@ -14,6 +14,7 @@ pub mod graph;
 mod graph_plan;
 pub mod graph_parameters;
 pub mod graph_parameters_wasm;
+pub mod interaction;
 pub mod layers;
 pub mod math;
 pub mod program_bundle;

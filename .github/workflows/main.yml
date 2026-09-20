@@ -22,6 +22,7 @@ jobs:
       - name: Validate agent contract schema
         run: |
           python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
+          python3 -m json.tool docs/agent-interaction-contract.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
 

@@ -946,6 +946,24 @@ impl AgentGraphBuilder {
             .ok_or_else(|| "AgentGraphBuilder.compile: output slot is not set".to_string())?;
         self.plan_bytes_with_output(output_slot)
     }
+
+    pub(crate) fn interaction_written_slots(&self) -> Vec<u8> {
+        let mut slots = self.steps.iter().map(|step| step.out_slot).collect::<Vec<_>>();
+        slots.sort_unstable();
+        slots.dedup();
+        slots
+    }
+
+    pub(crate) fn interaction_referenced_layers(&self) -> Vec<(u8, u32)> {
+        let mut layers = self
+            .steps
+            .iter()
+            .map(|step| (step.layer_type, step.layer_id))
+            .collect::<Vec<_>>();
+        layers.sort_unstable();
+        layers.dedup();
+        layers
+    }
 }
 
 #[wasm_bindgen]

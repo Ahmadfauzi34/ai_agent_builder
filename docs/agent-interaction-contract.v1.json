@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-interaction.v1",
+  "role": "projection_only",
+  "state_ownership": "none",
+  "purpose": "Provide a machine-readable planning view over existing agent workspace, graph builder, and registry state without introducing a new authority.",
+  "authorities": {
+    "intent_resolution": "ResolutionWorkflow and subject/review/authorization layers",
+    "workspace": "AgentWorkspace metadata_and_control",
+    "graph": "AgentGraphBuilder plan",
+    "execution": "LayerRegistry",
+    "numerics": "Burn reference machine",
+    "verification": "explicit verifier entry points such as CompiledGraph.verifyFlat and mathVerifyVectors"
+  },
+  "invariants": [
+    "interactionSnapshot and interactionValidActions are read-only projections",
+    "no interaction object owns hidden mutable execution state",
+    "availability never bypasses operation-specific validation",
+    "unknown or parameter-specific conditions remain deferred to the authoritative call boundary",
+    "escape hatches remain available and are not removed by the canonical interaction layer"
+  ],
+  "availability_semantics": {
+    "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
+    "not_a_guarantee": [
+      "a particular AgentLayerSpec is valid",
+      "layout compatibility for unknown inputs",
+      "runtime tensor shape compatibility",
+      "external policy or authorization approval"
+    ]
+  },
+  "phases": {
+    "workspace_ready": "no graph steps and no reserved layer identity is awaiting specification",
+    "spec_construction": "at least one workspace layer identity is reserved and the graph has no steps",
+    "graph_ready": "the graph has at least one step and every referenced layer exists in LayerRegistry",
+    "graph_incomplete": "the graph has at least one step but at least one referenced layer is absent from LayerRegistry"
+  },
+  "actions": {
+    "reserveLayerId": {
+      "class": "setup",
+      "authority": "AgentWorkspace",
+      "effect": "reserve metadata identity only; does not initialize execution state"
+    },
+    "reserveSlot": {
+      "class": "contracted_direct",
+      "authority": "AgentWorkspace"
+    },
+    "releaseSlot": {
+      "class": "contracted_direct",
+      "authority": "AgentWorkspace",
+      "projection_candidate_policy": "only manually reserved slots are suggested; lower-level callers may still use the underlying method directly"
+    },
+    "workspaceInitUnary": {
+      "class": "canonical",
+      "authority": "workspace orchestration plus LayerRegistry",
+      "parameter_specific_validation": true
+    },
+    "workspaceInitBinary": {
+      "class": "canonical",
+      "authority": "workspace orchestration plus LayerRegistry",
+      "parameter_specific_validation": true
+    },
+    "workspaceCompile": {
+      "class": "canonical",
+      "authority": "AgentGraphBuilder plus LayerRegistry",
+      "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry"
+    }
+  },
+  "conditional_rejoin_actions": {
+    "workspaceWireUnary": "requires an externally initialized layer whose validated init identity exactly matches the supplied AgentLayerSpec",
+    "workspaceWireBinary": "requires an externally initialized layer whose validated init identity exactly matches the supplied AgentLayerSpec"
+  },
+  "escape_hatches": [
+    "AgentLayerSpec",
+    "AgentGraphBuilder",
+    "LayerRegistry",
+    "raw_protocol"
+  ],
+  "surfaces": {
+    "interactionCapabilities": {
+      "mutation": "none",
+      "returns": "capability JSON"
+    },
+    "interactionValidActions": {
+      "mutation": "none",
+      "arguments": ["AgentWorkspace", "AgentGraphBuilder", "LayerRegistry"],
+      "returns": "action projection JSON"
+    },
+    "interactionSnapshot": {
+      "mutation": "none",
+      "arguments": ["AgentWorkspace", "AgentGraphBuilder", "LayerRegistry"],
+      "returns": "point-in-time planning projection JSON"
+    }
+  },
+  "future_extensions": {
+    "structured_faults": "separate runtime/control failures from semantic ResolutionDiagnostic ambiguity",
+    "graph_description": "semantic graph projection without replacing canonical program identity",
+    "input_contracts": "optional shape/layout declarations that strengthen preflight while unknown remains allowed",
+    "proof_provenance": "distinguish caller attestation from verifier-generated receipt"
+  }
+}
