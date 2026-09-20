@@ -6,7 +6,8 @@
     "support_does_not_imply_runtime_or_toolchain_is_bundled": true,
     "host_ranking": "none",
     "artifact_target_semantics": "generated_wasm_packaging_target_not_host_priority",
-    "communication_contract": "docs/wasm-host-communication.md"
+    "communication_contract": "docs/wasm-host-communication.md",
+    "packaged_communication_contract": "wasm-host-communication.md"
   },
   "execution_core": {
     "implementation_language": "rust",
