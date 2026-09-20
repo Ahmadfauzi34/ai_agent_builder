@@ -576,6 +576,13 @@ pub fn workspace_compile_for_runtime_subject(
             "workspaceCompileForRuntimeSubject: workspace has no bound runtime subject".to_string(),
         );
     }
+    if workspace.interaction_num_slots() != builder.num_slots() {
+        return Err(format!(
+            "workspaceCompileForRuntimeSubject: workspace num_slots {} does not match builder num_slots {}",
+            workspace.interaction_num_slots(),
+            builder.num_slots()
+        ));
+    }
 
     validate_builder_slot(
         builder,
