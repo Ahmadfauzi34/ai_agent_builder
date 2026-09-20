@@ -195,6 +195,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
                     "\"label\":\"{}\",",
                     "\"layer_type\":{},",
                     "\"variant\":{},",
+                    "\"metadata_valid\":{},",
                     "\"constructor\":{},",
                     "\"registry_present\":{},",
                     "\"registry_fingerprint\":{}",
@@ -208,6 +209,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "null".to_string()),
                 u8_or_null(layer.variant),
+                if layer.metadata_valid { "true" } else { "false" },
                 quoted_or_null(constructor),
                 if registry_present { "true" } else { "false" },
                 fingerprint
@@ -286,9 +288,10 @@ pub fn describe_graph(
         .map(
             |(index, (arity, layer_type, layer_id, in_slot, in_slot2, out_slot))| {
                 let metadata = layers.get(layer_id);
-                let metadata_matches_type = metadata
-                    .and_then(|layer| layer.layer_type)
-                    .is_none_or(|metadata_type| metadata_type == *layer_type);
+                let metadata_valid = metadata.is_some_and(|layer| layer.metadata_valid);
+                let metadata_matches_type = metadata.is_some_and(|layer| {
+                    layer.metadata_valid && layer.layer_type == Some(*layer_type)
+                });
                 let variant = if metadata_matches_type {
                     metadata.and_then(|layer| layer.variant)
                 } else {
@@ -318,6 +321,7 @@ pub fn describe_graph(
                         "\"input_slots\":{},",
                         "\"output_slot\":{},",
                         "\"workspace_metadata\":{},",
+                        "\"metadata_valid\":{},",
                         "\"metadata_type_matches_builder\":{},",
                         "\"registry_present\":{},",
                         "\"registry_fingerprint\":{},",
@@ -333,6 +337,7 @@ pub fn describe_graph(
                     input_slots,
                     out_slot,
                     if metadata.is_some() { "true" } else { "false" },
+                    if metadata_valid { "true" } else { "false" },
                     if metadata_matches_type { "true" } else { "false" },
                     if registry_present { "true" } else { "false" },
                     fingerprint
