@@ -126,7 +126,7 @@ public Rust API != stable ABI
 
 Foreign-language consumers must not bind directly to compiler-generated Rust symbols or assume Rust memory layout.
 
-## ABI handoff: Python first
+## ABI handoff: verified Python consumer
 
 The initial ABI/Python handoff is now complete.
 
@@ -137,10 +137,10 @@ supported Rust package
     -> language-neutral versioned C ABI v1
     -> Python CFFI semantic proof
     -> installed Python wheel proof
-    -> typed first-class Python host layer
+    -> typed verified Python host layer
 ```
 
-Python-first remains a prioritization rule, not permission to contaminate the core with Python-specific policy.
+Python was the first cross-language ABI consumer verified in repository history. That records implementation provenance only; it is not a host ranking, future prioritization rule, or permission to contaminate the core with Python-specific policy.
 
 The current foreign boundary is `burn-research.ffi.v1`, consumed by the supported Python package through CFFI. The ABI remains explicitly versioned and experimentally stable rather than a promise that all future foreign-language consumers or Rust layouts are frozen.
 
@@ -179,3 +179,7 @@ For native Rust package changes:
 5. keep `docs/host-support.v1.json` authoritative for actual supported hosts and matrices.
 
 For foreign-host changes, treat `burn-research.ffi.v1` and the Python host contract as separate layers. Broader platform, Python-version, or language support requires new external-consumer proof before the support manifest is widened.
+
+## Communication-path clarification
+
+Native Rust consumers use the packaged Rust API directly and do not route through WASM. Python uses CFFI over ABI v1 and also does not route through WASM. The verified Node host is the supported consumer that reaches the generated wasm-bindgen surface. See [WASM host communication](wasm-host-communication.md).
