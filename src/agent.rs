@@ -1213,6 +1213,8 @@ mod tests {
         assert!(manifest.contains("\"graph_output\":\"CompiledGraph.verifyFlat\""));
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
+        assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
+        assert!(manifest.contains("\"constructor_catalog\":\"agentLayerCatalog\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));
         assert!(manifest.contains("\"constructor_signatures\":{\"linear\""));
