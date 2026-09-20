@@ -1103,6 +1103,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
+            "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
             "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
