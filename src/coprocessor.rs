@@ -14,12 +14,39 @@ fn validate_tolerance(abs_tol: f64, rel_tol: f64) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn verify_vectors_report(
+#[derive(Clone, Debug)]
+pub(crate) struct VerifyReport {
+    pub(crate) passed: bool,
+    pub(crate) len: usize,
+    pub(crate) max_abs_error: f64,
+    pub(crate) max_rel_error: f64,
+    pub(crate) rmse: f64,
+    pub(crate) first_failure: Option<usize>,
+}
+
+impl VerifyReport {
+    pub(crate) fn to_json(&self) -> String {
+        let first_failure_json = self
+            .first_failure
+            .map(|index| index.to_string())
+            .unwrap_or_else(|| "null".to_string());
+        format!(
+            "{{\"passed\":{},\"len\":{},\"max_abs_error\":{},\"max_rel_error\":{},\"rmse\":{},\"first_failure\":{first_failure_json}}}",
+            self.passed,
+            self.len,
+            self.max_abs_error,
+            self.max_rel_error,
+            self.rmse,
+        )
+    }
+}
+
+pub(crate) fn verify_vectors_metrics(
     reference: &[f32],
     candidate: &[f32],
     abs_tol: f64,
     rel_tol: f64,
-) -> Result<String, String> {
+) -> Result<VerifyReport, String> {
     validate_tolerance(abs_tol, rel_tol)?;
 
     if reference.len() != candidate.len() {
@@ -71,16 +98,24 @@ pub(crate) fn verify_vectors_report(
         }
     }
 
-    let rmse = (sum_sq_error / reference.len() as f64).sqrt();
-    let passed = first_failure.is_none();
-    let first_failure_json = first_failure
-        .map(|index| index.to_string())
-        .unwrap_or_else(|| "null".to_string());
+    Ok(VerifyReport {
+        passed: first_failure.is_none(),
+        len: reference.len(),
+        max_abs_error,
+        max_rel_error,
+        rmse: (sum_sq_error / reference.len() as f64).sqrt(),
+        first_failure,
+    })
+}
 
-    Ok(format!(
-        "{{\"passed\":{passed},\"len\":{},\"max_abs_error\":{max_abs_error},\"max_rel_error\":{max_rel_error},\"rmse\":{rmse},\"first_failure\":{first_failure_json}}}",
-        reference.len()
-    ))
+pub(crate) fn verify_vectors_report(
+    reference: &[f32],
+    candidate: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+) -> Result<String, String> {
+    verify_vectors_metrics(reference, candidate, abs_tol, rel_tol)
+        .map(|report| report.to_json())
 }
 
 /// Compare an external implementation result with a trusted numerical reference.
