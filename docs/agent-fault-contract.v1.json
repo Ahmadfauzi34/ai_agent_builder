@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-fault.v1",
+  "role": "read_only_preflight_companion",
+  "legacy_errors_unchanged": true,
+  "mutation": "none",
+  "purpose": "Expose machine-readable precondition faults for agent-facing control operations without replacing existing Result<T,String> surfaces or introducing a new execution authority.",
+  "authority": {
+    "fault_codes": "derived from explicit checked predicates",
+    "operation_semantics": "existing AgentWorkspace, AgentGraphBuilder, LayerRegistry, workspace_ops, and Burn boundaries remain authoritative",
+    "resolution_boundary": "semantic ambiguity belongs to ResolutionDiagnostic, not AgentFault"
+  },
+  "envelope": {
+    "schema_version": 1,
+    "schema_id": "burn-research.agent-fault.v1",
+    "status": "ok|fault",
+    "fault_fields": [
+      "code",
+      "class",
+      "operation",
+      "predicate",
+      "expected",
+      "actual",
+      "mutation",
+      "recoverable",
+      "suggested_actions",
+      "message"
+    ]
+  },
+  "fault_classes": {
+    "control_precondition": "invalid control-plane state or transition",
+    "control_integrity": "workspace metadata invariant is unexpectedly missing or corrupted",
+    "resource_precondition": "bounded workspace resource is unavailable",
+    "semantic_precondition": "known semantic/layout incompatibility is detected before mutation",
+    "registry_precondition": "LayerRegistry does not satisfy the graph/spec binding requirement",
+    "compile_precondition": "graph/output state cannot be compiled as requested"
+  },
+  "codes": {
+    "E_OWNER_EMPTY": "reserveSlot owner is empty",
+    "E_NO_FREE_SLOT": "no free workspace slot is available",
+    "E_RESERVE_SLOT_REJECTED": "reserveSlot failed a remaining canonical validation",
+    "E_SLOT_OUT_OF_RANGE": "slot is outside the relevant control domain",
+    "E_SLOT_TRANSITION": "requested slot lifecycle transition is invalid",
+    "E_SLOT_NOT_FOUND": "expected workspace slot metadata is missing",
+    "E_SLOT_NOT_READABLE": "slot state is neither input nor reserved",
+    "E_CONTROL_DOMAIN_MISMATCH": "workspace and graph builder disagree on num_slots",
+    "E_SPEC_ARITY": "unary/binary spec does not match the requested operation",
+    "E_LAYOUT_PREFLIGHT": "known incompatible layout or invalid layout provenance rejected the edge",
+    "E_LAYER_ALREADY_EXISTS": "new-layer init requested for an already initialized registry identity",
+    "E_LAYER_NOT_RESERVED": "workspace layer identity was not reserved before canonical initialization",
+    "E_LABEL_LIMIT": "operation label exceeds the canonical helper limit",
+    "E_INPUT_PRECONDITION": "input slot failed a canonical fallback validation",
+    "E_OUTPUT_NOT_WRITTEN": "compile output slot was not written by any graph step",
+    "E_REGISTRY_BINDING": "compiled graph references one or more absent registry layers",
+    "E_COMPILE_REJECTED": "remaining non-mutating compile validation rejected the graph"
+  },
+  "surfaces": {
+    "interactionFaultCapabilities": {
+      "mutation": "none",
+      "returns": "fault-surface capability JSON"
+    },
+    "interactionCheckReserveSlot": {
+      "mutation": "none",
+      "checks": "reserveSlot preconditions against a clone of AgentWorkspace"
+    },
+    "interactionCheckReleaseSlot": {
+      "mutation": "none",
+      "checks": "releaseSlot lifecycle preconditions"
+    },
+    "interactionCheckInitUnary": {
+      "mutation": "none",
+      "checks": "canonical unary initialization preconditions including layout preflight"
+    },
+    "interactionCheckInitBinary": {
+      "mutation": "none",
+      "checks": "canonical binary initialization preconditions including layout preflight"
+    },
+    "interactionCheckCompile": {
+      "mutation": "none",
+      "checks": "output written state, registry completeness, and non-mutating workspaceCompile"
+    }
+  },
+  "scope": [
+    "reserveSlot",
+    "releaseSlot",
+    "workspaceInitUnary",
+    "workspaceInitBinary",
+    "workspaceCompile"
+  ],
+  "deferred": [
+    "Burn execution faults",
+    "tensor runtime shape faults",
+    "raw protocol faults",
+    "workspaceWire exact-identity diagnostics",
+    "verifier receipt provenance"
+  ],
+  "invariants": [
+    "preflight calls do not mutate caller-owned workspace, builder, or registry",
+    "fault codes are selected by explicit predicate checks rather than legacy error-string parsing",
+    "legacy operation error messages remain unchanged",
+    "a successful preflight does not replace authoritative validation at the actual operation boundary"
+  ]
+}
