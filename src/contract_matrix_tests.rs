@@ -4,10 +4,13 @@ use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
 use crate::contracts::agent_contract_schema;
 use crate::protocol::{LAYER_ACTIVATION, LAYER_BINARY};
 use crate::registry::LayerRegistry;
-use crate::workspace::AgentWorkspace;
+use crate::resolution_runtime_bridge::{
+    workspace_bind_runtime_subject, workspace_runtime_program_binding,
+};
+use crate::workspace::{AgentWorkspace, MAX_RUNTIME_PROGRAM_BINDINGS};
 use crate::workspace_ops::{
-    workspace_compile, workspace_init_binary, workspace_init_unary, workspace_wire_binary,
-    workspace_wire_unary,
+    workspace_compile, workspace_compile_for_runtime_subject, workspace_init_binary,
+    workspace_init_unary, workspace_wire_binary, workspace_wire_unary,
 };
 
 #[derive(Clone, Debug)]
@@ -165,6 +168,38 @@ fn run_success_case(operation: &str) {
             builder.add_unary(&spec, 0, 1).unwrap();
             let graph = workspace_compile(&builder, &registry, 1).unwrap();
             assert_eq!(graph.output_slot(), 1);
+        }
+        "workspaceCompileForRuntimeSubject" => {
+            let mut workspace = AgentWorkspace::new(3).unwrap();
+            workspace_bind_runtime_subject(
+                &mut workspace,
+                "matrix-intent".into(),
+                1,
+                "matrix-approval".into(),
+                "effective-spec".into(),
+                "matrix-subject".into(),
+                "matrix-policy".into(),
+                1,
+                false,
+            )
+            .unwrap();
+
+            let mut registry = LayerRegistry::new();
+            let spec = AgentLayerSpec::relu(44);
+            registry.init_agent_layer(&spec).unwrap();
+            let mut builder = AgentGraphBuilder::new(3).unwrap();
+            builder.add_unary(&spec, 0, 1).unwrap();
+
+            let graph =
+                workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1)
+                    .unwrap();
+            assert_eq!(graph.output_slot(), 1);
+
+            let binding: Value =
+                serde_json::from_str(&workspace_runtime_program_binding(&workspace, &graph))
+                    .unwrap();
+            assert_eq!(binding["program_bound"], true);
+            assert_eq!(binding["binding_count"], 1);
         }
         other => panic!("contract matrix has no success handler for operation {other}"),
     }
@@ -480,6 +515,113 @@ fn run_negative_case(case: &MatrixCase) {
             assert!(workspace_compile(&builder, &registry, 2).is_err());
             assert_eq!(builder.num_steps(), before_steps);
             assert_eq!(builder.compile(&registry).unwrap().output_slot(), 1);
+        }
+        ("workspaceCompileForRuntimeSubject", "runtime_subject.bound") => {
+            let mut workspace = AgentWorkspace::new(3).unwrap();
+            let mut registry = LayerRegistry::new();
+            let spec = AgentLayerSpec::relu(92);
+            registry.init_agent_layer(&spec).unwrap();
+            let mut builder = AgentGraphBuilder::new(3).unwrap();
+            builder.add_unary(&spec, 0, 1).unwrap();
+
+            let before_workspace = workspace.snapshot();
+            let before_steps = builder.num_steps();
+            let before_params = registry.total_params();
+            assert!(workspace_compile_for_runtime_subject(
+                &mut workspace,
+                &builder,
+                &registry,
+                1,
+            )
+            .is_err());
+            assert_workspace_and_builder_unchanged(
+                &workspace,
+                &builder,
+                &before_workspace,
+                before_steps,
+            );
+            assert_eq!(registry.total_params(), before_params);
+        }
+        ("workspaceCompileForRuntimeSubject", "builder.output_written") => {
+            let mut workspace = AgentWorkspace::new(3).unwrap();
+            workspace_bind_runtime_subject(
+                &mut workspace,
+                "matrix-intent".into(),
+                1,
+                "matrix-approval".into(),
+                "effective-spec".into(),
+                "matrix-subject".into(),
+                "matrix-policy".into(),
+                1,
+                false,
+            )
+            .unwrap();
+
+            let mut registry = LayerRegistry::new();
+            let spec = AgentLayerSpec::relu(93);
+            registry.init_agent_layer(&spec).unwrap();
+            let mut builder = AgentGraphBuilder::new(3).unwrap();
+            builder.add_unary(&spec, 0, 1).unwrap();
+
+            let before_workspace = workspace.snapshot();
+            let before_steps = builder.num_steps();
+            assert!(workspace_compile_for_runtime_subject(
+                &mut workspace,
+                &builder,
+                &registry,
+                2,
+            )
+            .is_err());
+            assert_workspace_and_builder_unchanged(
+                &workspace,
+                &builder,
+                &before_workspace,
+                before_steps,
+            );
+        }
+        ("workspaceCompileForRuntimeSubject", "runtime_program.bind_admissible") => {
+            let mut workspace = AgentWorkspace::new(3).unwrap();
+            workspace_bind_runtime_subject(
+                &mut workspace,
+                "matrix-intent".into(),
+                1,
+                "matrix-approval".into(),
+                "effective-spec".into(),
+                "matrix-subject".into(),
+                "matrix-policy".into(),
+                1,
+                false,
+            )
+            .unwrap();
+            for index in 0..MAX_RUNTIME_PROGRAM_BINDINGS {
+                workspace
+                    .bind_runtime_program_identity(format!("matrix-program-{index}"))
+                    .unwrap();
+            }
+
+            let mut registry = LayerRegistry::new();
+            let spec = AgentLayerSpec::relu(94);
+            registry.init_agent_layer(&spec).unwrap();
+            let mut builder = AgentGraphBuilder::new(3).unwrap();
+            builder.add_unary(&spec, 0, 1).unwrap();
+
+            let before_workspace = workspace.snapshot();
+            let before_steps = builder.num_steps();
+            let before_params = registry.total_params();
+            assert!(workspace_compile_for_runtime_subject(
+                &mut workspace,
+                &builder,
+                &registry,
+                1,
+            )
+            .is_err());
+            assert_workspace_and_builder_unchanged(
+                &workspace,
+                &builder,
+                &before_workspace,
+                before_steps,
+            );
+            assert_eq!(registry.total_params(), before_params);
         }
         other => panic!("unhandled generated contract matrix cell: {other:?} / binding {:?}", case.slot_binding),
     }
