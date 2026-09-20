@@ -1,0 +1,40 @@
+name: Runtime Architecture Artifact Proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/runtime-architecture-artifact-proof.yml"
+      - "scripts/audit_runtime_architecture_artifacts.py"
+      - "docs/runtime-architecture-artifact-proof.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-artifact-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install proof tooling
+        run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
+
+      - name: Run integrated runtime architecture artifact proof
+        env:
+          BR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 scripts/audit_runtime_architecture_artifacts.py
+
+      - name: Upload integrated runtime artifact report
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-architecture-artifact-report
+          path: runtime-architecture-artifact-report.json
+          if-no-files-found: error
