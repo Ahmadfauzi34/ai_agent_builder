@@ -120,8 +120,8 @@
     "capability": "resolutionRuntimeBridgeCapabilities",
     "native_projection": "RuntimeSubjectProjection::from_authorized",
     "runtime_binding": "workspaceBindRuntimeSubject",
-    "clearing": "workspaceClearRuntimeSubject",
     "inspection": "workspaceRuntimeSubject",
-    "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority"
+    "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority",
+    "lifecycle": "bind before runtime planning state is reserved; binding is immutable for the workspace lifetime"
   }
 }
