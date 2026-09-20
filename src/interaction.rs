@@ -258,6 +258,7 @@ mod tests {
         assert!(capabilities.contains("describeWorkspace"));
         assert!(capabilities.contains("describeGraph"));
         assert!(capabilities.contains("inputContractCapabilities"));
+        assert!(capabilities.contains("proofProvenanceCapabilities"));
         assert!(capabilities.contains("raw_protocol"));
     }
 
