@@ -49,7 +49,8 @@
     "graph_extra": [
       "program_identity",
       "program_identity_fingerprint",
-      "reference_fingerprint"
+      "reference_fingerprint",
+      "mutable_state_in_program_identity=false"
     ]
   },
   "fingerprint": {
@@ -70,6 +71,7 @@
     "vector receipt reference remains explicitly caller-supplied",
     "failed numerical comparisons are recorded as failed receipts rather than transport errors",
     "invalid/non-finite/malformed inputs do not consume a verifier receipt id",
-    "programIdentity remains authoritative for exact compiled graph structural identity"
+    "programIdentity remains authoritative for exact compiled graph structural identity",
+    "graph receipt binds the observed numerical reference through reference_fingerprint because mutable weights/state are intentionally excluded from programIdentity"
   ]
 }
