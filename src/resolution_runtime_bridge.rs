@@ -318,8 +318,8 @@ impl RuntimeSubjectProjection {
 pub fn bind_runtime_subject_projection(
     workspace: &mut AgentWorkspace,
     projection: &RuntimeSubjectProjection,
-) {
-    workspace.set_runtime_subject_binding(WorkspaceRuntimeSubjectBinding {
+) -> Result<bool, String> {
+    workspace.bind_runtime_subject_binding(WorkspaceRuntimeSubjectBinding {
         intent_id: projection.intent_id.clone(),
         workflow_revision: projection.workflow_revision,
         approval_id: projection.approval_id.clone(),
@@ -328,7 +328,7 @@ pub fn bind_runtime_subject_projection(
         authorization_policy_id: projection.authorization_policy_id.clone(),
         authorization_policy_revision: projection.authorization_policy_revision,
         authorization_is_revision: projection.authorization_is_revision,
-    });
+    })
 }
 
 pub(crate) fn runtime_subject_binding_json(workspace: &AgentWorkspace) -> String {
@@ -377,7 +377,7 @@ pub fn workspace_bind_runtime_subject(
     authorization_policy_id: String,
     authorization_policy_revision: u64,
     authorization_is_revision: bool,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     validate_nonempty_bounded(&intent_id, MAX_ID_BYTES, "workspaceBindRuntimeSubject.intent_id")?;
     validate_nonempty_bounded(
         &approval_id,
@@ -400,7 +400,7 @@ pub fn workspace_bind_runtime_subject(
         "workspaceBindRuntimeSubject.authorization_policy_id",
     )?;
 
-    workspace.set_runtime_subject_binding(WorkspaceRuntimeSubjectBinding {
+    workspace.bind_runtime_subject_binding(WorkspaceRuntimeSubjectBinding {
         intent_id,
         workflow_revision,
         approval_id,
@@ -409,13 +409,7 @@ pub fn workspace_bind_runtime_subject(
         authorization_policy_id,
         authorization_policy_revision,
         authorization_is_revision,
-    });
-    Ok(())
-}
-
-#[wasm_bindgen(js_name = workspaceClearRuntimeSubject)]
-pub fn workspace_clear_runtime_subject(workspace: &mut AgentWorkspace) -> bool {
-    workspace.clear_runtime_subject_binding_internal()
+    })
 }
 
 #[wasm_bindgen(js_name = workspaceRuntimeSubject)]
@@ -491,7 +485,7 @@ mod tests {
             RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
         let mut workspace = AgentWorkspace::new(3).unwrap();
 
-        bind_runtime_subject_projection(&mut workspace, &projection);
+        assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
         let bound = workspace_runtime_subject(&workspace);
 
         assert!(bound.contains("\"status\":\"bound\""));
