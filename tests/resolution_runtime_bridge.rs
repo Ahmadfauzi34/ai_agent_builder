@@ -8,8 +8,7 @@ use burn_research::proof_provenance::workspace_verify_graph_receipt;
 use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::{
     bind_runtime_subject_projection, resolution_runtime_bridge_capabilities,
-    workspace_bind_runtime_subject, workspace_clear_runtime_subject, workspace_runtime_subject,
-    RuntimeSubjectProjection,
+    workspace_bind_runtime_subject, workspace_runtime_subject, RuntimeSubjectProjection,
 };
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 use burn_research::workspace::AgentWorkspace;
@@ -134,7 +133,7 @@ fn bound_subject_is_visible_in_workspace_and_graph_without_touching_execution() 
     let steps_before = builder.num_steps();
     let params_before = registry.total_params();
 
-    bind_runtime_subject_projection(&mut workspace, &projection);
+    assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
 
     let workspace_view: serde_json::Value =
         serde_json::from_str(&describe_workspace(&workspace, &registry)).unwrap();
@@ -165,7 +164,7 @@ fn burn_backed_receipt_preserves_exact_bound_runtime_subject_context() {
         RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
 
     let mut workspace = AgentWorkspace::new(2).unwrap();
-    bind_runtime_subject_projection(&mut workspace, &projection);
+    assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
 
     let mut builder = AgentGraphBuilder::new(2).unwrap();
     let mut registry = LayerRegistry::new();
@@ -223,14 +222,48 @@ fn burn_backed_receipt_preserves_exact_bound_runtime_subject_context() {
 }
 
 #[test]
-fn clearing_runtime_subject_returns_to_explicit_unbound_execution_context() {
+fn runtime_subject_binding_is_idempotent_but_not_replaceable() {
     let (approved, policy, authorization) = fixture();
     let projection =
         RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
     let mut workspace = AgentWorkspace::new(2).unwrap();
 
-    bind_runtime_subject_projection(&mut workspace, &projection);
-    assert!(workspace_runtime_subject(&workspace).contains("\"status\":\"bound\""));
-    assert!(workspace_clear_runtime_subject(&mut workspace));
+    assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
+    assert!(!bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
+
+    let error = workspace_bind_runtime_subject(
+        &mut workspace,
+        "different-intent".into(),
+        projection.workflow_revision,
+        projection.approval_id.clone(),
+        projection.subject_kind.clone(),
+        projection.subject_identity.clone(),
+        projection.authorization_policy_id.clone(),
+        projection.authorization_policy_revision,
+        projection.authorization_is_revision,
+    )
+    .unwrap_err();
+
+    assert!(error.contains("immutable"));
+    assert!(workspace_runtime_subject(&workspace)
+        .contains("\"intent_id\":\"intent-runtime-bridge\""));
+}
+
+#[test]
+fn late_binding_after_runtime_reservation_is_rejected_without_mutation() {
+    let (approved, policy, authorization) = fixture();
+    let projection =
+        RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
+    let mut workspace = AgentWorkspace::new(2).unwrap();
+    let registry = LayerRegistry::new();
+
+    workspace
+        .reserve_layer_id(&registry, "pre-bind-reservation".into())
+        .unwrap();
+    let before = workspace.snapshot();
+
+    let error = bind_runtime_subject_projection(&mut workspace, &projection).unwrap_err();
+    assert!(error.contains("before reserving runtime layers or slots"));
+    assert_eq!(workspace.snapshot(), before);
     assert!(workspace_runtime_subject(&workspace).contains("\"status\":\"unbound\""));
 }
