@@ -260,6 +260,17 @@ impl AgentWorkspace {
         self.runtime_subject_binding.as_ref()
     }
 
+    pub(crate) fn runtime_subject_bind_available(&self) -> bool {
+        if self.runtime_subject_binding.is_some() {
+            return false;
+        }
+        let has_layer_state = self.rows.iter().any(|row| row.table == TABLE_LAYERS);
+        let has_reserved_runtime_slot = self.rows.iter().any(|row| {
+            row.table == TABLE_SLOTS && row.key != "0" && row.state != "free"
+        });
+        !has_layer_state && !has_reserved_runtime_slot
+    }
+
     pub(crate) fn bind_runtime_subject_binding(
         &mut self,
         binding: WorkspaceRuntimeSubjectBinding,
@@ -274,11 +285,7 @@ impl AgentWorkspace {
             );
         }
 
-        let has_layer_state = self.rows.iter().any(|row| row.table == TABLE_LAYERS);
-        let has_reserved_runtime_slot = self.rows.iter().any(|row| {
-            row.table == TABLE_SLOTS && row.key != "0" && row.state != "free"
-        });
-        if has_layer_state || has_reserved_runtime_slot {
+        if !self.runtime_subject_bind_available() {
             return Err(
                 "AgentWorkspace: bind runtime subject before reserving runtime layers or slots"
                     .to_string(),
