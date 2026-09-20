@@ -201,5 +201,104 @@ jobs:
             self.assertIn("workflow:script", dot)
 
 
+    def test_current_repository_architecture_boundaries_are_visible(self) -> None:
+        data = repo_map.build_architecture_map(REPO_ROOT)
+
+        self.assertEqual(data["schema"], "ai-agent-builder.repo-map.v3")
+        self.assertIn(
+            {"file": "README.md", "format": "md"},
+            data["documentation_files"],
+        )
+        self.assertIn(
+            {
+                "from": "README.md",
+                "to": "docs/burn-contract-baseline.md",
+                "kind": "doc_reference",
+            },
+            data["doc_reference_edges"],
+        )
+        self.assertIn(
+            {
+                "from": "docs/host-support.v1.json",
+                "to": "scripts/audit_rust_package.py",
+                "kind": "doc_reference",
+            },
+            data["doc_reference_edges"],
+        )
+        self.assertIn(
+            {
+                "from": ".github/workflows/runtime-architecture-artifact-proof.yml",
+                "to": "docs/runtime-architecture-artifact-proof.md",
+                "kind": "workflow_doc",
+            },
+            data["workflow_doc_edges"],
+        )
+
+    def test_architecture_profile_maps_docs_deterministically(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.base_repo(root)
+            self.write(
+                root,
+                "README.md",
+                "# Repo\n\n[Guide](docs/guide.md)\n",
+            )
+            self.write(
+                root,
+                "docs/guide.md",
+                "Runtime proof: `scripts/check.py`\n",
+            )
+            self.write(root, "scripts/check.py", "print('ok')\n")
+            self.write(
+                root,
+                ".github/workflows/research.yml",
+                """name: Research
+on:
+  pull_request:
+    paths:
+      - "docs/guide.md"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python3 scripts/check.py
+""",
+            )
+
+            raw_a, data = self.cli_json(root, "--profile", "architecture")
+            raw_b, data_b = self.cli_json(root, "--profile", "architecture")
+
+            self.assertEqual(raw_a, raw_b)
+            self.assertEqual(data, data_b)
+            self.assertEqual(data["schema"], "ai-agent-builder.repo-map.v3")
+            self.assertIn(
+                {
+                    "from": "README.md",
+                    "to": "docs/guide.md",
+                    "kind": "doc_reference",
+                },
+                data["doc_reference_edges"],
+            )
+            self.assertIn(
+                {
+                    "from": "docs/guide.md",
+                    "to": "scripts/check.py",
+                    "kind": "doc_reference",
+                },
+                data["doc_reference_edges"],
+            )
+            self.assertIn(
+                {
+                    "from": ".github/workflows/research.yml",
+                    "to": "docs/guide.md",
+                    "kind": "workflow_doc",
+                },
+                data["workflow_doc_edges"],
+            )
+
+            dot = repo_map.render_dot(data)
+            self.assertIn("doc:reference", dot)
+            self.assertIn("workflow:doc", dot)
+
 if __name__ == "__main__":
     unittest.main()

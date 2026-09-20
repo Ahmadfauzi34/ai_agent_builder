@@ -13,9 +13,13 @@ Opt-in cross-surface profile (v2) retains the v1 data and also maps:
 - local Python package import edges
 - GitHub workflow -> tracked script references
 
+Opt-in architecture profile (v3) retains the v2 data and also maps:
+- README/docs -> tracked repository references
+- GitHub workflow -> tracked docs references
+
 The mapper uses only the Python standard library and never infers support or
-policy ownership from file names. docs/host-support.v1.json remains the
-authority for host support status.
+policy ownership from file names or reference edges. docs/host-support.v1.json
+remains the authority for host support status.
 """
 
 from __future__ import annotations
@@ -30,6 +34,7 @@ from pathlib import Path
 
 SCHEMA_V1 = "ai-agent-builder.repo-map.v1"
 SCHEMA_V2 = "ai-agent-builder.repo-map.v2"
+SCHEMA_V3 = "ai-agent-builder.repo-map.v3"
 IGNORED_DIRS = {
     ".git",
     ".venv",
@@ -47,6 +52,14 @@ CARGO_INLINE_DEP_RE = re.compile(r"^([A-Za-z0-9_-]+)\s*=\s*\{([^}]*)\}\s*$")
 CARGO_PATH_RE = re.compile(r'\bpath\s*=\s*"([^"]+)"')
 CARGO_TABLE_PATH_RE = re.compile(r'^path\s*=\s*"([^"]+)"\s*$')
 WORKFLOW_SCRIPT_RE = re.compile(r"scripts/[A-Za-z0-9_./-]+\.(?:py|mjs|js)")
+WORKFLOW_DOC_RE = re.compile(r"docs/[A-Za-z0-9_./-]+\.(?:md|json)")
+MARKDOWN_LINK_RE = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+REPO_REFERENCE_RE = re.compile(
+    r"(?<![A-Za-z0-9_.-])"
+    r"(README\.md|Cargo\.toml|Cargo\.lock|"
+    r"(?:docs|scripts|src|ffi|hosts|tests|\.github/workflows)/"
+    r"[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)"
+)
 
 
 def repo_files(root: Path) -> list[Path]:
@@ -472,6 +485,104 @@ def parse_workflow_script_edges(root: Path, files: list[Path]) -> list[dict]:
     ]
 
 
+def documentation_source(rel: Path) -> bool:
+    return rel.as_posix() == "README.md" or (
+        bool(rel.parts)
+        and rel.parts[0] == "docs"
+        and rel.suffix in {".md", ".json"}
+    )
+
+
+def resolve_repo_reference(
+    root: Path,
+    source: Path,
+    candidate: str,
+    file_set: set[str],
+) -> str | None:
+    value = candidate.strip().strip("<>")
+    if not value or value.startswith("#"):
+        return None
+    if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", value):
+        return None
+
+    value = value.split("#", 1)[0].split("?", 1)[0].strip()
+    if not value:
+        return None
+
+    direct = Path(value).as_posix()
+    if direct in file_set:
+        return direct
+
+    target_abs = (root / source.parent / value).resolve()
+    try:
+        target = target_abs.relative_to(root).as_posix()
+    except ValueError:
+        return None
+    return target if target in file_set else None
+
+
+def parse_document_reference_edges(
+    root: Path, files: list[Path]
+) -> tuple[list[dict], list[dict]]:
+    file_set = {rel.as_posix() for rel in files}
+    sources = sorted(
+        (rel for rel in files if documentation_source(rel)),
+        key=lambda p: p.as_posix(),
+    )
+    edges: set[tuple[str, str, str]] = set()
+
+    for rel in sources:
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        candidates = list(MARKDOWN_LINK_RE.findall(text))
+        candidates.extend(REPO_REFERENCE_RE.findall(text))
+        for candidate in candidates:
+            target = resolve_repo_reference(root, rel, candidate, file_set)
+            if target and target != rel.as_posix():
+                edges.add((rel.as_posix(), target, "doc_reference"))
+
+    documents = [
+        {"file": rel.as_posix(), "format": rel.suffix.lstrip(".") or "<none>"}
+        for rel in sources
+    ]
+    edge_rows = [
+        {"from": src, "to": dst, "kind": kind}
+        for src, dst, kind in sorted(edges)
+    ]
+    return documents, edge_rows
+
+
+def parse_workflow_doc_edges(root: Path, files: list[Path]) -> list[dict]:
+    file_set = {rel.as_posix() for rel in files}
+    workflows = sorted(
+        (
+            rel
+            for rel in files
+            if rel.parts[:2] == (".github", "workflows")
+            and rel.suffix in {".yml", ".yaml"}
+        ),
+        key=lambda p: p.as_posix(),
+    )
+    edges: set[tuple[str, str, str]] = set()
+
+    for rel in workflows:
+        try:
+            text = (root / rel).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        for doc in WORKFLOW_DOC_RE.findall(text):
+            if doc in file_set:
+                edges.add((rel.as_posix(), doc, "workflow_doc"))
+
+    return [
+        {"from": src, "to": dst, "kind": kind}
+        for src, dst, kind in sorted(edges)
+    ]
+
+
 def build_cross_surface_map(root: Path) -> dict:
     base = build_map(root)
     files = [Path(value) for value in base["files"]]
@@ -503,6 +614,34 @@ def build_cross_surface_map(root: Path) -> dict:
     }
 
 
+def build_architecture_map(root: Path) -> dict:
+    base = build_cross_surface_map(root)
+    files = [Path(value) for value in base["files"]]
+
+    documentation_files, doc_reference_edges = parse_document_reference_edges(
+        root, files
+    )
+    workflow_doc_edges = parse_workflow_doc_edges(root, files)
+
+    summary = dict(base["summary"])
+    summary.update(
+        {
+            "documentation_file_count": len(documentation_files),
+            "doc_reference_edge_count": len(doc_reference_edges),
+            "workflow_doc_edge_count": len(workflow_doc_edges),
+        }
+    )
+
+    return {
+        **base,
+        "schema": SCHEMA_V3,
+        "summary": summary,
+        "documentation_files": documentation_files,
+        "doc_reference_edges": doc_reference_edges,
+        "workflow_doc_edges": workflow_doc_edges,
+    }
+
+
 def render_summary(data: dict) -> str:
     s = data["summary"]
     lines = [
@@ -526,7 +665,7 @@ def render_summary(data: dict) -> str:
         suffix = f"  [{deps}]" if deps else ""
         lines.append(f"  {row['module']} = {row['file']}{suffix}")
 
-    if data["schema"] == SCHEMA_V2:
+    if data["schema"] in {SCHEMA_V2, SCHEMA_V3}:
         lines += [
             "",
             "cross-surface:",
@@ -553,6 +692,23 @@ def render_summary(data: dict) -> str:
         for edge in data["workflow_script_edges"]:
             lines.append(f"  {edge['from']} -> {edge['to']}")
 
+    if data["schema"] == SCHEMA_V3:
+        lines += [
+            "",
+            "architecture docs:",
+            f"  documentation files: {s['documentation_file_count']}",
+            f"  doc reference edges: {s['doc_reference_edge_count']}",
+            f"  workflow->doc edges: {s['workflow_doc_edge_count']}",
+            "",
+            "doc reference edges:",
+        ]
+        for edge in data["doc_reference_edges"]:
+            lines.append(f"  {edge['from']} -> {edge['to']}")
+
+        lines += ["", "workflow -> doc edges:"]
+        for edge in data["workflow_doc_edges"]:
+            lines.append(f"  {edge['from']} -> {edge['to']}")
+
     return "\n".join(lines) + "\n"
 
 
@@ -561,11 +717,11 @@ def dot_quote(value: str) -> str:
 
 
 def render_dot(data: dict) -> str:
-    label = (
-        "ai_agent_builder Rust module map"
-        if data["schema"] == SCHEMA_V1
-        else "ai_agent_builder cross-surface repository map"
-    )
+    label = {
+        SCHEMA_V1: "ai_agent_builder Rust module map",
+        SCHEMA_V2: "ai_agent_builder cross-surface repository map",
+        SCHEMA_V3: "ai_agent_builder architecture repository map",
+    }[data["schema"]]
     lines = [
         "digraph repo_map {",
         "  rankdir=LR;",
@@ -584,7 +740,7 @@ def render_dot(data: dict) -> str:
             f"[label={dot_quote(edge['kind'])}, style={style}];"
         )
 
-    if data["schema"] == SCHEMA_V2:
+    if data["schema"] in {SCHEMA_V2, SCHEMA_V3}:
         for row in data["cargo_packages"]:
             node = f"cargo:{row['manifest']}"
             label_value = f"cargo:{row['name']}\\n{row['manifest']}"
@@ -647,6 +803,56 @@ def render_dot(data: dict) -> str:
                 f"[label={dot_quote('workflow:script')}, style=dashed];"
             )
 
+    if data["schema"] == SCHEMA_V3:
+        document_set = {row["file"] for row in data["documentation_files"]}
+        for row in data["documentation_files"]:
+            node = f"doc:{row['file']}"
+            lines.append(
+                f"  {dot_quote(node)} "
+                f"[label={dot_quote(row['file'])}, shape=note];"
+            )
+
+        referenced_files = sorted(
+            {
+                edge["to"]
+                for edge in data["doc_reference_edges"]
+                if edge["to"] not in document_set
+            }
+        )
+        for target in referenced_files:
+            node = f"file:{target}"
+            lines.append(
+                f"  {dot_quote(node)} "
+                f"[label={dot_quote(target)}, shape=folder];"
+            )
+
+        for edge in data["doc_reference_edges"]:
+            source = f"doc:{edge['from']}"
+            target = (
+                f"doc:{edge['to']}"
+                if edge["to"] in document_set
+                else f"file:{edge['to']}"
+            )
+            lines.append(
+                f"  {dot_quote(source)} -> {dot_quote(target)} "
+                f"[label={dot_quote('doc:reference')}, style=dotted];"
+            )
+
+        for workflow in sorted(
+            {edge["from"] for edge in data["workflow_doc_edges"]}
+        ):
+            node = f"workflow:{workflow}"
+            lines.append(
+                f"  {dot_quote(node)} "
+                f"[label={dot_quote(workflow)}, shape=component];"
+            )
+        for edge in data["workflow_doc_edges"]:
+            lines.append(
+                f"  {dot_quote('workflow:' + edge['from'])} -> "
+                f"{dot_quote('doc:' + edge['to'])} "
+                f"[label={dot_quote('workflow:doc')}, style=dashed];"
+            )
+
     lines.append("}")
     return "\n".join(lines) + "\n"
 
@@ -660,9 +866,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--profile",
-        choices=("rust", "cross-surface"),
+        choices=("rust", "cross-surface", "architecture"),
         default="rust",
-        help="Mapping profile. 'rust' preserves repo-map.v1; cross-surface emits v2.",
+        help=(
+            "Mapping profile. 'rust' preserves repo-map.v1; "
+            "cross-surface emits v2; architecture emits docs-aware v3."
+        ),
     )
     parser.add_argument(
         "--format",
@@ -677,11 +886,12 @@ def main(argv: list[str] | None = None) -> int:
     if not (root / "Cargo.toml").exists():
         parser.error(f"{root} does not look like the repository root (Cargo.toml missing)")
 
-    data = (
-        build_map(root)
-        if args.profile == "rust"
-        else build_cross_surface_map(root)
-    )
+    if args.profile == "rust":
+        data = build_map(root)
+    elif args.profile == "cross-surface":
+        data = build_cross_surface_map(root)
+    else:
+        data = build_architecture_map(root)
     if args.format == "json":
         output = json.dumps(data, indent=2, sort_keys=True) + "\n"
     elif args.format == "dot":

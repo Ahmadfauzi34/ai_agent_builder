@@ -40,12 +40,15 @@ python3 scripts/repo_map.py --format summary
 # Opt-in cross-surface v2 profile
 python3 scripts/repo_map.py --profile cross-surface --format summary
 
+# Docs-aware architecture v3 profile
+python3 scripts/repo_map.py --profile architecture --format summary
+
 # Machine-readable or Graphviz output
-python3 scripts/repo_map.py --profile cross-surface --format json
-python3 scripts/repo_map.py --profile cross-surface --format dot
+python3 scripts/repo_map.py --profile architecture --format json
+python3 scripts/repo_map.py --profile architecture --format dot
 ```
 
-The mapper inventories repository structure and dependency/evidence edges. It does not infer host support or policy ownership from file names; [`docs/host-support.v1.json`](docs/host-support.v1.json) remains authoritative for support status.
+The mapper inventories repository structure and dependency/evidence edges. The v3 architecture profile additionally maps README/docs references and workflow→docs evidence edges. It does not infer host support or policy ownership from file names or links; [`docs/host-support.v1.json`](docs/host-support.v1.json) remains authoritative for support status.
 
 ## Architectural separation
 
