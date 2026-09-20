@@ -57,6 +57,7 @@ pub(crate) struct WorkspaceLayerIntrospection {
     pub(crate) label: String,
     pub(crate) layer_type: Option<u8>,
     pub(crate) variant: Option<u8>,
+    pub(crate) metadata_valid: bool,
 }
 
 fn validate_text(
@@ -301,16 +302,36 @@ impl AgentWorkspace {
             .filter_map(|row| {
                 let layer_id = row.key.parse::<u32>().ok()?;
                 if row.state == "initialized" {
-                    let (before_variant, variant) = row.value.rsplit_once(";variant=")?;
-                    let (before_type, layer_type) = before_variant.rsplit_once(";type=")?;
-                    let label = before_type.strip_prefix("label=").unwrap_or(before_type);
-                    Some(WorkspaceLayerIntrospection {
-                        layer_id,
-                        state: row.state.clone(),
-                        label: label.to_string(),
-                        layer_type: layer_type.parse::<u8>().ok(),
-                        variant: variant.parse::<u8>().ok(),
-                    })
+                    let parsed = row
+                        .value
+                        .rsplit_once(";variant=")
+                        .and_then(|(before_variant, variant)| {
+                            before_variant
+                                .rsplit_once(";type=")
+                                .map(|(before_type, layer_type)| (before_type, layer_type, variant))
+                        });
+                    if let Some((before_type, layer_type, variant)) = parsed {
+                        let parsed_type = layer_type.parse::<u8>().ok();
+                        let parsed_variant = variant.parse::<u8>().ok();
+                        let label = before_type.strip_prefix("label=").unwrap_or(before_type);
+                        Some(WorkspaceLayerIntrospection {
+                            layer_id,
+                            state: row.state.clone(),
+                            label: label.to_string(),
+                            layer_type: parsed_type,
+                            variant: parsed_variant,
+                            metadata_valid: parsed_type.is_some() && parsed_variant.is_some(),
+                        })
+                    } else {
+                        Some(WorkspaceLayerIntrospection {
+                            layer_id,
+                            state: row.state.clone(),
+                            label: row.value.clone(),
+                            layer_type: None,
+                            variant: None,
+                            metadata_valid: false,
+                        })
+                    }
                 } else {
                     Some(WorkspaceLayerIntrospection {
                         layer_id,
@@ -318,6 +339,7 @@ impl AgentWorkspace {
                         label: row.value.clone(),
                         layer_type: None,
                         variant: None,
+                        metadata_valid: true,
                     })
                 }
             })
