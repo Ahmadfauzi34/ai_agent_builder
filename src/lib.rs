@@ -20,6 +20,7 @@ pub mod input_contract;
 pub mod introspection;
 pub mod layers;
 pub mod math;
+pub mod proof_provenance;
 pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
