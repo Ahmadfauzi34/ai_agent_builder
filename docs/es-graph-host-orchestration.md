@@ -2,7 +2,7 @@
 
 Status: **accepted baseline**
 
-Related work: #174, #176, #177, #178
+Related work: #174, #176, #177, #178, #258, #275
 
 ## Why this document exists
 
@@ -52,7 +52,8 @@ Owns:
 - the strict `ask -> tell` lifecycle;
 - candidate dimension supplied at construction;
 - validation that submitted fitness values are finite and have the expected cardinality;
-- optimizer-specific update rules and diagnostics.
+- optimizer-specific update rules and diagnostics;
+- validation and state-continuity semantics for supported in-place optimizer controls such as OpenES learning-rate mutation.
 
 Does not own:
 
@@ -61,7 +62,8 @@ Does not own:
 - parameter ordering;
 - dataset traversal;
 - an objective/reward function;
-- checkpoint promotion authority.
+- checkpoint promotion authority;
+- automatic learning-rate scheduling or policy for when an optimizer control should be changed.
 
 The internal `src/es/objective.rs` trait remains a plain-Rust proof-of-life/test abstraction. It is not the required integration point for graph execution.
 
@@ -110,7 +112,8 @@ The host composes the capabilities above and owns policy such as:
 - reward shaping;
 - generation limits and stopping policy;
 - candidate promotion policy;
-- experiment bookkeeping.
+- experiment bookkeeping;
+- policy for whether and when to invoke supported state-preserving optimizer controls.
 
 The canonical lifecycle is:
 
@@ -130,6 +133,40 @@ graphParameterLayout.total_len
 ```
 
 The host must not invent a second parameter ordering or reorder coordinates before applying them.
+
+## State-preserving optimizer control
+
+Current main exposes a narrow state-preserving OpenES learning-rate control through the supported surfaces.
+
+The ownership split is:
+
+```text
+core capability
+    set_learning_rate(lr)
+    validate OpenES-only / finite-positive / generation-boundary use
+    preserve mean / RNG / generation / lifetime best / stagnation / sigma
+    reject mutation while an ask batch is pending
+
+host policy
+    decide whether a learning-rate change is useful
+    decide when to request it
+    choose fixed or scheduled values for a workload
+    record and interpret experiment evidence
+```
+
+This capability does **not** move scheduling policy into the optimizer. The core owns the validity and continuity of the state mutation; the host owns the decision to request the mutation.
+
+The continuity proof for #275 demonstrates the intended boundary: two identical seeded optimizers remain identical through a completed generation; changing learning rate on one leaves its current state and next candidate batch unchanged; trajectory divergence is allowed only after the identical next batch is consumed by `tell()` with a different update scale.
+
+Therefore:
+
+```text
+STATE_PRESERVING_CONTROL_CAPABILITY
+    !=
+AUTOMATIC_ADAPTIVE_POLICY
+```
+
+A future automatic schedule or adaptive optimizer rule is a separate semantic proposal and requires its own evidence and proof boundary.
 
 ## Why the controller is not in the core today
 
@@ -222,9 +259,10 @@ This architecture record does not add or require:
 - autodiff/backpropagation;
 - Math Program changes;
 - graph-plan changes;
-- Resolution/Authorization coupling.
+- Resolution/Authorization coupling;
+- automatic learning-rate schedules or other host-policy promotion into the core.
 
-It also does not require every future host to copy Node implementation details. Node is currently a verified packaged host; future Rust/Python/Go hosts should preserve the same semantic lifecycle while using host-appropriate integration code.
+It also does not require every host to copy Node implementation details. Node, the native Rust package, and the verified Python host are supported surfaces with host-appropriate integration code; any future host should preserve the same semantic lifecycle rather than copying one host's implementation details.
 
 ## When a core controller may be reconsidered
 
@@ -257,9 +295,10 @@ For future ES + graph work, prefer this order:
 2. use the existing canonical graph-parameter layout
 3. keep objective/reward policy in the host
 4. prove ask -> apply -> run -> objective -> tell
-5. prove best-state replay through ProgramBundle
-6. measure before adding cache/controller abstractions
-7. add a core abstraction only for a demonstrated missing invariant
+5. if using a state-preserving optimizer control, mutate only at its proven lifecycle boundary and prove continuity
+6. prove best-state replay through ProgramBundle
+7. measure before adding cache/controller abstractions
+8. add a core abstraction only for a demonstrated missing invariant
 ```
 
 When a PR changes one of these boundaries, its description should explicitly document:

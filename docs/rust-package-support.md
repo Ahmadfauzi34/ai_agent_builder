@@ -1,16 +1,16 @@
 # Native Rust package support contract
 
-Status: **candidate support contract pending CI proof**
+Status: **supported native Rust package contract**
 
-Related work: #179, #181, #182
+Related work: #179, #181, #182, #183
 
 ## Purpose
 
 This document defines what it means for `burn-research` to be a **supported native Rust package** without conflating that claim with a stable cross-language ABI.
 
-The repository already proved semantic host portability in #181: an external Rust integration test can compose `CompiledGraph`, `GraphParameterBinding`, `EsOptimizer`, host-owned objective policy, and `ProgramBundle` replay through the public crate surface.
+The repository proved semantic host portability in #181: an external Rust integration test can compose `CompiledGraph`, `GraphParameterBinding`, `EsOptimizer`, host-owned objective policy, and `ProgramBundle` replay through the public crate surface.
 
-That proof is necessary but not sufficient for a package-support claim. A package contract must also prove that the actual output of `cargo package` can be consumed by a separate Cargo project without repository-internal access.
+The packaged-consumer audit was then completed and merged. Current `docs/host-support.v1.json` records the native Rust package as `supported` with `scripts/audit_rust_package.py` as its consumer proof. The package contract therefore describes an established support boundary, not a pending promotion.
 
 ## Support layers
 
@@ -104,7 +104,7 @@ The proof is deliberately separate from `tests/native_es_graph_host_orchestratio
 - the integration test proves semantic portability through the crate's public surface;
 - the package audit proves the **packaged source artifact** remains consumable as an external dependency.
 
-Both proofs are required before Rust is marked supported in the host-support contract.
+Both proofs remain required support gates. Current main satisfies them, and `docs/host-support.v1.json` records Rust as a supported native package surface.
 
 ## What Rust support does not mean
 
@@ -128,22 +128,23 @@ Foreign-language consumers must not bind directly to compiler-generated Rust sym
 
 ## ABI handoff: Python first
 
-When the Rust package contract is proven and cross-language ABI work begins, **Python is the first-priority consumer**.
+The initial ABI/Python handoff is now complete.
 
-The required ordering is:
+The repository followed this ordering:
 
 ```text
 supported Rust package
-    -> design ABI/FFI v1
-    -> prove Python consumer/binding FIRST
-    -> then consider C/C++/Go/engine consumers
+    -> language-neutral versioned C ABI v1
+    -> Python CFFI semantic proof
+    -> installed Python wheel proof
+    -> typed first-class Python host layer
 ```
 
-Python-first is a prioritization rule, not permission to contaminate the core with Python-specific policy.
+Python-first remains a prioritization rule, not permission to contaminate the core with Python-specific policy.
 
-The eventual low-level ABI should remain language-neutral and versioned. Python is the first consumer used to validate that boundary because it is the highest-priority external host.
+The current foreign boundary is `burn-research.ffi.v1`, consumed by the supported Python package through CFFI. The ABI remains explicitly versioned and experimentally stable rather than a promise that all future foreign-language consumers or Rust layouts are frozen.
 
-No decision is made here between PyO3/maturin, a thin C ABI consumed from Python, or another packaging mechanism. That choice belongs to the ABI/Python design slice and should be made from concrete lifecycle, ownership, error, buffer, and distribution requirements.
+No C++/Go/engine consumer is implied by the Rust package support contract. Additional consumers require their own concrete lifecycle, ownership, error, buffer, distribution, and external-consumer proof before becoming supported.
 
 ## ABI design constraints inherited from current architecture
 
@@ -167,16 +168,14 @@ It should also preserve:
 
 ## Continuation rule
 
-Do not begin Python implementation merely because this document exists. First require the external package audit to pass in CI and update `docs/host-support.v1.json` to record Rust as a native package surface rather than a WASM host.
+The Rust package, ABI v1, installed Python wheel, and typed Python host have all crossed their initial support proofs. Future work should therefore preserve the existing separation instead of replaying the old promotion sequence.
 
-Once that proof is green, open a separate ABI/Python issue/PR whose description explicitly covers:
+For native Rust package changes:
 
-- Python-first use cases;
-- handle/lifetime ownership;
-- errors across the boundary;
-- tensor/buffer transfer semantics;
-- graph/binding/checkpoint lifecycle;
-- versioning and compatibility;
-- wheel/distribution strategy;
-- what remains host policy;
-- proof gates required before calling Python supported.
+1. keep `scripts/audit_rust_package.py` green against the packaged `.crate` artifact;
+2. preserve public-package consumption without repository-internal access;
+3. keep host objective/reward/scheduling policy outside the reference machine;
+4. do not infer a stable C ABI from Rust public API stability;
+5. keep `docs/host-support.v1.json` authoritative for actual supported hosts and matrices.
+
+For foreign-host changes, treat `burn-research.ffi.v1` and the Python host contract as separate layers. Broader platform, Python-version, or language support requires new external-consumer proof before the support manifest is widened.
