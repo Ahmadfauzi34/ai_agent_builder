@@ -898,8 +898,8 @@ mod tests {
         let mut workflow = ResolutionWorkflow::new("intent-a").unwrap();
         workflow.submit().unwrap();
         let submitted = workflow.snapshot();
-        let projection = projection("intent-a", submitted.revision, "spec-a");
-        assert!(ResolutionEvidenceInbox::new(&submitted, &projection).is_err());
+        let submitted_projection = projection("intent-a", submitted.revision, "spec-a");
+        assert!(ResolutionEvidenceInbox::new(&submitted, &submitted_projection).is_err());
 
         workflow.finalize_resolution().unwrap();
         let resolved = workflow.snapshot();
