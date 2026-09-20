@@ -22,6 +22,8 @@ const MAX_KEY_BYTES: usize = 128;
 const MAX_KIND_BYTES: usize = 64;
 const MAX_STATE_BYTES: usize = 64;
 const MAX_VALUE_BYTES: usize = 4096;
+pub(crate) const MAX_RUNTIME_PROGRAM_BINDINGS: usize = 32;
+pub(crate) const MAX_RUNTIME_PROGRAM_IDENTITY_BYTES: usize = 16_384;
 
 const KNOWN_LAYER_TYPES: [u8; 10] = [
     LAYER_LINEAR,
@@ -153,6 +155,7 @@ pub struct AgentWorkspace {
     next_event_id: u32,
     input_contract: Option<WorkspaceInputContract>,
     runtime_subject_binding: Option<WorkspaceRuntimeSubjectBinding>,
+    runtime_program_identities: Vec<String>,
     rows: Vec<WorkspaceRow>,
 }
 
@@ -300,6 +303,67 @@ impl AgentWorkspace {
 
         self.runtime_subject_binding = Some(binding);
         Ok(true)
+    }
+
+    pub(crate) fn runtime_program_binding_count(&self) -> usize {
+        self.runtime_program_identities.len()
+    }
+
+    pub(crate) fn runtime_program_binding_capacity_available(&self) -> bool {
+        self.runtime_program_identities.len() < MAX_RUNTIME_PROGRAM_BINDINGS
+    }
+
+    pub(crate) fn runtime_program_identity_bound(&self, identity: &str) -> bool {
+        self.runtime_program_identities
+            .iter()
+            .any(|candidate| candidate == identity)
+    }
+
+    pub(crate) fn bind_runtime_program_identity(
+        &mut self,
+        identity: String,
+    ) -> Result<bool, String> {
+        if self.runtime_subject_binding.is_none() {
+            return Err(
+                "AgentWorkspace: runtime program binding requires an immutable runtime subject"
+                    .to_string(),
+            );
+        }
+        if identity.is_empty() {
+            return Err("AgentWorkspace: runtime program identity must be non-empty".to_string());
+        }
+        if identity.len() > MAX_RUNTIME_PROGRAM_IDENTITY_BYTES {
+            return Err(format!(
+                "AgentWorkspace: runtime program identity {} bytes exceeds limit {}",
+                identity.len(),
+                MAX_RUNTIME_PROGRAM_IDENTITY_BYTES
+            ));
+        }
+        if self.runtime_program_identity_bound(&identity) {
+            return Ok(false);
+        }
+        if !self.runtime_program_binding_capacity_available() {
+            return Err(format!(
+                "AgentWorkspace: runtime program binding limit {} reached",
+                MAX_RUNTIME_PROGRAM_BINDINGS
+            ));
+        }
+
+        self.runtime_program_identities.push(identity);
+        Ok(true)
+    }
+
+    pub(crate) fn require_runtime_program_identity_if_bound(
+        &self,
+        identity: &str,
+        context: &str,
+    ) -> Result<(), String> {
+        if self.runtime_subject_binding.is_some() && !self.runtime_program_identity_bound(identity) {
+            return Err(format!(
+                "{context}: graph programIdentity is not bound to this runtime subject; compile it with workspaceCompileForRuntimeSubject first"
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn interaction_row_capacity_available(&self) -> bool {
@@ -594,6 +658,7 @@ impl AgentWorkspace {
             next_event_id: 1,
             input_contract: None,
             runtime_subject_binding: None,
+            runtime_program_identities: Vec::new(),
             rows: Vec::new(),
         };
 
@@ -928,7 +993,7 @@ impl AgentWorkspace {
             })
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"runtime_subject\":{},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"runtime_subject\":{},\"runtime_program_bindings\":{{\"count\":{},\"max\":{MAX_RUNTIME_PROGRAM_BINDINGS},\"identity_policy\":\"exact_program_identity\"}},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
@@ -940,6 +1005,7 @@ impl AgentWorkspace {
             self.rows.len(),
             input_contract,
             runtime_subject,
+            self.runtime_program_identities.len(),
         )
     }
 }
