@@ -69,6 +69,18 @@ pub(crate) struct WorkspaceInputContract {
     pub(crate) semantics: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceRuntimeSubjectBinding {
+    pub(crate) intent_id: String,
+    pub(crate) workflow_revision: u64,
+    pub(crate) approval_id: String,
+    pub(crate) subject_kind: String,
+    pub(crate) subject_identity: String,
+    pub(crate) authorization_policy_id: String,
+    pub(crate) authorization_policy_revision: u64,
+    pub(crate) authorization_is_revision: bool,
+}
+
 fn validate_text(
     value: &str,
     max_bytes: usize,
@@ -140,6 +152,7 @@ pub struct AgentWorkspace {
     next_verifier_receipt_id: u32,
     next_event_id: u32,
     input_contract: Option<WorkspaceInputContract>,
+    runtime_subject_binding: Option<WorkspaceRuntimeSubjectBinding>,
     rows: Vec<WorkspaceRow>,
 }
 
@@ -241,6 +254,21 @@ impl AgentWorkspace {
 
     pub(crate) fn clear_input_contract_internal(&mut self) -> bool {
         self.input_contract.take().is_some()
+    }
+
+    pub(crate) fn runtime_subject_binding(&self) -> Option<&WorkspaceRuntimeSubjectBinding> {
+        self.runtime_subject_binding.as_ref()
+    }
+
+    pub(crate) fn set_runtime_subject_binding(
+        &mut self,
+        binding: WorkspaceRuntimeSubjectBinding,
+    ) {
+        self.runtime_subject_binding = Some(binding);
+    }
+
+    pub(crate) fn clear_runtime_subject_binding_internal(&mut self) -> bool {
+        self.runtime_subject_binding.take().is_some()
     }
 
     pub(crate) fn interaction_row_capacity_available(&self) -> bool {
@@ -534,6 +562,7 @@ impl AgentWorkspace {
             next_verifier_receipt_id: 1,
             next_event_id: 1,
             input_contract: None,
+            runtime_subject_binding: None,
             rows: Vec::new(),
         };
 
@@ -839,8 +868,36 @@ impl AgentWorkspace {
                 )
             })
             .unwrap_or_else(|| "null".to_string());
+        let runtime_subject = self
+            .runtime_subject_binding
+            .as_ref()
+            .map(|binding| {
+                format!(
+                    concat!(
+                        "{{",
+                        "\"intent_id\":\"{}\",",
+                        "\"workflow_revision\":{},",
+                        "\"approval_id\":\"{}\",",
+                        "\"subject_kind\":\"{}\",",
+                        "\"subject_identity\":\"{}\",",
+                        "\"authorization_policy_id\":\"{}\",",
+                        "\"authorization_policy_revision\":{},",
+                        "\"authorization_is_revision\":{}",
+                        "}}"
+                    ),
+                    json_escape(&binding.intent_id),
+                    binding.workflow_revision,
+                    json_escape(&binding.approval_id),
+                    json_escape(&binding.subject_kind),
+                    json_escape(&binding.subject_identity),
+                    json_escape(&binding.authorization_policy_id),
+                    binding.authorization_policy_revision,
+                    binding.authorization_is_revision,
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"runtime_subject\":{},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
@@ -851,6 +908,7 @@ impl AgentWorkspace {
             custom_tables,
             self.rows.len(),
             input_contract,
+            runtime_subject,
         )
     }
 }
