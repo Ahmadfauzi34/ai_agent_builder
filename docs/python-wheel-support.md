@@ -6,7 +6,7 @@ Related: #183, #184, #185, #186
 
 ## Purpose
 
-This slice advances the Python-first foreign boundary from the semantic CFFI proof in #185 to a real installed-wheel distribution proof.
+This slice advances the verified Python foreign-consumer boundary from the semantic CFFI proof in #185 to a real installed-wheel distribution proof.
 
 It does not change ABI semantics. It packages the existing `br_v1_*` ABI into a wheel, installs that wheel into a fresh virtual environment outside the repository, and runs the established graph/binding/ES/checkpoint path through the installed package.
 
@@ -113,4 +113,6 @@ This support proof does not add or verify:
 
 ## Support-status rule
 
-Python is `supported` only for the explicit matrix above. Any broader support claim requires its own installed-consumer proof and CI matrix expansion before the manifest is widened.
+Python is `supported` only for the explicit matrix above. Here, `supported` means the external Python consumer path is verified; it does not mean CPython is bundled or that Python is the primary runtime. Any broader support claim requires its own installed-consumer proof and CI matrix expansion before the manifest is widened.
+
+For host-routing semantics, see [WASM host communication](wasm-host-communication.md): the installed Python wheel uses CFFI/ABI v1 and does not communicate through the generated WASM surface.

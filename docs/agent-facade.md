@@ -11,3 +11,13 @@ The agent-facing path is intentionally layered so callers do not need to constru
 The typed facade is an ergonomics layer only. `LayerRegistry`, the existing binary protocol, the graph compiler/runtime, and Burn remain the sources of truth. Raw protocol APIs stay available for compatibility and advanced use.
 
 Malformed facade configuration should be rejected before backend initialization whenever the facade can validate it deterministically. The final generated Python/Rust/JS tool does not need to ship this WASM runtime unless the product itself chooses to use it at runtime.
+
+## Host communication context
+
+This facade describes the WASM-facing ergonomic path, not every supported host path.
+
+- Node reaches this generated WASM surface through the verified `node.mjs` filesystem/`initSync` adapter.
+- Native Rust consumers use the packaged Rust API directly and do not route through WASM.
+- Python consumers use `burn-research.ffi.v1` through CFFI and do not route through WASM.
+
+See [WASM host communication contract](wasm-host-communication.md) before diagnosing host-specific initialization or transport differences as reference-machine design failures.
