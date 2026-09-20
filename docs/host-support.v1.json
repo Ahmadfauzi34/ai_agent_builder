@@ -1,13 +1,30 @@
 {
   "schema": "burn-research.host-support.v1",
   "artifact_target": "wasm-bindgen-web",
+  "support_semantics": {
+    "supported_means": "consumer_path_verified_on_recorded_matrix",
+    "support_does_not_imply_runtime_or_toolchain_is_bundled": true,
+    "host_ranking": "none",
+    "artifact_target_semantics": "generated_wasm_packaging_target_not_host_priority",
+    "communication_contract": "docs/wasm-host-communication.md"
+  },
+  "execution_core": {
+    "implementation_language": "rust",
+    "role": "reference_machine",
+    "native_package": "burn-research",
+    "wasm_surface_contract": "docs/wasm-surface.v1.json"
+  },
   "verified_hosts": {
     "node": {
       "status": "supported",
+      "role": "verified_wasm_host_adapter",
       "module_system": "esm",
       "adapter": "node.mjs",
       "types": "node.d.mts",
       "initialization": "filesystem_read_plus_initSync",
+      "communication": "node_adapter_to_generated_wasm_bindgen_surface",
+      "requires_external_runtime": "node",
+      "runtime_bundled": false,
       "local_file_package": true,
       "ci_smoke_required": true
     }
@@ -15,8 +32,12 @@
   "native_packages": {
     "rust": {
       "status": "supported",
+      "role": "native_package_consumer",
       "package": "burn-research",
       "crate_type": "rlib",
+      "communication": "public_rust_package_api",
+      "requires_wasm": false,
+      "toolchain_bundled": false,
       "consumer_proof": "scripts/audit_rust_package.py",
       "orchestration": "host_owned",
       "ci_smoke_required": true,
@@ -26,7 +47,7 @@
   "verified_cross_language_consumers": {
     "python": {
       "status": "supported",
-      "role": "first_class_host_layer",
+      "role": "verified_external_host",
       "package": "burn-research-ffi",
       "public_namespace": "burn_research_ffi.host",
       "host_api": "burn-research.python-host.v1",
@@ -36,6 +57,10 @@
       "distribution": "wheel",
       "binding": "cffi",
       "abi": "burn-research.ffi.v1",
+      "communication": "cffi_over_burn-research.ffi.v1",
+      "requires_wasm": false,
+      "requires_external_runtime": "cpython",
+      "runtime_bundled": false,
       "orchestration": "host_owned",
       "consumer_proof": "scripts/audit_python_wheel.py",
       "ci_workflow": "Python Wheel Proof",
@@ -56,6 +81,8 @@
   },
   "generated_but_not_host_verified": {
     "browser": {
+      "role": "generated_wasm_entry",
+      "host_verified": false,
       "entry": "burn_research.js",
       "initialization": "wasm-bindgen_default_async"
     }
@@ -65,7 +92,7 @@
     "abi": "burn-research.ffi.v1",
     "stability": "versioned_experimental_v1",
     "stable_abi_published": false,
-    "first_priority_consumer": "python",
+    "consumer_ranking": "none",
     "verified_consumers": [
       "python"
     ]
