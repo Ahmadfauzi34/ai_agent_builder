@@ -56,7 +56,8 @@
     "runtime_subject": {
       "source": "AgentWorkspace runtime-subject binding",
       "authority": "execution context supplied by the Resolution↔Runtime bridge; verifier does not independently authorize it",
-      "unbound": "status=unbound remains valid for legacy/non-bridged execution"
+      "unbound": "status=unbound remains valid for legacy/non-bridged execution",
+      "program_binding": "when runtime subject is bound, graph receipts require the exact CompiledGraph.programIdentity to have been registered by workspaceCompileForRuntimeSubject"
     }
   },
   "fingerprint": {
@@ -68,7 +69,9 @@
     "malformed_inputs": "transport/validation error; no receipt is recorded",
     "numerical_mismatch": "valid verifier receipt with passed=false",
     "receipt_import": "forbidden; callers cannot inject a verifier receipt JSON into the internal ledger",
-    "legacy_compatibility": "recordProof remains available but must be interpreted as caller-controlled legacy state"
+    "legacy_compatibility": "recordProof remains available but must be interpreted as caller-controlled legacy state",
+    "bound_subject_graph_receipt": "fail closed before graph execution/receipt allocation unless exact programIdentity is bound to the workspace subject",
+    "unbound_graph_receipt": "legacy unbound verification remains allowed"
   },
   "invariants": [
     "caller attestation cannot create verifier authority",
@@ -79,6 +82,8 @@
     "invalid/non-finite/malformed inputs do not consume a verifier receipt id",
     "programIdentity remains authoritative for exact compiled graph structural identity",
     "graph receipt binds the observed numerical reference through reference_fingerprint because mutable weights/state are intentionally excluded from programIdentity",
-    "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization"
+    "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization",
+    "bound-subject graph receipts cannot relabel a graph whose exact programIdentity is absent from the workspace subject binding set",
+    "programIdentity exact comparison is authoritative for subject-program binding; FNV fingerprints remain correlation metadata only"
   ]
 }
