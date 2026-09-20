@@ -38,6 +38,25 @@ impl LayoutTag {
             Self::SequenceFeatureAxis2SingletonWidth => "sequence_feature_axis2_singleton_width",
         }
     }
+
+    fn external_declared(value: &str) -> Result<Option<Self>, String> {
+        match value {
+            "unknown" => Ok(None),
+            "any_rank4" => Ok(Some(Self::AnyRank4)),
+            "feature_axis1_singleton" => Ok(Some(Self::FeatureAxis1Singleton)),
+            "channel_first" => Ok(Some(Self::ChannelFirst)),
+            "channel_first_singleton_width" => Ok(Some(Self::ChannelFirstSingletonWidth)),
+            "feature_last" => Ok(Some(Self::FeatureLast)),
+            "token_ids_axis1_singleton" => Ok(Some(Self::TokenIdsAxis1Singleton)),
+            "sequence_feature_axis2_singleton_width" => {
+                Ok(Some(Self::SequenceFeatureAxis2SingletonWidth))
+            }
+            "preserve_input" | "dynamic" => Err(format!(
+                "inputContract: layout {value} is relational/internal and cannot describe an external tensor"
+            )),
+            _ => Err(format!("inputContract: unknown layout {value}")),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -169,6 +188,74 @@ pub(crate) fn validate_agent_layout_identity_edge(
         layout_profile_for(producer_layer_type, producer_variant),
         layout_profile(consumer),
     )
+}
+
+fn validate_shape_for_layout(shape: [u32; 4], layout: LayoutTag, context: &str) -> Result<(), String> {
+    let mismatch = match layout {
+        LayoutTag::FeatureAxis1Singleton | LayoutTag::TokenIdsAxis1Singleton => {
+            shape[2] != 1 || shape[3] != 1
+        }
+        LayoutTag::ChannelFirstSingletonWidth
+        | LayoutTag::SequenceFeatureAxis2SingletonWidth => shape[3] != 1,
+        LayoutTag::AnyRank4 | LayoutTag::ChannelFirst | LayoutTag::FeatureLast => false,
+        LayoutTag::PreserveInput | LayoutTag::Dynamic => false,
+    };
+    if mismatch {
+        return Err(format!(
+            "{context}: shape [{},{},{},{}] violates layout {}",
+            shape[0],
+            shape[1],
+            shape[2],
+            shape[3],
+            layout.as_str()
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_external_input_contract_declaration(
+    shape: [u32; 4],
+    layout: &str,
+) -> Result<(), String> {
+    if shape.iter().any(|dim| *dim == 0) {
+        return Err(format!(
+            "inputContract: every shape dimension must be > 0, got [{},{},{},{}]",
+            shape[0], shape[1], shape[2], shape[3]
+        ));
+    }
+    if let Some(layout) = LayoutTag::external_declared(layout)? {
+        validate_shape_for_layout(shape, layout, "inputContract")?;
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_external_input_contract_for_spec(
+    shape: [u32; 4],
+    declared_layout: &str,
+    consumer: &AgentLayerSpec,
+) -> Result<&'static str, String> {
+    validate_external_input_contract_declaration(shape, declared_layout)?;
+
+    let consumer_layout = layout_profile(consumer).input;
+    validate_shape_for_layout(shape, consumer_layout, "inputContract.consumer")?;
+
+    let Some(declared) = LayoutTag::external_declared(declared_layout)? else {
+        return Ok(if consumer_layout == LayoutTag::Dynamic {
+            "unknown"
+        } else {
+            "shape_compatible_layout_unknown"
+        });
+    };
+
+    match compatibility(declared, consumer_layout) {
+        LayoutCompatibility::Compatible => Ok("compatible"),
+        LayoutCompatibility::Unknown => Ok("unknown"),
+        LayoutCompatibility::Incompatible => Err(format!(
+            "inputContract: declared layout {} is incompatible with consumer input layout {}; implicit relayout is forbidden",
+            declared.as_str(),
+            consumer_layout.as_str()
+        )),
+    }
 }
 
 /// Return the canonical machine-readable contract manifest used by agents and future fuzzers.
