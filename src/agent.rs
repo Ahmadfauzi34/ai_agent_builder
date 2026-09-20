@@ -1103,6 +1103,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
+            "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
@@ -1217,6 +1218,7 @@ mod tests {
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
         assert!(manifest.contains("\"input_contract\":\"inputContractCapabilities\""));
+        assert!(manifest.contains("\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\""));
         assert!(manifest.contains("\"constructor_catalog\":\"agentLayerCatalog\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));
