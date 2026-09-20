@@ -24,6 +24,9 @@ jobs:
           python3 -m json.tool docs/agent-contracts.v1.json >/dev/null
           python3 -m json.tool docs/agent-interaction-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-fault-contract.v1.json >/dev/null
+          python3 -m json.tool docs/agent-input-contract.v1.json >/dev/null
+          python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null
+          python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
 
