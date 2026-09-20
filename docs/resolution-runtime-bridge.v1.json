@@ -33,12 +33,12 @@
     "surfaces": [
       "resolutionRuntimeBridgeCapabilities",
       "workspaceBindRuntimeSubject",
-      "workspaceClearRuntimeSubject",
       "workspaceRuntimeSubject"
     ],
     "mutation": "AgentWorkspace control metadata only",
     "identity_policy": "No bridge-generated authoritative runtime_subject_id. Existing intent, approval, subject identity, and authorization policy tuple is carried verbatim.",
-    "wasm_validation_scope": "shape/syntax/bounds of the supplied tuple only; WASM does not re-run Resolution or AuthorizationPolicy"
+    "wasm_validation_scope": "shape/syntax/bounds of the supplied tuple only; WASM does not re-run Resolution or AuthorizationPolicy",
+    "lifecycle": "binding must occur before runtime layer/slot reservation; exact rebinding is idempotent, different rebinding is rejected for the workspace lifetime"
   },
   "receipt_binding": {
     "policy": "Verifier receipts may carry the current workspace runtime-subject tuple as execution context.",
@@ -52,12 +52,13 @@
     "bridge does not create a replacement semantic identity",
     "runtime binding is control metadata and does not mutate LayerRegistry",
     "runtime binding participates in AgentWorkspace.snapshot so no-mutation checks can observe it",
-    "unknown semantic fields remain opaque rather than guessed"
+    "unknown semantic fields remain opaque rather than guessed",
+    "runtime subject binding is immutable once established for a workspace",
+    "runtime subject binding must precede canonical runtime layer/slot reservation"
   ],
   "deferred": [
     "automatic semantic-field to layer-plan compilation",
     "automatic runtime fault to ResolutionDiagnostic conversion",
-    "cryptographic identity/signature binding",
-    "policy-independent authorization replay"
+    "cryptographic identity/signature binding"
   ]
 }
