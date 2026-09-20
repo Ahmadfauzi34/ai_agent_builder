@@ -268,7 +268,13 @@ impl AgentWorkspace {
         let has_reserved_runtime_slot = self.rows.iter().any(|row| {
             row.table == TABLE_SLOTS && row.key != "0" && row.state != "free"
         });
-        !has_layer_state && !has_reserved_runtime_slot
+        let has_proof_state = self.rows.iter().any(|row| {
+            matches!(
+                row.table.as_str(),
+                TABLE_PROOFS | TABLE_ATTESTATIONS | TABLE_VERIFIER_RECEIPTS
+            )
+        });
+        !has_layer_state && !has_reserved_runtime_slot && !has_proof_state
     }
 
     pub(crate) fn bind_runtime_subject_binding(
@@ -287,7 +293,7 @@ impl AgentWorkspace {
 
         if !self.runtime_subject_bind_available() {
             return Err(
-                "AgentWorkspace: bind runtime subject before reserving runtime layers or slots"
+                "AgentWorkspace: bind runtime subject before reserving runtime layers or slots or recording proof evidence"
                     .to_string(),
             );
         }
