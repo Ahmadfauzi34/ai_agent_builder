@@ -6,6 +6,7 @@ const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
 const adapterPath = path.join(pkgDir, 'node.mjs');
 const typesPath = path.join(pkgDir, 'node.d.mts');
 const supportPath = path.join(pkgDir, 'host-support.v1.json');
+const communicationPath = path.join(pkgDir, 'wasm-host-communication.md');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
 const backgroundTypesPath = path.join(pkgDir, 'burn_research_bg.wasm.d.ts');
@@ -17,6 +18,7 @@ function assert(condition, message) {
 assert(fs.existsSync(adapterPath), 'packaged node.mjs is missing');
 assert(fs.existsSync(typesPath), 'packaged node.d.mts is missing');
 assert(fs.existsSync(supportPath), 'packaged host-support.v1.json is missing');
+assert(fs.existsSync(communicationPath), 'packaged wasm-host-communication.md is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
 assert(fs.existsSync(backgroundTypesPath), 'packaged burn_research_bg.wasm.d.ts is missing');
@@ -32,6 +34,7 @@ const requiredPackageFiles = [
   'node.mjs',
   'node.d.mts',
   'host-support.v1.json',
+  'wasm-host-communication.md',
 ];
 for (const file of requiredPackageFiles) {
   assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
@@ -48,6 +51,20 @@ assert(support.schema === 'burn-research.host-support.v1', 'host support schema 
 assert(support.verified_hosts?.node?.status === 'supported', 'Node host must be declared supported');
 assert(support.verified_hosts?.node?.adapter === 'node.mjs', 'Node adapter discovery mismatch');
 assert(support.verified_hosts?.node?.types === 'node.d.mts', 'Node type discovery mismatch');
+assert(
+  support.support_semantics?.packaged_communication_contract === 'wasm-host-communication.md',
+  'packaged communication-contract discovery mismatch',
+);
+const communication = fs.readFileSync(communicationPath, 'utf8');
+assert(
+  communication.includes('Node application') &&
+    communication.includes('initSync({ module: wasmBytes })'),
+  'packaged communication contract is missing the verified Node -> WASM path',
+);
+assert(
+  communication.includes('Python does not communicate through the WASM surface.'),
+  'packaged communication contract is missing the Python/WASM boundary',
+);
 
 const adapter = await import(pathToFileURL(adapterPath).href);
 const runtime = await adapter.loadBurnRuntime();
@@ -91,4 +108,5 @@ console.log(JSON.stringify({
   packageFiles: requiredPackageFiles,
   surfaceDiagnostic: path.basename(surfaceActualPath),
   backgroundTypes: path.basename(backgroundTypesPath),
+  communicationContract: path.basename(communicationPath),
 }, null, 2));
