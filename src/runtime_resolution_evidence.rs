@@ -262,8 +262,16 @@ impl RuntimeEvidence {
         self.subject.as_ref()
     }
 
-    pub fn authority(&self) -> &'static str {
-        self.payload.authority()
+    pub fn source_authority(&self) -> &'static str {
+        self.payload.source_authority()
+    }
+
+    pub fn evidence_authority(&self) -> &'static str {
+        self.payload.evidence_authority()
+    }
+
+    pub fn transport_integrity(&self) -> &'static str {
+        self.payload.transport_integrity()
     }
 
     pub fn kind(&self) -> &'static str {
