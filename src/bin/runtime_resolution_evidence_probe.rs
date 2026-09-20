@@ -56,7 +56,12 @@ fn run() -> Result<(), String> {
     );
 
     let before_resolution = resolution.clone();
-    let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection)?;
+    let mut inbox = ResolutionEvidenceInbox::from_authorized(
+        &resolution,
+        &approved,
+        &policy,
+        &authorization,
+    )?;
 
     let fault = RuntimeEvidence::bound_agent_fault(
         &projection,
