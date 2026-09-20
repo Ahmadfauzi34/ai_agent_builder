@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.runtime-resolution-evidence.v1",
+  "role": "typed_runtime_evidence_rejoin",
+  "state_ownership": "separate_bounded_inbox",
+  "purpose": "Carry runtime faults and verifier outcomes back toward the exact Resolution revision and approved runtime subject without converting them into ResolutionDiagnostic or changing ResolutionWorkflow state.",
+  "authorities": {
+    "resolution_state": "ResolutionWorkflow / ResolutionSnapshot",
+    "semantic_subject": "RuntimeSubjectProjection from the approved+authorized forward bridge",
+    "agent_fault": "runtime preflight observation only; not semantic diagnosis and not numerical proof",
+    "graph_verifier": "WASM verifier evidence over an exact subject-bound CompiledGraph program identity",
+    "vector_verifier": "WASM comparator evidence relative to caller-supplied reference",
+    "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action"
+  },
+  "native_types": {
+    "RuntimeEvidenceSubject": "exact intent/revision/approval/subject/authorization-policy tuple",
+    "RuntimeEvidence": "typed AgentFault, graph-verifier, or vector-verifier observation",
+    "ResolutionEvidenceInbox": "bounded evidence collection tied to one compile-eligible ResolutionSnapshot and one exact RuntimeSubjectProjection",
+    "RejoinStatus": [
+      "exact",
+      "unbound",
+      "foreign_intent",
+      "stale_runtime_revision",
+      "future_runtime_revision",
+      "approval_mismatch",
+      "subject_mismatch",
+      "authorization_mismatch"
+    ]
+  },
+  "inbox_policy": {
+    "requires": "ResolutionSnapshot.compile_eligible == true and snapshot intent/revision exactly match RuntimeSubjectProjection",
+    "mutation": "inbox only; ResolutionWorkflow is not mutated",
+    "max_entries": 64,
+    "duplicate": "exact duplicate is idempotent",
+    "mismatch": "classified and rejected from inbox",
+    "evidence_order": "append-only within the bounded inbox"
+  },
+  "interpretation_policy": {
+    "automatic_diagnostic_creation": false,
+    "automatic_state_transition": false,
+    "automatic_revision": false,
+    "automatic_action_selection": false,
+    "required_step": "explicit Resolution review/interpretation outside this bridge"
+  },
+  "transport_boundary": {
+    "note": "The bridge does not parse arbitrary legacy error strings. Hosts should transport already-structured AgentFault fields or verifier-receipt fields into the typed constructors.",
+    "authority_preservation": "Evidence authority is derived from the typed payload variant; a fault cannot become verifier authority merely by changing a string field.",
+    "unbound_runtime": "representable but cannot be rejoined into a subject-bound ResolutionEvidenceInbox"
+  },
+  "invariants": [
+    "runtime evidence never mutates ResolutionWorkflow",
+    "failed verifier evidence is an observation, not an automatic ResolutionDiagnostic",
+    "AgentFault remains distinct from ResolutionDiagnostic",
+    "stale or foreign runtime evidence cannot enter an inbox for another Resolution revision or subject",
+    "graph verifier evidence retains exact programIdentity as provenance",
+    "vector comparator evidence remains explicitly caller-reference authority",
+    "the inbox is bounded and duplicate insertion is idempotent"
+  ]
+}
