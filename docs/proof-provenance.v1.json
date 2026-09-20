@@ -44,14 +44,20 @@
       "reference_or_input_fingerprint",
       "candidate_fingerprint",
       "tolerances",
-      "result"
+      "result",
+      "runtime_subject"
     ],
     "graph_extra": [
       "program_identity",
       "program_identity_fingerprint",
       "reference_fingerprint",
       "mutable_state_in_program_identity=false"
-    ]
+    ],
+    "runtime_subject": {
+      "source": "AgentWorkspace runtime-subject binding",
+      "authority": "execution context supplied by the Resolution↔Runtime bridge; verifier does not independently authorize it",
+      "unbound": "status=unbound remains valid for legacy/non-bridged execution"
+    }
   },
   "fingerprint": {
     "algorithm": "fnv1a64_noncryptographic",
@@ -72,6 +78,7 @@
     "failed numerical comparisons are recorded as failed receipts rather than transport errors",
     "invalid/non-finite/malformed inputs do not consume a verifier receipt id",
     "programIdentity remains authoritative for exact compiled graph structural identity",
-    "graph receipt binds the observed numerical reference through reference_fingerprint because mutable weights/state are intentionally excluded from programIdentity"
+    "graph receipt binds the observed numerical reference through reference_fingerprint because mutable weights/state are intentionally excluded from programIdentity",
+    "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization"
   ]
 }
