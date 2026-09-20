@@ -16,11 +16,12 @@ This README is a navigation hub. Detailed semantics and support claims live in t
 
 - [Host support manifest](docs/host-support.v1.json) — **authoritative source for currently supported hosts and verified matrices**.
 - [Native Rust package support](docs/rust-package-support.md) — packaged `.crate` consumer boundary.
-- [Python host layer](docs/python-host-layer.md) — first-class typed Python host role and orchestration boundary.
+- [Python host layer](docs/python-host-layer.md) — verified external Python host role and orchestration boundary.
 - [Python FFI v1](docs/python-ffi-v1.md) — versioned C ABI/CFFI boundary.
 - [Python facade v1](docs/python-facade-v1.md) — typed Python facade over ABI v1.
 - [Python wheel support](docs/python-wheel-support.md) — installed-wheel consumer proof and supported matrix.
-- [WASM surface v1](docs/wasm-surface.v1.json) — machine-readable WASM surface contract.
+- [WASM surface v1](docs/wasm-surface.v1.json) — machine-readable pinned WASM export contract.
+- [WASM host communication](docs/wasm-host-communication.md) — how Node, native Rust, Python, and generated browser artifacts reach the reference machine and how to classify failures.
 
 ## Runtime proof and evidence
 
