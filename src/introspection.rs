@@ -15,6 +15,7 @@ use crate::protocol::{
     SHIFT_UP,
 };
 use crate::registry::LayerRegistry;
+use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::{AgentWorkspace, WorkspaceLayerIntrospection};
 
 const LAYER_CATALOG_V1: &str = include_str!("../docs/agent-layer-catalog.v1.json");
@@ -279,6 +280,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
             "}},",
             "\"num_slots\":{},",
             "\"external_input_contract\":{},",
+            "\"runtime_subject\":{},",
             "\"slots\":[{}],",
             "\"layers\":[{}],",
             "\"proof_summary\":{{",
@@ -299,6 +301,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
         ),
         workspace.interaction_num_slots(),
         input_contract_json(workspace),
+        runtime_subject_binding_json(workspace),
         slots_json,
         layers_json,
         proofs_passed,
@@ -427,6 +430,7 @@ pub fn describe_graph(
             "\"unknown_metadata_policy\":\"report_null_do_not_infer\",",
             "\"num_slots\":{},",
             "\"external_input_contract\":{},",
+            "\"runtime_subject\":{},",
             "\"num_steps\":{},",
             "\"configured_output_slot\":{},",
             "\"written_slots\":[{}],",
@@ -435,6 +439,7 @@ pub fn describe_graph(
         ),
         builder.num_slots(),
         input_contract_json(workspace),
+        runtime_subject_binding_json(workspace),
         builder.num_steps(),
         builder
             .introspection_output_slot()
