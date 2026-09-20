@@ -10,11 +10,14 @@ use burn_research::proof_provenance::{
 use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::{
     bind_runtime_subject_projection, resolution_runtime_bridge_capabilities,
-    workspace_bind_runtime_subject, workspace_runtime_subject, RuntimeSubjectProjection,
+    workspace_bind_runtime_subject, workspace_runtime_program_binding,
+    workspace_runtime_subject, RuntimeSubjectProjection,
 };
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 use burn_research::workspace::AgentWorkspace;
-use burn_research::workspace_ops::{workspace_compile, workspace_init_unary};
+use burn_research::workspace_ops::{
+    workspace_compile, workspace_compile_for_runtime_subject, workspace_init_unary,
+};
 use burn_research::WasmTensor;
 
 fn fixture() -> (
@@ -181,7 +184,21 @@ fn burn_backed_receipt_preserves_exact_bound_runtime_subject_context() {
         "relu".into(),
     )
     .unwrap();
-    let graph = workspace_compile(&builder, &registry, output_slot).unwrap();
+    let graph =
+        workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, output_slot)
+            .unwrap();
+    let binding: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace, &graph)).unwrap();
+    assert_eq!(binding["program_bound"], true);
+    assert_eq!(binding["binding_count"], 1);
+
+    let duplicate =
+        workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, output_slot)
+            .unwrap();
+    assert_eq!(duplicate.program_identity(), graph.program_identity());
+    let binding: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace, &graph)).unwrap();
+    assert_eq!(binding["binding_count"], 1);
 
     let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
     let receipt: serde_json::Value = serde_json::from_str(
@@ -290,4 +307,191 @@ fn binding_after_proof_state_is_rejected_without_relabeling_evidence() {
     assert!(error.contains("recording proof evidence"));
     assert_eq!(workspace.snapshot(), before);
     assert!(workspace_runtime_subject(&workspace).contains("\"status\":\"unbound\""));
+}
+
+#[test]
+fn bound_subject_rejects_legacy_compiled_graph_until_exact_identity_is_bound() {
+    let (approved, policy, authorization) = fixture();
+    let projection =
+        RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
+
+    let mut workspace = AgentWorkspace::new(2).unwrap();
+    assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
+    let mut builder = AgentGraphBuilder::new(2).unwrap();
+    let mut registry = LayerRegistry::new();
+    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let spec = AgentLayerSpec::relu(layer_id);
+    let out = workspace_init_unary(
+        &mut workspace,
+        &mut builder,
+        &mut registry,
+        &spec,
+        0,
+        "relu".into(),
+    )
+    .unwrap();
+
+    let graph = workspace_compile(&builder, &registry, out).unwrap();
+    let status: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace, &graph)).unwrap();
+    assert_eq!(status["program_bound"], false);
+
+    let before = workspace.snapshot();
+    let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+    let error = workspace_verify_graph_receipt(
+        &mut workspace,
+        &graph,
+        &registry,
+        &input,
+        &[0.0, 3.0],
+        0.0,
+        0.0,
+        "legacy-under-bound-subject".into(),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("workspaceCompileForRuntimeSubject"));
+    assert_eq!(workspace.snapshot(), before);
+}
+
+#[test]
+fn cross_context_graph_relabeling_is_rejected_without_receipt_mutation() {
+    let mut workspace_a = AgentWorkspace::new(2).unwrap();
+    let mut workspace_b = AgentWorkspace::new(2).unwrap();
+
+    assert!(workspace_bind_runtime_subject(
+        &mut workspace_a,
+        "intent-a".into(),
+        1,
+        "approval-a".into(),
+        "effective-spec".into(),
+        "spec-A".into(),
+        "policy".into(),
+        1,
+        false,
+    )
+    .unwrap());
+    assert!(workspace_bind_runtime_subject(
+        &mut workspace_b,
+        "intent-b".into(),
+        1,
+        "approval-b".into(),
+        "effective-spec".into(),
+        "spec-B".into(),
+        "policy".into(),
+        1,
+        false,
+    )
+    .unwrap());
+
+    let mut builder_b = AgentGraphBuilder::new(2).unwrap();
+    let mut registry_b = LayerRegistry::new();
+    let layer_id = workspace_b
+        .reserve_layer_id(&registry_b, "relu-b".into())
+        .unwrap();
+    let spec = AgentLayerSpec::relu(layer_id);
+    let out = workspace_init_unary(
+        &mut workspace_b,
+        &mut builder_b,
+        &mut registry_b,
+        &spec,
+        0,
+        "relu-b".into(),
+    )
+    .unwrap();
+    let graph_b = workspace_compile_for_runtime_subject(
+        &mut workspace_b,
+        &builder_b,
+        &registry_b,
+        out,
+    )
+    .unwrap();
+
+    let status_a: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace_a, &graph_b)).unwrap();
+    let status_b: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace_b, &graph_b)).unwrap();
+    assert_eq!(status_a["program_bound"], false);
+    assert_eq!(status_b["program_bound"], true);
+
+    let before_a = workspace_a.snapshot();
+    let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+    let error = workspace_verify_graph_receipt(
+        &mut workspace_a,
+        &graph_b,
+        &registry_b,
+        &input,
+        &[0.0, 3.0],
+        0.0,
+        0.0,
+        "cross-context-attack".into(),
+    )
+    .unwrap_err();
+
+    assert!(error.contains("not bound to this runtime subject"));
+    assert_eq!(workspace_a.snapshot(), before_a);
+
+    let receipt: serde_json::Value = serde_json::from_str(
+        &workspace_verify_graph_receipt(
+            &mut workspace_b,
+            &graph_b,
+            &registry_b,
+            &input,
+            &[0.0, 3.0],
+            0.0,
+            0.0,
+            "correct-context".into(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(receipt["runtime_subject"]["subject_identity"], "spec-B");
+    assert_eq!(receipt["result"]["passed"], true);
+}
+
+#[test]
+fn unbound_legacy_graph_receipt_remains_supported() {
+    let mut workspace = AgentWorkspace::new(2).unwrap();
+    let mut builder = AgentGraphBuilder::new(2).unwrap();
+    let mut registry = LayerRegistry::new();
+    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let spec = AgentLayerSpec::relu(layer_id);
+    let out = workspace_init_unary(
+        &mut workspace,
+        &mut builder,
+        &mut registry,
+        &spec,
+        0,
+        "relu".into(),
+    )
+    .unwrap();
+    let graph = workspace_compile(&builder, &registry, out).unwrap();
+
+    let status: serde_json::Value =
+        serde_json::from_str(&workspace_runtime_program_binding(&workspace, &graph)).unwrap();
+    assert_eq!(status["runtime_subject_bound"], false);
+    assert_eq!(status["program_bound"], false);
+    assert_eq!(
+        status["receipt_policy"],
+        "legacy_unbound_graph_receipt_allowed"
+    );
+
+    let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+    let receipt: serde_json::Value = serde_json::from_str(
+        &workspace_verify_graph_receipt(
+            &mut workspace,
+            &graph,
+            &registry,
+            &input,
+            &[0.0, 3.0],
+            0.0,
+            0.0,
+            "legacy-unbound".into(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(receipt["runtime_subject"]["status"], "unbound");
+    assert_eq!(receipt["result"]["passed"], true);
 }
