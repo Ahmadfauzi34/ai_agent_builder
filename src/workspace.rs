@@ -11,6 +11,8 @@ const INTERNAL_PREFIX: &str = "_";
 const TABLE_SLOTS: &str = "_slots";
 const TABLE_LAYERS: &str = "_layers";
 const TABLE_PROOFS: &str = "_proofs";
+const TABLE_ATTESTATIONS: &str = "_attestations";
+const TABLE_VERIFIER_RECEIPTS: &str = "_verifier_receipts";
 const TABLE_EVENTS: &str = "_events";
 
 // Working-memory quotas. These bound metadata growth without constraining Burn tensor/math capacity.
@@ -134,6 +136,8 @@ pub struct AgentWorkspace {
     num_slots: u32,
     next_layer_id: u32,
     next_proof_id: u32,
+    next_attestation_id: u32,
+    next_verifier_receipt_id: u32,
     next_event_id: u32,
     input_contract: Option<WorkspaceInputContract>,
     rows: Vec<WorkspaceRow>,
@@ -382,6 +386,78 @@ impl AgentWorkspace {
         (passed, failed, other)
     }
 
+    pub(crate) fn introspection_attestation_count(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|row| row.table == TABLE_ATTESTATIONS)
+            .count()
+    }
+
+    pub(crate) fn introspection_verifier_receipt_counts(&self) -> (usize, usize, usize) {
+        let mut passed = 0usize;
+        let mut failed = 0usize;
+        let mut other = 0usize;
+        for row in self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_VERIFIER_RECEIPTS)
+        {
+            match row.state.as_str() {
+                "passed" => passed += 1,
+                "failed" => failed += 1,
+                _ => other += 1,
+            }
+        }
+        (passed, failed, other)
+    }
+
+    pub(crate) fn next_verifier_receipt_id(&self) -> u32 {
+        self.next_verifier_receipt_id
+    }
+
+    pub(crate) fn record_attestation_internal(
+        &mut self,
+        label: String,
+        claimed_passed: bool,
+        detail: String,
+    ) -> Result<u32, String> {
+        let attestation_id = self.next_attestation_id;
+        let value = format!(
+            "authority=caller_attestation;claimed_passed={claimed_passed};label={label};{detail}"
+        );
+        self.upsert_internal(
+            TABLE_ATTESTATIONS,
+            attestation_id.to_string(),
+            "caller_attestation".into(),
+            "recorded".into(),
+            value,
+        )?;
+        self.next_attestation_id = attestation_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.attestation allocator exhausted".to_string())?;
+        Ok(attestation_id)
+    }
+
+    pub(crate) fn record_verifier_receipt_internal(
+        &mut self,
+        verifier: String,
+        passed: bool,
+        receipt_json: String,
+    ) -> Result<u32, String> {
+        let receipt_id = self.next_verifier_receipt_id;
+        self.upsert_internal(
+            TABLE_VERIFIER_RECEIPTS,
+            receipt_id.to_string(),
+            verifier,
+            if passed { "passed" } else { "failed" }.into(),
+            receipt_json,
+        )?;
+        self.next_verifier_receipt_id = receipt_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.verifier receipt allocator exhausted".to_string())?;
+        Ok(receipt_id)
+    }
+
     pub(crate) fn introspection_event_count(&self) -> usize {
         self.rows.iter().filter(|row| row.table == TABLE_EVENTS).count()
     }
@@ -454,6 +530,8 @@ impl AgentWorkspace {
             num_slots,
             next_layer_id: 1,
             next_proof_id: 1,
+            next_attestation_id: 1,
+            next_verifier_receipt_id: 1,
             next_event_id: 1,
             input_contract: None,
             rows: Vec::new(),
@@ -762,11 +840,13 @@ impl AgentWorkspace {
             })
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
             count(TABLE_PROOFS),
+            count(TABLE_ATTESTATIONS),
+            count(TABLE_VERIFIER_RECEIPTS),
             count(TABLE_EVENTS),
             custom_tables,
             self.rows.len(),

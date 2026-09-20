@@ -171,6 +171,9 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
     let slots = workspace.introspection_slots();
     let layers = workspace.introspection_layers();
     let (proofs_passed, proofs_failed, proofs_other) = workspace.introspection_proof_counts();
+    let attestation_count = workspace.introspection_attestation_count();
+    let (receipt_passed, receipt_failed, receipt_other) =
+        workspace.introspection_verifier_receipt_counts();
     let custom_tables = workspace.introspection_custom_tables();
 
     let slots_json = slots
@@ -279,9 +282,16 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
             "\"slots\":[{}],",
             "\"layers\":[{}],",
             "\"proof_summary\":{{",
-                "\"passed\":{},",
-                "\"failed\":{},",
-                "\"other\":{}",
+                "\"legacy_recordProof_authority\":\"caller_controlled_legacy\",",
+                "\"legacy_passed\":{},",
+                "\"legacy_failed\":{},",
+                "\"legacy_other\":{},",
+                "\"attestations\":{},",
+                "\"verifier_receipts\":{{",
+                    "\"passed\":{},",
+                    "\"failed\":{},",
+                    "\"other\":{}",
+                "}}",
             "}},",
             "\"event_count\":{},",
             "\"custom_tables\":[{}]",
@@ -294,6 +304,10 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
         proofs_passed,
         proofs_failed,
         proofs_other,
+        attestation_count,
+        receipt_passed,
+        receipt_failed,
+        receipt_other,
         workspace.introspection_event_count(),
         custom_tables_json,
     )

@@ -1100,7 +1100,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"engine\":\"burn-research\",",
             "\"purpose\":\"agent_math_coprocessor\",",
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
-            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
+            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
@@ -1212,6 +1212,7 @@ mod tests {
         assert!(manifest.contains("\"purpose\":\"agent_math_coprocessor\""));
         assert!(manifest.contains("\"vector\":\"mathVerifyVectors\""));
         assert!(manifest.contains("\"graph_output\":\"CompiledGraph.verifyFlat\""));
+        assert!(manifest.contains("\"provenance\":\"proofProvenanceCapabilities\""));
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
