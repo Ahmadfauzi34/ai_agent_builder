@@ -37,7 +37,7 @@ fn json_escape(value: &str) -> String {
 
 fn quoted_or_null(value: Option<&str>) -> String {
     value
-        .map(|value| format!("\\"{}\\"", json_escape(value)))
+        .map(|value| format!("\\\"{}\\\"", json_escape(value)))
         .unwrap_or_else(|| "null".to_string())
 }
 
