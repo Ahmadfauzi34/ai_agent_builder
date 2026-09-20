@@ -1212,6 +1212,7 @@ mod tests {
         assert!(manifest.contains("\"purpose\":\"agent_math_coprocessor\""));
         assert!(manifest.contains("\"vector\":\"mathVerifyVectors\""));
         assert!(manifest.contains("\"graph_output\":\"CompiledGraph.verifyFlat\""));
+        assert!(manifest.contains("\"provenance\":\"proofProvenanceCapabilities\""));
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
