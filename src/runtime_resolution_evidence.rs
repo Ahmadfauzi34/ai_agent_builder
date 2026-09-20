@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 
+use crate::authorization::{AuthorizationPolicy, AuthorizationSnapshot};
+use crate::effective_spec::ApprovedEffectiveSpec;
 use crate::resolution::ResolutionSnapshot;
 use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
 
@@ -519,6 +521,17 @@ pub struct ResolutionEvidenceInbox {
 }
 
 impl ResolutionEvidenceInbox {
+    pub fn from_authorized(
+        resolution: &ResolutionSnapshot,
+        approved: &ApprovedEffectiveSpec,
+        policy: &AuthorizationPolicy,
+        authorization: &AuthorizationSnapshot,
+    ) -> Result<Self, String> {
+        let projection =
+            RuntimeSubjectProjection::from_authorized(approved, policy, authorization)?;
+        Self::new(resolution, &projection)
+    }
+
     pub fn new(
         resolution: &ResolutionSnapshot,
         projection: &RuntimeSubjectProjection,
