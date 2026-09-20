@@ -262,7 +262,7 @@ This architecture record does not add or require:
 - Resolution/Authorization coupling;
 - automatic learning-rate schedules or other host-policy promotion into the core.
 
-It also does not require every future host to copy Node implementation details. Node is currently a verified packaged host; future Rust/Python/Go hosts should preserve the same semantic lifecycle while using host-appropriate integration code.
+It also does not require every host to copy Node implementation details. Node, the native Rust package, and the verified Python host are supported surfaces with host-appropriate integration code; any future host should preserve the same semantic lifecycle rather than copying one host's implementation details.
 
 ## When a core controller may be reconsidered
 
