@@ -99,10 +99,7 @@
       "returns": "point-in-time planning projection JSON"
     }
   },
-  "future_extensions": {
-    "structured_faults": "separate runtime/control failures from semantic ResolutionDiagnostic ambiguity",
-    "graph_description": "semantic graph projection without replacing canonical program identity"
-  },
+  "future_extensions": {},
   "input_contract": {
     "capability": "inputContractCapabilities",
     "binding": "workspaceBindInputContract",
@@ -118,5 +115,13 @@
     "graph_receipt": "workspaceVerifyGraphReceipt",
     "ledger": "workspaceProofLedger",
     "policy": "legacy recordProof, caller attestation, and verifier receipts remain distinct authority classes"
+  },
+  "resolution_runtime_bridge": {
+    "capability": "resolutionRuntimeBridgeCapabilities",
+    "native_projection": "RuntimeSubjectProjection::from_authorized",
+    "runtime_binding": "workspaceBindRuntimeSubject",
+    "clearing": "workspaceClearRuntimeSubject",
+    "inspection": "workspaceRuntimeSubject",
+    "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority"
   }
 }
