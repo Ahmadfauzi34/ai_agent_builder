@@ -28,6 +28,8 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check "maturin==1.13.3" "cffi>=1.17,<2"
 
       - name: Run integrated runtime architecture artifact proof
+        env:
+          BR_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: python3 scripts/audit_runtime_architecture_artifacts.py
 
       - name: Upload integrated runtime artifact report
