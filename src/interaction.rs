@@ -149,7 +149,7 @@ pub fn interaction_capabilities() -> String {
         "\"canonical_actions\":[\"reserveSlot\",\"releaseSlot\",\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceCompile\"],",
         "\"setup_actions\":[\"reserveLayerId\",\"AgentLayerSpec constructors\"],",
         "\"conditional_rejoin_actions\":[\"workspaceWireUnary\",\"workspaceWireBinary\"],",
-        "\"introspection\":[\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
+        "\"introspection\":[\"introspectionCapabilities\",\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
         "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"read_only_guarantee\":\"snapshot_and_valid_actions_do_not_mutate_inputs\"",
         "}"
