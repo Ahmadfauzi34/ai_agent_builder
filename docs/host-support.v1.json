@@ -46,7 +46,9 @@
       "runtime_resolution_evidence": {
         "contract": "burn-research.runtime-resolution-evidence.v1",
         "ownership": "native host-side bounded inbox",
-        "wasm_role": "capability discovery only; ResolutionEvidenceInbox is not WASM-owned"
+        "wasm_role": "capability discovery only; ResolutionEvidenceInbox is not WASM-owned",
+        "canonical_constructor": "ResolutionEvidenceInbox::from_authorized",
+        "lower_level_escape_hatch": "ResolutionEvidenceInbox::new with an already-validated RuntimeSubjectProjection"
       }
     }
   },
