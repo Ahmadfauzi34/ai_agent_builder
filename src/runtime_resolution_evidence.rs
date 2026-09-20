@@ -197,7 +197,7 @@ impl RuntimeEvidencePayload {
                     "\"outcome\":\"{}\",",
                     "\"receipt_id\":{},",
                     "\"label\":\"{}\",",
-                    "\"program_identity\":{},",
+                    "\"program_identity\":\"{}\",",
                     "\"passed\":{},",
                     "\"detail\":\"{}\"",
                     "}}"
@@ -205,7 +205,7 @@ impl RuntimeEvidencePayload {
                 if *passed { "passed" } else { "failed" },
                 receipt_id,
                 json_escape(label),
-                program_identity,
+                json_escape(program_identity),
                 passed,
                 json_escape(detail),
             ),
