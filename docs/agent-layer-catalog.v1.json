@@ -12,7 +12,7 @@
     "signatures": "machine_readable_complete_for_advertised_AgentLayerSpec_constructors",
     "fallible_meaning": "true means constructor performs validation and returns Result; false means it returns AgentLayerSpec directly",
     "runtime_validation": "constructor success does not replace LayerRegistry/Burn runtime validation",
-    "layout_lookup": "use layout_contract_key against agentLayoutContract.constructers"
+    "layout_lookup": "use layout_contract_key against agentLayoutContract.constructors"
   },
   "constructors": {
     "relu": {
