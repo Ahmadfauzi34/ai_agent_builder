@@ -60,9 +60,10 @@
       "parameter_specific_validation": true
     },
     "workspaceCompile": {
-      "class": "canonical",
+      "class": "legacy_escape_hatch",
       "authority": "AgentGraphBuilder plus LayerRegistry",
-      "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry"
+      "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry",
+      "subject_bound_policy": "does not create subject-program binding; a bound-subject graph receipt will fail unless the exact identity was already bound canonically"
     },
     "workspaceBindRuntimeSubject": {
       "class": "optional_semantic_context",
@@ -70,6 +71,13 @@
       "availability": "workspace unbound and canonical runtime layer/slot reservation has not started",
       "effect": "bind exact intent/approval/subject/authorization-policy tuple; no LayerRegistry or graph mutation",
       "lifecycle": "exact repeat is idempotent; different rebind is rejected"
+    },
+    "workspaceCompileForRuntimeSubject": {
+      "class": "canonical_subject_bound",
+      "authority": "AgentGraphBuilder + LayerRegistry compile, then AgentWorkspace exact programIdentity binding",
+      "availability": "runtime subject bound and normal compile candidates exist",
+      "success": "returns CompiledGraph and records exact programIdentity idempotently",
+      "failure": "no program binding mutation when compile/binding fails"
     }
   },
   "conditional_rejoin_actions": {
@@ -128,6 +136,7 @@
     "runtime_binding": "workspaceBindRuntimeSubject",
     "inspection": "workspaceRuntimeSubject",
     "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority",
-    "lifecycle": "bind before runtime planning state is reserved; binding is immutable for the workspace lifetime"
+    "lifecycle": "bind before runtime planning state is reserved; binding is immutable for the workspace lifetime",
+    "program_binding": "workspaceCompileForRuntimeSubject + workspaceRuntimeProgramBinding"
   }
 }
