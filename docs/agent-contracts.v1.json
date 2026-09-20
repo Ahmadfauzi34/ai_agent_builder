@@ -126,9 +126,13 @@
       "parameters": [],
       "authority": "AgentWorkspace.runtime_subject_binding"
     },
-    "runtime_program.binding_capacity": {
-      "parameters": [],
-      "max_bindings": 32,
+    "runtime_program.bind_admissible": {
+      "parameters": [
+        "program_identity"
+      ],
+      "rule": "exact_duplicate_already_bound OR binding_count < 32",
+      "duplicate_policy": "idempotent_success",
+      "new_identity_policy": "requires_free_capacity",
       "authority": "AgentWorkspace bounded exact program identity set"
     }
   },
@@ -633,7 +637,10 @@
           }
         },
         {
-          "predicate": "runtime_program.binding_capacity"
+          "predicate": "runtime_program.bind_admissible",
+          "bind": {
+            "program_identity": "compiled_graph.programIdentity"
+          }
         }
       ],
       "success": {
