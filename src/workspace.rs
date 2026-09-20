@@ -60,6 +60,13 @@ pub(crate) struct WorkspaceLayerIntrospection {
     pub(crate) metadata_valid: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceInputContract {
+    pub(crate) shape: [u32; 4],
+    pub(crate) layout: String,
+    pub(crate) semantics: String,
+}
+
 fn validate_text(
     value: &str,
     max_bytes: usize,
@@ -128,6 +135,7 @@ pub struct AgentWorkspace {
     next_layer_id: u32,
     next_proof_id: u32,
     next_event_id: u32,
+    input_contract: Option<WorkspaceInputContract>,
     rows: Vec<WorkspaceRow>,
 }
 
@@ -217,6 +225,18 @@ impl AgentWorkspace {
 
     pub(crate) fn interaction_num_slots(&self) -> u32 {
         self.num_slots
+    }
+
+    pub(crate) fn input_contract(&self) -> Option<&WorkspaceInputContract> {
+        self.input_contract.as_ref()
+    }
+
+    pub(crate) fn set_input_contract(&mut self, contract: WorkspaceInputContract) {
+        self.input_contract = Some(contract);
+    }
+
+    pub(crate) fn clear_input_contract_internal(&mut self) -> bool {
+        self.input_contract.take().is_some()
     }
 
     pub(crate) fn interaction_row_capacity_available(&self) -> bool {
@@ -435,6 +455,7 @@ impl AgentWorkspace {
             next_layer_id: 1,
             next_proof_id: 1,
             next_event_id: 1,
+            input_contract: None,
             rows: Vec::new(),
         };
 
