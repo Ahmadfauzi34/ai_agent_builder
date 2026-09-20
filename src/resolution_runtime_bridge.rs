@@ -7,6 +7,7 @@ use crate::effective_spec::{
     ApprovedEffectiveSpec, EffectiveFieldOrigin, EffectiveSpecApprovalEvidence,
     EFFECTIVE_SPEC_SCHEMA, EFFECTIVE_SPEC_SUBJECT_KIND,
 };
+use crate::graph::CompiledGraph;
 use crate::workspace::{AgentWorkspace, WorkspaceRuntimeSubjectBinding};
 
 const BRIDGE_CONTRACT_V1: &str = include_str!("../docs/resolution-runtime-bridge.v1.json");
@@ -415,6 +416,36 @@ pub fn workspace_bind_runtime_subject(
 #[wasm_bindgen(js_name = workspaceRuntimeSubject)]
 pub fn workspace_runtime_subject(workspace: &AgentWorkspace) -> String {
     runtime_subject_binding_json(workspace)
+}
+
+#[wasm_bindgen(js_name = workspaceRuntimeProgramBinding)]
+pub fn workspace_runtime_program_binding(
+    workspace: &AgentWorkspace,
+    graph: &CompiledGraph,
+) -> String {
+    let subject_bound = workspace.runtime_subject_binding().is_some();
+    let program_bound = workspace.runtime_program_identity_bound(&graph.program_identity());
+    format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.runtime-program-binding.v1\",",
+            "\"runtime_subject_bound\":{},",
+            "\"program_bound\":{},",
+            "\"binding_count\":{},",
+            "\"identity_policy\":\"exact_program_identity\",",
+            "\"receipt_policy\":\"{}\"",
+            "}}"
+        ),
+        subject_bound,
+        program_bound,
+        workspace.runtime_program_binding_count(),
+        if subject_bound {
+            "bound_subject_requires_program_bound"
+        } else {
+            "legacy_unbound_graph_receipt_allowed"
+        },
+    )
 }
 
 #[cfg(test)]
