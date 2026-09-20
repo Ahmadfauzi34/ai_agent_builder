@@ -175,9 +175,13 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
             let registry_present = layer
                 .layer_type
                 .is_some_and(|layer_type| registry.layer_exists(layer_type, layer.layer_id));
-            let constructor = layer
-                .layer_type
-                .and_then(|layer_type| constructor_name(layer_type, layer.variant));
+            let constructor = if layer.metadata_valid {
+                layer
+                    .layer_type
+                    .and_then(|layer_type| constructor_name(layer_type, layer.variant))
+            } else {
+                None
+            };
             let fingerprint = layer.layer_type.and_then(|layer_type| {
                 if registry_present {
                     registry
