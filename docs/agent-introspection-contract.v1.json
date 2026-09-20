@@ -13,6 +13,11 @@
     "numerical_semantics": "Burn"
   },
   "surfaces": {
+    "introspectionCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded burn-research.agent-introspection.v1 contract",
+      "purpose": "artifact-local discovery of introspection semantics"
+    },
     "agentLayerCatalog": {
       "mutation": "none",
       "returns": "embedded docs/agent-layer-catalog.v1.json",
@@ -49,6 +54,7 @@
       "input_slots",
       "output_slot",
       "workspace_metadata",
+      "metadata_valid",
       "metadata_type_matches_builder",
       "registry_present",
       "registry_fingerprint",
@@ -72,6 +78,7 @@
       "label",
       "layer_type",
       "variant",
+      "metadata_valid",
       "constructor",
       "registry_present",
       "registry_fingerprint"
