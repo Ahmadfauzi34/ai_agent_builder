@@ -84,6 +84,13 @@
     "graph receipt binds the observed numerical reference through reference_fingerprint because mutable weights/state are intentionally excluded from programIdentity",
     "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization",
     "bound-subject graph receipts cannot relabel a graph whose exact programIdentity is absent from the workspace subject binding set",
-    "programIdentity exact comparison is authoritative for subject-program binding; FNV fingerprints remain correlation metadata only"
-  ]
+    "programIdentity exact comparison is authoritative for subject-program binding; FNV fingerprints remain correlation metadata only",
+    "transporting a verifier receipt into ResolutionEvidenceInbox preserves its verifier/reference authority and creates no Resolution state transition"
+  ],
+  "runtime_resolution_rejoin": {
+    "contract": "burn-research.runtime-resolution-evidence.v1",
+    "graph_receipt": "may be transported as wasm_verifier evidence without changing verifier authority",
+    "vector_receipt": "may be transported as wasm_comparator evidence and remains caller-supplied-reference authority",
+    "interpretation": "receipt pass/fail does not itself create ResolutionDiagnostic or transition ResolutionWorkflow"
+  }
 }
