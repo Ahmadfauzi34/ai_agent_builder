@@ -101,8 +101,7 @@
   },
   "future_extensions": {
     "structured_faults": "separate runtime/control failures from semantic ResolutionDiagnostic ambiguity",
-    "graph_description": "semantic graph projection without replacing canonical program identity",
-    "proof_provenance": "distinguish caller attestation from verifier-generated receipt"
+    "graph_description": "semantic graph projection without replacing canonical program identity"
   },
   "input_contract": {
     "capability": "inputContractCapabilities",
@@ -111,5 +110,13 @@
     "inspection": "workspaceInputContract",
     "compatibility": "inputContractCompatibility",
     "policy": "optional; unbound and unknown defer unless shape/layout proves incompatibility"
+  },
+  "proof_provenance": {
+    "capability": "proofProvenanceCapabilities",
+    "attestation": "workspaceRecordAttestation",
+    "vector_receipt": "workspaceVerifyVectorReceipt",
+    "graph_receipt": "workspaceVerifyGraphReceipt",
+    "ledger": "workspaceProofLedger",
+    "policy": "legacy recordProof, caller attestation, and verifier receipts remain distinct authority classes"
   }
 }
