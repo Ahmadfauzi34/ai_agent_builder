@@ -1,0 +1,1023 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-layer-catalog.v1",
+  "engine": "burn-research",
+  "role": "constructor_discovery",
+  "source_of_truth": {
+    "constructor_semantics": "AgentLayerSpec implementation",
+    "layout_semantics": "agentLayoutContract",
+    "execution_semantics": "LayerRegistry and Burn"
+  },
+  "policy": {
+    "signatures": "machine_readable_complete_for_advertised_AgentLayerSpec_constructors",
+    "fallible_meaning": "true means constructor performs validation and returns Result; false means it returns AgentLayerSpec directly",
+    "runtime_validation": "constructor success does not replace LayerRegistry/Burn runtime validation",
+    "layout_lookup": "use layout_contract_key against agentLayoutContract.constructors"
+  },
+  "constructors": {
+    "relu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "relu(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "relu"
+    },
+    "gelu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "gelu(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "gelu"
+    },
+    "sigmoid": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "sigmoid(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "sigmoid"
+    },
+    "tanh": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "tanh(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "tanh"
+    },
+    "hardSwish": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "hardSwish(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "hardSwish"
+    },
+    "leakyRelu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "leakyRelu(id,negative_slope)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "negative_slope",
+          "type": "f64",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "leakyRelu"
+    },
+    "prelu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "prelu(id,num_parameters,alpha)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "num_parameters",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "alpha",
+          "type": "f64",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "prelu"
+    },
+    "swiGlu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "swiGlu(id,d_input,d_output,bias)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "d_input",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "d_output",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "bias",
+          "type": "bool",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "swiGlu"
+    },
+    "hardSigmoid": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "hardSigmoid(id,alpha,beta)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "alpha",
+          "type": "f64",
+          "optional": false
+        },
+        {
+          "name": "beta",
+          "type": "f64",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "hardSigmoid"
+    },
+    "softplus": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "softplus(id,beta)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "beta",
+          "type": "f64",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "softplus"
+    },
+    "mish": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "mish(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "mish"
+    },
+    "softmax": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "softmax(id,dim)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "softmax"
+    },
+    "logSoftmax": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "logSoftmax(id,dim)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "logSoftmax"
+    },
+    "glu": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "glu(id,dim)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "glu"
+    },
+    "linear": {
+      "family": "linear",
+      "arity": 1,
+      "signature": "linear(id,in_dim,out_dim,bias)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "in_dim",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "out_dim",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "bias",
+          "type": "bool",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "linear"
+    },
+    "batchNorm": {
+      "family": "norm",
+      "arity": 1,
+      "signature": "batchNorm(id,num_features,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "num_features",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "batchNorm"
+    },
+    "groupNorm": {
+      "family": "norm",
+      "arity": 1,
+      "signature": "groupNorm(id,num_groups,num_channels,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "num_groups",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "num_channels",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "groupNorm"
+    },
+    "instanceNorm": {
+      "family": "norm",
+      "arity": 1,
+      "signature": "instanceNorm(id,num_channels,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "num_channels",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "instanceNorm"
+    },
+    "layerNorm": {
+      "family": "norm",
+      "arity": 1,
+      "signature": "layerNorm(id,size,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "size",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "layerNorm"
+    },
+    "rmsNorm": {
+      "family": "norm",
+      "arity": 1,
+      "signature": "rmsNorm(id,size,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "size",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "rmsNorm"
+    },
+    "conv1d": {
+      "family": "conv",
+      "arity": 1,
+      "signature": "conv1d(id,in_ch,out_ch,kernel,stride?,padding?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "in_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "out_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kernel",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "stride",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "padding",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "conv1d"
+    },
+    "conv2d": {
+      "family": "conv",
+      "arity": 1,
+      "signature": "conv2d(id,in_ch,out_ch,kh,kw,sh?,sw?,ph?,pw?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "in_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "out_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kh",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kw",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "sh",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "sw",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "ph",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "pw",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "conv2d"
+    },
+    "convTranspose2d": {
+      "family": "conv",
+      "arity": 1,
+      "signature": "convTranspose2d(id,in_ch,out_ch,kh,kw,sh?,sw?,ph?,pw?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "in_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "out_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kh",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kw",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "sh",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "sw",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "ph",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "pw",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "convTranspose2d"
+    },
+    "embedding": {
+      "family": "embedding",
+      "arity": 1,
+      "signature": "embedding(id,vocab_size,d_model)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "vocab_size",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "d_model",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "embedding"
+    },
+    "maxPool1d": {
+      "family": "pool",
+      "arity": 1,
+      "signature": "maxPool1d(id,kernel,stride?,padding?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kernel",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "stride",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "padding",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "maxPool1d"
+    },
+    "maxPool2d": {
+      "family": "pool",
+      "arity": 1,
+      "signature": "maxPool2d(id,kh,kw,sh?,sw?,ph?,pw?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kh",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kw",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "sh",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "sw",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "ph",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "pw",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "maxPool2d"
+    },
+    "avgPool1d": {
+      "family": "pool",
+      "arity": 1,
+      "signature": "avgPool1d(id,kernel,stride?,padding?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kernel",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "stride",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "padding",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "avgPool1d"
+    },
+    "avgPool2d": {
+      "family": "pool",
+      "arity": 1,
+      "signature": "avgPool2d(id,kh,kw,sh?,sw?,ph?,pw?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kh",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kw",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "sh",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "sw",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "ph",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "pw",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "avgPool2d"
+    },
+    "adaptiveAvgPool2d": {
+      "family": "pool",
+      "arity": 1,
+      "signature": "adaptiveAvgPool2d(id,output_h,output_w)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "output_h",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "output_w",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "adaptiveAvgPool2d"
+    },
+    "featureNorm": {
+      "family": "feature_norm",
+      "arity": 1,
+      "signature": "featureNorm(id,epsilon?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "epsilon",
+          "type": "Option<f64>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "featureNorm"
+    },
+    "shiftUp": {
+      "family": "shift",
+      "arity": 1,
+      "signature": "shiftUp(id,shift_size)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "shift_size",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "shiftUp"
+    },
+    "shiftDown": {
+      "family": "shift",
+      "arity": 1,
+      "signature": "shiftDown(id,shift_size)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "shift_size",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "shiftDown"
+    },
+    "shiftLeft": {
+      "family": "shift",
+      "arity": 1,
+      "signature": "shiftLeft(id,shift_size)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "shift_size",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "shiftLeft"
+    },
+    "shiftRight": {
+      "family": "shift",
+      "arity": 1,
+      "signature": "shiftRight(id,shift_size)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "shift_size",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "shiftRight"
+    },
+    "ghost": {
+      "family": "ghost",
+      "arity": 1,
+      "signature": "ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "in_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "out_ch",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kh",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "kw",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "ratio",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "sh",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "sw",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "ph",
+          "type": "Option<u32>",
+          "optional": true
+        },
+        {
+          "name": "pw",
+          "type": "Option<u32>",
+          "optional": true
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "ghost"
+    },
+    "seBlock": {
+      "family": "seblock",
+      "arity": 1,
+      "signature": "seBlock(id,channels,reduction)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "channels",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "reduction",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "seBlock"
+    },
+    "add": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "add(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "add"
+    },
+    "sub": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "sub(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "sub"
+    },
+    "mul": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "mul(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "mul"
+    },
+    "matmul": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "matmul(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "matmul"
+    },
+    "concat": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "concat(id,dim)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "concat"
+    }
+  }
+}

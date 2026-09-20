@@ -964,6 +964,26 @@ impl AgentGraphBuilder {
         layers.dedup();
         layers
     }
+
+    pub(crate) fn introspection_steps(&self) -> Vec<(u8, u8, u32, u8, u8, u8)> {
+        self.steps
+            .iter()
+            .map(|step| {
+                (
+                    step.arity,
+                    step.layer_type,
+                    step.layer_id,
+                    step.in_slot,
+                    step.in_slot2,
+                    step.out_slot,
+                )
+            })
+            .collect()
+    }
+
+    pub(crate) fn introspection_output_slot(&self) -> Option<u8> {
+        self.output_slot
+    }
 }
 
 #[wasm_bindgen]
@@ -1081,8 +1101,10 @@ pub(crate) fn capability_manifest() -> String {
             "\"purpose\":\"agent_math_coprocessor\",",
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\"}},",
+            "\"introspection\":\"introspectionCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
+            "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
             "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
@@ -1191,6 +1213,8 @@ mod tests {
         assert!(manifest.contains("\"graph_output\":\"CompiledGraph.verifyFlat\""));
         assert!(manifest.contains("\"compile\":\"LayerRegistry.compileGraph\""));
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
+        assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
+        assert!(manifest.contains("\"constructor_catalog\":\"agentLayerCatalog\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));
         assert!(manifest.contains("\"constructor_signatures\":{\"linear\""));

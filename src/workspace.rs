@@ -43,6 +43,23 @@ struct WorkspaceRow {
     value: String,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceSlotIntrospection {
+    pub(crate) slot: u8,
+    pub(crate) state: String,
+    pub(crate) owner: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct WorkspaceLayerIntrospection {
+    pub(crate) layer_id: u32,
+    pub(crate) state: String,
+    pub(crate) label: String,
+    pub(crate) layer_type: Option<u8>,
+    pub(crate) variant: Option<u8>,
+    pub(crate) metadata_valid: bool,
+}
+
 fn validate_text(
     value: &str,
     max_bytes: usize,
@@ -258,6 +275,107 @@ impl AgentWorkspace {
             .iter()
             .find(|row| row.table == TABLE_LAYERS && row.key == key)
             .map(|row| row.state.as_str())
+    }
+
+    pub(crate) fn introspection_slots(&self) -> Vec<WorkspaceSlotIntrospection> {
+        let mut slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS)
+            .filter_map(|row| {
+                row.key.parse::<u8>().ok().map(|slot| WorkspaceSlotIntrospection {
+                    slot,
+                    state: row.state.clone(),
+                    owner: row.value.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        slots.sort_by_key(|row| row.slot);
+        slots
+    }
+
+    pub(crate) fn introspection_layers(&self) -> Vec<WorkspaceLayerIntrospection> {
+        let mut layers = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_LAYERS)
+            .filter_map(|row| {
+                let layer_id = row.key.parse::<u32>().ok()?;
+                if row.state == "initialized" {
+                    let parsed = row
+                        .value
+                        .rsplit_once(";variant=")
+                        .and_then(|(before_variant, variant)| {
+                            before_variant
+                                .rsplit_once(";type=")
+                                .map(|(before_type, layer_type)| (before_type, layer_type, variant))
+                        });
+                    if let Some((before_type, layer_type, variant)) = parsed {
+                        let parsed_type = layer_type.parse::<u8>().ok();
+                        let parsed_variant = variant.parse::<u8>().ok();
+                        let label = before_type.strip_prefix("label=").unwrap_or(before_type);
+                        Some(WorkspaceLayerIntrospection {
+                            layer_id,
+                            state: row.state.clone(),
+                            label: label.to_string(),
+                            layer_type: parsed_type,
+                            variant: parsed_variant,
+                            metadata_valid: parsed_type.is_some() && parsed_variant.is_some(),
+                        })
+                    } else {
+                        Some(WorkspaceLayerIntrospection {
+                            layer_id,
+                            state: row.state.clone(),
+                            label: row.value.clone(),
+                            layer_type: None,
+                            variant: None,
+                            metadata_valid: false,
+                        })
+                    }
+                } else {
+                    Some(WorkspaceLayerIntrospection {
+                        layer_id,
+                        state: row.state.clone(),
+                        label: row.value.clone(),
+                        layer_type: None,
+                        variant: None,
+                        metadata_valid: true,
+                    })
+                }
+            })
+            .collect::<Vec<_>>();
+        layers.sort_by_key(|row| row.layer_id);
+        layers
+    }
+
+    pub(crate) fn introspection_proof_counts(&self) -> (usize, usize, usize) {
+        let mut passed = 0usize;
+        let mut failed = 0usize;
+        let mut other = 0usize;
+        for row in self.rows.iter().filter(|row| row.table == TABLE_PROOFS) {
+            match row.state.as_str() {
+                "passed" => passed += 1,
+                "failed" => failed += 1,
+                _ => other += 1,
+            }
+        }
+        (passed, failed, other)
+    }
+
+    pub(crate) fn introspection_event_count(&self) -> usize {
+        self.rows.iter().filter(|row| row.table == TABLE_EVENTS).count()
+    }
+
+    pub(crate) fn introspection_custom_tables(&self) -> Vec<String> {
+        let mut names = self
+            .rows
+            .iter()
+            .filter(|row| !row.table.starts_with(INTERNAL_PREFIX))
+            .map(|row| row.table.clone())
+            .collect::<Vec<_>>();
+        names.sort();
+        names.dedup();
+        names
     }
 
     fn slot_ids_with_state(&self, state: &str) -> Vec<u8> {
@@ -626,6 +744,26 @@ mod tests {
     use crate::agent::AgentLayerSpec;
     use crate::protocol::LAYER_ACTIVATION;
     use crate::registry::LayerRegistry;
+
+    #[test]
+    fn malformed_initialized_layer_metadata_remains_visible_to_introspection() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        workspace.rows.push(super::WorkspaceRow {
+            table: super::TABLE_LAYERS.to_string(),
+            key: "77".to_string(),
+            kind: "layer".to_string(),
+            state: "initialized".to_string(),
+            value: "broken-provenance".to_string(),
+        });
+
+        let layers = workspace.introspection_layers();
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0].layer_id, 77);
+        assert_eq!(layers[0].state, "initialized");
+        assert!(!layers[0].metadata_valid);
+        assert!(layers[0].layer_type.is_none());
+        assert!(layers[0].variant.is_none());
+    }
 
     #[test]
     fn custom_tables_are_data_driven_and_queryable() {
