@@ -102,7 +102,7 @@ fn structured_agent_fault_fields_rejoin_without_legacy_error_parsing() {
     )
     .unwrap();
 
-    assert_eq!(evidence.payload.authority(), "agent_fault_preflight");
+    assert_eq!(evidence.authority(), "agent_fault_preflight");
     assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
     assert!(inbox.record(evidence).unwrap());
 
