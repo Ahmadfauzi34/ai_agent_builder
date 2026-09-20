@@ -495,12 +495,14 @@ def run_rust_artifacts() -> dict:
 def main() -> None:
     python_result = run_python_artifacts()
     rust_result = run_rust_artifacts()
-    commit = run(["git", "rev-parse", "HEAD"], cwd=REPO).stdout.strip()
+    checkout_commit = run(["git", "rev-parse", "HEAD"], cwd=REPO).stdout.strip()
+    source_head_sha = os.environ.get("BR_SOURCE_HEAD_SHA", "").strip() or checkout_commit
 
     report = {
         "schema": "burn-research.runtime-architecture-artifact-proof.v1",
         "verdict": "PASS",
-        "commit": commit,
+        "source_head_sha": source_head_sha,
+        "checkout_commit": checkout_commit,
         "python_installed_wheel": python_result,
         "rust_external_package": rust_result,
         "boundaries": {
