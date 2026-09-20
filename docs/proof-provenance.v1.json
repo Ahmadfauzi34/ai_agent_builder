@@ -85,12 +85,12 @@
     "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization",
     "bound-subject graph receipts cannot relabel a graph whose exact programIdentity is absent from the workspace subject binding set",
     "programIdentity exact comparison is authoritative for subject-program binding; FNV fingerprints remain correlation metadata only",
-    "transporting a verifier receipt into ResolutionEvidenceInbox preserves its verifier/reference authority and creates no Resolution state transition"
+    "ResolutionEvidenceInbox preserves verifier/reference source labels but does not authenticate host-transported receipt fields or create Resolution state transitions"
   ],
   "runtime_resolution_rejoin": {
     "contract": "burn-research.runtime-resolution-evidence.v1",
-    "graph_receipt": "may be transported as wasm_verifier evidence without changing verifier authority",
-    "vector_receipt": "may be transported as wasm_comparator evidence and remains caller-supplied-reference authority",
-    "interpretation": "receipt pass/fail does not itself create ResolutionDiagnostic or transition ResolutionWorkflow"
+    "graph_receipt": "may be transported with source_authority=wasm_verifier, but ResolutionEvidenceInbox marks transport as host_structured_unverified and observation_only; the original runtime receipt remains authoritative",
+    "vector_receipt": "may be transported with source_authority=wasm_comparator and caller-supplied-reference semantics, but the inbox does not authenticate the host transport",
+    "interpretation": "receipt fields transported into the inbox are observations only; pass/fail does not create ResolutionDiagnostic or transition ResolutionWorkflow"
   }
 }
