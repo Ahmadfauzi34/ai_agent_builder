@@ -18,6 +18,8 @@ use crate::registry::LayerRegistry;
 use crate::workspace::{AgentWorkspace, WorkspaceLayerIntrospection};
 
 const LAYER_CATALOG_V1: &str = include_str!("../docs/agent-layer-catalog.v1.json");
+const INTROSPECTION_CONTRACT_V1: &str =
+    include_str!("../docs/agent-introspection-contract.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
@@ -118,6 +120,12 @@ fn layer_map(workspace: &AgentWorkspace) -> BTreeMap<u32, WorkspaceLayerIntrospe
         .into_iter()
         .map(|layer| (layer.layer_id, layer))
         .collect()
+}
+
+/// Return the semantic-introspection contract embedded in the WASM artifact.
+#[wasm_bindgen(js_name = introspectionCapabilities)]
+pub fn introspection_capabilities() -> String {
+    INTROSPECTION_CONTRACT_V1.to_string()
 }
 
 /// Return the complete typed AgentLayerSpec constructor catalog.
