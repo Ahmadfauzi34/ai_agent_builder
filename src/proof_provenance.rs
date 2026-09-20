@@ -251,11 +251,16 @@ pub fn workspace_verify_graph_receipt(
 ) -> Result<String, String> {
     validate_label(&label, "workspaceVerifyGraphReceipt")?;
 
+    let program_identity = graph.program_identity();
+    workspace.require_runtime_program_identity_if_bound(
+        &program_identity,
+        "workspaceVerifyGraphReceipt",
+    )?;
+
     let reference = graph.run(registry, input)?.to_array();
     let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
     let receipt_id = workspace.next_verifier_receipt_id();
 
-    let program_identity = graph.program_identity();
     let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
     let input_fingerprint = tensor_fingerprint(input);
     let reference_fingerprint = f32_fingerprint(&reference);
