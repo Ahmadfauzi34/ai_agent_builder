@@ -63,6 +63,13 @@
       "class": "canonical",
       "authority": "AgentGraphBuilder plus LayerRegistry",
       "projection_rule": "available when the builder has written outputs and all referenced layers exist in LayerRegistry"
+    },
+    "workspaceBindRuntimeSubject": {
+      "class": "optional_semantic_context",
+      "authority": "ResolutionRuntimeBridge host projection -> AgentWorkspace metadata",
+      "availability": "workspace unbound and canonical runtime layer/slot reservation has not started",
+      "effect": "bind exact intent/approval/subject/authorization-policy tuple; no LayerRegistry or graph mutation",
+      "lifecycle": "exact repeat is idempotent; different rebind is rejected"
     }
   },
   "conditional_rejoin_actions": {
@@ -99,7 +106,6 @@
       "returns": "point-in-time planning projection JSON"
     }
   },
-  "future_extensions": {},
   "input_contract": {
     "capability": "inputContractCapabilities",
     "binding": "workspaceBindInputContract",
