@@ -90,6 +90,7 @@ fn actions_json(
     let reserved_layers = workspace.interaction_reserved_layer_ids();
     let compile_slots = compile_candidates(builder, registry);
 
+    let runtime_subject_bound = workspace.runtime_subject_binding().is_some();
     let runtime_subject_bind_available = workspace.runtime_subject_bind_available();
     let reserve_layer_available = workspace.interaction_row_capacity_available();
     let reserve_slot_available = !free_slots.is_empty();
@@ -113,8 +114,10 @@ fn actions_json(
             "\"candidate_layer_ids\":{},\"input_slots\":{},\"requires\":[\"matching_unary_AgentLayerSpec\",\"free_output_slot\"]}},",
             "{{\"operation\":\"workspaceInitBinary\",\"class\":\"canonical\",\"available\":{},",
             "\"candidate_layer_ids\":{},\"input_slots\":{},\"requires\":[\"matching_binary_AgentLayerSpec\",\"free_output_slot\"]}},",
-            "{{\"operation\":\"workspaceCompile\",\"class\":\"canonical\",\"available\":{},",
-            "\"candidate_output_slots\":{},\"requires\":[\"registry_complete_for_builder\"]}}",
+            "{{\"operation\":\"workspaceCompileForRuntimeSubject\",\"class\":\"canonical_subject_bound\",\"available\":{},",
+            "\"candidate_output_slots\":{},\"requires\":[\"runtime_subject_bound\",\"registry_complete_for_builder\"]}},",
+            "{{\"operation\":\"workspaceCompile\",\"class\":\"legacy_escape_hatch\",\"available\":{},",
+            "\"candidate_output_slots\":{},\"note\":\"does not bind programIdentity; bound-subject graph receipts require a previously exact-bound identity\"}}",
             "]"
         ),
         bool_json(runtime_subject_bind_available),
@@ -129,6 +132,8 @@ fn actions_json(
         bool_json(init_available),
         u32_array_json(&reserved_layers),
         u8_array_json(&readable_slots),
+        bool_json(compile_available && runtime_subject_bound),
+        u8_array_json(&compile_slots),
         bool_json(compile_available),
         u8_array_json(&compile_slots),
     )
@@ -151,14 +156,14 @@ pub fn interaction_capabilities() -> String {
         "\"numerics\":\"Burn reference machine\"",
         "},",
         "\"availability_semantics\":\"at_least_one_argument_assignment_satisfies_known_state_predicates; per-spec and runtime predicates still apply\",",
-        "\"canonical_actions\":[\"reserveSlot\",\"releaseSlot\",\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceCompile\"],",
+        "\"canonical_actions\":[\"reserveSlot\",\"releaseSlot\",\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceCompileForRuntimeSubject when subject-bound\"],",
         "\"setup_actions\":[\"workspaceBindRuntimeSubject (optional semantic context)\",\"reserveLayerId\",\"AgentLayerSpec constructors\"],",
         "\"conditional_rejoin_actions\":[\"workspaceWireUnary\",\"workspaceWireBinary\"],",
         "\"introspection\":[\"introspectionCapabilities\",\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
         "\"input_contract\":\"inputContractCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
-        "\"escape_hatches\":[\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
+        "\"escape_hatches\":[\"workspaceCompile (unbound/legacy)\",\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],"
         "\"read_only_guarantee\":\"snapshot_and_valid_actions_do_not_mutate_inputs\"",
         "}"
     )
@@ -282,7 +287,8 @@ mod tests {
         assert!(snapshot.contains("\"runtime_subject\":{\"status\":\"unbound\"}"));
         assert!(snapshot.contains("\"operation\":\"workspaceBindRuntimeSubject\",\"class\":\"optional_semantic_context\",\"available\":true"));
         assert!(snapshot.contains("\"operation\":\"reserveLayerId\",\"class\":\"setup\",\"available\":true"));
-        assert!(snapshot.contains("\"operation\":\"workspaceCompile\",\"class\":\"canonical\",\"available\":false"));
+        assert!(snapshot.contains("\"operation\":\"workspaceCompileForRuntimeSubject\",\"class\":\"canonical_subject_bound\",\"available\":false"));
+        assert!(snapshot.contains("\"operation\":\"workspaceCompile\",\"class\":\"legacy_escape_hatch\",\"available\":false"));
     }
 
     #[test]
@@ -321,7 +327,8 @@ mod tests {
         let ready = interaction_snapshot(&workspace, &builder, &registry).unwrap();
         assert!(ready.contains("\"phase\":\"graph_ready\""));
         assert!(ready.contains(&format!("\"compile_candidate_slots\":[{out}]")));
-        assert!(ready.contains("\"operation\":\"workspaceCompile\",\"class\":\"canonical\",\"available\":true"));
+        assert!(ready.contains("\"operation\":\"workspaceCompileForRuntimeSubject\",\"class\":\"canonical_subject_bound\",\"available\":false"));
+        assert!(ready.contains("\"operation\":\"workspaceCompile\",\"class\":\"legacy_escape_hatch\",\"available\":true"));
     }
 
     #[test]
