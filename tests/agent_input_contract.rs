@@ -109,7 +109,7 @@ fn valid_shape_unknown_layout_remains_allowed_but_not_overclaimed() {
         compatibility["status"],
         "shape_compatible_layout_unknown"
     );
-    assert_eq!(compatibility["compatible"], true);
+    assert!(compatibility["compatible"].is_null());
 
     let output = workspace_init_unary(
         &mut workspace,
