@@ -83,10 +83,12 @@ fn run() -> Result<(), String> {
         "candidate mismatch",
     )?;
     ensure(
-        verifier.authority() == "wasm_verifier"
+        verifier.source_authority() == "wasm_verifier"
+            && verifier.evidence_authority() == "observation_only"
+            && verifier.transport_integrity() == "host_structured_unverified"
             && verifier.outcome() == "failed"
             && verifier.kind() == "graph_verifier_receipt",
-        "graph verifier authority/outcome drift",
+        "graph verifier source-authority/transport semantics drift",
     );
     ensure(inbox.record(verifier)?, "graph verifier evidence was not recorded");
     ensure(
@@ -187,7 +189,8 @@ fn run() -> Result<(), String> {
             "\"status\":\"passed\",",
             "\"forward_projection_match\":true,",
             "\"agent_fault_rejoin\":true,",
-            "\"verifier_authority_preserved\":true,",
+            "\"verifier_source_authority_preserved\":true,",
+            "\"transport_observation_only\":true,",
             "\"resolution_state_unchanged\":true,",
             "\"stale_revision_rejected\":true,",
             "\"foreign_subject_rejected\":true,",
