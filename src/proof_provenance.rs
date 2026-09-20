@@ -273,6 +273,7 @@ pub fn workspace_verify_graph_receipt(
             "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
             "\"program_identity\":{},",
             "\"program_identity_fingerprint\":\"{}\",",
+            "\"mutable_state_in_program_identity\":false,",
             "\"input_fingerprint\":\"{}\",",
             "\"reference_fingerprint\":\"{}\",",
             "\"candidate_fingerprint\":\"{}\",",
