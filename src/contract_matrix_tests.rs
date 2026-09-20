@@ -542,6 +542,45 @@ fn run_negative_case(case: &MatrixCase) {
             );
             assert_eq!(registry.total_params(), before_params);
         }
+        ("workspaceCompileForRuntimeSubject", "control_domain.slot_count_match") => {
+            let mut workspace = AgentWorkspace::new(2).unwrap();
+            workspace_bind_runtime_subject(
+                &mut workspace,
+                "matrix-intent".into(),
+                1,
+                "matrix-approval".into(),
+                "effective-spec".into(),
+                "matrix-subject".into(),
+                "matrix-policy".into(),
+                1,
+                false,
+            )
+            .unwrap();
+
+            let mut registry = LayerRegistry::new();
+            let spec = AgentLayerSpec::relu(95);
+            registry.init_agent_layer(&spec).unwrap();
+            let mut builder = AgentGraphBuilder::new(3).unwrap();
+            builder.add_unary(&spec, 0, 1).unwrap();
+
+            let before_workspace = workspace.snapshot();
+            let before_steps = builder.num_steps();
+            let before_params = registry.total_params();
+            assert!(workspace_compile_for_runtime_subject(
+                &mut workspace,
+                &builder,
+                &registry,
+                1,
+            )
+            .is_err());
+            assert_workspace_and_builder_unchanged(
+                &workspace,
+                &builder,
+                &before_workspace,
+                before_steps,
+            );
+            assert_eq!(registry.total_params(), before_params);
+        }
         ("workspaceCompileForRuntimeSubject", "builder.output_written") => {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             workspace_bind_runtime_subject(
