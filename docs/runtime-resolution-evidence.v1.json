@@ -33,7 +33,10 @@
     "max_entries": 64,
     "duplicate": "exact duplicate is idempotent",
     "mismatch": "classified and rejected from inbox",
-    "evidence_order": "append-only within the bounded inbox"
+    "evidence_order": "append-only within the bounded inbox",
+    "canonical_constructor": "ResolutionEvidenceInbox::from_authorized(resolution, approved_spec, current_policy, authorization) re-runs RuntimeSubjectProjection::from_authorized before creating the inbox",
+    "lower_level_constructor": "ResolutionEvidenceInbox::new(resolution, projection) is an escape hatch for hosts that already validated the projection",
+    "authorization_freshness": "canonical construction fails closed when the authorization snapshot is stale for the current policy"
   },
   "interpretation_policy": {
     "automatic_diagnostic_creation": false,
@@ -58,13 +61,16 @@
     "vector comparator evidence remains explicitly caller-reference authority",
     "the inbox is bounded and duplicate insertion is idempotent",
     "graph verifier observation retains transported exact programIdentity provenance without claiming to authenticate the receipt",
-    "all reverse-bridge entries are observation_only; source_authority does not become native inbox proof authority"
+    "all reverse-bridge entries are observation_only; source_authority does not become native inbox proof authority",
+    "canonical inbox construction revalidates approval/subject/current authorization policy through RuntimeSubjectProjection::from_authorized",
+    "lower-level projection construction does not claim to reauthenticate a caller-supplied RuntimeSubjectProjection"
   ],
   "audit_artifacts": {
     "native_probe": {
       "artifact_name": "runtime-resolution-evidence-native-probe",
       "executable": "runtime_resolution_evidence_probe",
       "proves": [
+        "canonical inbox creation revalidates the real approved+authorized forward bridge",
         "actual forward RuntimeSubjectProjection matches the compile-eligible ResolutionSnapshot",
         "structured AgentFault can rejoin as observation without becoming ResolutionDiagnostic",
         "graph verifier source-authority/outcome is preserved while transport remains observation_only and unverified",
