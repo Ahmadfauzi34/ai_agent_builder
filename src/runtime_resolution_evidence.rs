@@ -177,7 +177,7 @@ impl RuntimeEvidencePayload {
                     "\"kind\":\"agent_fault\",",
                     "\"evidence_authority\":\"observation_only\",",
                     "\"source_authority\":\"agent_fault_preflight\",",
-                    "\"transport_integrity\":\"host_structured_unverified\","
+                    "\"transport_integrity\":\"host_structured_unverified\",",
                     "\"outcome\":\"fault\",",
                     "\"code\":\"{}\",",
                     "\"class\":\"{}\",",
@@ -729,7 +729,7 @@ mod tests {
             subject_identity: subject_identity.to_string(),
             effective_spec_schema: "burn-research.effective-spec.v1".to_string(),
             effective_spec_identity: subject_identity.to_string(),
-            authorization_schema: "burn-research.authorization-snapshot.v1".to_string(),
+            authorization_schema: "burn-research.authorization.v1".to_string(),
             authorization_policy_id: "policy".to_string(),
             authorization_policy_revision: 3,
             authorization_is_revision: false,
