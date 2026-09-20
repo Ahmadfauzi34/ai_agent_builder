@@ -260,15 +260,33 @@ impl AgentWorkspace {
         self.runtime_subject_binding.as_ref()
     }
 
-    pub(crate) fn set_runtime_subject_binding(
+    pub(crate) fn bind_runtime_subject_binding(
         &mut self,
         binding: WorkspaceRuntimeSubjectBinding,
-    ) {
-        self.runtime_subject_binding = Some(binding);
-    }
+    ) -> Result<bool, String> {
+        if let Some(existing) = &self.runtime_subject_binding {
+            if existing == &binding {
+                return Ok(false);
+            }
+            return Err(
+                "AgentWorkspace: runtime subject binding is immutable for the workspace lifetime"
+                    .to_string(),
+            );
+        }
 
-    pub(crate) fn clear_runtime_subject_binding_internal(&mut self) -> bool {
-        self.runtime_subject_binding.take().is_some()
+        let has_layer_state = self.rows.iter().any(|row| row.table == TABLE_LAYERS);
+        let has_reserved_runtime_slot = self.rows.iter().any(|row| {
+            row.table == TABLE_SLOTS && row.key != "0" && row.state != "free"
+        });
+        if has_layer_state || has_reserved_runtime_slot {
+            return Err(
+                "AgentWorkspace: bind runtime subject before reserving runtime layers or slots"
+                    .to_string(),
+            );
+        }
+
+        self.runtime_subject_binding = Some(binding);
+        Ok(true)
     }
 
     pub(crate) fn interaction_row_capacity_available(&self) -> bool {
