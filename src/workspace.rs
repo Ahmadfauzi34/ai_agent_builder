@@ -746,8 +746,23 @@ impl AgentWorkspace {
             .iter()
             .filter(|row| row.table == TABLE_SLOTS && row.state == "free")
             .count();
+        let input_contract = self
+            .input_contract
+            .as_ref()
+            .map(|contract| {
+                format!(
+                    "{{\"shape\":[{},{},{},{}],\"layout\":\"{}\",\"semantics\":\"{}\"}}",
+                    contract.shape[0],
+                    contract.shape[1],
+                    contract.shape[2],
+                    contract.shape[3],
+                    json_escape(&contract.layout),
+                    json_escape(&contract.semantics),
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
@@ -755,6 +770,7 @@ impl AgentWorkspace {
             count(TABLE_EVENTS),
             custom_tables,
             self.rows.len(),
+            input_contract,
         )
     }
 }
