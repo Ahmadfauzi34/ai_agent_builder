@@ -1,6 +1,6 @@
 # Python Host Layer v1
 
-Status: **proven first-class host surface on the installed-wheel support slice**
+Status: **proven verified external host surface on the installed-wheel support slice**
 
 Related: #184, #186, #188, #190, #192, #194, #196, #198, #199, #200, #203, #204, #205, #206, #207
 
@@ -18,11 +18,11 @@ Rust reference machine
     -> Python-owned datasets / objectives / scheduling / applications
 ```
 
-Python is a first-class host surface. It is **not** part of the Rust core and it does not reverse the dependency direction.
+Python is a verified external host surface. It is **not** part of the Rust core, is not the primary runtime, and does not reverse the dependency direction.
 
 ## Public namespace
 
-The primary typed Python host namespace is:
+The public typed Python host namespace is:
 
 ```python
 from burn_research_ffi import host
@@ -101,7 +101,7 @@ This is **not** a second native ABI. `br_v1_*` remains unchanged.
 
 ## Parameter candidate transport
 
-The host namespace re-exports `GraphParameterBinding` from the typed facade, so the stateless f32 candidate fast path proven in #196 and implemented in #200 is available through the first-class host API without adding another layer or API family.
+The host namespace re-exports `GraphParameterBinding` from the typed facade, so the stateless f32 candidate fast path proven in #196 and implemented in #200 is available through the verified Python host API without adding another layer or API family.
 
 For a compatible native-f32 buffer, the transport path is:
 
@@ -161,7 +161,7 @@ Research #205/#206 measured why the additive path is justified at representative
 
 ## Installed-wheel proof
 
-The supported Python claim requires a wheel installed into a fresh venv outside the repository checkout.
+The supported Python claim requires a wheel installed into a fresh venv outside the repository checkout. The Python interpreter is an external runtime requirement and is not bundled by the support claim.
 
 `scripts/audit_python_wheel.py` uses `burn_research_ffi.host` for the main workload and proves:
 
@@ -207,3 +207,18 @@ Python transport optimization
 ```
 
 The current additive `ask_f32()` path closes the measured optimizer candidate-materialization bottleneck without changing the reference-machine boundary.
+
+## Communication path
+
+Python does not communicate through the generated WASM surface. Its verified path is:
+
+```text
+Python application
+    -> burn_research_ffi.host
+    -> typed facade
+    -> CFFI
+    -> burn-research.ffi.v1
+    -> Rust reference machine
+```
+
+See [WASM host communication](wasm-host-communication.md) for the cross-host boundary and failure-classification rules.
