@@ -8,8 +8,8 @@
     "resolution_state": "ResolutionWorkflow / ResolutionSnapshot",
     "semantic_subject": "RuntimeSubjectProjection from the approved+authorized forward bridge",
     "agent_fault": "runtime preflight observation only; not semantic diagnosis and not numerical proof",
-    "graph_verifier": "WASM verifier evidence over an exact subject-bound CompiledGraph program identity",
-    "vector_verifier": "WASM comparator evidence relative to caller-supplied reference",
+    "graph_verifier": "source-authority label transported from a structured graph verifier receipt; the inbox itself does not authenticate the receipt",
+    "vector_verifier": "source-authority label transported from a structured vector comparator receipt; the inbox itself does not authenticate the receipt",
     "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action"
   },
   "native_types": {
@@ -44,17 +44,21 @@
   },
   "transport_boundary": {
     "note": "The bridge does not parse arbitrary legacy error strings. Hosts should transport already-structured AgentFault fields or verifier-receipt fields into the typed constructors.",
-    "authority_preservation": "Evidence authority is derived from the typed payload variant; a fault cannot become verifier authority merely by changing a string field.",
-    "unbound_runtime": "representable but cannot be rejoined into a subject-bound ResolutionEvidenceInbox"
+    "authority_preservation": "The typed payload variant fixes the source-authority class and prevents string-based class escalation, but the native inbox does not independently authenticate that host-supplied receipt fields came from WASM.",
+    "unbound_runtime": "representable but cannot be rejoined into a subject-bound ResolutionEvidenceInbox",
+    "transport_integrity": "host_structured_unverified",
+    "evidence_authority": "observation_only",
+    "runtime_authority": "The original verifier receipt in the runtime/proof boundary remains the authoritative verification artifact."
   },
   "invariants": [
     "runtime evidence never mutates ResolutionWorkflow",
     "failed verifier evidence is an observation, not an automatic ResolutionDiagnostic",
     "AgentFault remains distinct from ResolutionDiagnostic",
     "stale or foreign runtime evidence cannot enter an inbox for another Resolution revision or subject",
-    "graph verifier evidence retains exact programIdentity as provenance",
     "vector comparator evidence remains explicitly caller-reference authority",
-    "the inbox is bounded and duplicate insertion is idempotent"
+    "the inbox is bounded and duplicate insertion is idempotent",
+    "graph verifier observation retains transported exact programIdentity provenance without claiming to authenticate the receipt",
+    "all reverse-bridge entries are observation_only; source_authority does not become native inbox proof authority"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -63,7 +67,7 @@
       "proves": [
         "actual forward RuntimeSubjectProjection matches the compile-eligible ResolutionSnapshot",
         "structured AgentFault can rejoin as observation without becoming ResolutionDiagnostic",
-        "graph verifier authority/outcome remains verifier evidence",
+        "graph verifier source-authority/outcome is preserved while transport remains observation_only and unverified",
         "Resolution state remains unchanged after evidence recording",
         "stale revision, foreign subject, and unbound evidence are rejected",
         "duplicate evidence is idempotent",
