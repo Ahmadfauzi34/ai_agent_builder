@@ -4,7 +4,9 @@ use burn_research::effective_spec::{
     ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration,
 };
 use burn_research::introspection::{describe_graph, describe_workspace};
-use burn_research::proof_provenance::workspace_verify_graph_receipt;
+use burn_research::proof_provenance::{
+    workspace_record_attestation, workspace_verify_graph_receipt,
+};
 use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::{
     bind_runtime_subject_projection, resolution_runtime_bridge_capabilities,
@@ -264,6 +266,28 @@ fn late_binding_after_runtime_reservation_is_rejected_without_mutation() {
 
     let error = bind_runtime_subject_projection(&mut workspace, &projection).unwrap_err();
     assert!(error.contains("before reserving runtime layers or slots"));
+    assert_eq!(workspace.snapshot(), before);
+    assert!(workspace_runtime_subject(&workspace).contains("\"status\":\"unbound\""));
+}
+
+#[test]
+fn binding_after_proof_state_is_rejected_without_relabeling_evidence() {
+    let (approved, policy, authorization) = fixture();
+    let projection =
+        RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
+    let mut workspace = AgentWorkspace::new(2).unwrap();
+
+    workspace_record_attestation(
+        &mut workspace,
+        "pre-bind-claim".into(),
+        true,
+        "legacy unbound context".into(),
+    )
+    .unwrap();
+    let before = workspace.snapshot();
+
+    let error = bind_runtime_subject_projection(&mut workspace, &projection).unwrap_err();
+    assert!(error.contains("recording proof evidence"));
     assert_eq!(workspace.snapshot(), before);
     assert!(workspace_runtime_subject(&workspace).contains("\"status\":\"unbound\""));
 }
