@@ -1012,7 +1012,10 @@ impl AgentWorkspace {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentWorkspace, MAX_VALUE_BYTES};
+    use super::{
+        AgentWorkspace, WorkspaceRuntimeSubjectBinding, MAX_RUNTIME_PROGRAM_BINDINGS,
+        MAX_RUNTIME_PROGRAM_IDENTITY_BYTES, MAX_VALUE_BYTES,
+    };
     use crate::agent::AgentLayerSpec;
     use crate::protocol::LAYER_ACTIVATION;
     use crate::registry::LayerRegistry;
@@ -1207,4 +1210,64 @@ mod tests {
         assert!(workspace.query("_proofs".into(), None, Some("failed".into())).contains("0.25"));
         assert!(workspace.query("_events".into(), Some("candidate".into()), None).contains("python-a"));
     }
+
+    fn bind_test_runtime_subject(workspace: &mut AgentWorkspace) {
+        workspace
+            .bind_runtime_subject_binding(WorkspaceRuntimeSubjectBinding {
+                intent_id: "intent".to_string(),
+                workflow_revision: 1,
+                approval_id: "approval".to_string(),
+                subject_kind: "effective-spec".to_string(),
+                subject_identity: "spec".to_string(),
+                authorization_policy_id: "policy".to_string(),
+                authorization_policy_revision: 1,
+                authorization_is_revision: false,
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn runtime_program_bindings_are_exact_deduplicated_and_bounded() {
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+        bind_test_runtime_subject(&mut workspace);
+
+        assert!(workspace
+            .bind_runtime_program_identity("program-0".to_string())
+            .unwrap());
+        assert!(!workspace
+            .bind_runtime_program_identity("program-0".to_string())
+            .unwrap());
+        assert_eq!(workspace.runtime_program_binding_count(), 1);
+
+        for index in 1..MAX_RUNTIME_PROGRAM_BINDINGS {
+            assert!(workspace
+                .bind_runtime_program_identity(format!("program-{index}"))
+                .unwrap());
+        }
+        assert_eq!(
+            workspace.runtime_program_binding_count(),
+            MAX_RUNTIME_PROGRAM_BINDINGS
+        );
+
+        let before = workspace.snapshot();
+        let error = workspace
+            .bind_runtime_program_identity("overflow".to_string())
+            .unwrap_err();
+        assert!(error.contains("binding limit"));
+        assert_eq!(workspace.snapshot(), before);
+    }
+
+    #[test]
+    fn oversized_runtime_program_identity_is_rejected_without_mutation() {
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+        bind_test_runtime_subject(&mut workspace);
+        let before = workspace.snapshot();
+
+        let error = workspace
+            .bind_runtime_program_identity("x".repeat(MAX_RUNTIME_PROGRAM_IDENTITY_BYTES + 1))
+            .unwrap_err();
+        assert!(error.contains("exceeds limit"));
+        assert_eq!(workspace.snapshot(), before);
+    }
+
 }
