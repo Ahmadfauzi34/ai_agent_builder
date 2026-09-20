@@ -77,7 +77,13 @@
       "authority": "AgentGraphBuilder + LayerRegistry compile, then AgentWorkspace exact programIdentity binding",
       "availability": "runtime subject bound and normal compile candidates exist",
       "success": "returns CompiledGraph and records exact programIdentity idempotently",
-      "failure": "no program binding mutation when compile/binding fails"
+      "failure": "controlled error with no program-binding mutation; builder/registry remain reusable",
+      "requires": [
+        "runtime_subject_bound",
+        "workspace_builder_slot_domain_match",
+        "registry_complete_for_builder",
+        "runtime_program_binding_admissible"
+      ]
     }
   },
   "conditional_rejoin_actions": {
