@@ -964,6 +964,26 @@ impl AgentGraphBuilder {
         layers.dedup();
         layers
     }
+
+    pub(crate) fn introspection_steps(&self) -> Vec<(u8, u8, u32, u8, u8, u8)> {
+        self.steps
+            .iter()
+            .map(|step| {
+                (
+                    step.arity,
+                    step.layer_type,
+                    step.layer_id,
+                    step.in_slot,
+                    step.in_slot2,
+                    step.out_slot,
+                )
+            })
+            .collect()
+    }
+
+    pub(crate) fn introspection_output_slot(&self) -> Option<u8> {
+        self.output_slot
+    }
 }
 
 #[wasm_bindgen]
