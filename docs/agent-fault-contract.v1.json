@@ -103,6 +103,7 @@
   "runtime_resolution_rejoin": {
     "contract": "burn-research.runtime-resolution-evidence.v1",
     "policy": "structured AgentFault fields may be transported as agent_fault_preflight evidence, but remain distinct from ResolutionDiagnostic and never create one automatically",
-    "authority": "preflight observation only; not numerical proof"
+    "authority": "source_authority=agent_fault_preflight with evidence_authority=observation_only and transport_integrity=host_structured_unverified; not numerical proof and not ResolutionDiagnostic authority",
+    "authentication": "ResolutionEvidenceInbox does not independently authenticate host-transported fault fields; structured runtime surface remains the original source."
   }
 }
