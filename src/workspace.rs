@@ -746,6 +746,26 @@ mod tests {
     use crate::registry::LayerRegistry;
 
     #[test]
+    fn malformed_initialized_layer_metadata_remains_visible_to_introspection() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        workspace.rows.push(super::WorkspaceRow {
+            table: super::TABLE_LAYERS.to_string(),
+            key: "77".to_string(),
+            kind: "layer".to_string(),
+            state: "initialized".to_string(),
+            value: "broken-provenance".to_string(),
+        });
+
+        let layers = workspace.introspection_layers();
+        assert_eq!(layers.len(), 1);
+        assert_eq!(layers[0].layer_id, 77);
+        assert_eq!(layers[0].state, "initialized");
+        assert!(!layers[0].metadata_valid);
+        assert!(layers[0].layer_type.is_none());
+        assert!(layers[0].variant.is_none());
+    }
+
+    #[test]
     fn custom_tables_are_data_driven_and_queryable() {
         let mut workspace = AgentWorkspace::new(4).unwrap();
         workspace
