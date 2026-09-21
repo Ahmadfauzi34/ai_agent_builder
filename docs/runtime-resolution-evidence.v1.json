@@ -10,11 +10,12 @@
     "agent_fault": "runtime preflight observation only; not semantic diagnosis and not numerical proof",
     "graph_verifier": "source-authority label transported from a structured graph verifier receipt; the inbox itself does not authenticate the receipt",
     "vector_verifier": "source-authority label transported from a structured vector comparator receipt; the inbox itself does not authenticate the receipt",
-    "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action"
+    "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action",
+    "math_program_verifier": "source-authority label transported from a structured MathProgram verifier receipt; original runtime receipt remains authoritative and inbox transport remains observation_only"
   },
   "native_types": {
     "RuntimeEvidenceSubject": "exact intent/revision/approval/subject/authorization-policy tuple",
-    "RuntimeEvidence": "typed AgentFault, graph-verifier, or vector-verifier observation",
+    "RuntimeEvidence": "typed AgentFault, graph-verifier, MathProgram-verifier, or vector-verifier observation",
     "ResolutionEvidenceInbox": "bounded evidence collection tied to one compile-eligible ResolutionSnapshot and one exact RuntimeSubjectProjection",
     "RejoinStatus": [
       "exact",
@@ -66,7 +67,10 @@
     "lower-level projection construction does not claim to reauthenticate a caller-supplied RuntimeSubjectProjection",
     "structured adapters validate the source schema and authority tuple before selecting a RuntimeEvidence payload class",
     "verifier adapter detail is derived from the structured result object rather than synthesized free-form host text",
-    "source-only receipt fields remain authoritative in the original runtime receipt and are intentionally not promoted into Resolution authority"
+    "source-only receipt fields remain authoritative in the original runtime receipt and are intentionally not promoted into Resolution authority",
+    "MathProgram verifier observation preserves verifier=MathProgram.verifyFlat and reference_authority=burn_math_program without upgrading inbox transport into proof authority",
+    "MathProgram receipt program_identity.schema must be burn-research.math-program-identity.v1; graph program identities cannot cross the adapter class boundary",
+    "graph/vector/MathProgram adapters are authority-class-specific and fail closed on cross-class receipt tuples"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -81,7 +85,8 @@
         "stale revision, foreign subject, and unbound evidence are rejected",
         "duplicate evidence is idempotent",
         "inbox capacity is bounded at 64 entries",
-        "structured AgentFault and verifier receipt JSON are adapted without manual host field mapping"
+        "structured AgentFault and verifier receipt JSON are adapted without manual host field mapping",
+        "structured MathProgram verifier receipt can rejoin the exact subject as observation-only evidence without changing Resolution state"
       ]
     },
     "wasm_package": {
@@ -91,7 +96,17 @@
         "reverse bridge state is not owned by WASM"
       ]
     },
-    "acceptance": "run downloaded exact-head native probe and packaged WASM capability surface outside CI"
+    "acceptance": "run downloaded exact-head native probe, pipe an actual packaged-WASM MathProgram verifier receipt into the downloaded native adapter probe, and inspect packaged WASM capability surface outside CI",
+    "native_adapter_probe": {
+      "artifact_name": "runtime-resolution-evidence-adapter-probe",
+      "executable": "runtime_resolution_evidence_adapter_probe",
+      "input": "one actual MathProgram verifier receipt JSON object on stdin",
+      "proves": [
+        "actual cross-artifact receipt can be parsed by RuntimeEvidence::from_math_program_verifier_receipt_json",
+        "kind/source_authority/evidence_authority/transport_integrity/outcome are derived by the typed adapter",
+        "runtime subject tuple is read from the actual receipt rather than manually reconstructed"
+      ]
+    }
   },
   "structured_adapters": {
     "agent_fault": {
@@ -169,6 +184,36 @@
       ],
       "authority": "wasm_comparator source label / observation_only transport"
     },
-    "class_escalation": "fail closed when source authority/verifier/reference-authority fields do not match the selected adapter"
+    "class_escalation": "fail closed when source authority/verifier/reference-authority fields do not match the selected adapter",
+    "math_program_verifier_receipt": {
+      "constructor": "RuntimeEvidence::from_math_program_verifier_receipt_json",
+      "source_schema": "burn-research.verifier-receipt.v1",
+      "subject_source": "receipt.runtime_subject",
+      "validated": [
+        "authority=wasm_verifier",
+        "verifier=MathProgram.verifyFlat",
+        "reference_authority=burn_math_program",
+        "program_identity.schema=burn-research.math-program-identity.v1"
+      ],
+      "projected_fields": [
+        "receipt_id",
+        "label",
+        "program_identity",
+        "result.passed"
+      ],
+      "detail_projection": "serialized receipt.result object",
+      "source_only_fields": [
+        "program_plan_version",
+        "input_count",
+        "fingerprint_algorithm",
+        "program_identity_fingerprint",
+        "mutable_state_in_program_identity",
+        "input_fingerprint",
+        "reference_fingerprint",
+        "candidate_fingerprint",
+        "tolerances"
+      ],
+      "authority": "wasm_verifier source label / burn_math_program reference / observation_only transport"
+    }
   }
 }
