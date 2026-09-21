@@ -1185,8 +1185,10 @@ pub fn workspace_proof_ledger(workspace: &AgentWorkspace) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        math_proof_capabilities, workspace_bind_runtime_math_program_plan, workspace_proof_ledger,
-        workspace_record_attestation, workspace_verify_graph_receipt,
+        math_proof_capabilities, workspace_bind_runtime_direct_math_operation,
+        workspace_bind_runtime_math_program_plan, workspace_proof_ledger,
+        workspace_record_attestation, workspace_verify_direct_math_1_receipt,
+        workspace_verify_direct_math_2_receipt, workspace_verify_graph_receipt,
         workspace_verify_math_program_1_receipt, workspace_verify_math_program_2_receipt,
         workspace_verify_vector_receipt,
     };
@@ -1504,6 +1506,252 @@ mod tests {
             0.0,
             0.0,
             "good".into(),
+        )
+        .unwrap();
+        assert!(good.contains("\"receipt_id\":1"));
+    }
+
+    #[test]
+    fn direct_math_receipt_executes_direct_and_v9_reference_without_caller_reference() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let lhs = WasmTensor::new(&[1.0, 2.0], &[1, 2, 1, 1]);
+        let rhs = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
+
+        let receipt = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "numeric.add".into(),
+            &lhs,
+            &rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "direct-add".into(),
+        )
+        .unwrap();
+
+        assert!(receipt.contains("\"authority\":\"wasm_verifier\""));
+        assert!(receipt.contains("\"verifier\":\"DirectMath.verifyAgainstMathProgramV9\""));
+        assert!(receipt.contains("\"reference_authority\":\"burn_math_program\""));
+        assert!(receipt.contains("\"candidate_authority\":\"burn_direct_math\""));
+        assert!(receipt.contains("\"operation_id\":\"numeric.add\""));
+        assert!(receipt.contains("\"reference_program_generation\":\"v9\""));
+        assert!(receipt.contains("\"passed\":true"));
+
+        let ledger = workspace_proof_ledger(&workspace);
+        assert!(ledger.contains("DirectMath.verifyAgainstMathProgramV9"));
+        assert!(ledger.contains("\"state\":\"passed\""));
+    }
+
+    #[test]
+    fn subject_bound_direct_math_requires_exact_generated_reference_binding() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        workspace_bind_runtime_subject(
+            &mut workspace,
+            "intent-direct-proof".into(),
+            5,
+            "approval-direct-proof".into(),
+            "effective-spec".into(),
+            "spec-direct-proof".into(),
+            "policy-direct-proof".into(),
+            8,
+            false,
+        )
+        .unwrap();
+
+        let lhs = WasmTensor::new(&[1.0, 2.0], &[1, 2, 1, 1]);
+        let rhs = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
+
+        let before_error = workspace_proof_ledger(&workspace);
+        let error = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "numeric.add".into(),
+            &lhs,
+            &rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "before-bind".into(),
+        )
+        .unwrap_err();
+        assert!(error.contains("workspaceBindRuntimeDirectMathOperation"));
+        assert_eq!(workspace_proof_ledger(&workspace), before_error);
+
+        let binding = workspace_bind_runtime_direct_math_operation(
+            &mut workspace,
+            "numeric.add".into(),
+            &[1, 2, 1, 1],
+            &[1, 2, 1, 1],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(binding.contains("\"identity_source\":\"canonical_operation_to_math_program_v9\""));
+        assert!(binding.contains("\"newly_bound\":true"));
+
+        let repeat = workspace_bind_runtime_direct_math_operation(
+            &mut workspace,
+            "numeric.add".into(),
+            &[1, 2, 1, 1],
+            &[1, 2, 1, 1],
+            &[],
+            &[],
+        )
+        .unwrap();
+        assert!(repeat.contains("\"newly_bound\":false"));
+
+        let receipt = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "numeric.add".into(),
+            &lhs,
+            &rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "after-bind".into(),
+        )
+        .unwrap();
+        assert!(receipt.contains("\"runtime_subject\":{\"status\":\"bound\""));
+        assert!(receipt.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn direct_cosine_verification_requires_explicit_epsilon_without_consuming_receipt() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let lhs = WasmTensor::new(&[1.0, 0.0], &[1, 2, 1, 1]);
+        let rhs = WasmTensor::new(&[1.0, 0.0], &[1, 2, 1, 1]);
+
+        assert!(workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "linalg.cosine_similarity".into(),
+            &lhs,
+            &rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "missing-epsilon".into(),
+        )
+        .is_err());
+
+        let receipt = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "linalg.cosine_similarity".into(),
+            &lhs,
+            &rhs,
+            &[],
+            &[1e-6],
+            0.0,
+            0.0,
+            "explicit-epsilon".into(),
+        )
+        .unwrap();
+        assert!(receipt.contains("\"receipt_id\":1"));
+        assert!(receipt.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn parameterized_direct_math_paths_cover_v4_v8_v9_semantics() {
+        let mut workspace = AgentWorkspace::new(4).unwrap();
+
+        let select_input =
+            WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
+        let select = workspace_verify_direct_math_1_receipt(
+            &mut workspace,
+            "tensor.select_axis".into(),
+            &select_input,
+            &[1, 2, 0],
+            &[],
+            0.0,
+            0.0,
+            "select-axis".into(),
+        )
+        .unwrap();
+        assert!(select.contains("\"passed\":true"));
+
+        let reduction_input =
+            WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 2, 2, 1]);
+        let reduction = workspace_verify_direct_math_1_receipt(
+            &mut workspace,
+            "reduction.mean_axis".into(),
+            &reduction_input,
+            &[2],
+            &[],
+            0.0,
+            0.0,
+            "mean-axis".into(),
+        )
+        .unwrap();
+        assert!(reduction.contains("\"passed\":true"));
+
+        let comparison_lhs =
+            WasmTensor::new(&[1.0, 3.0, 2.0], &[1, 3, 1, 1]);
+        let comparison_rhs =
+            WasmTensor::new(&[1.0, 2.0, 2.0], &[1, 3, 1, 1]);
+        let comparison = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "comparison.less_equal_01".into(),
+            &comparison_lhs,
+            &comparison_rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "comparison".into(),
+        )
+        .unwrap();
+        assert!(comparison.contains("\"passed\":true"));
+
+        let indices = workspace_verify_direct_math_1_receipt(
+            &mut workspace,
+            "index.indices_like".into(),
+            &select_input,
+            &[1],
+            &[],
+            0.0,
+            0.0,
+            "indices-like".into(),
+        )
+        .unwrap();
+        assert!(indices.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn rejected_direct_metadata_does_not_allocate_receipt() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let lhs = WasmTensor::new(
+            &(1..=24).map(|value| value as f32).collect::<Vec<_>>(),
+            &[1, 2, 3, 4],
+        );
+        let rhs_bad = WasmTensor::new(&[1.0; 30], &[1, 2, 3, 5]);
+
+        assert!(workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "linalg.matmul".into(),
+            &lhs,
+            &rhs_bad,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "bad-matmul".into(),
+        )
+        .is_err());
+
+        let good_lhs = WasmTensor::new(&[1.0, 2.0], &[1, 2, 1, 1]);
+        let good_rhs = WasmTensor::new(&[3.0, 4.0], &[1, 2, 1, 1]);
+        let good = workspace_verify_direct_math_2_receipt(
+            &mut workspace,
+            "numeric.add".into(),
+            &good_lhs,
+            &good_rhs,
+            &[],
+            &[],
+            0.0,
+            0.0,
+            "good-after-reject".into(),
         )
         .unwrap();
         assert!(good.contains("\"receipt_id\":1"));
