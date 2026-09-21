@@ -140,7 +140,9 @@
     "description_schema": "burn-research.math-operation-description.v1",
     "preflight_schema": "burn-research.math-preflight.v1",
     "valid_operations": "mathValidOperations",
-    "valid_operations_schema": "burn-research.math-valid-operations.v1"
+    "valid_operations_schema": "burn-research.math-valid-operations.v1",
+    "binding_plan": "mathPlanBinding",
+    "binding_plan_schema": "burn-research.math-binding-plan.v1"
   },
   "invariants": [
     "discovery is read-only and owns no persistent state",
@@ -162,7 +164,9 @@
       "completed: agent-facing candidate projection without ranking or selection"
     ],
     "checkpoint_4": [
-      "canonical operation to direct/program composition adapter"
+      "completed: canonical operation to explicit direct/program binding plan",
+      "completed: parameter projection and minimum MathProgram generation mapping",
+      "completed: no automatic backend or program-generation selection"
     ],
     "checkpoint_5": [
       "math proof correlation to existing verifier receipts"
@@ -178,7 +182,10 @@
     "mathCheckOperation rejects proven metadata incompatibility and labels value-domain predicates as deferred",
     "metadata preflight never returns execution_authorized=true",
     "mathValidOperations returns all 35 catalog operations in stable catalog order with metadata_admissible, requires_parameters, or metadata_rejected status",
-    "mathValidOperations never selects, ranks, recommends, executes, or mutates"
+    "mathValidOperations never selects, ranks, recommends, executes, or mutates",
+    "mathPlanBinding requires an explicit direct|program target and rejects auto selection",
+    "mathPlanBinding returns no executable authority and performs no direct call or MathProgram mutation",
+    "program binding exposes minimum compatible generation rather than selecting a concrete generation"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",
@@ -234,5 +241,44 @@
       "execution_authorized": false,
       "mutation": "none"
     }
+  },
+  "binding_plan": {
+    "role": "explicit_target_binding_projection",
+    "target_choice": [
+      "direct",
+      "program"
+    ],
+    "target_authority": "agent",
+    "direct_binding": {
+      "output": [
+        "class",
+        "method",
+        "argument_model",
+        "parameter_projection"
+      ],
+      "call_performed": false
+    },
+    "program_binding": {
+      "output": [
+        "minimum_generation",
+        "minimum_builder_class",
+        "builder_method",
+        "opcode_symbol",
+        "argument_model",
+        "parameter_projection"
+      ],
+      "program_generation_selected": null,
+      "builder_mutation_performed": false
+    },
+    "invariants": [
+      "target must be explicitly supplied; auto target is rejected",
+      "mathCheckOperation metadata preflight must be admissible before a binding can be returned",
+      "direct cosine may use the existing default epsilon",
+      "program cosine requires explicit epsilon and otherwise returns requires_parameters",
+      "minimum MathProgram generation is compatibility metadata and does not select a concrete program generation",
+      "binding plan never executes a direct operation",
+      "binding plan never mutates a MathProgram builder",
+      "binding plan never grants execution authority"
+    ]
   }
 }
