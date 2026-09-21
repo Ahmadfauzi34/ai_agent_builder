@@ -996,12 +996,12 @@ impl AgentWorkspace {
             .map(|metadata| {
                 format!(
                     concat!(
-                        "{",
+                        "{{",
                         "\"role\":\"{}\",",
                         "\"source\":\"{}\",",
                         "\"revision\":{},",
                         "\"fingerprint\":\"{}\"",
-                        "}"
+                        "}}"
                     ),
                     json_escape(&metadata.role),
                     json_escape(&metadata.source),
