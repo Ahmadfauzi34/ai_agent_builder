@@ -72,6 +72,14 @@ pub(crate) struct WorkspaceInputContract {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkspaceInputPortMetadata {
+    pub(crate) role: String,
+    pub(crate) source: String,
+    pub(crate) revision: u64,
+    pub(crate) fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct WorkspaceRuntimeSubjectBinding {
     pub(crate) intent_id: String,
     pub(crate) workflow_revision: u64,
@@ -154,6 +162,7 @@ pub struct AgentWorkspace {
     next_verifier_receipt_id: u32,
     next_event_id: u32,
     input_contract: Option<WorkspaceInputContract>,
+    input_port_metadata: Option<WorkspaceInputPortMetadata>,
     runtime_subject_binding: Option<WorkspaceRuntimeSubjectBinding>,
     runtime_program_identities: Vec<String>,
     rows: Vec<WorkspaceRow>,
@@ -257,6 +266,22 @@ impl AgentWorkspace {
 
     pub(crate) fn clear_input_contract_internal(&mut self) -> bool {
         self.input_contract.take().is_some()
+    }
+
+    pub(crate) fn input_port_metadata(&self) -> Option<&WorkspaceInputPortMetadata> {
+        self.input_port_metadata.as_ref()
+    }
+
+    pub(crate) fn set_input_port_metadata(&mut self, metadata: WorkspaceInputPortMetadata) -> bool {
+        if self.input_port_metadata.as_ref() == Some(&metadata) {
+            return false;
+        }
+        self.input_port_metadata = Some(metadata);
+        true
+    }
+
+    pub(crate) fn clear_input_port_metadata_internal(&mut self) -> bool {
+        self.input_port_metadata.take().is_some()
     }
 
     pub(crate) fn runtime_subject_binding(&self) -> Option<&WorkspaceRuntimeSubjectBinding> {
@@ -657,6 +682,7 @@ impl AgentWorkspace {
             next_verifier_receipt_id: 1,
             next_event_id: 1,
             input_contract: None,
+            input_port_metadata: None,
             runtime_subject_binding: None,
             runtime_program_identities: Vec::new(),
             rows: Vec::new(),
@@ -964,6 +990,26 @@ impl AgentWorkspace {
                 )
             })
             .unwrap_or_else(|| "null".to_string());
+        let input_port_metadata = self
+            .input_port_metadata
+            .as_ref()
+            .map(|metadata| {
+                format!(
+                    concat!(
+                        "{",
+                        "\"role\":\"{}\",",
+                        "\"source\":\"{}\",",
+                        "\"revision\":{},",
+                        "\"fingerprint\":\"{}\"",
+                        "}"
+                    ),
+                    json_escape(&metadata.role),
+                    json_escape(&metadata.source),
+                    metadata.revision,
+                    json_escape(&metadata.fingerprint),
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
         let runtime_subject = self
             .runtime_subject_binding
             .as_ref()
@@ -993,7 +1039,7 @@ impl AgentWorkspace {
             })
             .unwrap_or_else(|| "null".to_string());
         format!(
-            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"runtime_subject\":{},\"runtime_program_bindings\":{{\"count\":{},\"max\":{MAX_RUNTIME_PROGRAM_BINDINGS},\"identity_policy\":\"exact_program_identity\"}},\"max_rows\":{MAX_ROWS}}}",
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"input_port_metadata\":{},\"runtime_subject\":{},\"runtime_program_bindings\":{{\"count\":{},\"max\":{MAX_RUNTIME_PROGRAM_BINDINGS},\"identity_policy\":\"exact_program_identity\"}},\"max_rows\":{MAX_ROWS}}}",
             self.num_slots,
             free_slots,
             count(TABLE_LAYERS),
@@ -1004,6 +1050,7 @@ impl AgentWorkspace {
             custom_tables,
             self.rows.len(),
             input_contract,
+            input_port_metadata,
             runtime_subject,
             self.runtime_program_identities.len(),
         )
