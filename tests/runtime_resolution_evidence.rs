@@ -337,6 +337,11 @@ fn direct_math_receipt_adapter_preserves_dual_runtime_authority_and_exact_subjec
         json["entries"][0]["payload"]["reference_program_generation"],
         "v9"
     );
+    assert!(json["entries"][0]["payload"]["reference_program_identity"]
+        .as_str()
+        .unwrap()
+        .contains("burn-research.math-program-identity.v1"));
+    assert!(json["entries"][0]["payload"].get("program_identity").is_none());
     assert_eq!(json["resolution_effect"]["state_transition"], "none");
 }
 
