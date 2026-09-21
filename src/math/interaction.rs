@@ -1223,6 +1223,305 @@ pub fn math_valid_operations(lhs_shape: &[u32], rhs_shape: &[u32]) -> Result<Str
 }
 
 
+
+const MATH_BINDING_PLAN_SCHEMA_ID: &str = "burn-research.math-binding-plan.v1";
+
+fn program_binding_method(operation_id: &str) -> (&'static str, Option<&'static str>, &'static str) {
+    match operation_id {
+        "numeric.abs" => ("addUnary", Some("OP_ABS"), "opcode,input_slot,output_slot"),
+        "numeric.sqrt" => ("addUnary", Some("OP_SQRT"), "opcode,input_slot,output_slot"),
+        "numeric.exp" => ("addUnary", Some("OP_EXP"), "opcode,input_slot,output_slot"),
+        "numeric.log" => ("addUnary", Some("OP_LOG"), "opcode,input_slot,output_slot"),
+        "numeric.add" => ("addBinary", Some("OP_ADD"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "numeric.sub" => ("addBinary", Some("OP_SUB"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "numeric.mul" => ("addBinary", Some("OP_MUL"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "numeric.div" => ("addBinary", Some("OP_DIV"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "numeric.clamp" => ("addClamp", None, "input_slot,output_slot,min,max"),
+        "tensor.transpose" => ("addUnary", Some("OP_TRANSPOSE"), "opcode,input_slot,output_slot"),
+        "tensor.reshape" => ("addReshape", None, "input_slot,output_slot,shape"),
+        "tensor.permute" => ("addPermute", None, "input_slot,output_slot,axes"),
+        "tensor.slice" => ("addSlice", None, "input_slot,output_slot,starts,ends"),
+        "tensor.select_axis" => ("addSelectAxis", None, "input_slot,output_slot,axis,indices"),
+        "linalg.matmul" => ("addBinary", Some("OP_MATMUL"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "linalg.dot" => ("addBinary", Some("OP_DOT"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "linalg.l2_norm" => ("addUnary", Some("OP_L2_NORM"), "opcode,input_slot,output_slot"),
+        "linalg.cosine_similarity" => ("addCosineSimilarity", None, "lhs_slot,rhs_slot,output_slot,epsilon"),
+        "linalg.l2_distance" => ("addBinary", Some("OP_L2_DISTANCE"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "statistics.sum" => ("addUnary", Some("OP_SUM"), "opcode,input_slot,output_slot"),
+        "statistics.mean" => ("addUnary", Some("OP_MEAN"), "opcode,input_slot,output_slot"),
+        "statistics.variance_population" => ("addUnary", Some("OP_VARIANCE_POPULATION"), "opcode,input_slot,output_slot"),
+        "statistics.std_population" => ("addUnary", Some("OP_STD_POPULATION"), "opcode,input_slot,output_slot"),
+        "statistics.min" => ("addUnary", Some("OP_MIN"), "opcode,input_slot,output_slot"),
+        "statistics.max" => ("addUnary", Some("OP_MAX"), "opcode,input_slot,output_slot"),
+        "probability.normalize" => ("addUnary", Some("OP_NORMALIZE"), "opcode,input_slot,output_slot"),
+        "probability.entropy" => ("addUnary", Some("OP_ENTROPY"), "opcode,input_slot,output_slot"),
+        "probability.cross_entropy" => ("addBinary", Some("OP_CROSS_ENTROPY"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "probability.kl_divergence" => ("addBinary", Some("OP_KL_DIVERGENCE"), "opcode,lhs_slot,rhs_slot,output_slot"),
+        "reduction.sum_axis" => ("addSumAxis", None, "input_slot,output_slot,axis"),
+        "reduction.mean_axis" => ("addMeanAxis", None, "input_slot,output_slot,axis"),
+        "reduction.min_axis" => ("addMinAxis", None, "input_slot,output_slot,axis"),
+        "reduction.max_axis" => ("addMaxAxis", None, "input_slot,output_slot,axis"),
+        "comparison.less_equal_01" => ("addLessEqual01", None, "lhs_slot,rhs_slot,output_slot"),
+        "index.indices_like" => ("addIndicesLike", None, "reference_slot,output_slot,axis"),
+        _ => ("unsupported", None, "none"),
+    }
+}
+
+fn program_minimum_builder_class(minimum_generation: &str) -> &'static str {
+    match minimum_generation {
+        "v4" => "WasmMathProgramV4Builder",
+        "v8" => "WasmMathProgramV8Builder",
+        "v9" => "WasmMathProgramV9Builder",
+        _ => "WasmMathProgramBuilder",
+    }
+}
+
+fn parameter_layout(operation_id: &str) -> &'static str {
+    match operation_id {
+        "numeric.clamp" => "clamp_min_max",
+        "linalg.cosine_similarity" => "epsilon",
+        "tensor.reshape" => "shape4",
+        "tensor.permute" => "axes4",
+        "tensor.slice" => "slice_start4_end4",
+        "tensor.select_axis" => "select_axis_indices",
+        "reduction.sum_axis"
+        | "reduction.mean_axis"
+        | "reduction.min_axis"
+        | "reduction.max_axis"
+        | "index.indices_like" => "axis",
+        _ => "none",
+    }
+}
+
+fn u32_array_json(values: &[u32]) -> String {
+    values
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn f32_array_json(values: &[f32]) -> String {
+    values
+        .iter()
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn binding_rejected(operation_id: &str, target: &str, preflight: String) -> String {
+    format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"{}\",",
+            "\"operation_id\":\"{}\",",
+            "\"target\":\"{}\",",
+            "\"target_selected_by\":\"agent\",",
+            "\"status\":\"rejected\",",
+            "\"execution\":\"none\",",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"binding_authority\":\"projection_only\",",
+            "\"binding\":null,",
+            "\"preflight\":{}",
+            "}}"
+        ),
+        MATH_BINDING_PLAN_SCHEMA_ID,
+        json_escape(operation_id),
+        json_escape(target),
+        preflight,
+    )
+}
+
+fn binding_requires_parameters(
+    operation: &MathOperationDescriptor,
+    target: &str,
+    preflight: String,
+) -> String {
+    let (u32_params, f32_params) = parameter_contract(operation.id);
+    format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"{}\",",
+            "\"operation_id\":\"{}\",",
+            "\"target\":\"{}\",",
+            "\"target_selected_by\":\"agent\",",
+            "\"status\":\"requires_parameters\",",
+            "\"execution\":\"none\",",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"binding_authority\":\"projection_only\",",
+            "\"required_parameters\":{{",
+                "\"u32_params\":\"{}\",",
+                "\"f32_params\":\"{}\"",
+            "}},",
+            "\"binding\":null,",
+            "\"preflight\":{}",
+            "}}"
+        ),
+        MATH_BINDING_PLAN_SCHEMA_ID,
+        operation.id,
+        target,
+        json_escape(u32_params),
+        json_escape(f32_params),
+        preflight,
+    )
+}
+
+/// Translate a canonical operation into an explicit direct or MathProgram binding plan.
+///
+/// The caller must choose target="direct" or target="program". This function validates
+/// metadata through mathCheckOperation, but never calls the direct method, never mutates
+/// a MathProgram builder, and never chooses a target or program generation.
+#[wasm_bindgen(js_name = mathPlanBinding)]
+pub fn math_plan_binding(
+    operation_id: String,
+    target: String,
+    lhs_shape: &[u32],
+    rhs_shape: &[u32],
+    u32_params: &[u32],
+    f32_params: &[f32],
+) -> Result<String, String> {
+    if target != "direct" && target != "program" {
+        return Err(format!(
+            "mathPlanBinding: target must be direct|program, got {target}"
+        ));
+    }
+    let operation = operation_descriptor(&operation_id)
+        .ok_or_else(|| format!("mathPlanBinding: unknown operation_id {operation_id}"))?;
+
+    let preflight = math_check_operation(
+        operation_id.clone(),
+        lhs_shape,
+        rhs_shape,
+        u32_params,
+        f32_params,
+    )?;
+    if !preflight.contains("\"status\":\"admissible\"") {
+        return Ok(binding_rejected(&operation_id, &target, preflight));
+    }
+
+    if target == "program"
+        && operation.id == "linalg.cosine_similarity"
+        && f32_params.is_empty()
+    {
+        return Ok(binding_requires_parameters(operation, &target, preflight));
+    }
+
+    let parameter_projection = format!(
+        concat!(
+            "{{",
+            "\"layout\":\"{}\",",
+            "\"u32_params\":[{}],",
+            "\"f32_params\":[{}]",
+            "}}"
+        ),
+        parameter_layout(operation.id),
+        u32_array_json(u32_params),
+        f32_array_json(f32_params),
+    );
+
+    let binding = if target == "direct" {
+        let (class_name, method_name) = operation
+            .direct_surface
+            .split_once('.')
+            .ok_or_else(|| format!(
+                "mathPlanBinding: malformed direct surface {}",
+                operation.direct_surface
+            ))?;
+        let direct_arguments = match operation.id {
+            "numeric.clamp" => "input_tensor,min,max",
+            "linalg.cosine_similarity" => "lhs_tensor,rhs_tensor,epsilon_optional",
+            "tensor.reshape" => "input_tensor,shape",
+            "tensor.permute" => "input_tensor,axes",
+            "tensor.slice" => "input_tensor,starts,ends",
+            "tensor.select_axis" => "input_tensor,axis,indices",
+            "reduction.sum_axis"
+            | "reduction.mean_axis"
+            | "reduction.min_axis"
+            | "reduction.max_axis" => "input_tensor,axis",
+            "index.indices_like" => "reference_tensor,axis",
+            _ if operation.arity == 1 => "input_tensor",
+            _ => "lhs_tensor,rhs_tensor",
+        };
+        format!(
+            concat!(
+                "{{",
+                "\"kind\":\"direct\",",
+                "\"class\":\"{}\",",
+                "\"method\":\"{}\",",
+                "\"argument_model\":\"{}\",",
+                "\"parameter_projection\":{},",
+                "\"call_performed\":false",
+                "}}"
+            ),
+            class_name,
+            method_name,
+            direct_arguments,
+            parameter_projection,
+        )
+    } else {
+        let (builder_method, opcode_symbol, argument_model) =
+            program_binding_method(operation.id);
+        if builder_method == "unsupported" {
+            return Err(format!(
+                "mathPlanBinding: no program binding for {}",
+                operation.id
+            ));
+        }
+        format!(
+            concat!(
+                "{{",
+                "\"kind\":\"program\",",
+                "\"minimum_generation\":\"{}\",",
+                "\"minimum_builder_class\":\"{}\",",
+                "\"program_generation_selected\":null,",
+                "\"builder_method\":\"{}\",",
+                "\"opcode_symbol\":{},",
+                "\"argument_model\":\"{}\",",
+                "\"parameter_projection\":{},",
+                "\"builder_mutation_performed\":false",
+                "}}"
+            ),
+            operation.minimum_program_generation,
+            program_minimum_builder_class(operation.minimum_program_generation),
+            builder_method,
+            opcode_symbol
+                .map(|value| format!("\"{}\"", value))
+                .unwrap_or_else(|| "null".to_string()),
+            argument_model,
+            parameter_projection,
+        )
+    };
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"{}\",",
+            "\"operation_id\":\"{}\",",
+            "\"target\":\"{}\",",
+            "\"target_selected_by\":\"agent\",",
+            "\"status\":\"bound\",",
+            "\"execution\":\"none\",",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"binding_authority\":\"projection_only\",",
+            "\"binding\":{},",
+            "\"preflight\":{}",
+            "}}"
+        ),
+        MATH_BINDING_PLAN_SCHEMA_ID,
+        operation.id,
+        target,
+        binding,
+        preflight,
+    ))
+}
+
+
 /// Machine-readable authority and lifecycle description for the unified math vocabulary.
 ///
 /// This layer is discovery/projection only. It owns no tensor, program, execution,
@@ -1250,8 +1549,8 @@ pub fn math_interaction_capabilities() -> String {
             "}},",
             "\"canonical_id_policy\":\"stable_across_direct_and_program_backends\",",
             "\"program_generation_policy\":\"minimum compatible generation is binding metadata, not operation identity\",",
-            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\"],",
-            "\"deferred\":[\"execution facade\"],",
+            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\",\"mathPlanBinding\"],",
+            "\"deferred\":[\"execution facade\",\"proof correlation adapter\"],",
             "\"read_only_guarantee\":\"discovery calls allocate no persistent state and execute no tensor operations\"",
             "}}"
         ),
