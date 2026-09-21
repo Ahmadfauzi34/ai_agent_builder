@@ -1321,7 +1321,7 @@ pub fn math_operation_catalog() -> String {
 mod tests {
     use super::{
         math_check_operation, math_describe_operation, math_interaction_capabilities,
-        math_operation_catalog, OPERATIONS,
+        math_operation_catalog, math_valid_operations, OPERATIONS,
     };
     use std::collections::HashSet;
 
@@ -1551,5 +1551,143 @@ mod tests {
             &[],
         )
         .is_err());
+    }
+
+    #[test]
+    fn valid_operation_projection_never_selects_or_ranks_for_the_agent() {
+        let projection: serde_json::Value = serde_json::from_str(
+            &math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(projection["schema_id"], "burn-research.math-valid-operations.v1");
+        assert_eq!(projection["operation_count"], 35);
+        assert_eq!(projection["selection_authority"], "agent");
+        assert!(projection["selected_operation"].is_null());
+        assert!(projection["ranking"].is_null());
+        assert!(projection["recommendation"].is_null());
+        assert_eq!(projection["execution_authorized"], false);
+        assert_eq!(projection["mutation"], "none");
+
+        let operations = projection["operations"].as_array().unwrap();
+        assert_eq!(operations.len(), 35);
+        assert!(operations
+            .iter()
+            .all(|operation| operation["execution_authorized"] == false));
+        assert!(operations
+            .iter()
+            .all(|operation| operation["mutation"] == "none"));
+    }
+
+    #[test]
+    fn valid_operation_projection_preserves_parameterized_candidates() {
+        let projection: serde_json::Value = serde_json::from_str(
+            &math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap(),
+        )
+        .unwrap();
+
+        let operations = projection["operations"].as_array().unwrap();
+        let find = |id: &str| {
+            operations
+                .iter()
+                .find(|operation| operation["id"] == id)
+                .unwrap()
+        };
+
+        assert_eq!(find("numeric.add")["status"], "metadata_admissible");
+        assert_eq!(find("linalg.dot")["status"], "metadata_admissible");
+        assert_eq!(
+            find("linalg.cosine_similarity")["status"],
+            "metadata_admissible"
+        );
+        assert_eq!(
+            find("linalg.cosine_similarity")["preflight"]["program_binding_deferred"],
+            true
+        );
+
+        assert_eq!(find("numeric.clamp")["status"], "requires_parameters");
+        assert_eq!(find("tensor.reshape")["status"], "requires_parameters");
+        assert_eq!(
+            find("reduction.mean_axis")["status"],
+            "requires_parameters"
+        );
+        assert_eq!(find("index.indices_like")["status"], "requires_parameters");
+
+        let candidate_ids = projection["candidate_operation_ids"].as_array().unwrap();
+        assert!(candidate_ids.iter().any(|value| value == "numeric.clamp"));
+        assert!(candidate_ids.iter().any(|value| value == "reduction.mean_axis"));
+    }
+
+    #[test]
+    fn unary_candidates_do_not_disappear_when_rhs_is_available() {
+        let projection: serde_json::Value = serde_json::from_str(
+            &math_valid_operations(&[1, 3, 1, 1], &[1, 1, 3, 1]).unwrap(),
+        )
+        .unwrap();
+
+        let operations = projection["operations"].as_array().unwrap();
+        let abs = operations
+            .iter()
+            .find(|operation| operation["id"] == "numeric.abs")
+            .unwrap();
+        let add = operations
+            .iter()
+            .find(|operation| operation["id"] == "numeric.add")
+            .unwrap();
+
+        assert_eq!(abs["status"], "metadata_admissible");
+        assert_eq!(abs["candidate"], true);
+        assert_eq!(add["status"], "metadata_rejected");
+        assert_eq!(add["candidate"], false);
+    }
+
+    #[test]
+    fn binary_candidates_fail_closed_when_rhs_is_absent() {
+        let projection: serde_json::Value =
+            serde_json::from_str(&math_valid_operations(&[1, 3, 1, 1], &[]).unwrap()).unwrap();
+
+        let operations = projection["operations"].as_array().unwrap();
+        let dot = operations
+            .iter()
+            .find(|operation| operation["id"] == "linalg.dot")
+            .unwrap();
+        let abs = operations
+            .iter()
+            .find(|operation| operation["id"] == "numeric.abs")
+            .unwrap();
+
+        assert_eq!(dot["status"], "metadata_rejected");
+        assert_eq!(dot["reason"]["predicate"], "operand.rhs_available");
+        assert_eq!(abs["status"], "metadata_admissible");
+        assert_eq!(abs["candidate"], true);
+    }
+
+    #[test]
+    fn globally_impossible_parameterized_shapes_are_not_candidates() {
+        let projection: serde_json::Value =
+            serde_json::from_str(&math_valid_operations(&[1, 0, 1, 1], &[]).unwrap()).unwrap();
+
+        let operations = projection["operations"].as_array().unwrap();
+        let reduction = operations
+            .iter()
+            .find(|operation| operation["id"] == "reduction.mean_axis")
+            .unwrap();
+        let reshape = operations
+            .iter()
+            .find(|operation| operation["id"] == "tensor.reshape")
+            .unwrap();
+
+        assert_eq!(reduction["status"], "metadata_rejected");
+        assert_eq!(reduction["candidate"], false);
+        assert_eq!(reshape["status"], "metadata_rejected");
+        assert_eq!(reshape["candidate"], false);
+    }
+
+    #[test]
+    fn valid_operation_projection_is_deterministic() {
+        assert_eq!(
+            math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap(),
+            math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap()
+        );
     }
 }
