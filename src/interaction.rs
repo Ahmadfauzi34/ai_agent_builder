@@ -161,6 +161,7 @@ pub fn interaction_capabilities() -> String {
         "\"conditional_rejoin_actions\":[\"workspaceWireUnary\",\"workspaceWireBinary\"],",
         "\"introspection\":[\"introspectionCapabilities\",\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
         "\"input_contract\":\"inputContractCapabilities\",",
+        "\"input_port\":\"inputPortCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",

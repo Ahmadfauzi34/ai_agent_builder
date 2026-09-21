@@ -64,6 +64,7 @@
     "topology_authority": "AgentGraphBuilder",
     "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile",
     "external_input_contract": "the same optional external input contract is surfaced alongside topology",
+    "external_input_port": "the same optional semantic role/provenance descriptor for slot 0 is surfaced alongside topology",
     "runtime_subject": "the same bound runtime subject is surfaced alongside graph topology for state-loss recovery and receipt correlation",
     "runtime_program_binding": "pre-compile builder description cannot claim an exact program binding; use workspaceRuntimeProgramBinding after compilation"
   },
@@ -88,6 +89,7 @@
     ],
     "proof_scope": "legacy recordProof, caller attestations, and verifier receipts are counted separately; authority classes are never merged",
     "external_input_contract": "optional slot-0 f32 rank-4 metadata projected from AgentWorkspace; unbound remains explicit",
+    "external_input_port": "optional slot-0 semantic role/provenance metadata projected from AgentWorkspace; unbound remains explicit",
     "runtime_subject": "optional Resolution↔Runtime execution-context tuple carried by AgentWorkspace; authorization remains owned by the semantic host boundary",
     "runtime_program_bindings": "bounded count of exact CompiledGraph.programIdentity values associated with the immutable runtime subject; identities are not inferred"
   },
@@ -98,7 +100,8 @@
     "registry presence is observation, not ownership transfer",
     "constructor catalog success does not replace constructor or runtime validation",
     "binary program plan and CompiledGraph identity remain canonical machine execution identity",
-    "subject-program binding is reported only from recorded exact programIdentity state and is never inferred from similar topology"
+    "subject-program binding is reported only from recorded exact programIdentity state and is never inferred from similar topology",
+    "semantic input port metadata is reported only from explicit workspace binding and is never inferred from free-form semantics text"
   ],
   "deferred": [
     "full raw-protocol semantic decoding",
