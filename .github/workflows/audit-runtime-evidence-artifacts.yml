@@ -17,19 +17,19 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Build native runtime resolution evidence probe
-        run: cargo build --release --bin runtime_resolution_evidence_probe
+        run: cargo build --bin runtime_resolution_evidence_probe
 
       - name: Upload native runtime resolution evidence probe
         uses: actions/upload-artifact@v4
         with:
           name: runtime-resolution-evidence-native-probe
-          path: target/release/runtime_resolution_evidence_probe
+          path: target/debug/runtime_resolution_evidence_probe
 
       - name: Install wasm-pack
         uses: jetli/wasm-pack-action@v0.4.0
 
       - name: Build WASM package
-        run: wasm-pack build --target web --out-dir pkg
+        run: wasm-pack build --dev --target web --out-dir pkg
 
       - name: Package Node host adapter
         run: node scripts/package_node_host.mjs pkg
