@@ -162,6 +162,7 @@ pub fn interaction_capabilities() -> String {
         "\"introspection\":[\"introspectionCapabilities\",\"agentLayerCatalog\",\"describeWorkspace\",\"describeGraph\"],",
         "\"input_contract\":\"inputContractCapabilities\",",
         "\"input_port\":\"inputPortCapabilities\",",
+        "\"input_port_consumer\":\"inputPortConsumerCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
