@@ -237,7 +237,7 @@
         "receipt_id",
         "operation_id",
         "label",
-        "program_identity",
+        "reference_program_identity",
         "result.passed"
       ],
       "detail_projection": "serialized receipt.result object",
