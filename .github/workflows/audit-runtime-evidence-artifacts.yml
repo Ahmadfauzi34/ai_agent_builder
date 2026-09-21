@@ -1,0 +1,41 @@
+name: Audit Runtime Evidence Adapter Artifacts
+
+on:
+  push:
+    branches:
+      - "audit/runtime-evidence-adapter-artifacts"
+
+jobs:
+  build-audit-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Build native runtime resolution evidence probe
+        run: cargo build --release --bin runtime_resolution_evidence_probe
+
+      - name: Upload native runtime resolution evidence probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-resolution-evidence-native-probe
+          path: target/release/runtime_resolution_evidence_probe
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      - name: Build WASM package
+        run: wasm-pack build --target web --out-dir pkg
+
+      - name: Package Node host adapter
+        run: node scripts/package_node_host.mjs pkg
+
+      - name: Upload WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-wasm-output
+          path: pkg/
