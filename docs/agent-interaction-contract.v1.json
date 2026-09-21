@@ -128,6 +128,13 @@
     "compatibility": "inputContractCompatibility",
     "policy": "optional; unbound and unknown defer unless shape/layout proves incompatibility"
   },
+  "input_port": {
+    "capability": "inputPortCapabilities",
+    "binding": "workspaceBindInputPortMetadata",
+    "clearing": "workspaceClearInputPortMetadata",
+    "inspection": "workspaceInputPortMetadata",
+    "policy": "optional semantic role/provenance metadata for external slot 0; no execution authority"
+  },
   "proof_provenance": {
     "capability": "proofProvenanceCapabilities",
     "attestation": "workspaceRecordAttestation",
