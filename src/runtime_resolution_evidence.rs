@@ -1332,6 +1332,136 @@ mod tests {
     }
 
     #[test]
+    fn structured_math_program_receipt_rejoins_as_observation_only() {
+        let snapshot = resolved_snapshot("intent-a");
+        let before = snapshot.clone();
+        let projection = projection("intent-a", snapshot.revision, "spec-a");
+        let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+
+        let receipt = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 7,
+            "authority": "wasm_verifier",
+            "verifier": "MathProgram.verifyFlat",
+            "reference_authority": "burn_math_program",
+            "label": "math-program-check",
+            "fingerprint_algorithm": "fnv1a64_noncryptographic",
+            "program_plan_version": 9,
+            "program_identity": {
+                "schema": "burn-research.math-program-identity.v1",
+                "plan_hex": "42524d5009"
+            },
+            "program_identity_fingerprint": "fnv1a64:probe-program",
+            "mutable_state_in_program_identity": false,
+            "runtime_subject": {
+                "status": "bound",
+                "intent_id": projection.intent_id.clone(),
+                "workflow_revision": projection.workflow_revision,
+                "approval_id": projection.approval_id.clone(),
+                "subject_kind": projection.subject_kind.clone(),
+                "subject_identity": projection.subject_identity.clone(),
+                "authorization_policy_id": projection.authorization_policy_id.clone(),
+                "authorization_policy_revision": projection.authorization_policy_revision,
+                "authorization_is_revision": projection.authorization_is_revision
+            },
+            "input_count": 2,
+            "input_fingerprint": "fnv1a64:probe-input",
+            "reference_fingerprint": "fnv1a64:probe-reference",
+            "candidate_fingerprint": "fnv1a64:probe-candidate",
+            "tolerances": {"abs": 0.0, "rel": 0.0},
+            "result": {
+                "passed": false,
+                "len": 3,
+                "max_abs_error": 1.0,
+                "max_rel_error": 1.0,
+                "rmse": 0.5773502691896257,
+                "first_failure": 1
+            }
+        })
+        .to_string();
+
+        let evidence =
+            RuntimeEvidence::from_math_program_verifier_receipt_json(&receipt).unwrap();
+        assert_eq!(evidence.source_authority(), "wasm_verifier");
+        assert_eq!(evidence.evidence_authority(), "observation_only");
+        assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
+        assert_eq!(evidence.kind(), "math_program_verifier_receipt");
+        assert_eq!(evidence.outcome(), "failed");
+        assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+        assert!(inbox.record(evidence).unwrap());
+
+        let json = inbox.to_json();
+        assert!(json.contains("\"math_program_verifier_failed\":1"));
+        assert!(json.contains("\"reference_authority\":\"burn_math_program\""));
+        assert!(json.contains("\"diagnostic_created\":false"));
+        assert!(json.contains("\"state_transition\":\"none\""));
+        assert_eq!(snapshot, before);
+    }
+
+    #[test]
+    fn math_program_adapter_fails_closed_on_authority_class_escalation() {
+        let graph_receipt = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 1,
+            "authority": "wasm_verifier",
+            "verifier": "CompiledGraph.verifyFlat",
+            "reference_authority": "burn_compiled_graph",
+            "label": "graph",
+            "program_identity": {
+                "schema": "burn-research.program-identity.v1",
+                "plan_hex": "graph"
+            },
+            "runtime_subject": {"status": "unbound"},
+            "result": {"passed": true}
+        })
+        .to_string();
+        assert!(
+            RuntimeEvidence::from_math_program_verifier_receipt_json(&graph_receipt)
+                .is_err()
+        );
+
+        let vector_receipt = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 1,
+            "authority": "wasm_comparator",
+            "verifier": "mathVerifyVectors",
+            "reference_authority": "caller_supplied",
+            "label": "vector",
+            "runtime_subject": {"status": "unbound"},
+            "result": {"passed": true}
+        })
+        .to_string();
+        assert!(
+            RuntimeEvidence::from_math_program_verifier_receipt_json(&vector_receipt)
+                .is_err()
+        );
+
+        let forged_identity = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 1,
+            "authority": "wasm_verifier",
+            "verifier": "MathProgram.verifyFlat",
+            "reference_authority": "burn_math_program",
+            "label": "forged",
+            "program_identity": {
+                "schema": "burn-research.program-identity.v1",
+                "plan_hex": "wrong-schema"
+            },
+            "runtime_subject": {"status": "unbound"},
+            "result": {"passed": true}
+        })
+        .to_string();
+        assert!(
+            RuntimeEvidence::from_math_program_verifier_receipt_json(&forged_identity)
+                .is_err()
+        );
+    }
+
+    #[test]
     fn duplicate_is_idempotent_and_inbox_is_bounded() {
         let snapshot = resolved_snapshot("intent-a");
         let projection = projection("intent-a", snapshot.revision, "spec-a");
