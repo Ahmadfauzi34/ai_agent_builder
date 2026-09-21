@@ -1,0 +1,41 @@
+name: Audit Direct Math Verifier V1 Final
+
+on:
+  push:
+    branches:
+      - "audit/direct-math-verifier-v1-final"
+
+jobs:
+  build-audit-artifact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run proof provenance tests
+        run: cargo test proof_provenance --lib -- --nocapture
+
+      - name: Check WASM library target
+        run: cargo check --lib --target wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      - name: Build WASM package
+        run: wasm-pack build --dev --target web --out-dir pkg
+
+      - name: Generate packaged WASM surface manifest
+        run: python3 scripts/check_wasm_surface.py
+
+      - name: Package Node host adapter
+        run: node scripts/package_node_host.mjs pkg
+
+      - name: Upload WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-wasm-output
+          path: pkg/
