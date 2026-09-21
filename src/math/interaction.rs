@@ -1620,7 +1620,7 @@ pub fn math_operation_catalog() -> String {
 mod tests {
     use super::{
         math_check_operation, math_describe_operation, math_interaction_capabilities,
-        math_operation_catalog, math_valid_operations, OPERATIONS,
+        math_operation_catalog, math_plan_binding, math_valid_operations, OPERATIONS,
     };
     use std::collections::HashSet;
 
@@ -1988,5 +1988,219 @@ mod tests {
             math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap(),
             math_valid_operations(&[1, 3, 1, 1], &[1, 3, 1, 1]).unwrap()
         );
+    }
+
+    #[test]
+    fn direct_binding_plan_maps_canonical_operation_without_calling_it() {
+        let plan: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "numeric.add".into(),
+                "direct".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(plan["status"], "bound");
+        assert_eq!(plan["target_selected_by"], "agent");
+        assert_eq!(plan["execution"], "none");
+        assert_eq!(plan["execution_authorized"], false);
+        assert_eq!(plan["mutation"], "none");
+        assert_eq!(plan["binding"]["kind"], "direct");
+        assert_eq!(plan["binding"]["class"], "WasmNumericKernel");
+        assert_eq!(plan["binding"]["method"], "add");
+        assert_eq!(plan["binding"]["call_performed"], false);
+    }
+
+    #[test]
+    fn program_binding_plan_exposes_minimum_builder_without_selecting_generation() {
+        let add: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "numeric.add".into(),
+                "program".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(add["status"], "bound");
+        assert_eq!(add["binding"]["minimum_generation"], "v1");
+        assert_eq!(add["binding"]["minimum_builder_class"], "WasmMathProgramBuilder");
+        assert_eq!(add["binding"]["program_generation_selected"], serde_json::Value::Null);
+        assert_eq!(add["binding"]["builder_method"], "addBinary");
+        assert_eq!(add["binding"]["opcode_symbol"], "OP_ADD");
+        assert_eq!(add["binding"]["builder_mutation_performed"], false);
+
+        let select: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "tensor.select_axis".into(),
+                "program".into(),
+                &[1, 3, 1, 1],
+                &[],
+                &[1, 2, 0],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(select["status"], "bound");
+        assert_eq!(select["binding"]["minimum_generation"], "v4");
+        assert_eq!(select["binding"]["minimum_builder_class"], "WasmMathProgramV4Builder");
+        assert_eq!(select["binding"]["builder_method"], "addSelectAxis");
+
+        let reduction: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "reduction.mean_axis".into(),
+                "program".into(),
+                &[1, 3, 2, 1],
+                &[],
+                &[2],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(reduction["binding"]["minimum_generation"], "v8");
+        assert_eq!(reduction["binding"]["minimum_builder_class"], "WasmMathProgramV8Builder");
+        assert_eq!(reduction["binding"]["builder_method"], "addMeanAxis");
+
+        let comparison: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "comparison.less_equal_01".into(),
+                "program".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(comparison["binding"]["minimum_generation"], "v9");
+        assert_eq!(comparison["binding"]["minimum_builder_class"], "WasmMathProgramV9Builder");
+        assert_eq!(comparison["binding"]["builder_method"], "addLessEqual01");
+    }
+
+    #[test]
+    fn program_binding_requires_explicit_cosine_epsilon_while_direct_can_use_default() {
+        let direct: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "linalg.cosine_similarity".into(),
+                "direct".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(direct["status"], "bound");
+        assert_eq!(direct["binding"]["method"], "cosineSimilarity");
+        assert_eq!(direct["preflight"]["program_binding_deferred"], true);
+
+        let program_missing: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "linalg.cosine_similarity".into(),
+                "program".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(program_missing["status"], "requires_parameters");
+        assert!(program_missing["binding"].is_null());
+        assert_eq!(program_missing["execution_authorized"], false);
+
+        let program_explicit: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "linalg.cosine_similarity".into(),
+                "program".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[1e-6],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(program_explicit["status"], "bound");
+        assert_eq!(program_explicit["binding"]["builder_method"], "addCosineSimilarity");
+        assert_eq!(program_explicit["binding"]["parameter_projection"]["layout"], "epsilon");
+        assert_eq!(program_explicit["binding"]["builder_mutation_performed"], false);
+    }
+
+    #[test]
+    fn binding_plan_propagates_preflight_rejection_without_binding() {
+        let rejected: serde_json::Value = serde_json::from_str(
+            &math_plan_binding(
+                "linalg.matmul".into(),
+                "program".into(),
+                &[1, 2, 3, 4],
+                &[1, 2, 3, 5],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(rejected["status"], "rejected");
+        assert!(rejected["binding"].is_null());
+        assert_eq!(rejected["preflight"]["failure"]["predicate"], "matmul.compatible_shapes");
+        assert_eq!(rejected["execution_authorized"], false);
+        assert_eq!(rejected["mutation"], "none");
+    }
+
+    #[test]
+    fn binding_plan_rejects_implicit_target_selection() {
+        assert!(math_plan_binding(
+            "numeric.abs".into(),
+            "auto".into(),
+            &[1, 3, 1, 1],
+            &[],
+            &[],
+            &[],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn binding_plan_is_deterministic_and_never_executes() {
+        let first = math_plan_binding(
+            "tensor.reshape".into(),
+            "program".into(),
+            &[1, 2, 1, 3],
+            &[],
+            &[1, 1, 3, 2],
+            &[],
+        )
+        .unwrap();
+        let second = math_plan_binding(
+            "tensor.reshape".into(),
+            "program".into(),
+            &[1, 2, 1, 3],
+            &[],
+            &[1, 1, 3, 2],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(first, second);
+
+        let value: serde_json::Value = serde_json::from_str(&first).unwrap();
+        assert_eq!(value["execution"], "none");
+        assert_eq!(value["execution_authorized"], false);
+        assert_eq!(value["mutation"], "none");
+        assert_eq!(value["binding"]["builder_mutation_performed"], false);
     }
 }
