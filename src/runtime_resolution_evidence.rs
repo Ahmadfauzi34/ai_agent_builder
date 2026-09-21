@@ -284,6 +284,7 @@ impl RuntimeEvidence {
         self.payload.outcome()
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn parse_json_object(
         raw: &str,
         context: &str,
@@ -296,6 +297,7 @@ impl RuntimeEvidence {
         Ok(value)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn require_string<'a>(
         value: &'a serde_json::Value,
         field: &str,
@@ -307,6 +309,7 @@ impl RuntimeEvidence {
             .ok_or_else(|| format!("{context}: missing or non-string field {field}"))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn require_bool(
         value: &serde_json::Value,
         field: &str,
@@ -318,6 +321,7 @@ impl RuntimeEvidence {
             .ok_or_else(|| format!("{context}: missing or non-boolean field {field}"))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn require_u64(
         value: &serde_json::Value,
         field: &str,
@@ -329,6 +333,7 @@ impl RuntimeEvidence {
             .ok_or_else(|| format!("{context}: missing or non-u64 field {field}"))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn require_exact_string(
         value: &serde_json::Value,
         field: &str,
@@ -344,6 +349,7 @@ impl RuntimeEvidence {
         Ok(())
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn runtime_subject_from_receipt(
         value: &serde_json::Value,
         context: &str,
@@ -391,6 +397,7 @@ impl RuntimeEvidence {
     ///
     /// This parser never inspects legacy error text to choose an evidence class. The payload class
     /// is fixed by this entry point and the source schema id is validated before projection.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_bound_agent_fault_envelope(
         projection: &RuntimeSubjectProjection,
         envelope_json: &str,
@@ -432,6 +439,7 @@ impl RuntimeEvidence {
     ///
     /// The runtime subject is read from the receipt itself. The result object is retained as a
     /// compact structured detail string; the original receipt remains the authoritative artifact.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_graph_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
         const CONTEXT: &str = "RuntimeEvidence.from_graph_verifier_receipt_json";
         let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
@@ -487,6 +495,7 @@ impl RuntimeEvidence {
     }
 
     /// Adapt the exact structured vector-comparator receipt emitted by WASM.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn from_vector_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
         const CONTEXT: &str = "RuntimeEvidence.from_vector_verifier_receipt_json";
         let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
