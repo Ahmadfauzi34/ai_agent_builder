@@ -602,6 +602,7 @@
     "mathDescribeOperation",
     "mathInteractionCapabilities",
     "mathOperationCatalog",
+    "mathPlanBinding",
     "mathProgramCapabilities",
     "mathProgramV4Capabilities",
     "mathProgramV5Capabilities",
