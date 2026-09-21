@@ -139,6 +139,17 @@ pub(crate) fn actions_json(
     )
 }
 
+pub(crate) fn valid_actions_json(
+    workspace: &AgentWorkspace,
+    builder: &AgentGraphBuilder,
+    registry: &LayerRegistry,
+) -> String {
+    format!(
+        "{{\"schema_version\":1,\"schema_id\":\"{INTERACTION_SCHEMA_ID}\",\"projection_only\":true,\"actions\":{}}}",
+        actions_json(workspace, builder, registry)
+    )
+}
+
 /// Describe the projection-only interaction surface layered above existing
 /// workspace, builder, and registry authorities.
 #[wasm_bindgen(js_name = interactionCapabilities)]
@@ -187,10 +198,7 @@ pub fn interaction_valid_actions(
     registry: &LayerRegistry,
 ) -> Result<String, String> {
     validate_projection_inputs(workspace, builder)?;
-    Ok(format!(
-        "{{\"schema_version\":1,\"schema_id\":\"{INTERACTION_SCHEMA_ID}\",\"projection_only\":true,\"actions\":{}}}",
-        actions_json(workspace, builder, registry)
-    ))
+    Ok(valid_actions_json(workspace, builder, registry))
 }
 
 /// Produce a compact point-in-time projection for agent planning.
