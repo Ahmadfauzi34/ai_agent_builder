@@ -76,7 +76,8 @@
   "integration": {
     "workspace_init": "workspaceInitUnary/workspaceInitBinary consult the contract through canonical layout preflight when slot 0 is consumed",
     "structured_fault": "interactionCheckInitUnary/interactionCheckInitBinary surface proven mismatches as E_LAYOUT_PREFLIGHT",
-    "introspection": "describeWorkspace and describeGraph expose the current external input contract"
+    "introspection": "describeWorkspace and describeGraph expose the current external input contract",
+    "semantic_port": "agent-input-port.v1 independently describes slot-0 role/provenance without changing shape/layout validation"
   },
   "invariants": [
     "binding does not allocate tensors",
@@ -84,6 +85,7 @@
     "binding does not alter AgentGraphBuilder topology",
     "unbound behavior remains backward compatible",
     "unknown layout is not treated as failure unless shape alone proves incompatibility",
-    "known incompatibility fails before graph/workspace/registry mutation"
+    "known incompatibility fails before graph/workspace/registry mutation",
+    "shape/layout contract binding is independent from semantic input port metadata"
   ]
 }
