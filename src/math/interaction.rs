@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 
+use crate::math::index_source::MAX_INDICES_LIKE_AXIS_LENGTH;
+
 const MATH_INTERACTION_SCHEMA_ID: &str = "burn-research.math-interaction.v1";
 const MATH_OPERATION_CATALOG_SCHEMA_ID: &str = "burn-research.math-operation-catalog.v1";
 
@@ -63,7 +65,6 @@ const OPERATIONS: &[MathOperationDescriptor] = &[
 const MATH_OPERATION_DESCRIPTION_SCHEMA_ID: &str =
     "burn-research.math-operation-description.v1";
 const MATH_PREFLIGHT_SCHEMA_ID: &str = "burn-research.math-preflight.v1";
-const MAX_INDICES_LIKE_AXIS_LENGTH_V1: u32 = 16_777_217;
 
 fn operation_descriptor(operation_id: &str) -> Option<&'static MathOperationDescriptor> {
     OPERATIONS.iter().find(|operation| operation.id == operation_id)
@@ -940,7 +941,7 @@ pub fn math_check_operation(
                         "axis in 0..4",
                         &axis.to_string(),
                     )
-                } else if lhs[axis as usize] > MAX_INDICES_LIKE_AXIS_LENGTH_V1 {
+                } else if u64::from(lhs[axis as usize]) > MAX_INDICES_LIKE_AXIS_LENGTH as u64 {
                     rejected(
                         operation.id,
                         "index.exact_f32_coordinate_bound",
