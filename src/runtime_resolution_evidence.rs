@@ -115,6 +115,13 @@ enum RuntimeEvidencePayload {
         passed: bool,
         detail: String,
     },
+    MathProgramVerifierReceipt {
+        receipt_id: u32,
+        label: String,
+        program_identity: String,
+        passed: bool,
+        detail: String,
+    },
     VectorVerifierReceipt {
         receipt_id: u32,
         label: String,
@@ -127,7 +134,9 @@ impl RuntimeEvidencePayload {
     pub fn source_authority(&self) -> &'static str {
         match self {
             Self::AgentFault { .. } => "agent_fault_preflight",
-            Self::GraphVerifierReceipt { .. } => "wasm_verifier",
+            Self::GraphVerifierReceipt { .. } | Self::MathProgramVerifierReceipt { .. } => {
+                "wasm_verifier"
+            }
             Self::VectorVerifierReceipt { .. } => "wasm_comparator",
         }
     }
@@ -144,6 +153,7 @@ impl RuntimeEvidencePayload {
         match self {
             Self::AgentFault { .. } => "agent_fault",
             Self::GraphVerifierReceipt { .. } => "graph_verifier_receipt",
+            Self::MathProgramVerifierReceipt { .. } => "math_program_verifier_receipt",
             Self::VectorVerifierReceipt { .. } => "vector_verifier_receipt",
         }
     }
@@ -152,6 +162,7 @@ impl RuntimeEvidencePayload {
         match self {
             Self::AgentFault { .. } => "fault",
             Self::GraphVerifierReceipt { passed, .. }
+            | Self::MathProgramVerifierReceipt { passed, .. }
             | Self::VectorVerifierReceipt { passed, .. } => {
                 if *passed {
                     "passed"
@@ -215,6 +226,35 @@ impl RuntimeEvidencePayload {
                     "\"passed\":{},",
                     "\"detail\":\"{}\"",
                     "}}"
+                ),
+                if *passed { "passed" } else { "failed" },
+                receipt_id,
+                json_escape(label),
+                json_escape(program_identity),
+                passed,
+                json_escape(detail),
+            ),
+            Self::MathProgramVerifierReceipt {
+                receipt_id,
+                label,
+                program_identity,
+                passed,
+                detail,
+            } => format!(
+                concat!(
+                    "{",
+                    "\"kind\":\"math_program_verifier_receipt\",",
+                    "\"evidence_authority\":\"observation_only\",",
+                    "\"source_authority\":\"wasm_verifier\",",
+                    "\"transport_integrity\":\"host_structured_unverified\",",
+                    "\"reference_authority\":\"burn_math_program\",",
+                    "\"outcome\":\"{}\",",
+                    "\"receipt_id\":{},",
+                    "\"label\":\"{}\",",
+                    "\"program_identity\":\"{}\",",
+                    "\"passed\":{},",
+                    "\"detail\":\"{}\"",
+                    "}"
                 ),
                 if *passed { "passed" } else { "failed" },
                 receipt_id,
@@ -494,6 +534,69 @@ impl RuntimeEvidence {
         )
     }
 
+    /// Adapt the exact structured MathProgram verifier receipt emitted by WASM.
+    ///
+    /// The receipt must preserve the MathProgram verifier/reference authority tuple exactly.
+    /// The original runtime receipt remains authoritative; this adapter creates observation-only
+    /// reverse evidence and does not authenticate host transport.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn from_math_program_verifier_receipt_json(
+        receipt_json: &str,
+    ) -> Result<Self, String> {
+        const CONTEXT: &str =
+            "RuntimeEvidence.from_math_program_verifier_receipt_json";
+        let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "schema_id",
+            "burn-research.verifier-receipt.v1",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(&receipt, "authority", "wasm_verifier", CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "verifier",
+            "MathProgram.verifyFlat",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(
+            &receipt,
+            "reference_authority",
+            "burn_math_program",
+            CONTEXT,
+        )?;
+
+        let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
+        let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
+        let receipt_id = u32::try_from(receipt_id)
+            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let label = Self::require_string(&receipt, "label", CONTEXT)?;
+        let program_identity = receipt
+            .get("program_identity")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing program_identity object"))?;
+        Self::require_exact_string(
+            program_identity,
+            "schema",
+            "burn-research.math-program-identity.v1",
+            CONTEXT,
+        )?;
+        let result = receipt
+            .get("result")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing result object"))?;
+        let passed = Self::require_bool(result, "passed", CONTEXT)?;
+
+        Self::math_program_verifier_receipt(
+            subject,
+            receipt_id,
+            label,
+            program_identity.to_string(),
+            passed,
+            result.to_string(),
+        )
+    }
+
     /// Adapt the exact structured vector-comparator receipt emitted by WASM.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn from_vector_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
@@ -621,6 +724,52 @@ impl RuntimeEvidence {
         })
     }
 
+    pub fn math_program_verifier_receipt(
+        subject: Option<RuntimeEvidenceSubject>,
+        receipt_id: u32,
+        label: impl Into<String>,
+        program_identity: impl Into<String>,
+        passed: bool,
+        detail: impl Into<String>,
+    ) -> Result<Self, String> {
+        if receipt_id == 0 {
+            return Err(
+                "RuntimeEvidence.math_program_verifier_receipt: receipt id must be > 0"
+                    .to_string(),
+            );
+        }
+        let label = label.into();
+        let program_identity = program_identity.into();
+        let detail = detail.into();
+        validate_nonempty_bounded(
+            &label,
+            MAX_SHORT_FIELD_BYTES,
+            "RuntimeEvidence.math_program_verifier_receipt.label",
+        )?;
+        validate_nonempty_bounded(
+            &program_identity,
+            MAX_PROGRAM_IDENTITY_BYTES,
+            "RuntimeEvidence.math_program_verifier_receipt.program_identity",
+        )?;
+        if detail.len() > MAX_DETAIL_BYTES {
+            return Err(format!(
+                "RuntimeEvidence.math_program_verifier_receipt.detail: {} bytes exceeds limit {MAX_DETAIL_BYTES}",
+                detail.len()
+            ));
+        }
+
+        Ok(Self {
+            subject,
+            payload: RuntimeEvidencePayload::MathProgramVerifierReceipt {
+                receipt_id,
+                label,
+                program_identity,
+                passed,
+                detail,
+            },
+        })
+    }
+
     pub fn vector_verifier_receipt(
         subject: Option<RuntimeEvidenceSubject>,
         receipt_id: u32,
@@ -685,6 +834,24 @@ impl RuntimeEvidence {
         detail: impl Into<String>,
     ) -> Result<Self, String> {
         Self::graph_verifier_receipt(
+            Some(RuntimeEvidenceSubject::from_projection(projection)),
+            receipt_id,
+            label,
+            program_identity,
+            passed,
+            detail,
+        )
+    }
+
+    pub fn bound_math_program_verifier_receipt(
+        projection: &RuntimeSubjectProjection,
+        receipt_id: u32,
+        label: impl Into<String>,
+        program_identity: impl Into<String>,
+        passed: bool,
+        detail: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::math_program_verifier_receipt(
             Some(RuntimeEvidenceSubject::from_projection(projection)),
             receipt_id,
             label,
@@ -870,6 +1037,8 @@ impl ResolutionEvidenceInbox {
         let mut fault_count = 0usize;
         let mut graph_passed = 0usize;
         let mut graph_failed = 0usize;
+        let mut math_program_passed = 0usize;
+        let mut math_program_failed = 0usize;
         let mut vector_passed = 0usize;
         let mut vector_failed = 0usize;
 
@@ -881,6 +1050,13 @@ impl ResolutionEvidenceInbox {
                         graph_passed += 1;
                     } else {
                         graph_failed += 1;
+                    }
+                }
+                RuntimeEvidencePayload::MathProgramVerifierReceipt { passed, .. } => {
+                    if *passed {
+                        math_program_passed += 1;
+                    } else {
+                        math_program_failed += 1;
                     }
                 }
                 RuntimeEvidencePayload::VectorVerifierReceipt { passed, .. } => {
@@ -912,6 +1088,8 @@ impl ResolutionEvidenceInbox {
                     "\"agent_faults\":{},",
                     "\"graph_verifier_passed\":{},",
                     "\"graph_verifier_failed\":{},",
+                    "\"math_program_verifier_passed\":{},",
+                    "\"math_program_verifier_failed\":{},",
                     "\"vector_verifier_passed\":{},",
                     "\"vector_verifier_failed\":{}",
                 "}},",
@@ -931,6 +1109,8 @@ impl ResolutionEvidenceInbox {
             fault_count,
             graph_passed,
             graph_failed,
+            math_program_passed,
+            math_program_failed,
             vector_passed,
             vector_failed,
             entries,
