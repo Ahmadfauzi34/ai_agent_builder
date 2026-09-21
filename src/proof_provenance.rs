@@ -2,12 +2,17 @@ use wasm_bindgen::prelude::*;
 
 use crate::coprocessor::verify_vectors_metrics;
 use crate::graph::CompiledGraph;
+use crate::math::{
+    MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7, MathProgramV8,
+    MathProgramV9,
+};
 use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
 const PROOF_PROVENANCE_V1: &str = include_str!("../docs/proof-provenance.v1.json");
+const MATH_PROOF_V1: &str = include_str!("../docs/math-proof.v1.json");
 const MAX_PROOF_LABEL_BYTES: usize = 256;
 const MAX_ATTESTATION_DETAIL_BYTES: usize = 1024;
 
@@ -70,6 +75,113 @@ fn tensor_fingerprint(tensor: &WasmTensor) -> String {
         bytes.extend_from_slice(&value.to_bits().to_le_bytes());
     }
     bytes_fingerprint(&bytes)
+}
+
+
+fn tensors_fingerprint(inputs: &[WasmTensor]) -> String {
+    let mut bytes = Vec::new();
+    for (index, tensor) in inputs.iter().enumerate() {
+        bytes.extend_from_slice(&(index as u64).to_le_bytes());
+        for dim in tensor.shape() {
+            bytes.extend_from_slice(&(dim as u64).to_le_bytes());
+        }
+        for value in tensor.to_array() {
+            bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+        }
+    }
+    bytes_fingerprint(&bytes)
+}
+
+fn math_program_version(plan: &[u8]) -> Result<u8, String> {
+    if plan.len() < 5 {
+        return Err("MathProgram proof: plan is truncated before version byte".to_string());
+    }
+    let version = plan[4];
+    if !(1..=9).contains(&version) {
+        return Err(format!(
+            "MathProgram proof: unsupported canonical plan version {version}; expected 1..=9"
+        ));
+    }
+    Ok(version)
+}
+
+fn math_program_identity_from_plan(plan: &[u8]) -> Result<(u8, String), String> {
+    let version = math_program_version(plan)?;
+    let identity = match version {
+        1..=3 => MathProgram::from_plan(plan)?.program_identity(),
+        4 => MathProgramV4::from_plan(plan)?.program_identity(),
+        5 => MathProgramV5::from_plan(plan)?.program_identity(),
+        6 => MathProgramV6::from_plan(plan)?.program_identity(),
+        7 => MathProgramV7::from_plan(plan)?.program_identity(),
+        8 => MathProgramV8::from_plan(plan)?.program_identity(),
+        9 => MathProgramV9::from_plan(plan)?.program_identity(),
+        _ => unreachable!("version validated above"),
+    };
+    Ok((version, identity))
+}
+
+fn run_math_program_plan(
+    plan: &[u8],
+    inputs: &[WasmTensor],
+) -> Result<(u8, String, Vec<f32>), String> {
+    let version = math_program_version(plan)?;
+    let (identity, output) = match version {
+        1..=3 => {
+            let program = MathProgram::from_plan(plan)?;
+            let output = match inputs {
+                [input] => program.run1(input)?,
+                [a, b] => program.run2(a, b)?,
+                _ => {
+                    return Err(format!(
+                        "MathProgram proof: v1-v3 verifier supports exactly 1 or 2 inputs, got {}",
+                        inputs.len()
+                    ))
+                }
+            };
+            (program.program_identity(), output)
+        }
+        4 => {
+            let program = MathProgramV4::from_plan(plan)?;
+            let output = match inputs {
+                [input] => program.run1(input)?,
+                [a, b] => program.run2(a, b)?,
+                _ => {
+                    return Err(format!(
+                        "MathProgram proof: v4 verifier supports exactly 1 or 2 inputs, got {}",
+                        inputs.len()
+                    ))
+                }
+            };
+            (program.program_identity(), output)
+        }
+        5 => {
+            let program = MathProgramV5::from_plan(plan)?;
+            let output = program.run_inputs(inputs)?;
+            (program.program_identity(), output)
+        }
+        6 => {
+            let program = MathProgramV6::from_plan(plan)?;
+            let output = program.run_inputs(inputs)?;
+            (program.program_identity(), output)
+        }
+        7 => {
+            let program = MathProgramV7::from_plan(plan)?;
+            let output = program.run_inputs(inputs)?;
+            (program.program_identity(), output)
+        }
+        8 => {
+            let program = MathProgramV8::from_plan(plan)?;
+            let output = program.run_inputs(inputs)?;
+            (program.program_identity(), output)
+        }
+        9 => {
+            let program = MathProgramV9::from_plan(plan)?;
+            let output = program.run_inputs(inputs)?;
+            (program.program_identity(), output)
+        }
+        _ => unreachable!("version validated above"),
+    };
+    Ok((version, identity, output.to_array()))
 }
 
 fn tolerances_json(abs_tol: f64, rel_tol: f64) -> String {
@@ -135,6 +247,13 @@ fn ledger_receipt_json(
 #[wasm_bindgen(js_name = proofProvenanceCapabilities)]
 pub fn proof_provenance_capabilities() -> String {
     PROOF_PROVENANCE_V1.to_string()
+}
+
+
+/// Return the MathProgram proof/correlation authority contract.
+#[wasm_bindgen(js_name = mathProofCapabilities)]
+pub fn math_proof_capabilities() -> String {
+    MATH_PROOF_V1.to_string()
 }
 
 /// Record an explicit caller claim. This never upgrades into verifier authority.
@@ -324,6 +443,198 @@ pub fn workspace_verify_graph_receipt(
         result_json,
     ))
 }
+
+
+
+/// Bind a replay-derived MathProgram programIdentity to an already-bound runtime subject.
+///
+/// Callers supply canonical plan bytes, never a free-form identity string. Replay validation
+/// derives the authoritative exact programIdentity before any binding mutation occurs.
+#[wasm_bindgen(js_name = workspaceBindRuntimeMathProgramPlan)]
+pub fn workspace_bind_runtime_math_program_plan(
+    workspace: &mut AgentWorkspace,
+    plan: &[u8],
+) -> Result<String, String> {
+    if workspace.runtime_subject_binding().is_none() {
+        return Err(
+            "workspaceBindRuntimeMathProgramPlan: runtime subject must be bound first".to_string(),
+        );
+    }
+
+    let (version, program_identity) = math_program_identity_from_plan(plan)?;
+    let newly_bound = workspace.bind_runtime_program_identity(program_identity.clone())?;
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.runtime-math-program-binding.v1\",",
+            "\"program_plan_version\":{},",
+            "\"program_identity\":{},",
+            "\"identity_policy\":\"exact_program_identity\",",
+            "\"identity_source\":\"canonical_plan_replay\",",
+            "\"newly_bound\":{},",
+            "\"binding_count\":{},",
+            "\"mutation\":\"runtime_program_binding_metadata_only\"",
+            "}}"
+        ),
+        version,
+        program_identity,
+        newly_bound,
+        workspace.runtime_program_binding_count(),
+    ))
+}
+
+fn workspace_verify_math_program_receipt(
+    workspace: &mut AgentWorkspace,
+    plan: &[u8],
+    inputs: &[WasmTensor],
+    candidate: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+    context: &str,
+) -> Result<String, String> {
+    validate_label(&label, context)?;
+    if !(1..=2).contains(&inputs.len()) {
+        return Err(format!(
+            "{context}: verifier supports exactly 1 or 2 external inputs, got {}",
+            inputs.len()
+        ));
+    }
+
+    let (identity_version, program_identity) = math_program_identity_from_plan(plan)?;
+
+    if workspace.runtime_subject_binding().is_some()
+        && !workspace.runtime_program_identity_bound(&program_identity)
+    {
+        return Err(format!(
+            "{context}: MathProgram programIdentity is not bound to this runtime subject; bind the canonical plan with workspaceBindRuntimeMathProgramPlan first"
+        ));
+    }
+
+    let (run_version, run_identity, reference) = run_math_program_plan(plan, inputs)?;
+    debug_assert_eq!(identity_version, run_version);
+    debug_assert_eq!(program_identity, run_identity);
+
+    let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
+    let receipt_id = workspace.next_verifier_receipt_id();
+
+    let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
+    let input_fingerprint = tensors_fingerprint(inputs);
+    let reference_fingerprint = f32_fingerprint(&reference);
+    let candidate_fingerprint = f32_fingerprint(candidate);
+    let result_json = report.to_json();
+
+    let compact = ledger_receipt_json(
+        receipt_id,
+        "wasm_verifier",
+        "MathProgram.verifyFlat",
+        "burn_math_program",
+        &label,
+        "input_fingerprint",
+        &input_fingerprint,
+        &candidate_fingerprint,
+        Some(&program_identity_fingerprint),
+        None,
+        abs_tol,
+        rel_tol,
+        &result_json,
+    );
+
+    let stored = workspace.record_verifier_receipt_internal(
+        "MathProgram.verifyFlat".into(),
+        report.passed,
+        compact,
+    )?;
+    debug_assert_eq!(stored, receipt_id);
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
+            "\"receipt_id\":{},",
+            "\"authority\":\"wasm_verifier\",",
+            "\"verifier\":\"MathProgram.verifyFlat\",",
+            "\"reference_authority\":\"burn_math_program\",",
+            "\"label\":\"{}\",",
+            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
+            "\"program_plan_version\":{},",
+            "\"program_identity\":{},",
+            "\"program_identity_fingerprint\":\"{}\",",
+            "\"mutable_state_in_program_identity\":false,",
+            "\"runtime_subject\":{},",
+            "\"input_count\":{},",
+            "\"input_fingerprint\":\"{}\",",
+            "\"reference_fingerprint\":\"{}\",",
+            "\"candidate_fingerprint\":\"{}\",",
+            "\"tolerances\":{},",
+            "\"result\":{}",
+            "}}"
+        ),
+        receipt_id,
+        json_escape(&label),
+        run_version,
+        program_identity,
+        json_escape(&program_identity_fingerprint),
+        runtime_subject_binding_json(workspace),
+        inputs.len(),
+        json_escape(&input_fingerprint),
+        json_escape(&reference_fingerprint),
+        json_escape(&candidate_fingerprint),
+        tolerances_json(abs_tol, rel_tol),
+        result_json,
+    ))
+}
+
+/// Replay a canonical 1-input MathProgram as the independent numerical reference.
+#[wasm_bindgen(js_name = workspaceVerifyMathProgram1Receipt)]
+pub fn workspace_verify_math_program_1_receipt(
+    workspace: &mut AgentWorkspace,
+    plan: &[u8],
+    input: &WasmTensor,
+    candidate: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+) -> Result<String, String> {
+    workspace_verify_math_program_receipt(
+        workspace,
+        plan,
+        &[input.clone()],
+        candidate,
+        abs_tol,
+        rel_tol,
+        label,
+        "workspaceVerifyMathProgram1Receipt",
+    )
+}
+
+/// Replay a canonical 2-input MathProgram as the independent numerical reference.
+#[wasm_bindgen(js_name = workspaceVerifyMathProgram2Receipt)]
+pub fn workspace_verify_math_program_2_receipt(
+    workspace: &mut AgentWorkspace,
+    plan: &[u8],
+    lhs: &WasmTensor,
+    rhs: &WasmTensor,
+    candidate: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+) -> Result<String, String> {
+    workspace_verify_math_program_receipt(
+        workspace,
+        plan,
+        &[lhs.clone(), rhs.clone()],
+        candidate,
+        abs_tol,
+        rel_tol,
+        label,
+        "workspaceVerifyMathProgram2Receipt",
+    )
+}
+
 
 /// Return proof-related workspace collections without merging their authority classes.
 #[wasm_bindgen(js_name = workspaceProofLedger)]
