@@ -1105,6 +1105,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"input_contract\":\"inputContractCapabilities\",",
             "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
             "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
+            "\"math_interaction\":\"mathInteractionCapabilities\",",
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
