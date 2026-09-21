@@ -382,7 +382,7 @@ fn failed_direct_math_receipt_remains_observation_only() {
             "len": 2,
             "max_abs_error": 1.0,
             "max_rel_error": 1.0,
-            "rmse": 0.7071067811865476,
+            "rmse": std::f64::consts::FRAC_1_SQRT_2,
             "first_failure": 0
         }
     })
