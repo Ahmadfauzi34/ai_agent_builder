@@ -59,6 +59,15 @@
       "tanh",
       "variant"
     ],
+    "InputPortConsumerSpec": [
+      "acceptedRoles",
+      "allowExtensionRoles",
+      "consumerId",
+      "constructor",
+      "describe",
+      "minimumRevision",
+      "requireFingerprint"
+    ],
     "AgentWorkspace": [
       "constructor",
       "forgetLayer",
@@ -588,6 +597,8 @@
     "inputContractCapabilities",
     "inputContractCompatibility",
     "inputPortCapabilities",
+    "inputPortConsumerCapabilities",
+    "inputPortConsumerCompatibility",
     "interactionCapabilities",
     "interactionCheckCompile",
     "interactionCheckInitBinary",
