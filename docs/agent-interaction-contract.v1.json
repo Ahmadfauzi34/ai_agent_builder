@@ -160,6 +160,8 @@
     "catalog": "mathOperationCatalog",
     "contract_schema": "burn-research.math-interaction.v1",
     "role": "read-only unified math vocabulary and direct/program binding projection",
-    "authority": "none beyond catalog binding; operation choice remains agent authority and numerical semantics remain in existing math contracts"
+    "authority": "none beyond catalog binding; operation choice remains agent authority and numerical semantics remain in existing math contracts",
+    "valid_operations": "mathValidOperations",
+    "valid_operations_role": "candidate projection only; selection, ranking, recommendation, execution, and mutation remain outside this surface"
   }
 }

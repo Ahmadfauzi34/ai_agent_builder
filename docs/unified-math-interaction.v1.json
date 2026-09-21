@@ -138,7 +138,9 @@
     "describe_operation": "mathDescribeOperation",
     "preflight": "mathCheckOperation",
     "description_schema": "burn-research.math-operation-description.v1",
-    "preflight_schema": "burn-research.math-preflight.v1"
+    "preflight_schema": "burn-research.math-preflight.v1",
+    "valid_operations": "mathValidOperations",
+    "valid_operations_schema": "burn-research.math-valid-operations.v1"
   },
   "invariants": [
     "discovery is read-only and owns no persistent state",
@@ -156,8 +158,8 @@
       "completed: operand metadata contract without WASM serde_json dependency"
     ],
     "checkpoint_3": [
-      "mathValidOperations",
-      "agent math interaction projection"
+      "completed: mathValidOperations",
+      "completed: agent-facing candidate projection without ranking or selection"
     ],
     "checkpoint_4": [
       "canonical operation to direct/program composition adapter"
@@ -174,7 +176,9 @@
     "WASM surface exposes discovery only; no new math execution facade is introduced",
     "mathDescribeOperation describes all 35 canonical operations without execution",
     "mathCheckOperation rejects proven metadata incompatibility and labels value-domain predicates as deferred",
-    "metadata preflight never returns execution_authorized=true"
+    "metadata preflight never returns execution_authorized=true",
+    "mathValidOperations returns all 35 catalog operations in stable catalog order with metadata_admissible, requires_parameters, or metadata_rejected status",
+    "mathValidOperations never selects, ranks, recommends, executes, or mutates"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",
@@ -200,5 +204,35 @@
       "does not choose an operation for the agent",
       "unknown operation ids fail closed"
     ]
+  },
+  "agent_math_projection": {
+    "role": "candidate_filter_only",
+    "input_semantics": {
+      "lhs_shape": "required rank-4 operand metadata",
+      "rhs_shape": "optional rank-4 second operand; empty means unavailable",
+      "unary_projection": "uses lhs independently even when rhs is available",
+      "binary_projection": "requires rhs"
+    },
+    "statuses": {
+      "metadata_admissible": "known operand metadata is compatible; value-domain checks may remain deferred",
+      "requires_parameters": "operand metadata is compatible but operation-specific params are required before mathCheckOperation",
+      "metadata_rejected": "known operand metadata proves this operation is not a candidate"
+    },
+    "non_authority": [
+      "does not choose or select an operation",
+      "does not rank or score candidates",
+      "does not recommend an operation",
+      "does not authorize execution",
+      "does not mutate state",
+      "does not execute Burn or MathProgram"
+    ],
+    "output_guards": {
+      "selection_authority": "agent",
+      "selected_operation": null,
+      "ranking": null,
+      "recommendation": null,
+      "execution_authorized": false,
+      "mutation": "none"
+    }
   }
 }

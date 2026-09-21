@@ -609,6 +609,7 @@
     "mathProgramV7Capabilities",
     "mathProgramV8Capabilities",
     "mathProgramV9Capabilities",
+    "mathValidOperations",
     "mathVerifyVectors",
     "numericKernelCapabilities",
     "probabilityCapabilities",

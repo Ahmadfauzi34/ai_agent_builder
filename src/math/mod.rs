@@ -41,7 +41,7 @@ pub use index_source::{
 pub use index_source_wasm::{wasm_index_source_capabilities, WasmIndexSource};
 pub use interaction::{
     math_check_operation, math_describe_operation, math_interaction_capabilities,
-    math_operation_catalog,
+    math_operation_catalog, math_valid_operations,
 };
 pub use linalg::{linear_algebra_capabilities, WasmLinearAlgebra};
 pub use numeric::{numeric_kernel_capabilities, WasmNumericKernel};
