@@ -87,28 +87,30 @@ fn edge_projection_applies_only_to_steps_that_consume_external_slot_zero() {
     )
     .unwrap();
 
-    let first_id = workspace.reserve_layer_id("relu-a").unwrap();
+    let first_id = workspace
+        .reserve_layer_id(&registry, "relu-a".into())
+        .unwrap();
     let first = AgentLayerSpec::relu(first_id);
-    workspace_init_unary(
+    let first_output = workspace_init_unary(
         &mut workspace,
         &mut builder,
         &mut registry,
         &first,
         0,
-        1,
         "relu-a".into(),
     )
     .unwrap();
 
-    let second_id = workspace.reserve_layer_id("relu-b").unwrap();
+    let second_id = workspace
+        .reserve_layer_id(&registry, "relu-b".into())
+        .unwrap();
     let second = AgentLayerSpec::relu(second_id);
     workspace_init_unary(
         &mut workspace,
         &mut builder,
         &mut registry,
         &second,
-        1,
-        2,
+        first_output,
         "relu-b".into(),
     )
     .unwrap();
