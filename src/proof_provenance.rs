@@ -6,7 +6,10 @@ use crate::math::{
     MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7, MathProgramV8,
     MathProgramV9,
 };
-use crate::registry::LayerRegistry;
+use crate::math::{MathProgramBuilder, MathProgramV9Builder};
+    use crate::math::program::OP_ABS;
+    use crate::registry::LayerRegistry;
+    use crate::resolution_runtime_bridge::workspace_bind_runtime_subject;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
@@ -662,7 +665,9 @@ pub fn workspace_proof_ledger(workspace: &AgentWorkspace) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        workspace_proof_ledger, workspace_record_attestation, workspace_verify_graph_receipt,
+        math_proof_capabilities, workspace_bind_runtime_math_program_plan, workspace_proof_ledger,
+        workspace_record_attestation, workspace_verify_graph_receipt,
+        workspace_verify_math_program_1_receipt, workspace_verify_math_program_2_receipt,
         workspace_verify_vector_receipt,
     };
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
@@ -771,5 +776,184 @@ mod tests {
         )
         .unwrap();
         assert!(good.contains("\"receipt_id\":1"));
+    }
+
+    fn abs_plan() -> Vec<u8> {
+        let mut builder = MathProgramBuilder::new(1, 2).unwrap();
+        builder.add_unary(OP_ABS, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+        builder.compile().unwrap().program_plan()
+    }
+
+    #[test]
+    fn math_program_v1_receipt_uses_program_execution_as_reference() {
+        let plan = abs_plan();
+        let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+
+        let passed = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "math-program-pass".into(),
+        )
+        .unwrap();
+        assert!(passed.contains("\"authority\":\"wasm_verifier\""));
+        assert!(passed.contains("\"verifier\":\"MathProgram.verifyFlat\""));
+        assert!(passed.contains("\"reference_authority\":\"burn_math_program\""));
+        assert!(passed.contains("\"program_plan_version\":1"));
+        assert!(passed.contains("\"passed\":true"));
+
+        let failed = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 4.0],
+            0.0,
+            0.0,
+            "math-program-fail".into(),
+        )
+        .unwrap();
+        assert!(failed.contains("\"receipt_id\":2"));
+        assert!(failed.contains("\"passed\":false"));
+
+        let ledger = workspace_proof_ledger(&workspace);
+        assert!(ledger.contains("MathProgram.verifyFlat"));
+        assert!(ledger.contains("\"state\":\"passed\""));
+        assert!(ledger.contains("\"state\":\"failed\""));
+    }
+
+    #[test]
+    fn math_program_v9_two_input_receipt_dispatches_canonical_plan() {
+        let mut builder = MathProgramV9Builder::new(2, 3).unwrap();
+        builder.add_less_equal_01(0, 1, 2).unwrap();
+        builder.set_output(2).unwrap();
+        let plan = builder.compile().unwrap().program_plan();
+
+        let lhs = WasmTensor::new(&[1.0, 3.0, 2.0], &[1, 3, 1, 1]);
+        let rhs = WasmTensor::new(&[1.0, 2.0, 2.0], &[1, 3, 1, 1]);
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+
+        let receipt = workspace_verify_math_program_2_receipt(
+            &mut workspace,
+            &plan,
+            &lhs,
+            &rhs,
+            &[1.0, 0.0, 1.0],
+            0.0,
+            0.0,
+            "math-v9".into(),
+        )
+        .unwrap();
+
+        assert!(receipt.contains("\"program_plan_version\":9"));
+        assert!(receipt.contains("\"input_count\":2"));
+        assert!(receipt.contains("\"reference_authority\":\"burn_math_program\""));
+        assert!(receipt.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn subject_bound_math_program_receipt_requires_exact_replay_derived_binding() {
+        let plan = abs_plan();
+        let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+
+        workspace_bind_runtime_subject(
+            &mut workspace,
+            "intent-math-proof".into(),
+            3,
+            "approval-math-proof".into(),
+            "effective-spec".into(),
+            "spec-math-proof".into(),
+            "policy-math-proof".into(),
+            4,
+            false,
+        )
+        .unwrap();
+
+        let error = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "before-bind".into(),
+        )
+        .unwrap_err();
+        assert!(error.contains("workspaceBindRuntimeMathProgramPlan"));
+
+        let binding =
+            workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
+        assert!(binding.contains("\"identity_source\":\"canonical_plan_replay\""));
+        assert!(binding.contains("\"newly_bound\":true"));
+
+        let repeat =
+            workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
+        assert!(repeat.contains("\"newly_bound\":false"));
+
+        let receipt = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "after-bind".into(),
+        )
+        .unwrap();
+        assert!(receipt.contains("\"runtime_subject\":{\"status\":\"bound\""));
+        assert!(receipt.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn malformed_math_program_verification_does_not_consume_receipt_id() {
+        let plan = abs_plan();
+        let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+
+        assert!(workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &[0, 1, 2],
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "bad-plan".into(),
+        )
+        .is_err());
+
+        assert!(workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[f32::NAN, 3.0],
+            0.0,
+            0.0,
+            "bad-candidate".into(),
+        )
+        .is_err());
+
+        let good = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "good".into(),
+        )
+        .unwrap();
+        assert!(good.contains("\"receipt_id\":1"));
+    }
+
+    #[test]
+    fn math_proof_contract_does_not_upgrade_direct_vector_comparison() {
+        let capabilities = math_proof_capabilities();
+        assert!(capabilities.contains("\"direct_operation_receipt\":\"not independently provided by v1"));
+        assert!(capabilities.contains("\"authority_limit\":\"caller_supplied reference"));
     }
 }
