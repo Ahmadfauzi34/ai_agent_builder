@@ -73,7 +73,7 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
             );
         }
         let role = &token[1..token.len() - 1];
-        if role.contains(['"', '\\']) {
+        if role.contains('"') || role.contains('\\') {
             return Err(
                 "InputPortConsumerSpec.accepted_roles_json: escaped role strings are not supported"
                     .to_string(),
