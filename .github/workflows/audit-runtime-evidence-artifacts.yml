@@ -31,6 +31,9 @@ jobs:
       - name: Build WASM package
         run: wasm-pack build --dev --target web --out-dir pkg
 
+      - name: Generate packaged WASM surface manifest
+        run: python3 scripts/check_wasm_surface.py
+
       - name: Package Node host adapter
         run: node scripts/package_node_host.mjs pkg
 
