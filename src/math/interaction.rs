@@ -966,6 +966,263 @@ pub fn math_check_operation(
 }
 
 
+
+const MATH_VALID_OPERATIONS_SCHEMA_ID: &str = "burn-research.math-valid-operations.v1";
+
+fn operation_requires_explicit_parameters(operation_id: &str) -> bool {
+    matches!(
+        operation_id,
+        "numeric.clamp"
+            | "tensor.reshape"
+            | "tensor.permute"
+            | "tensor.slice"
+            | "tensor.select_axis"
+            | "reduction.sum_axis"
+            | "reduction.mean_axis"
+            | "reduction.min_axis"
+            | "reduction.max_axis"
+            | "index.indices_like"
+    )
+}
+
+fn parameterized_operation_globally_possible(
+    operation_id: &str,
+    lhs: [u32; 4],
+) -> Result<(), String> {
+    match operation_id {
+        "tensor.reshape" => {
+            checked_nonzero_product(lhs, "reshape.source")?;
+            Ok(())
+        }
+        "tensor.slice"
+        | "reduction.sum_axis"
+        | "reduction.mean_axis"
+        | "reduction.min_axis"
+        | "reduction.max_axis"
+        | "index.indices_like" => {
+            if lhs.iter().any(|dim| *dim == 0) {
+                Err(format!(
+                    "{operation_id}.nonzero_dimensions: all input dimensions must be > 0"
+                ))
+            } else {
+                Ok(())
+            }
+        }
+        _ => Ok(()),
+    }
+}
+
+fn candidate_rejected_json(
+    operation: &MathOperationDescriptor,
+    predicate: &str,
+    expected: &str,
+    actual: &str,
+) -> String {
+    format!(
+        concat!(
+            "{{",
+            "\"id\":\"{}\",",
+            "\"family\":\"{}\",",
+            "\"arity\":{},",
+            "\"status\":\"metadata_rejected\",",
+            "\"candidate\":false,",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"reason\":{{",
+                "\"predicate\":\"{}\",",
+                "\"expected\":\"{}\",",
+                "\"actual\":\"{}\"",
+            "}}",
+            "}}"
+        ),
+        operation.id,
+        operation.family,
+        operation.arity,
+        json_escape(predicate),
+        json_escape(expected),
+        json_escape(actual),
+    )
+}
+
+fn candidate_requires_parameters_json(operation: &MathOperationDescriptor) -> String {
+    let (u32_params, f32_params) = parameter_contract(operation.id);
+    format!(
+        concat!(
+            "{{",
+            "\"id\":\"{}\",",
+            "\"family\":\"{}\",",
+            "\"arity\":{},",
+            "\"status\":\"requires_parameters\",",
+            "\"candidate\":true,",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"parameter_contract\":{{",
+                "\"u32_params\":\"{}\",",
+                "\"f32_params\":\"{}\"",
+            "}},",
+            "\"next_validation_surface\":\"mathCheckOperation\"",
+            "}}"
+        ),
+        operation.id,
+        operation.family,
+        operation.arity,
+        json_escape(u32_params),
+        json_escape(f32_params),
+    )
+}
+
+fn candidate_from_preflight_json(
+    operation: &MathOperationDescriptor,
+    preflight: String,
+) -> String {
+    let status = if preflight.contains("\"status\":\"admissible\"") {
+        "metadata_admissible"
+    } else {
+        "metadata_rejected"
+    };
+    let candidate = status == "metadata_admissible";
+    format!(
+        concat!(
+            "{{",
+            "\"id\":\"{}\",",
+            "\"family\":\"{}\",",
+            "\"arity\":{},",
+            "\"status\":\"{}\",",
+            "\"candidate\":{},",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"preflight\":{}",
+            "}}"
+        ),
+        operation.id,
+        operation.family,
+        operation.arity,
+        status,
+        if candidate { "true" } else { "false" },
+        preflight,
+    )
+}
+
+/// Project all canonical math operations against available operand-shape metadata.
+///
+/// This is a candidate filter, not a chooser. Unary operations are evaluated against
+/// lhs independently even when rhs is available. Binary operations require rhs.
+/// Operations needing operation-specific parameters are retained as candidates with
+/// status requires_parameters rather than being falsely rejected for missing params.
+#[wasm_bindgen(js_name = mathValidOperations)]
+pub fn math_valid_operations(lhs_shape: &[u32], rhs_shape: &[u32]) -> Result<String, String> {
+    let lhs = parse_shape4(lhs_shape, "lhs")?;
+    let rhs = if rhs_shape.is_empty() {
+        None
+    } else {
+        Some(parse_shape4(rhs_shape, "rhs")?)
+    };
+
+    let mut entries = Vec::with_capacity(OPERATIONS.len());
+    let mut candidate_ids = Vec::new();
+    let mut metadata_admissible_count = 0usize;
+    let mut requires_parameters_count = 0usize;
+    let mut metadata_rejected_count = 0usize;
+
+    for operation in OPERATIONS {
+        if operation.arity == 2 && rhs.is_none() {
+            metadata_rejected_count += 1;
+            entries.push(candidate_rejected_json(
+                operation,
+                "operand.rhs_available",
+                "rhs rank-4 operand available",
+                "rhs absent",
+            ));
+            continue;
+        }
+
+        if operation_requires_explicit_parameters(operation.id) {
+            match parameterized_operation_globally_possible(operation.id, lhs) {
+                Ok(()) => {
+                    requires_parameters_count += 1;
+                    candidate_ids.push(operation.id);
+                    entries.push(candidate_requires_parameters_json(operation));
+                }
+                Err(error) => {
+                    metadata_rejected_count += 1;
+                    let predicate = first_error_predicate(&error).to_string();
+                    entries.push(candidate_rejected_json(
+                        operation,
+                        &predicate,
+                        "operation has at least one metadata-valid parameterization",
+                        &error,
+                    ));
+                }
+            }
+            continue;
+        }
+
+        let preflight_rhs: &[u32] = if operation.arity == 2 {
+            rhs_shape
+        } else {
+            &[]
+        };
+        let preflight = math_check_operation(
+            operation.id.to_string(),
+            lhs_shape,
+            preflight_rhs,
+            &[],
+            &[],
+        )?;
+        if preflight.contains("\"status\":\"admissible\"") {
+            metadata_admissible_count += 1;
+            candidate_ids.push(operation.id);
+        } else {
+            metadata_rejected_count += 1;
+        }
+        entries.push(candidate_from_preflight_json(operation, preflight));
+    }
+
+    let candidate_ids_json = candidate_ids
+        .iter()
+        .map(|id| format!("\"{}\"", json_escape(id)))
+        .collect::<Vec<_>>()
+        .join(",");
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"{}\",",
+            "\"interaction_schema\":\"{}\",",
+            "\"validity_scope\":\"operand_metadata_candidate_projection_only\",",
+            "\"selection_authority\":\"agent\",",
+            "\"selected_operation\":null,",
+            "\"ranking\":null,",
+            "\"recommendation\":null,",
+            "\"execution_authorized\":false,",
+            "\"mutation\":\"none\",",
+            "\"lhs_shape\":{},",
+            "\"rhs_shape\":{},",
+            "\"operation_count\":{},",
+            "\"candidate_count\":{},",
+            "\"metadata_admissible_count\":{},",
+            "\"requires_parameters_count\":{},",
+            "\"metadata_rejected_count\":{},",
+            "\"candidate_operation_ids\":[{}],",
+            "\"operations\":[{}]",
+            "}}"
+        ),
+        MATH_VALID_OPERATIONS_SCHEMA_ID,
+        MATH_INTERACTION_SCHEMA_ID,
+        shape_json(lhs),
+        rhs.map(shape_json).unwrap_or_else(|| "null".to_string()),
+        OPERATIONS.len(),
+        candidate_ids.len(),
+        metadata_admissible_count,
+        requires_parameters_count,
+        metadata_rejected_count,
+        candidate_ids_json,
+        entries.join(","),
+    ))
+}
+
+
 /// Machine-readable authority and lifecycle description for the unified math vocabulary.
 ///
 /// This layer is discovery/projection only. It owns no tensor, program, execution,
@@ -993,8 +1250,8 @@ pub fn math_interaction_capabilities() -> String {
             "}},",
             "\"canonical_id_policy\":\"stable_across_direct_and_program_backends\",",
             "\"program_generation_policy\":\"minimum compatible generation is binding metadata, not operation identity\",",
-            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\"],",
-            "\"deferred\":[\"valid-operation projection\",\"execution facade\"],",
+            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\"],",
+            "\"deferred\":[\"execution facade\"],",
             "\"read_only_guarantee\":\"discovery calls allocate no persistent state and execute no tensor operations\"",
             "}}"
         ),
