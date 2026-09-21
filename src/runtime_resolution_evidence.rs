@@ -284,8 +284,8 @@ impl RuntimeEvidence {
         self.payload.outcome()
     }
 
-    fn parse_json_object<'a>(
-        raw: &'a str,
+    fn parse_json_object(
+        raw: &str,
         context: &str,
     ) -> Result<serde_json::Value, String> {
         let value: serde_json::Value =
