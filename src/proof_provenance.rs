@@ -1004,8 +1004,15 @@ mod tests {
 
     #[test]
     fn math_proof_contract_does_not_upgrade_direct_vector_comparison() {
-        let capabilities = math_proof_capabilities();
-        assert!(capabilities.contains("\"direct_operation_receipt\":\"not independently provided by v1"));
-        assert!(capabilities.contains("\"authority_limit\":\"caller_supplied reference"));
+        let capabilities: serde_json::Value =
+            serde_json::from_str(&math_proof_capabilities()).unwrap();
+        assert_eq!(
+            capabilities["authority_model"]["direct_operation_receipt"],
+            "not independently provided by v1; direct target must not be relabeled as MathProgram verifier authority"
+        );
+        assert_eq!(
+            capabilities["direct_target"]["authority_limit"],
+            "caller_supplied reference; cannot be described as independent proof that the direct operation itself is correct"
+        );
     }
 }
