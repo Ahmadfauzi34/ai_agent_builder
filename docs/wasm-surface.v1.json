@@ -598,6 +598,8 @@
     "interactionValidActions",
     "introspectionCapabilities",
     "linearAlgebraCapabilities",
+    "mathInteractionCapabilities",
+    "mathOperationCatalog",
     "mathProgramCapabilities",
     "mathProgramV4Capabilities",
     "mathProgramV5Capabilities",

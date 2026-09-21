@@ -1,0 +1,172 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.math-interaction.v1",
+  "role": "unified_math_vocabulary",
+  "state_ownership": "none",
+  "execution_ownership": "none",
+  "purpose": "Provide stable canonical operation identities across existing direct math surfaces and MathProgram generations without becoming a second executor, verifier, or semantic authority.",
+  "tensor_domain": {
+    "dtype": "f32",
+    "canonical_rank": 4,
+    "tensor_bridge": "WasmTensor"
+  },
+  "authority_model": {
+    "agent": "operation_and_composition_choice",
+    "unified_math_interaction": "binding_projection_only",
+    "family_contracts": "operation_semantics_and_preconditions",
+    "math_program": "canonical_program_structure_and_programIdentity",
+    "direct_math_surfaces": "operation_implementation",
+    "burn": "numerical_execution",
+    "verifier": "observed_numerical_comparison_and_receipt",
+    "resolution": "semantic_interpretation_and_authorization_remain_external"
+  },
+  "canonical_id_policy": {
+    "identity": "family.operation",
+    "stable_across_backends": true,
+    "stable_across_math_program_generations": true,
+    "program_generation_is_identity": false,
+    "direct_surface_is_identity": false
+  },
+  "families": {
+    "numeric": [
+      "numeric.add",
+      "numeric.sub",
+      "numeric.mul",
+      "numeric.div",
+      "numeric.abs",
+      "numeric.sqrt",
+      "numeric.exp",
+      "numeric.log",
+      "numeric.clamp"
+    ],
+    "tensor_transform": [
+      "tensor.transpose",
+      "tensor.reshape",
+      "tensor.permute",
+      "tensor.slice",
+      "tensor.select_axis"
+    ],
+    "linear_algebra": [
+      "linalg.matmul",
+      "linalg.dot",
+      "linalg.l2_norm",
+      "linalg.cosine_similarity",
+      "linalg.l2_distance"
+    ],
+    "statistics": [
+      "statistics.sum",
+      "statistics.mean",
+      "statistics.variance_population",
+      "statistics.std_population",
+      "statistics.min",
+      "statistics.max"
+    ],
+    "probability": [
+      "probability.normalize",
+      "probability.entropy",
+      "probability.cross_entropy",
+      "probability.kl_divergence"
+    ],
+    "reduction": [
+      "reduction.sum_axis",
+      "reduction.mean_axis",
+      "reduction.min_axis",
+      "reduction.max_axis"
+    ],
+    "comparison": [
+      "comparison.less_equal_01"
+    ],
+    "index_source": [
+      "index.indices_like"
+    ]
+  },
+  "operation_count": 35,
+  "source_contracts": {
+    "numeric": "numericKernelCapabilities",
+    "tensor_transform": "tensorTransformCapabilities",
+    "linear_algebra": "linearAlgebraCapabilities",
+    "statistics": "statisticsCapabilities",
+    "probability": "probabilityCapabilities",
+    "reduction": "reductionCapabilities",
+    "comparison": "comparisonCapabilities",
+    "index_source": "indexSourceCapabilities"
+  },
+  "program_generation_bindings": {
+    "v1": [
+      "plain unary/binary numeric ops",
+      "transpose",
+      "linalg plain ops",
+      "global statistics",
+      "probability"
+    ],
+    "v2": [
+      "numeric.clamp",
+      "linalg.cosine_similarity"
+    ],
+    "v3": [
+      "tensor.reshape",
+      "tensor.permute",
+      "tensor.slice"
+    ],
+    "v4": [
+      "tensor.select_axis"
+    ],
+    "v5": [
+      "input-count expansion only; no new canonical operation identity"
+    ],
+    "v6": [
+      "fillLike remains MathProgram composition helper, not a canonical direct-family operation in v1"
+    ],
+    "v7": [
+      "expandLike remains MathProgram composition helper, not a canonical direct-family operation in v1"
+    ],
+    "v8": [
+      "reduction.sum_axis",
+      "reduction.mean_axis",
+      "reduction.min_axis",
+      "reduction.max_axis"
+    ],
+    "v9": [
+      "comparison.less_equal_01",
+      "index.indices_like"
+    ]
+  },
+  "discovery": {
+    "capabilities": "mathInteractionCapabilities",
+    "catalog": "mathOperationCatalog",
+    "catalog_schema": "burn-research.math-operation-catalog.v1"
+  },
+  "invariants": [
+    "discovery is read-only and owns no persistent state",
+    "discovery executes no tensor operation",
+    "canonical operation ids do not change when MathProgram generation changes",
+    "detailed numerical/domain constraints remain authoritative in the existing per-family capability contracts",
+    "the contract does not choose an operation for the agent",
+    "the contract does not grant Resolution authorization",
+    "the contract does not create verifier receipts"
+  ],
+  "deferred": {
+    "checkpoint_2": [
+      "operand metadata schema",
+      "mathDescribeOperation",
+      "mathCheckOperation"
+    ],
+    "checkpoint_3": [
+      "mathValidOperations",
+      "agent math interaction projection"
+    ],
+    "checkpoint_4": [
+      "canonical operation to direct/program composition adapter"
+    ],
+    "checkpoint_5": [
+      "math proof correlation to existing verifier receipts"
+    ]
+  },
+  "acceptance": [
+    "mathInteractionCapabilities returns parseable schema burn-research.math-interaction.v1",
+    "mathOperationCatalog returns exactly 35 unique canonical operation ids",
+    "catalog bindings identify existing direct surfaces and minimum compatible MathProgram generation",
+    "agentCapabilities and interactionCapabilities advertise mathInteractionCapabilities",
+    "WASM surface exposes discovery only; no new math execution facade is introduced"
+  ]
+}
