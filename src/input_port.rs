@@ -43,7 +43,7 @@ fn validate_bounded(value: &str, max: usize, context: &str, allow_empty: bool) -
     Ok(())
 }
 
-fn role_valid(role: &str) -> bool {
+pub(crate) fn role_valid(role: &str) -> bool {
     CANONICAL_ROLES.contains(&role) || (
         role.starts_with("x-")
             && role.len() > 2
