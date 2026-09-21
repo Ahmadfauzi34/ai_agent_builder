@@ -28,6 +28,7 @@ jobs:
           python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
           python3 -m json.tool docs/proof-provenance.v1.json >/dev/null
+          python3 -m json.tool docs/math-proof.v1.json >/dev/null
           python3 -m json.tool docs/resolution-runtime-bridge.v1.json >/dev/null
           python3 -m json.tool docs/runtime-resolution-evidence.v1.json >/dev/null
           python3 -m json.tool docs/unified-math-interaction.v1.json >/dev/null
