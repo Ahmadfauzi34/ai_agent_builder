@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn capability_contract_is_embedded_and_explicitly_metadata_only() {
-        let caps = input_port_capabilities();
-        assert!(caps.contains("\"role\":\"optional_semantic_input_port\""));
-        assert!(caps.contains("\"execution_effect\":\"none\""));
+        let caps: serde_json::Value = serde_json::from_str(&input_port_capabilities()).unwrap();
+        assert_eq!(caps["role"], "optional_semantic_input_port");
+        assert_eq!(caps["scope"]["execution_effect"], "none");
     }
 }
