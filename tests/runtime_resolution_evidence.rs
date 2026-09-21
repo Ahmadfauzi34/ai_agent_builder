@@ -7,7 +7,8 @@ use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 use burn_research::runtime_resolution_evidence::{
-    RejoinStatus, ResolutionEvidenceInbox, RuntimeEvidence,
+    runtime_resolution_evidence_capabilities, RejoinStatus, ResolutionEvidenceInbox,
+    RuntimeEvidence,
 };
 use burn_research::agent::AgentGraphBuilder;
 
@@ -42,6 +43,21 @@ fn forward_bridge_fixture() -> (
     assert!(resolution_snapshot.compile_eligible());
 
     (resolution_snapshot, projection)
+}
+
+#[test]
+fn capability_contract_advertises_direct_math_reverse_adapter() {
+    let caps: serde_json::Value =
+        serde_json::from_str(&runtime_resolution_evidence_capabilities()).unwrap();
+
+    assert_eq!(
+        caps["structured_adapters"]["direct_math_verifier_receipt"]["constructor"],
+        "RuntimeEvidence::from_direct_math_verifier_receipt_json"
+    );
+    assert_eq!(
+        caps["structured_adapters"]["direct_math_verifier_receipt"]["authority"],
+        "wasm_verifier source label / burn_direct_math candidate / burn_math_program reference / observation_only transport"
+    );
 }
 
 #[test]
