@@ -39,7 +39,10 @@ pub use index_source::{
     MAX_INDICES_LIKE_AXIS_LENGTH,
 };
 pub use index_source_wasm::{wasm_index_source_capabilities, WasmIndexSource};
-pub use interaction::{math_interaction_capabilities, math_operation_catalog};
+pub use interaction::{
+    math_check_operation, math_describe_operation, math_interaction_capabilities,
+    math_operation_catalog,
+};
 pub use linalg::{linear_algebra_capabilities, WasmLinearAlgebra};
 pub use numeric::{numeric_kernel_capabilities, WasmNumericKernel};
 pub use probability::{probability_capabilities, WasmProbability};

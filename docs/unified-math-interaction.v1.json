@@ -134,7 +134,11 @@
   "discovery": {
     "capabilities": "mathInteractionCapabilities",
     "catalog": "mathOperationCatalog",
-    "catalog_schema": "burn-research.math-operation-catalog.v1"
+    "catalog_schema": "burn-research.math-operation-catalog.v1",
+    "describe_operation": "mathDescribeOperation",
+    "preflight": "mathCheckOperation",
+    "description_schema": "burn-research.math-operation-description.v1",
+    "preflight_schema": "burn-research.math-preflight.v1"
   },
   "invariants": [
     "discovery is read-only and owns no persistent state",
@@ -147,9 +151,9 @@
   ],
   "deferred": {
     "checkpoint_2": [
-      "operand metadata schema",
-      "mathDescribeOperation",
-      "mathCheckOperation"
+      "completed: mathDescribeOperation",
+      "completed: mathCheckOperation",
+      "completed: operand metadata contract without WASM serde_json dependency"
     ],
     "checkpoint_3": [
       "mathValidOperations",
@@ -167,6 +171,34 @@
     "mathOperationCatalog returns exactly 35 unique canonical operation ids",
     "catalog bindings identify existing direct surfaces and minimum compatible MathProgram generation",
     "agentCapabilities and interactionCapabilities advertise mathInteractionCapabilities",
-    "WASM surface exposes discovery only; no new math execution facade is introduced"
-  ]
+    "WASM surface exposes discovery only; no new math execution facade is introduced",
+    "mathDescribeOperation describes all 35 canonical operations without execution",
+    "mathCheckOperation rejects proven metadata incompatibility and labels value-domain predicates as deferred",
+    "metadata preflight never returns execution_authorized=true"
+  ],
+  "preflight": {
+    "role": "read_only_metadata_preflight",
+    "inputs": {
+      "operation_id": "canonical family.operation id",
+      "lhs_shape": "exact rank-4 u32 shape",
+      "rhs_shape": "exact rank-4 for binary ops; empty for unary ops",
+      "u32_params": "operation-specific shape/axis/index metadata",
+      "f32_params": "operation-specific scalar metadata"
+    },
+    "outputs": {
+      "admissible": "known metadata predicates passed; execution is still not authorized",
+      "rejected": "a known metadata predicate failed; mutation remains none",
+      "output_shape": "inferred only when metadata predicates prove it",
+      "deferred_value_checks": "value-domain predicates that cannot be proven without tensor values",
+      "program_binding_deferred": "true when direct execution metadata is valid but a canonical MathProgram binding still needs an explicit parameter"
+    },
+    "guarantees": [
+      "does not read tensor values",
+      "does not execute Burn operations",
+      "does not mutate runtime/program/Resolution state",
+      "does not authorize execution",
+      "does not choose an operation for the agent",
+      "unknown operation ids fail closed"
+    ]
+  }
 }
