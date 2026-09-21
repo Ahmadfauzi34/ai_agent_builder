@@ -232,7 +232,7 @@ impl RuntimeEvidencePayload {
                     "\"outcome\":\"{}\",",
                     "\"receipt_id\":{},",
                     "\"label\":\"{}\",",
-                    "\"reference_program_identity\":\"{}\",",
+                    "\"program_identity\":\"{}\",",
                     "\"passed\":{},",
                     "\"detail\":\"{}\"",
                     "}}"
@@ -294,7 +294,7 @@ impl RuntimeEvidencePayload {
                     "\"receipt_id\":{},",
                     "\"operation_id\":\"{}\",",
                     "\"label\":\"{}\",",
-                    "\"program_identity\":\"{}\",",
+                    "\"reference_program_identity\":\"{}\",",
                     "\"passed\":{},",
                     "\"detail\":\"{}\"",
                     "}}"
