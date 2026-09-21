@@ -29,6 +29,7 @@ jobs:
           python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
           python3 -m json.tool docs/proof-provenance.v1.json >/dev/null
           python3 -m json.tool docs/resolution-runtime-bridge.v1.json >/dev/null
+          python3 -m json.tool docs/runtime-resolution-evidence.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
 
@@ -46,6 +47,9 @@ jobs:
 
       - name: Build native resolution runtime bridge probe
         run: cargo build --release --bin resolution_runtime_bridge_probe
+
+      - name: Build native runtime resolution evidence probe
+        run: cargo build --release --bin runtime_resolution_evidence_probe
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
@@ -221,6 +225,12 @@ jobs:
         with:
           name: resolution-runtime-bridge-native-probe
           path: target/release/resolution_runtime_bridge_probe
+
+      - name: Upload native runtime resolution evidence probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-resolution-evidence-native-probe
+          path: target/release/runtime_resolution_evidence_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

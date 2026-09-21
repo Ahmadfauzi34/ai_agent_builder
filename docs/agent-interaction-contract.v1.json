@@ -144,5 +144,15 @@
     "policy": "bridge transports already-approved/authorized semantic identity; it never chooses runtime actions or grants authority",
     "lifecycle": "bind before runtime planning state is reserved; binding is immutable for the workspace lifetime",
     "program_binding": "workspaceCompileForRuntimeSubject + workspaceRuntimeProgramBinding"
+  },
+  "runtime_resolution_evidence": {
+    "capability": "runtimeResolutionEvidenceCapabilities",
+    "native_inbox": "ResolutionEvidenceInbox",
+    "accepts": [
+      "structured AgentFault fields",
+      "graph verifier receipt fields",
+      "vector verifier receipt fields"
+    ],
+    "policy": "evidence is classified against the exact Resolution revision + runtime subject; no automatic ResolutionDiagnostic or state transition"
   }
 }

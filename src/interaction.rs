@@ -163,6 +163,7 @@ pub fn interaction_capabilities() -> String {
         "\"input_contract\":\"inputContractCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
+        "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
         "\"escape_hatches\":[\"workspaceCompile (unbound/legacy)\",\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"read_only_guarantee\":\"snapshot_and_valid_actions_do_not_mutate_inputs\"",
         "}"
@@ -273,6 +274,7 @@ mod tests {
         assert!(capabilities.contains("inputContractCapabilities"));
         assert!(capabilities.contains("proofProvenanceCapabilities"));
         assert!(capabilities.contains("resolutionRuntimeBridgeCapabilities"));
+        assert!(capabilities.contains("runtimeResolutionEvidenceCapabilities"));
         assert!(capabilities.contains("raw_protocol"));
     }
 
