@@ -1,0 +1,59 @@
+name: Audit MathProgram Resolution Evidence Rejoin
+
+on:
+  push:
+    branches:
+      - "audit/math-program-resolution-evidence-rejoin"
+
+jobs:
+  build-audit-artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Run runtime evidence tests
+        run: cargo test runtime_resolution_evidence --lib -- --nocapture
+
+      - name: Build native inbox probe
+        run: cargo build --bin runtime_resolution_evidence_probe
+
+      - name: Build native stdin adapter probe
+        run: cargo build --bin runtime_resolution_evidence_adapter_probe
+
+      - name: Upload native inbox probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-resolution-evidence-native-probe
+          path: target/debug/runtime_resolution_evidence_probe
+
+      - name: Upload native stdin adapter probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-resolution-evidence-adapter-probe
+          path: target/debug/runtime_resolution_evidence_adapter_probe
+
+      - name: Check WASM library target
+        run: cargo check --lib --target wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      - name: Build WASM package
+        run: wasm-pack build --dev --target web --out-dir pkg
+
+      - name: Generate packaged WASM surface manifest
+        run: python3 scripts/check_wasm_surface.py
+
+      - name: Package Node host adapter
+        run: node scripts/package_node_host.mjs pkg
+
+      - name: Upload WASM package
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-wasm-output
+          path: pkg/
