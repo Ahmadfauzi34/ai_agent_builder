@@ -1062,7 +1062,10 @@ pub fn math_operation_catalog() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{math_interaction_capabilities, math_operation_catalog, OPERATIONS};
+    use super::{
+        math_check_operation, math_describe_operation, math_interaction_capabilities,
+        math_operation_catalog, OPERATIONS,
+    };
     use std::collections::HashSet;
 
     #[test]
@@ -1118,5 +1121,178 @@ mod tests {
     fn discovery_is_deterministic_and_has_no_runtime_inputs() {
         assert_eq!(math_interaction_capabilities(), math_interaction_capabilities());
         assert_eq!(math_operation_catalog(), math_operation_catalog());
+    }
+
+    #[test]
+    fn every_catalog_operation_is_describable_without_execution() {
+        for operation in OPERATIONS {
+            let description: serde_json::Value =
+                serde_json::from_str(&math_describe_operation(operation.id.to_string()).unwrap())
+                    .unwrap();
+            assert_eq!(description["operation"]["id"], operation.id);
+            assert_eq!(description["authority"], "introspection_projection_only");
+            assert_eq!(description["execution"], "none");
+        }
+    }
+
+    #[test]
+    fn matmul_preflight_infers_output_and_rejects_incompatible_inner_dimension() {
+        let valid: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "linalg.matmul".into(),
+                &[1, 2, 3, 4],
+                &[1, 2, 4, 5],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(valid["status"], "admissible");
+        assert_eq!(valid["output_shape"], serde_json::json!([1, 2, 3, 5]));
+        assert_eq!(valid["execution_authorized"], false);
+
+        let invalid: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "linalg.matmul".into(),
+                &[1, 2, 3, 4],
+                &[1, 2, 3, 5],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(invalid["status"], "rejected");
+        assert_eq!(invalid["failure"]["predicate"], "matmul.compatible_shapes");
+        assert_eq!(invalid["mutation"], "none");
+    }
+
+    #[test]
+    fn reshape_preflight_enforces_exact_element_count() {
+        let valid: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "tensor.reshape".into(),
+                &[1, 2, 1, 3],
+                &[],
+                &[1, 1, 3, 2],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(valid["status"], "admissible");
+        assert_eq!(valid["output_shape"], serde_json::json!([1, 1, 3, 2]));
+
+        let invalid: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "tensor.reshape".into(),
+                &[1, 2, 1, 3],
+                &[],
+                &[1, 1, 2, 2],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(invalid["status"], "rejected");
+        assert_eq!(invalid["failure"]["predicate"], "reshape.element_count");
+    }
+
+    #[test]
+    fn value_domain_checks_are_deferred_instead_of_guessed() {
+        let div: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "numeric.div".into(),
+                &[1, 2, 1, 1],
+                &[1, 2, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(div["status"], "admissible");
+        assert!(div["deferred_value_checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "rhs_values_nonzero"));
+
+        let probability: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "probability.entropy".into(),
+                &[2, 4, 1, 1],
+                &[],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(probability["status"], "admissible");
+        assert!(probability["deferred_value_checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|value| value == "input_distribution_normalized_and_nonnegative"));
+    }
+
+    #[test]
+    fn cosine_default_is_directly_admissible_but_program_binding_remains_deferred() {
+        let default_epsilon: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "linalg.cosine_similarity".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(default_epsilon["status"], "admissible");
+        assert_eq!(default_epsilon["program_binding_deferred"], true);
+
+        let explicit_epsilon: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "linalg.cosine_similarity".into(),
+                &[1, 3, 1, 1],
+                &[1, 3, 1, 1],
+                &[],
+                &[1e-6],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(explicit_epsilon["status"], "admissible");
+        assert_eq!(explicit_epsilon["program_binding_deferred"], false);
+    }
+
+    #[test]
+    fn malformed_metadata_fails_closed_without_execution_authority() {
+        let bad_axis: serde_json::Value = serde_json::from_str(
+            &math_check_operation(
+                "reduction.mean_axis".into(),
+                &[1, 2, 3, 1],
+                &[],
+                &[4],
+                &[],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(bad_axis["status"], "rejected");
+        assert_eq!(bad_axis["failure"]["predicate"], "reduction.axis");
+        assert_eq!(bad_axis["execution_authorized"], false);
+
+        assert!(math_check_operation(
+            "unknown.operation".into(),
+            &[1, 1, 1, 1],
+            &[],
+            &[],
+            &[],
+        )
+        .is_err());
     }
 }
