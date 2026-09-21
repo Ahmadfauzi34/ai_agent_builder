@@ -1221,6 +1221,7 @@ mod tests {
         assert!(manifest.contains("\"input_contract\":\"inputContractCapabilities\""));
         assert!(manifest.contains("\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\""));
         assert!(manifest.contains("\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\""));
+        assert!(manifest.contains("\"math_interaction\":\"mathInteractionCapabilities\""));
         assert!(manifest.contains("\"constructor_catalog\":\"agentLayerCatalog\""));
         assert!(manifest.contains("\"graph_builder\":\"AgentGraphBuilder\""));
         assert!(manifest.contains("\"constructors\":[\"relu\""));
