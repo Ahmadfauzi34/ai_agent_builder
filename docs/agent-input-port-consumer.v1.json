@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.input-port-consumer.v1",
+  "role": "advisory_semantic_consumer_contract",
+  "scope": {
+    "input_slot": 0,
+    "metadata_source": "agent-input-port.v1",
+    "execution_effect": "none",
+    "enforcement": "advisory_preflight_only"
+  },
+  "consumer_spec": {
+    "consumer_id": "required bounded caller identity",
+    "accepted_roles": "non-empty exact role set using canonical roles or x- extension roles",
+    "allow_extension_roles": "when true, any valid x- role may satisfy the role predicate",
+    "require_fingerprint": "when true, input provenance must carry a non-empty fingerprint",
+    "minimum_revision": "0 disables revision gating; otherwise provenance revision must be >= this value"
+  },
+  "compatibility": {
+    "compatible": "all declared predicates are satisfied",
+    "incompatible": "one or more declared predicates are proven false",
+    "unknown": "semantic input port is unbound, so compatibility cannot be proven",
+    "execution_authorized": false,
+    "decision_authority": "agent"
+  },
+  "surfaces": {
+    "InputPortConsumerSpec": {
+      "mutation": "none",
+      "purpose": "typed caller-declared consumer requirements"
+    },
+    "inputPortConsumerCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "inputPortConsumerCompatibility": {
+      "mutation": "none",
+      "arguments": [
+        "AgentWorkspace",
+        "InputPortConsumerSpec"
+      ],
+      "returns": "compatible|incompatible|unknown with predicate evidence"
+    }
+  },
+  "invariants": [
+    "consumer compatibility never mutates AgentWorkspace",
+    "consumer compatibility never mutates AgentGraphBuilder or LayerRegistry",
+    "consumer compatibility never authorizes execution",
+    "consumer requirements are caller-declared and are not inferred from layer type",
+    "unbound semantic metadata produces unknown rather than rejection",
+    "x- extension roles remain available and can be accepted exactly or by extension policy"
+  ],
+  "non_goals": [
+    "infer evaluator/state-updater/reward semantics from Linear, ReLU, Conv, or other numerical layer types",
+    "replace shape/layout compatibility checks",
+    "replace structured runtime faults",
+    "force low-level escape hatches to obey semantic policy"
+  ],
+  "future_extensions": [
+    "bind consumer contracts to graph edges",
+    "enumerate compatible consumers",
+    "role-aware interaction validActions",
+    "state and reward lifecycle contracts",
+    "multiple external input ports"
+  ]
+}

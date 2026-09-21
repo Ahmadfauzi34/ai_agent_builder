@@ -58,7 +58,8 @@
     "input_contract": "shape/layout/dtype remain owned by agent-input-contract.v1",
     "semantic_port": "role/provenance remain independent of shape/layout binding",
     "runtime_subject": "workspace runtime subject may coexist and remains the only subject authority",
-    "introspection": "describeWorkspace and describeGraph expose semantic port metadata when bound"
+    "introspection": "describeWorkspace and describeGraph expose semantic port metadata when bound",
+    "consumer_contract": "agent-input-port-consumer.v1 evaluates caller-declared consumer requirements against role/provenance without authorizing execution"
   },
   "invariants": [
     "semantic metadata does not allocate tensors",
@@ -71,8 +72,8 @@
   ],
   "future_extensions": [
     "multiple external input ports",
-    "consumer-role policies",
     "payload fingerprint verification",
+    "consumer contracts bound to graph edges",
     "inter-graph port handoff",
     "state/reward lifecycle contracts"
   ]
