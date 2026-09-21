@@ -29,7 +29,7 @@ fn u32_array_json(values: &[u32]) -> String {
     format!("[{body}]")
 }
 
-fn validate_projection_inputs(
+pub(crate) fn validate_projection_inputs(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
 ) -> Result<(), String> {
@@ -79,7 +79,7 @@ fn phase(
     }
 }
 
-fn actions_json(
+pub(crate) fn actions_json(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
     registry: &LayerRegistry,
@@ -163,6 +163,7 @@ pub fn interaction_capabilities() -> String {
         "\"input_contract\":\"inputContractCapabilities\",",
         "\"input_port\":\"inputPortCapabilities\",",
         "\"input_port_consumer\":\"inputPortConsumerCapabilities\",",
+        "\"input_port_routing\":\"inputPortRoutingCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
