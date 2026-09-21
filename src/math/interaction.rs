@@ -1549,8 +1549,8 @@ pub fn math_interaction_capabilities() -> String {
             "}},",
             "\"canonical_id_policy\":\"stable_across_direct_and_program_backends\",",
             "\"program_generation_policy\":\"minimum compatible generation is binding metadata, not operation identity\",",
-            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\",\"mathPlanBinding\"],",
-            "\"deferred\":[\"execution facade\",\"proof correlation adapter\"],",
+            "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\",\"mathPlanBinding\",\"mathProofCapabilities\"],",
+            "\"deferred\":[\"direct-target independent verifier\"],",
             "\"read_only_guarantee\":\"discovery calls allocate no persistent state and execute no tensor operations\"",
             "}}"
         ),
