@@ -75,6 +75,36 @@ fn input_contract_json(workspace: &AgentWorkspace) -> String {
     }
 }
 
+
+fn input_port_json(workspace: &AgentWorkspace) -> String {
+    match workspace.input_port_metadata() {
+        Some(metadata) => format!(
+            concat!(
+                "{{",
+                "\"status\":\"bound\",",
+                "\"slot\":0,",
+                "\"role\":\"{}\",",
+                "\"provenance\":{{",
+                    "\"source\":\"{}\",",
+                    "\"revision\":{},",
+                    "\"fingerprint\":{}",
+                "}}",
+                "}}"
+            ),
+            json_escape(&metadata.role),
+            json_escape(&metadata.source),
+            metadata.revision,
+            if metadata.fingerprint.is_empty() {
+                "null".to_string()
+            } else {
+                format!("\"{}\"", json_escape(&metadata.fingerprint))
+            },
+        ),
+        None => "{\"status\":\"unbound\",\"slot\":0,\"policy\":\"semantic_role_optional\"}"
+            .to_string(),
+    }
+}
+
 fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str> {
     match layer_type {
         LAYER_LINEAR => Some("linear"),
@@ -280,6 +310,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
             "}},",
             "\"num_slots\":{},",
             "\"external_input_contract\":{},",
+            "\"external_input_port\":{},",
             "\"runtime_subject\":{},",
             "\"runtime_program_bindings\":{{\"count\":{},\"identity_policy\":\"exact_program_identity\"}},",
             "\"slots\":[{}],",
@@ -302,6 +333,7 @@ pub fn describe_workspace(workspace: &AgentWorkspace, registry: &LayerRegistry) 
         ),
         workspace.interaction_num_slots(),
         input_contract_json(workspace),
+        input_port_json(workspace),
         runtime_subject_binding_json(workspace),
         workspace.runtime_program_binding_count(),
         slots_json,
@@ -432,6 +464,7 @@ pub fn describe_graph(
             "\"unknown_metadata_policy\":\"report_null_do_not_infer\",",
             "\"num_slots\":{},",
             "\"external_input_contract\":{},",
+            "\"external_input_port\":{},",
             "\"runtime_subject\":{},",
             "\"runtime_program_bindings\":{{\"count\":{},\"identity_policy\":\"exact_program_identity\",\"claim_policy\":\"no_precompile_identity_inference\"}},",
             "\"num_steps\":{},",
@@ -442,6 +475,7 @@ pub fn describe_graph(
         ),
         builder.num_slots(),
         input_contract_json(workspace),
+        input_port_json(workspace),
         runtime_subject_binding_json(workspace),
         workspace.runtime_program_binding_count(),
         builder.num_steps(),
@@ -461,6 +495,7 @@ mod tests {
     use super::{agent_layer_catalog, describe_graph, describe_workspace};
     use crate::agent::{capability_manifest, AgentGraphBuilder, AgentLayerSpec};
     use crate::contracts::agent_layout_contract;
+    use crate::input_port::workspace_bind_input_port_metadata;
     use crate::registry::LayerRegistry;
     use crate::workspace::AgentWorkspace;
     use crate::workspace_ops::workspace_init_unary;
@@ -511,6 +546,39 @@ mod tests {
         assert_eq!(description["layers"][0]["constructor"], "relu");
         assert_eq!(description["layers"][0]["registry_present"], true);
         assert_eq!(workspace.snapshot(), before);
+    }
+
+    #[test]
+    fn descriptions_expose_semantic_input_port_without_mutating_execution_state() {
+        let mut workspace = AgentWorkspace::new(3).unwrap();
+        let registry = LayerRegistry::new();
+        workspace_bind_input_port_metadata(
+            &mut workspace,
+            "observation".into(),
+            "market-feed".into(),
+            18,
+            "fnv1a64:abcd".into(),
+        )
+        .unwrap();
+
+        let before = workspace.snapshot();
+        let workspace_json: serde_json::Value =
+            serde_json::from_str(&describe_workspace(&workspace, &registry)).unwrap();
+        assert_eq!(workspace_json["external_input_port"]["role"], "observation");
+        assert_eq!(
+            workspace_json["external_input_port"]["provenance"]["source"],
+            "market-feed"
+        );
+        assert_eq!(workspace.snapshot(), before);
+
+        let builder = AgentGraphBuilder::new(3).unwrap();
+        let graph_json: serde_json::Value =
+            serde_json::from_str(&describe_graph(&workspace, &builder, &registry).unwrap()).unwrap();
+        assert_eq!(graph_json["external_input_port"]["role"], "observation");
+        assert_eq!(
+            graph_json["external_input_port"]["provenance"]["revision"],
+            18
+        );
     }
 
     #[test]
