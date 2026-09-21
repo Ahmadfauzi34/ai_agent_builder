@@ -63,15 +63,26 @@ fn run() -> Result<(), String> {
         &authorization,
     )?;
 
-    let fault = RuntimeEvidence::bound_agent_fault(
-        &projection,
-        "E_LAYOUT_PREFLIGHT",
-        "semantic_precondition",
-        "workspaceInitUnary",
-        "layout.edge_not_known_incompatible",
-        true,
-        "known incompatible layout",
-    )?;
+    let fault_envelope = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.agent-fault.v1",
+        "status": "fault",
+        "fault": {
+            "code": "E_LAYOUT_PREFLIGHT",
+            "class": "semantic_precondition",
+            "operation": "workspaceInitUnary",
+            "predicate": "layout.edge_not_known_incompatible",
+            "expected": "compatible|unknown",
+            "actual": "known_incompatible",
+            "mutation": "none",
+            "recoverable": true,
+            "suggested_actions": ["choose_compatible_layer"],
+            "message": "known incompatible layout"
+        }
+    })
+    .to_string();
+    let fault =
+        RuntimeEvidence::from_bound_agent_fault_envelope(&projection, &fault_envelope)?;
     ensure(
         inbox.classify(&fault) == RejoinStatus::Exact,
         "exact AgentFault failed rejoin classification",
@@ -79,14 +90,47 @@ fn run() -> Result<(), String> {
     ensure(inbox.record(fault.clone())?, "first fault insert was not recorded");
     ensure(!inbox.record(fault)?, "duplicate fault was not idempotent");
 
-    let verifier = RuntimeEvidence::bound_graph_verifier_receipt(
-        &projection,
-        1,
-        "graph-mismatch",
-        "{\"schema\":\"burn-research.program-identity.v1\",\"plan\":\"probe\"}",
-        false,
-        "candidate mismatch",
-    )?;
+    let verifier_receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 1,
+        "authority": "wasm_verifier",
+        "verifier": "CompiledGraph.verifyFlat",
+        "reference_authority": "burn_compiled_graph",
+        "label": "graph-mismatch",
+        "fingerprint_algorithm": "fnv1a64_noncryptographic",
+        "program_identity": {
+            "schema": "burn-research.program-identity.v1",
+            "plan_hex": "probe",
+            "layer_init_fingerprints": []
+        },
+        "mutable_state_in_program_identity": false,
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "input_fingerprint": "fnv1a64:probe-input",
+        "reference_fingerprint": "fnv1a64:probe-reference",
+        "candidate_fingerprint": "fnv1a64:probe-candidate",
+        "tolerances": {"abs": 0.0, "rel": 0.0},
+        "result": {
+            "passed": false,
+            "len": 2,
+            "max_abs_error": 1.0,
+            "max_rel_error": 0.25,
+            "rmse": std::f64::consts::FRAC_1_SQRT_2,
+            "first_failure": 1
+        }
+    })
+    .to_string();
+    let verifier = RuntimeEvidence::from_graph_verifier_receipt_json(&verifier_receipt)?;
     ensure(
         verifier.source_authority() == "wasm_verifier"
             && verifier.evidence_authority() == "observation_only"
@@ -194,6 +238,7 @@ fn run() -> Result<(), String> {
             "\"status\":\"passed\",",
             "\"forward_projection_match\":true,",
             "\"agent_fault_rejoin\":true,",
+            "\"structured_payload_adaptation\":true,",
             "\"verifier_source_authority_preserved\":true,",
             "\"transport_observation_only\":true,",
             "\"resolution_state_unchanged\":true,",

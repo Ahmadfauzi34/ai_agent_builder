@@ -46,7 +46,7 @@
     "required_step": "explicit Resolution review/interpretation outside this bridge"
   },
   "transport_boundary": {
-    "note": "The bridge does not parse arbitrary legacy error strings. Hosts should transport already-structured AgentFault fields or verifier-receipt fields into the typed constructors.",
+    "note": "Hosts should prefer the structured adapters over manual field extraction. The adapters parse the exact AgentFault/verifier-receipt JSON schemas and never parse legacy free-form error strings.",
     "authority_preservation": "The typed payload variant fixes the source-authority class and prevents string-based class escalation, but the native inbox does not independently authenticate that host-supplied receipt fields came from WASM.",
     "unbound_runtime": "representable but cannot be rejoined into a subject-bound ResolutionEvidenceInbox",
     "transport_integrity": "host_structured_unverified",
@@ -63,7 +63,10 @@
     "graph verifier observation retains transported exact programIdentity provenance without claiming to authenticate the receipt",
     "all reverse-bridge entries are observation_only; source_authority does not become native inbox proof authority",
     "canonical inbox construction revalidates approval/subject/current authorization policy through RuntimeSubjectProjection::from_authorized",
-    "lower-level projection construction does not claim to reauthenticate a caller-supplied RuntimeSubjectProjection"
+    "lower-level projection construction does not claim to reauthenticate a caller-supplied RuntimeSubjectProjection",
+    "structured adapters validate the source schema and authority tuple before selecting a RuntimeEvidence payload class",
+    "verifier adapter detail is derived from the structured result object rather than synthesized free-form host text",
+    "source-only receipt fields remain authoritative in the original runtime receipt and are intentionally not promoted into Resolution authority"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -77,7 +80,8 @@
         "Resolution state remains unchanged after evidence recording",
         "stale revision, foreign subject, and unbound evidence are rejected",
         "duplicate evidence is idempotent",
-        "inbox capacity is bounded at 64 entries"
+        "inbox capacity is bounded at 64 entries",
+        "structured AgentFault and verifier receipt JSON are adapted without manual host field mapping"
       ]
     },
     "wasm_package": {
@@ -88,5 +92,83 @@
       ]
     },
     "acceptance": "run downloaded exact-head native probe and packaged WASM capability surface outside CI"
+  },
+  "structured_adapters": {
+    "agent_fault": {
+      "constructor": "RuntimeEvidence::from_bound_agent_fault_envelope",
+      "source_schema": "burn-research.agent-fault.v1",
+      "subject_source": "existing RuntimeSubjectProjection because AgentFault envelope has no runtime_subject field",
+      "validated": [
+        "schema_id",
+        "status=fault",
+        "fault.mutation=none when present"
+      ],
+      "projected_fields": [
+        "code",
+        "class",
+        "operation",
+        "predicate",
+        "recoverable",
+        "message"
+      ],
+      "source_only_fields": [
+        "expected",
+        "actual",
+        "suggested_actions"
+      ],
+      "authority": "agent_fault_preflight / observation_only"
+    },
+    "graph_verifier_receipt": {
+      "constructor": "RuntimeEvidence::from_graph_verifier_receipt_json",
+      "source_schema": "burn-research.verifier-receipt.v1",
+      "subject_source": "receipt.runtime_subject",
+      "validated": [
+        "authority=wasm_verifier",
+        "verifier=CompiledGraph.verifyFlat",
+        "reference_authority=burn_compiled_graph",
+        "program_identity.schema=burn-research.program-identity.v1"
+      ],
+      "projected_fields": [
+        "receipt_id",
+        "label",
+        "program_identity",
+        "result.passed"
+      ],
+      "detail_projection": "serialized receipt.result object",
+      "source_only_fields": [
+        "fingerprint_algorithm",
+        "program_identity_fingerprint",
+        "mutable_state_in_program_identity",
+        "input_fingerprint",
+        "reference_fingerprint",
+        "candidate_fingerprint",
+        "tolerances"
+      ],
+      "authority": "wasm_verifier source label / observation_only transport"
+    },
+    "vector_verifier_receipt": {
+      "constructor": "RuntimeEvidence::from_vector_verifier_receipt_json",
+      "source_schema": "burn-research.verifier-receipt.v1",
+      "subject_source": "receipt.runtime_subject",
+      "validated": [
+        "authority=wasm_comparator",
+        "verifier=mathVerifyVectors",
+        "reference_authority=caller_supplied"
+      ],
+      "projected_fields": [
+        "receipt_id",
+        "label",
+        "result.passed"
+      ],
+      "detail_projection": "serialized receipt.result object",
+      "source_only_fields": [
+        "fingerprint_algorithm",
+        "reference_fingerprint",
+        "candidate_fingerprint",
+        "tolerances"
+      ],
+      "authority": "wasm_comparator source label / observation_only transport"
+    },
+    "class_escalation": "fail closed when source authority/verifier/reference-authority fields do not match the selected adapter"
   }
 }
