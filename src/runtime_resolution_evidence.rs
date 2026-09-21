@@ -218,7 +218,7 @@ impl RuntimeEvidencePayload {
             Self::GraphVerifierReceipt {
                 receipt_id,
                 label,
-                reference_program_identity,
+                program_identity,
                 passed,
                 detail,
             } => format!(
@@ -234,13 +234,13 @@ impl RuntimeEvidencePayload {
                     "\"label\":\"{}\",",
                     "\"reference_program_identity\":\"{}\",",
                     "\"passed\":{},",
-                    "\"detail\":\"{}\"" ,
+                    "\"detail\":\"{}\"",
                     "}}"
                 ),
                 if *passed { "passed" } else { "failed" },
                 receipt_id,
                 json_escape(label),
-                json_escape(reference_program_identity),
+                json_escape(program_identity),
                 passed,
                 json_escape(detail),
             ),
@@ -303,7 +303,7 @@ impl RuntimeEvidencePayload {
                 receipt_id,
                 json_escape(operation_id),
                 json_escape(label),
-                json_escape(program_identity),
+                json_escape(reference_program_identity),
                 passed,
                 json_escape(detail),
             ),
@@ -690,12 +690,12 @@ impl RuntimeEvidence {
             .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let operation_id = Self::require_string(&receipt, "operation_id", CONTEXT)?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
-        let program_identity = receipt
+        let reference_program_identity = receipt
             .get("program_identity")
             .filter(|value| value.is_object())
             .ok_or_else(|| format!("{CONTEXT}: missing program_identity object"))?;
         Self::require_exact_string(
-            program_identity,
+            reference_program_identity,
             "schema",
             "burn-research.math-program-identity.v1",
             CONTEXT,
@@ -711,7 +711,7 @@ impl RuntimeEvidence {
             receipt_id,
             operation_id,
             label,
-            program_identity.to_string(),
+            reference_program_identity.to_string(),
             passed,
             result.to_string(),
         )
@@ -938,7 +938,7 @@ impl RuntimeEvidence {
                 receipt_id,
                 operation_id,
                 label,
-                program_identity,
+                reference_program_identity,
                 passed,
                 detail,
             },
