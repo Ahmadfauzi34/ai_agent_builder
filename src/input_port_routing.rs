@@ -4,7 +4,7 @@ use crate::agent::AgentGraphBuilder;
 use crate::input_port_consumer::{
     input_port_consumer_compatibility, InputPortConsumerSpec,
 };
-use crate::interaction::{actions_json, validate_projection_inputs};
+use crate::interaction::{valid_actions_json, validate_projection_inputs};
 use crate::registry::LayerRegistry;
 use crate::workspace::AgentWorkspace;
 
@@ -49,7 +49,7 @@ pub fn interaction_valid_actions_for_input_consumer(
             "\"projection_only\":true,",
             "\"execution_authorized\":false,",
             "\"decision_authority\":\"agent\",",
-            "\"canonical_actions\":{},",
+            "\"canonical_valid_actions\":{},",
             "\"semantic_overlay\":{{",
                 "\"input_slot\":0,",
                 "\"candidate_present\":{},",
@@ -64,7 +64,7 @@ pub fn interaction_valid_actions_for_input_consumer(
             "}}",
             "}}"
         ),
-        actions_json(workspace, builder, registry),
+        valid_actions_json(workspace, builder, registry),
         bool_json(slot_zero_is_canonical_candidate),
         consumer.describe(),
         compatibility,
