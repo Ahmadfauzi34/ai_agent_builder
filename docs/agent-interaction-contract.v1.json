@@ -166,6 +166,14 @@
     "binding_plan": "mathPlanBinding",
     "binding_plan_role": "explicit agent-selected direct|program binding projection; no dispatch, execution, builder mutation, or generation selection",
     "math_proof": "mathProofCapabilities",
-    "math_proof_role": "MathProgram verifier-backed proof discovery; direct target remains caller-supplied comparator authority only"
+    "math_proof_role": "MathProgram proof plus verifier-owned direct-vs-MathProgramV9 equivalence proof; direct verifier caller supplies neither numerical candidate nor reference",
+    "direct_math_verifier": {
+      "bind": "workspaceBindRuntimeDirectMathOperation",
+      "unary": "workspaceVerifyDirectMath1Receipt",
+      "binary": "workspaceVerifyDirectMath2Receipt",
+      "candidate_authority": "burn_direct_math",
+      "reference_authority": "burn_math_program",
+      "selection_authority": "agent remains responsible for choosing the canonical operation; verifier only checks the chosen call"
+    }
   }
 }
