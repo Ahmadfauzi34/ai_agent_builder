@@ -154,5 +154,12 @@
       "vector verifier receipt fields"
     ],
     "policy": "evidence is classified against the exact Resolution revision + runtime subject; no automatic ResolutionDiagnostic or state transition"
+  },
+  "math_interaction": {
+    "capability": "mathInteractionCapabilities",
+    "catalog": "mathOperationCatalog",
+    "contract_schema": "burn-research.math-interaction.v1",
+    "role": "read-only unified math vocabulary and direct/program binding projection",
+    "authority": "none beyond catalog binding; operation choice remains agent authority and numerical semantics remain in existing math contracts"
   }
 }
