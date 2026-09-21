@@ -42,7 +42,20 @@
       "9": "MathProgramV9",
       "1-3": "MathProgram"
     },
-    "replay_policy": "from_plan must accept the exact canonical plan before execution or binding"
+    "replay_policy": "from_plan must accept the exact canonical plan before execution or binding",
+    "input_count_policy": {
+      "verifier_surfaces": [
+        "workspaceVerifyMathProgram1Receipt",
+        "workspaceVerifyMathProgram2Receipt"
+      ],
+      "supported_external_inputs": [
+        1,
+        2
+      ],
+      "declared_count_source": "canonical plan byte 5",
+      "mismatch_policy": "fail closed before reference execution and receipt allocation",
+      "v5_note": "MathProgram v5 requires 3..8 external inputs, so v5 plans are recognized/replayable for identity but are not executable through the v1 one/two-input verifier surfaces"
+    }
   },
   "receipt": {
     "schema_id": "burn-research.verifier-receipt.v1",
@@ -84,6 +97,7 @@
     "MathProgram execution is the reference authority for math-program receipts",
     "numerical mismatch records a failed verifier receipt rather than becoming a transport error",
     "malformed plan, input mismatch, non-finite candidate, or invalid tolerances do not allocate a receipt id",
-    "direct-target verification remains lower-authority caller-supplied comparison until a dedicated direct verifier exists"
+    "direct-target verification remains lower-authority caller-supplied comparison until a dedicated direct verifier exists",
+    "canonical plan declared input count must exactly match the selected verifier surface before reference execution"
   ]
 }
