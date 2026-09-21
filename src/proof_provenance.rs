@@ -2,9 +2,17 @@ use wasm_bindgen::prelude::*;
 
 use crate::coprocessor::verify_vectors_metrics;
 use crate::graph::CompiledGraph;
+use crate::math::program::{
+    OP_ABS, OP_ADD, OP_CROSS_ENTROPY, OP_DIV, OP_DOT, OP_ENTROPY, OP_EXP,
+    OP_KL_DIVERGENCE, OP_L2_DISTANCE, OP_L2_NORM, OP_LOG, OP_MATMUL, OP_MAX, OP_MEAN,
+    OP_MIN, OP_MUL, OP_NORMALIZE, OP_SQRT, OP_STD_POPULATION, OP_SUB, OP_SUM,
+    OP_TRANSPOSE, OP_VARIANCE_POPULATION,
+};
 use crate::math::{
-    MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7, MathProgramV8,
-    MathProgramV9,
+    math_check_operation, MathProgram, MathProgramV4, MathProgramV5, MathProgramV6,
+    MathProgramV7, MathProgramV8, MathProgramV9, MathProgramV9Builder, WasmComparison,
+    WasmIndexSource, WasmLinearAlgebra, WasmNumericKernel, WasmProbability, WasmReduction,
+    WasmStatistics, WasmTensorTransform,
 };
 use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
@@ -190,6 +198,277 @@ fn run_math_program_plan(
         _ => unreachable!("version validated above"),
     };
     Ok((version, identity, output.to_array()))
+}
+
+
+fn tensor_shape_u32(tensor: &WasmTensor, context: &str) -> Result<Vec<u32>, String> {
+    tensor
+        .shape()
+        .into_iter()
+        .map(|dim| {
+            u32::try_from(dim)
+                .map_err(|_| format!("{context}: tensor dimension {dim} exceeds u32"))
+        })
+        .collect()
+}
+
+fn direct_math_arity(operation_id: &str) -> Result<usize, String> {
+    match operation_id {
+        "numeric.abs"
+        | "numeric.sqrt"
+        | "numeric.exp"
+        | "numeric.log"
+        | "numeric.clamp"
+        | "tensor.transpose"
+        | "tensor.reshape"
+        | "tensor.permute"
+        | "tensor.slice"
+        | "tensor.select_axis"
+        | "linalg.l2_norm"
+        | "statistics.sum"
+        | "statistics.mean"
+        | "statistics.variance_population"
+        | "statistics.std_population"
+        | "statistics.min"
+        | "statistics.max"
+        | "probability.normalize"
+        | "probability.entropy"
+        | "reduction.sum_axis"
+        | "reduction.mean_axis"
+        | "reduction.min_axis"
+        | "reduction.max_axis"
+        | "index.indices_like" => Ok(1),
+        "numeric.add"
+        | "numeric.sub"
+        | "numeric.mul"
+        | "numeric.div"
+        | "linalg.matmul"
+        | "linalg.dot"
+        | "linalg.cosine_similarity"
+        | "linalg.l2_distance"
+        | "probability.cross_entropy"
+        | "probability.kl_divergence"
+        | "comparison.less_equal_01" => Ok(2),
+        _ => Err(format!(
+            "DirectMath verifier: unknown canonical operation_id {operation_id}"
+        )),
+    }
+}
+
+fn direct_math_preflight(
+    operation_id: &str,
+    inputs: &[WasmTensor],
+    u32_params: &[u32],
+    f32_params: &[f32],
+    context: &str,
+) -> Result<String, String> {
+    let arity = direct_math_arity(operation_id)?;
+    if inputs.len() != arity {
+        return Err(format!(
+            "{context}: operation {operation_id} requires {arity} input(s), got {}",
+            inputs.len()
+        ));
+    }
+    if operation_id == "linalg.cosine_similarity" && f32_params.len() != 1 {
+        return Err(format!(
+            "{context}: cosine verification requires explicit f32_params=[epsilon] so direct and MathProgram reference semantics are identical"
+        ));
+    }
+
+    let lhs_shape = tensor_shape_u32(&inputs[0], context)?;
+    let rhs_shape = if arity == 2 {
+        tensor_shape_u32(&inputs[1], context)?
+    } else {
+        Vec::new()
+    };
+    let preflight = math_check_operation(
+        operation_id.to_string(),
+        &lhs_shape,
+        &rhs_shape,
+        u32_params,
+        f32_params,
+    )?;
+    if !preflight.contains("\"status\":\"admissible\"") {
+        return Err(format!(
+            "{context}: operation metadata was rejected by mathCheckOperation: {preflight}"
+        ));
+    }
+    Ok(preflight)
+}
+
+fn build_direct_math_reference_v9(
+    operation_id: &str,
+    u32_params: &[u32],
+    f32_params: &[f32],
+) -> Result<MathProgramV9, String> {
+    let arity = direct_math_arity(operation_id)? as u8;
+    let output = arity;
+    let mut builder = MathProgramV9Builder::new(arity, arity + 1)?;
+
+    match operation_id {
+        "numeric.abs" => builder.add_unary(OP_ABS, 0, output)?,
+        "numeric.sqrt" => builder.add_unary(OP_SQRT, 0, output)?,
+        "numeric.exp" => builder.add_unary(OP_EXP, 0, output)?,
+        "numeric.log" => builder.add_unary(OP_LOG, 0, output)?,
+        "numeric.clamp" => builder.add_clamp(0, output, f32_params[0], f32_params[1])?,
+        "numeric.add" => builder.add_binary(OP_ADD, 0, 1, output)?,
+        "numeric.sub" => builder.add_binary(OP_SUB, 0, 1, output)?,
+        "numeric.mul" => builder.add_binary(OP_MUL, 0, 1, output)?,
+        "numeric.div" => builder.add_binary(OP_DIV, 0, 1, output)?,
+
+        "tensor.transpose" => builder.add_unary(OP_TRANSPOSE, 0, output)?,
+        "tensor.reshape" => builder.add_reshape(0, output, u32_params)?,
+        "tensor.permute" => builder.add_permute(0, output, u32_params)?,
+        "tensor.slice" => builder.add_slice(0, output, &u32_params[..4], &u32_params[4..])?,
+        "tensor.select_axis" => {
+            builder.add_select_axis(0, output, u32_params[0], &u32_params[1..])?
+        }
+
+        "linalg.matmul" => builder.add_binary(OP_MATMUL, 0, 1, output)?,
+        "linalg.dot" => builder.add_binary(OP_DOT, 0, 1, output)?,
+        "linalg.l2_norm" => builder.add_unary(OP_L2_NORM, 0, output)?,
+        "linalg.cosine_similarity" => {
+            builder.add_cosine_similarity(0, 1, output, f32_params[0])?
+        }
+        "linalg.l2_distance" => builder.add_binary(OP_L2_DISTANCE, 0, 1, output)?,
+
+        "statistics.sum" => builder.add_unary(OP_SUM, 0, output)?,
+        "statistics.mean" => builder.add_unary(OP_MEAN, 0, output)?,
+        "statistics.variance_population" => {
+            builder.add_unary(OP_VARIANCE_POPULATION, 0, output)?
+        }
+        "statistics.std_population" => builder.add_unary(OP_STD_POPULATION, 0, output)?,
+        "statistics.min" => builder.add_unary(OP_MIN, 0, output)?,
+        "statistics.max" => builder.add_unary(OP_MAX, 0, output)?,
+
+        "probability.normalize" => builder.add_unary(OP_NORMALIZE, 0, output)?,
+        "probability.entropy" => builder.add_unary(OP_ENTROPY, 0, output)?,
+        "probability.cross_entropy" => builder.add_binary(OP_CROSS_ENTROPY, 0, 1, output)?,
+        "probability.kl_divergence" => {
+            builder.add_binary(OP_KL_DIVERGENCE, 0, 1, output)?
+        }
+
+        "reduction.sum_axis" => builder.add_sum_axis(0, output, u32_params[0])?,
+        "reduction.mean_axis" => builder.add_mean_axis(0, output, u32_params[0])?,
+        "reduction.min_axis" => builder.add_min_axis(0, output, u32_params[0])?,
+        "reduction.max_axis" => builder.add_max_axis(0, output, u32_params[0])?,
+
+        "comparison.less_equal_01" => builder.add_less_equal_01(0, 1, output)?,
+        "index.indices_like" => builder.add_indices_like(0, output, u32_params[0])?,
+        _ => {
+            return Err(format!(
+                "DirectMath verifier: no V9 reference mapping for {operation_id}"
+            ))
+        }
+    }
+
+    builder.set_output(output)?;
+    builder.compile()
+}
+
+fn run_direct_math_operation(
+    operation_id: &str,
+    inputs: &[WasmTensor],
+    u32_params: &[u32],
+    f32_params: &[f32],
+) -> Result<WasmTensor, String> {
+    let unary = &inputs[0];
+    let binary_rhs = || {
+        inputs
+            .get(1)
+            .ok_or_else(|| format!("DirectMath verifier: missing rhs for {operation_id}"))
+    };
+
+    match operation_id {
+        "numeric.abs" => WasmNumericKernel::new().abs(unary),
+        "numeric.sqrt" => WasmNumericKernel::new().sqrt(unary),
+        "numeric.exp" => WasmNumericKernel::new().exp(unary),
+        "numeric.log" => WasmNumericKernel::new().log(unary),
+        "numeric.clamp" => {
+            WasmNumericKernel::new().clamp(unary, f32_params[0], f32_params[1])
+        }
+        "numeric.add" => WasmNumericKernel::new().add(unary, binary_rhs()?),
+        "numeric.sub" => WasmNumericKernel::new().sub(unary, binary_rhs()?),
+        "numeric.mul" => WasmNumericKernel::new().mul(unary, binary_rhs()?),
+        "numeric.div" => WasmNumericKernel::new().div(unary, binary_rhs()?),
+
+        "tensor.transpose" => Ok(WasmTensorTransform::new().transpose(unary)),
+        "tensor.reshape" => {
+            let shape = u32_params.iter().map(|&value| value as usize).collect::<Vec<_>>();
+            WasmTensorTransform::new().reshape(unary, &shape)
+        }
+        "tensor.permute" => {
+            let axes = u32_params.iter().map(|&value| value as usize).collect::<Vec<_>>();
+            WasmTensorTransform::new().permute(unary, &axes)
+        }
+        "tensor.slice" => {
+            let starts = u32_params[..4]
+                .iter()
+                .map(|&value| value as usize)
+                .collect::<Vec<_>>();
+            let ends = u32_params[4..]
+                .iter()
+                .map(|&value| value as usize)
+                .collect::<Vec<_>>();
+            WasmTensorTransform::new().slice(unary, &starts, &ends)
+        }
+        "tensor.select_axis" => {
+            let indices = u32_params[1..]
+                .iter()
+                .map(|&value| value as usize)
+                .collect::<Vec<_>>();
+            WasmTensorTransform::new().select_axis(unary, u32_params[0] as usize, &indices)
+        }
+
+        "linalg.matmul" => WasmLinearAlgebra::new().matmul(unary, binary_rhs()?),
+        "linalg.dot" => WasmLinearAlgebra::new().dot(unary, binary_rhs()?),
+        "linalg.l2_norm" => WasmLinearAlgebra::new().l2_norm(unary),
+        "linalg.cosine_similarity" => WasmLinearAlgebra::new().cosine_similarity(
+            unary,
+            binary_rhs()?,
+            Some(f64::from(f32_params[0])),
+        ),
+        "linalg.l2_distance" => WasmLinearAlgebra::new().l2_distance(unary, binary_rhs()?),
+
+        "statistics.sum" => WasmStatistics::new().sum(unary),
+        "statistics.mean" => WasmStatistics::new().mean(unary),
+        "statistics.variance_population" => WasmStatistics::new().variance_population(unary),
+        "statistics.std_population" => WasmStatistics::new().std_population(unary),
+        "statistics.min" => WasmStatistics::new().min(unary),
+        "statistics.max" => WasmStatistics::new().max(unary),
+
+        "probability.normalize" => WasmProbability::new().normalize(unary),
+        "probability.entropy" => WasmProbability::new().entropy(unary),
+        "probability.cross_entropy" => {
+            WasmProbability::new().cross_entropy(unary, binary_rhs()?)
+        }
+        "probability.kl_divergence" => {
+            WasmProbability::new().kl_divergence(unary, binary_rhs()?)
+        }
+
+        "reduction.sum_axis" => WasmReduction::new().sum_axis(unary, u32_params[0]),
+        "reduction.mean_axis" => WasmReduction::new().mean_axis(unary, u32_params[0]),
+        "reduction.min_axis" => WasmReduction::new().min_axis(unary, u32_params[0]),
+        "reduction.max_axis" => WasmReduction::new().max_axis(unary, u32_params[0]),
+
+        "comparison.less_equal_01" => {
+            WasmComparison::new().less_equal_01(unary, binary_rhs()?)
+        }
+        "index.indices_like" => WasmIndexSource::new().indices_like(unary, u32_params[0]),
+        _ => Err(format!(
+            "DirectMath verifier: no direct execution mapping for {operation_id}"
+        )),
+    }
+}
+
+fn direct_math_reference_identity(
+    operation_id: &str,
+    u32_params: &[u32],
+    f32_params: &[f32],
+) -> Result<(MathProgramV9, String), String> {
+    let program = build_direct_math_reference_v9(operation_id, u32_params, f32_params)?;
+    let identity = program.program_identity();
+    Ok((program, identity))
 }
 
 fn tolerances_json(abs_tol: f64, rel_tol: f64) -> String {
@@ -648,6 +927,234 @@ pub fn workspace_verify_math_program_2_receipt(
         rel_tol,
         label,
         "workspaceVerifyMathProgram2Receipt",
+    )
+}
+
+
+/// Bind the canonical one-step MathProgramV9 reference identity for a direct math operation.
+///
+/// This does not execute the direct operation. It validates metadata through mathCheckOperation,
+/// builds the verifier-owned V9 reference program, and binds only that exact replayable identity
+/// to the already-bound runtime subject.
+#[wasm_bindgen(js_name = workspaceBindRuntimeDirectMathOperation)]
+pub fn workspace_bind_runtime_direct_math_operation(
+    workspace: &mut AgentWorkspace,
+    operation_id: String,
+    lhs_shape: &[u32],
+    rhs_shape: &[u32],
+    u32_params: &[u32],
+    f32_params: &[f32],
+) -> Result<String, String> {
+    if workspace.runtime_subject_binding().is_none() {
+        return Err(
+            "workspaceBindRuntimeDirectMathOperation: runtime subject must be bound first"
+                .to_string(),
+        );
+    }
+
+    if operation_id == "linalg.cosine_similarity" && f32_params.len() != 1 {
+        return Err(
+            "workspaceBindRuntimeDirectMathOperation: cosine verification requires explicit f32_params=[epsilon]"
+                .to_string(),
+        );
+    }
+
+    let preflight = math_check_operation(
+        operation_id.clone(),
+        lhs_shape,
+        rhs_shape,
+        u32_params,
+        f32_params,
+    )?;
+    if !preflight.contains("\"status\":\"admissible\"") {
+        return Err(format!(
+            "workspaceBindRuntimeDirectMathOperation: operation metadata rejected: {preflight}"
+        ));
+    }
+
+    let (_, program_identity) =
+        direct_math_reference_identity(&operation_id, u32_params, f32_params)?;
+    let newly_bound = workspace.bind_runtime_program_identity(program_identity.clone())?;
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.runtime-direct-math-binding.v1\",",
+            "\"operation_id\":\"{}\",",
+            "\"candidate_authority\":\"burn_direct_math\",",
+            "\"reference_authority\":\"burn_math_program\",",
+            "\"reference_program_generation\":\"v9\",",
+            "\"reference_program_identity\":{},",
+            "\"identity_source\":\"canonical_operation_to_math_program_v9\",",
+            "\"newly_bound\":{},",
+            "\"binding_count\":{},",
+            "\"mutation\":\"runtime_program_binding_metadata_only\"",
+            "}}"
+        ),
+        json_escape(&operation_id),
+        program_identity,
+        newly_bound,
+        workspace.runtime_program_binding_count(),
+    ))
+}
+
+fn workspace_verify_direct_math_receipt(
+    workspace: &mut AgentWorkspace,
+    operation_id: &str,
+    inputs: &[WasmTensor],
+    u32_params: &[u32],
+    f32_params: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+    context: &str,
+) -> Result<String, String> {
+    validate_label(&label, context)?;
+    direct_math_preflight(
+        operation_id,
+        inputs,
+        u32_params,
+        f32_params,
+        context,
+    )?;
+
+    let (reference_program, program_identity) =
+        direct_math_reference_identity(operation_id, u32_params, f32_params)?;
+
+    if workspace.runtime_subject_binding().is_some()
+        && !workspace.runtime_program_identity_bound(&program_identity)
+    {
+        return Err(format!(
+            "{context}: direct math reference identity is not bound to this runtime subject; bind it with workspaceBindRuntimeDirectMathOperation first"
+        ));
+    }
+
+    let direct_output =
+        run_direct_math_operation(operation_id, inputs, u32_params, f32_params)?.to_array();
+    let reference_output = reference_program.run_inputs(inputs)?.to_array();
+    let report =
+        verify_vectors_metrics(&reference_output, &direct_output, abs_tol, rel_tol)?;
+
+    let receipt_id = workspace.next_verifier_receipt_id();
+    let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
+    let input_fingerprint = tensors_fingerprint(inputs);
+    let reference_fingerprint = f32_fingerprint(&reference_output);
+    let direct_output_fingerprint = f32_fingerprint(&direct_output);
+    let result_json = report.to_json();
+
+    let compact = ledger_receipt_json(
+        receipt_id,
+        "wasm_verifier",
+        "DirectMath.verifyAgainstMathProgramV9",
+        "burn_math_program",
+        &label,
+        "input_fingerprint",
+        &input_fingerprint,
+        &direct_output_fingerprint,
+        Some(&program_identity_fingerprint),
+        None,
+        abs_tol,
+        rel_tol,
+        &result_json,
+    );
+
+    let stored = workspace.record_verifier_receipt_internal(
+        "DirectMath.verifyAgainstMathProgramV9".into(),
+        report.passed,
+        compact,
+    )?;
+    debug_assert_eq!(stored, receipt_id);
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
+            "\"receipt_id\":{},",
+            "\"authority\":\"wasm_verifier\",",
+            "\"verifier\":\"DirectMath.verifyAgainstMathProgramV9\",",
+            "\"reference_authority\":\"burn_math_program\",",
+            "\"candidate_authority\":\"burn_direct_math\",",
+            "\"operation_id\":\"{}\",",
+            "\"label\":\"{}\",",
+            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
+            "\"reference_program_generation\":\"v9\",",
+            "\"program_identity\":{},",
+            "\"program_identity_fingerprint\":\"{}\",",
+            "\"mutable_state_in_program_identity\":false,",
+            "\"runtime_subject\":{},",
+            "\"input_count\":{},",
+            "\"input_fingerprint\":\"{}\",",
+            "\"reference_fingerprint\":\"{}\",",
+            "\"candidate_fingerprint\":\"{}\",",
+            "\"tolerances\":{},",
+            "\"result\":{}",
+            "}}"
+        ),
+        receipt_id,
+        json_escape(operation_id),
+        json_escape(&label),
+        program_identity,
+        json_escape(&program_identity_fingerprint),
+        runtime_subject_binding_json(workspace),
+        inputs.len(),
+        json_escape(&input_fingerprint),
+        json_escape(&reference_fingerprint),
+        json_escape(&direct_output_fingerprint),
+        tolerances_json(abs_tol, rel_tol),
+        result_json,
+    ))
+}
+
+/// Execute a canonical unary direct math operation and compare it to a verifier-owned V9 reference.
+#[wasm_bindgen(js_name = workspaceVerifyDirectMath1Receipt)]
+pub fn workspace_verify_direct_math_1_receipt(
+    workspace: &mut AgentWorkspace,
+    operation_id: String,
+    input: &WasmTensor,
+    u32_params: &[u32],
+    f32_params: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+) -> Result<String, String> {
+    workspace_verify_direct_math_receipt(
+        workspace,
+        &operation_id,
+        &[input.clone()],
+        u32_params,
+        f32_params,
+        abs_tol,
+        rel_tol,
+        label,
+        "workspaceVerifyDirectMath1Receipt",
+    )
+}
+
+/// Execute a canonical binary direct math operation and compare it to a verifier-owned V9 reference.
+#[wasm_bindgen(js_name = workspaceVerifyDirectMath2Receipt)]
+pub fn workspace_verify_direct_math_2_receipt(
+    workspace: &mut AgentWorkspace,
+    operation_id: String,
+    lhs: &WasmTensor,
+    rhs: &WasmTensor,
+    u32_params: &[u32],
+    f32_params: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+) -> Result<String, String> {
+    workspace_verify_direct_math_receipt(
+        workspace,
+        &operation_id,
+        &[lhs.clone(), rhs.clone()],
+        u32_params,
+        f32_params,
+        abs_tol,
+        rel_tol,
+        label,
+        "workspaceVerifyDirectMath2Receipt",
     )
 }
 
