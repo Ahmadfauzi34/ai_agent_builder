@@ -164,6 +164,7 @@ pub fn interaction_capabilities() -> String {
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
+        "\"math_interaction\":\"mathInteractionCapabilities\",",
         "\"escape_hatches\":[\"workspaceCompile (unbound/legacy)\",\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"read_only_guarantee\":\"snapshot_and_valid_actions_do_not_mutate_inputs\"",
         "}"
