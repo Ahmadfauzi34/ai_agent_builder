@@ -54,17 +54,17 @@ fn role_valid(role: &str) -> bool {
 fn metadata_json(metadata: &WorkspaceInputPortMetadata) -> String {
     format!(
         concat!(
-            "{",
+            "{{",
             "\"schema_version\":1,",
             "\"schema_id\":\"burn-research.input-port-binding.v1\",",
             "\"slot\":0,",
             "\"role\":\"{}\",",
-            "\"provenance\":{",
+            "\"provenance\":{{",
                 "\"source\":\"{}\",",
                 "\"revision\":{},",
                 "\"fingerprint\":{}",
-            "}",
-            "}"
+            "}}",
+            "}}"
         ),
         json_escape(&metadata.role),
         json_escape(&metadata.source),
