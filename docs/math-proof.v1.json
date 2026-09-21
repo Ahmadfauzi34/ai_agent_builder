@@ -7,7 +7,7 @@
     "vector_receipt": "wasm_comparator against caller_supplied reference only",
     "math_program_receipt": "wasm_verifier using replayed canonical MathProgram execution as reference",
     "direct_operation_receipt": "wasm_verifier executes the canonical direct implementation and compares it against an internally constructed one-step MathProgramV9 reference; caller supplies neither reference nor candidate",
-    "resolution": "external observation/interpretation remains unchanged"
+    "resolution": "external observation/interpretation remains unchanged; typed reverse evidence may rejoin only as observation_only"
   },
   "surfaces": {
     "mathProofCapabilities": {
@@ -111,7 +111,8 @@
     "caller_candidate": "none",
     "subject_binding": "subject-bound verification requires the exact internally generated V9 reference programIdentity to be registered through workspaceBindRuntimeDirectMathOperation",
     "cosine_policy": "explicit epsilon required for verification even though the direct public surface supports a default; verifier never guesses the default",
-    "shared_kernel_note": "direct and MathProgram paths may share underlying Burn numerical kernels; receipt proves path equivalence for the call, not implementation diversity below Burn"
+    "shared_kernel_note": "direct and MathProgram paths may share underlying Burn numerical kernels; receipt proves path equivalence for the call, not implementation diversity below Burn",
+    "resolution_rejoin": "RuntimeEvidence::from_direct_math_verifier_receipt_json validates the exact verifier/candidate/reference/generation tuple before observation-only rejoin"
   },
   "invariants": [
     "binding plan is not proof",
@@ -121,7 +122,7 @@
     "MathProgram execution is the reference authority for math-program receipts",
     "numerical mismatch records a failed verifier receipt rather than becoming a transport error",
     "malformed plan, input mismatch, non-finite candidate, or invalid tolerances do not allocate a receipt id",
-    "direct-target verification remains lower-authority caller-supplied comparison until a dedicated direct verifier exists",
+    "caller-supplied vector comparison remains lower-authority and is not promoted by the dedicated DirectMath verifier",
     "canonical plan declared input count must exactly match the selected verifier surface before reference execution",
     "direct verifier caller cannot supply the candidate output or numerical reference",
     "direct verifier always uses an internally generated one-step MathProgramV9 reference for the same canonical operation and explicit parameters",
