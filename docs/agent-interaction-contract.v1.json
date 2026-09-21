@@ -151,6 +151,8 @@
     "accepts": [
       "structured AgentFault fields",
       "graph verifier receipt fields",
+      "MathProgram verifier receipt fields",
+      "DirectMath verifier receipt fields",
       "vector verifier receipt fields"
     ],
     "policy": "evidence is classified against the exact Resolution revision + runtime subject; no automatic ResolutionDiagnostic or state transition"

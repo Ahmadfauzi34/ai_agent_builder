@@ -1550,7 +1550,13 @@ pub fn math_interaction_capabilities() -> String {
             "\"canonical_id_policy\":\"stable_across_direct_and_program_backends\",",
             "\"program_generation_policy\":\"minimum compatible generation is binding metadata, not operation identity\",",
             "\"discovery\":[\"mathInteractionCapabilities\",\"mathOperationCatalog\",\"mathDescribeOperation\",\"mathCheckOperation\",\"mathValidOperations\",\"mathPlanBinding\",\"mathProofCapabilities\"],",
-            "\"deferred\":[\"direct-target independent verifier\"],",
+            "\"direct_verifier\":{{",
+                "\"surfaces\":[\"workspaceVerifyDirectMath1Receipt\",\"workspaceVerifyDirectMath2Receipt\"],",
+                "\"verifier\":\"DirectMath.verifyAgainstMathProgramV9\",",
+                "\"candidate_authority\":\"burn_direct_math\",",
+                "\"reference_authority\":\"burn_math_program\"",
+            "}},",
+            "\"deferred\":[],",
             "\"read_only_guarantee\":\"discovery calls allocate no persistent state and execute no tensor operations\"",
             "}}"
         ),
@@ -1641,6 +1647,19 @@ mod tests {
             caps["authorities"]["numerics"],
             "Burn-backed existing math surfaces"
         );
+        assert_eq!(
+            caps["direct_verifier"]["verifier"],
+            "DirectMath.verifyAgainstMathProgramV9"
+        );
+        assert_eq!(
+            caps["direct_verifier"]["candidate_authority"],
+            "burn_direct_math"
+        );
+        assert_eq!(
+            caps["direct_verifier"]["reference_authority"],
+            "burn_math_program"
+        );
+        assert!(caps["deferred"].as_array().is_some_and(|items| items.is_empty()));
     }
 
     #[test]

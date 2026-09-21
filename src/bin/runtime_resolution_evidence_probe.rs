@@ -207,6 +207,57 @@ fn run() -> Result<(), String> {
         "MathProgram verifier evidence was not recorded",
     );
 
+    let direct_math_receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 3,
+        "authority": "wasm_verifier",
+        "verifier": "DirectMath.verifyAgainstMathProgramV9",
+        "candidate_authority": "burn_direct_math",
+        "reference_authority": "burn_math_program",
+        "reference_program_generation": "v9",
+        "operation_id": "numeric.add",
+        "label": "direct-math-match",
+        "program_identity": {
+            "schema": "burn-research.math-program-identity.v1",
+            "plan_hex": "42524d5009"
+        },
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "result": {
+            "passed": true,
+            "len": 2,
+            "max_abs_error": 0.0,
+            "max_rel_error": 0.0,
+            "rmse": 0.0,
+            "first_failure": null
+        }
+    })
+    .to_string();
+    let direct_math =
+        RuntimeEvidence::from_direct_math_verifier_receipt_json(&direct_math_receipt)?;
+    ensure(
+        direct_math.source_authority() == "wasm_verifier"
+            && direct_math.evidence_authority() == "observation_only"
+            && direct_math.transport_integrity() == "host_structured_unverified"
+            && direct_math.outcome() == "passed"
+            && direct_math.kind() == "direct_math_verifier_receipt",
+        "DirectMath verifier source-authority/transport semantics drift",
+    );
+    ensure(
+        inbox.record(direct_math)?,
+        "DirectMath verifier evidence was not recorded",
+    );
+
     ensure(
         resolution == before_resolution && resolution.compile_eligible(),
         "recording runtime evidence mutated Resolution state",
@@ -308,6 +359,7 @@ fn run() -> Result<(), String> {
             "\"structured_payload_adaptation\":true,",
             "\"verifier_source_authority_preserved\":true,",
             "\"math_program_verifier_rejoin\":true,",
+            "\"direct_math_verifier_rejoin\":true,",
             "\"transport_observation_only\":true,",
             "\"resolution_state_unchanged\":true,",
             "\"stale_revision_rejected\":true,",

@@ -175,19 +175,21 @@
       "completed: verifier-backed MathProgram receipts for canonical plans declaring exactly 1 or 2 external inputs",
       "completed: plan-version dispatch recognizes v1-v9 while v5 3..8-input plans fail closed on the v1 one/two-input verifier surfaces",
       "completed: subject-bound fail-closed exact programIdentity requirement",
-      "direct target remains caller-supplied comparator authority only; no independent direct verifier in v1"
+      "historical checkpoint-5 boundary: direct target still used caller-supplied comparator authority; superseded by checkpoint_7 direct verifier"
     ],
     "checkpoint_6": [
       "completed: MathProgram verifier receipt -> typed RuntimeEvidence reverse adapter",
       "completed: exact runtime subject rejoin into ResolutionEvidenceInbox remains observation_only",
       "completed: cross-artifact stdin adapter probe for actual packaged-WASM receipts",
-      "direct-target independent verifier remains deferred"
+      "historical checkpoint-6 boundary: direct-target independent verifier had not yet been added; completed in checkpoint_7"
     ],
     "checkpoint_7": [
       "completed: verifier-owned direct execution vs one-step MathProgramV9 reference",
       "completed: no caller-supplied candidate/reference in direct proof path",
       "completed: subject-bound direct verifier requires generated reference programIdentity binding",
-      "completed: explicit cosine epsilon requirement removes default-parameter proof ambiguity"
+      "completed: explicit cosine epsilon requirement removes default-parameter proof ambiguity",
+      "completed: DirectMath verifier receipt -> typed RuntimeEvidence reverse adapter",
+      "completed: exact-subject DirectMath evidence rejoin remains observation_only and does not mutate Resolution state"
     ]
   },
   "acceptance": [
@@ -211,7 +213,8 @@
     "MathProgram verifier evidence preserves wasm_verifier/burn_math_program source labels while ResolutionEvidenceInbox remains observation_only and creates no Resolution transition",
     "workspaceVerifyDirectMath1Receipt/workspaceVerifyDirectMath2Receipt execute both direct and canonical V9 reference paths internally and emit wasm_verifier receipts",
     "direct verifier receipts identify candidate_authority=burn_direct_math and reference_authority=burn_math_program",
-    "subject-bound direct verification requires workspaceBindRuntimeDirectMathOperation before execution"
+    "subject-bound direct verification requires workspaceBindRuntimeDirectMathOperation before execution",
+    "actual DirectMath.verifyAgainstMathProgramV9 receipt can be parsed by RuntimeEvidence::from_direct_math_verifier_receipt_json and rejoined observation-only to the exact Resolution subject"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",

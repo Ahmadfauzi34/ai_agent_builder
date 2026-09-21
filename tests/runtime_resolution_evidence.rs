@@ -7,7 +7,8 @@ use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 use burn_research::runtime_resolution_evidence::{
-    RejoinStatus, ResolutionEvidenceInbox, RuntimeEvidence,
+    runtime_resolution_evidence_capabilities, RejoinStatus, ResolutionEvidenceInbox,
+    RuntimeEvidence,
 };
 use burn_research::agent::AgentGraphBuilder;
 
@@ -42,6 +43,21 @@ fn forward_bridge_fixture() -> (
     assert!(resolution_snapshot.compile_eligible());
 
     (resolution_snapshot, projection)
+}
+
+#[test]
+fn capability_contract_advertises_direct_math_reverse_adapter() {
+    let caps: serde_json::Value =
+        serde_json::from_str(&runtime_resolution_evidence_capabilities()).unwrap();
+
+    assert_eq!(
+        caps["structured_adapters"]["direct_math_verifier_receipt"]["constructor"],
+        "RuntimeEvidence::from_direct_math_verifier_receipt_json"
+    );
+    assert_eq!(
+        caps["structured_adapters"]["direct_math_verifier_receipt"]["authority"],
+        "wasm_verifier source label / burn_direct_math candidate / burn_math_program reference / observation_only transport"
+    );
 }
 
 #[test]
@@ -252,6 +268,141 @@ fn graph_receipt_adapter_accepts_exact_wasm_receipt_shape_without_host_field_map
         .as_str()
         .unwrap()
         .contains("\"max_abs_error\":0.0"));
+}
+
+#[test]
+fn direct_math_receipt_adapter_preserves_dual_runtime_authority_and_exact_subject() {
+    let (snapshot, projection) = forward_bridge_fixture();
+    let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+    let before = snapshot.clone();
+
+    let receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 43,
+        "authority": "wasm_verifier",
+        "verifier": "DirectMath.verifyAgainstMathProgramV9",
+        "candidate_authority": "burn_direct_math",
+        "reference_authority": "burn_math_program",
+        "reference_program_generation": "v9",
+        "operation_id": "numeric.add",
+        "label": "direct-add",
+        "program_identity": {
+            "schema": "burn-research.math-program-identity.v1",
+            "plan_hex": "42524d5009"
+        },
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "result": {
+            "passed": true,
+            "len": 2,
+            "max_abs_error": 0.0,
+            "max_rel_error": 0.0,
+            "rmse": 0.0,
+            "first_failure": null
+        }
+    })
+    .to_string();
+
+    let evidence =
+        RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+    assert_eq!(evidence.kind(), "direct_math_verifier_receipt");
+    assert_eq!(evidence.source_authority(), "wasm_verifier");
+    assert_eq!(evidence.evidence_authority(), "observation_only");
+    assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
+    assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+    assert!(inbox.record(evidence).unwrap());
+    assert_eq!(snapshot, before);
+
+    let json: serde_json::Value = serde_json::from_str(&inbox.to_json()).unwrap();
+    assert_eq!(json["summary"]["direct_math_verifier_passed"], 1);
+    assert_eq!(
+        json["entries"][0]["payload"]["candidate_authority"],
+        "burn_direct_math"
+    );
+    assert_eq!(
+        json["entries"][0]["payload"]["reference_authority"],
+        "burn_math_program"
+    );
+    assert_eq!(
+        json["entries"][0]["payload"]["reference_program_generation"],
+        "v9"
+    );
+    assert!(json["entries"][0]["payload"]["reference_program_identity"]
+        .as_str()
+        .unwrap()
+        .contains("burn-research.math-program-identity.v1"));
+    assert!(json["entries"][0]["payload"].get("program_identity").is_none());
+    assert_eq!(json["resolution_effect"]["state_transition"], "none");
+}
+
+#[test]
+fn failed_direct_math_receipt_remains_observation_only() {
+    let (snapshot, projection) = forward_bridge_fixture();
+    let before = snapshot.clone();
+    let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+
+    let receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 44,
+        "authority": "wasm_verifier",
+        "verifier": "DirectMath.verifyAgainstMathProgramV9",
+        "candidate_authority": "burn_direct_math",
+        "reference_authority": "burn_math_program",
+        "reference_program_generation": "v9",
+        "operation_id": "numeric.add",
+        "label": "direct-add-mismatch",
+        "program_identity": {
+            "schema": "burn-research.math-program-identity.v1",
+            "plan_hex": "42524d5009"
+        },
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "result": {
+            "passed": false,
+            "len": 2,
+            "max_abs_error": 1.0,
+            "max_rel_error": 1.0,
+            "rmse": std::f64::consts::FRAC_1_SQRT_2,
+            "first_failure": 0
+        }
+    })
+    .to_string();
+
+    let evidence =
+        RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+    assert_eq!(evidence.outcome(), "failed");
+    assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+    assert!(inbox.record(evidence).unwrap());
+
+    let json: serde_json::Value = serde_json::from_str(&inbox.to_json()).unwrap();
+    assert_eq!(json["summary"]["direct_math_verifier_failed"], 1);
+    assert_eq!(json["resolution_effect"]["diagnostic_created"], false);
+    assert_eq!(json["resolution_effect"]["state_transition"], "none");
+    assert_eq!(json["resolution_effect"]["revision_created"], false);
+    assert_eq!(json["resolution_effect"]["action_selected"], false);
+    assert_eq!(json["resolution_effect"]["interpretation_required"], true);
+    assert_eq!(snapshot, before);
+    assert!(snapshot.compile_eligible());
 }
 
 #[test]
