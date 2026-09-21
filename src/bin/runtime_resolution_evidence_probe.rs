@@ -1,14 +1,20 @@
+#[cfg(not(target_arch = "wasm32"))]
 use burn_research::authorization::AuthorizationPolicy;
+#[cfg(not(target_arch = "wasm32"))]
 use burn_research::effective_spec::{
     ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
+#[cfg(not(target_arch = "wasm32"))]
 use burn_research::resolution_subject::SubjectBoundReviewSession;
+#[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_resolution_evidence::{
     RejoinStatus, ResolutionEvidenceInbox, RuntimeEvidence, RuntimeEvidenceSubject,
     MAX_RUNTIME_EVIDENCE_ENTRIES,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
     eprintln!(
         "{{\"schema\":\"burn-research.runtime-resolution-evidence-native-probe.v1\",\"status\":\"failed\",\"message\":\"{}\"}}",
@@ -17,18 +23,21 @@ fn fail(message: impl AsRef<str>) -> ! {
     std::process::exit(1);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn ensure(condition: bool, message: &str) {
     if !condition {
         fail(message);
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     if let Err(error) = run() {
         fail(error);
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn run() -> Result<(), String> {
     let spec = EffectiveSpec::root(vec![
         SpecDeclaration::new("objective", "feature_transform")?,
@@ -255,3 +264,9 @@ fn run() -> Result<(), String> {
 
     Ok(())
 }
+
+// This executable is a native audit probe. The WASM library does not own the
+// reverse-evidence inbox or its host JSON adapters. Keep a no-op entrypoint so
+// whole-package wasm32 cargo checks do not compile native-only probe semantics.
+#[cfg(target_arch = "wasm32")]
+fn main() {}
