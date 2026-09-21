@@ -32,10 +32,31 @@ fn run() -> Result<(), String> {
         .read_to_string(&mut raw)
         .map_err(|error| format!("stdin read failed: {error}"))?;
     if raw.trim().is_empty() {
-        return Err("stdin must contain one MathProgram verifier receipt JSON object".to_string());
+        return Err(
+            "stdin must contain one supported verifier receipt JSON object".to_string(),
+        );
     }
 
-    let evidence = RuntimeEvidence::from_math_program_verifier_receipt_json(raw.trim())?;
+    let receipt: serde_json::Value = serde_json::from_str(raw.trim())
+        .map_err(|error| format!("receipt JSON parse failed: {error}"))?;
+    let verifier = receipt
+        .get("verifier")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| "receipt.verifier must be a string".to_string())?;
+
+    let evidence = match verifier {
+        "MathProgram.verifyFlat" => {
+            RuntimeEvidence::from_math_program_verifier_receipt_json(raw.trim())?
+        }
+        "DirectMath.verifyAgainstMathProgramV9" => {
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(raw.trim())?
+        }
+        other => {
+            return Err(format!(
+                "unsupported verifier {other}; expected MathProgram.verifyFlat or DirectMath.verifyAgainstMathProgramV9"
+            ))
+        }
+    };
     let subject = evidence
         .subject()
         .ok_or_else(|| "adapter probe requires a bound runtime_subject".to_string())?
@@ -98,6 +119,7 @@ fn run() -> Result<(), String> {
             "evidence_authority": evidence.evidence_authority(),
             "transport_integrity": evidence.transport_integrity(),
             "outcome": evidence.outcome(),
+            "verifier": verifier,
             "subject_bound": true,
             "subject": {
                 "intent_id": subject.intent_id,
