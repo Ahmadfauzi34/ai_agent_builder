@@ -6,7 +6,7 @@ use crate::math::{
     MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7, MathProgramV8,
     MathProgramV9,
 };
-use crate::math::{MathProgramBuilder, MathProgramV9Builder};
+use crate::math::{MathProgramBuilder, MathProgramV5Builder, MathProgramV9Builder};
     use crate::math::program::OP_ABS;
     use crate::registry::LayerRegistry;
     use crate::resolution_runtime_bridge::workspace_bind_runtime_subject;
@@ -106,6 +106,14 @@ fn math_program_version(plan: &[u8]) -> Result<u8, String> {
         ));
     }
     Ok(version)
+}
+
+fn math_program_declared_inputs(plan: &[u8]) -> Result<usize, String> {
+    math_program_version(plan)?;
+    if plan.len() < 6 {
+        return Err("MathProgram proof: plan is truncated before num_inputs".to_string());
+    }
+    Ok(plan[5] as usize)
 }
 
 fn math_program_identity_from_plan(plan: &[u8]) -> Result<(u8, String), String> {
@@ -502,6 +510,14 @@ fn workspace_verify_math_program_receipt(
     if !(1..=2).contains(&inputs.len()) {
         return Err(format!(
             "{context}: verifier supports exactly 1 or 2 external inputs, got {}",
+            inputs.len()
+        ));
+    }
+
+    let declared_inputs = math_program_declared_inputs(plan)?;
+    if declared_inputs != inputs.len() {
+        return Err(format!(
+            "{context}: canonical MathProgram declares {declared_inputs} external inputs but this verifier surface received {}",
             inputs.len()
         ));
     }
@@ -907,6 +923,42 @@ mod tests {
         .unwrap();
         assert!(receipt.contains("\"runtime_subject\":{\"status\":\"bound\""));
         assert!(receipt.contains("\"passed\":true"));
+    }
+
+    #[test]
+    fn v5_three_input_plan_is_rejected_by_one_input_verifier_without_receipt_allocation() {
+        let mut builder = MathProgramV5Builder::new(3, 4).unwrap();
+        builder.add_unary(OP_ABS, 0, 3).unwrap();
+        builder.set_output(3).unwrap();
+        let plan = builder.compile().unwrap().program_plan();
+
+        let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+
+        let error = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "v5-wrong-surface".into(),
+        )
+        .unwrap_err();
+        assert!(error.contains("declares 3 external inputs"));
+
+        let good_plan = abs_plan();
+        let good = workspace_verify_math_program_1_receipt(
+            &mut workspace,
+            &good_plan,
+            &input,
+            &[2.0, 3.0],
+            0.0,
+            0.0,
+            "after-v5-reject".into(),
+        )
+        .unwrap();
+        assert!(good.contains("\"receipt_id\":1"));
     }
 
     #[test]
