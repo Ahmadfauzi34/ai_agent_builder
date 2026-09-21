@@ -1670,6 +1670,163 @@ mod tests {
     }
 
     #[test]
+    fn structured_direct_math_receipt_rejoins_as_observation_only() {
+        let snapshot = resolved_snapshot("intent-direct");
+        let before = snapshot.clone();
+        let projection = projection("intent-direct", snapshot.revision, "spec-direct");
+        let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+
+        let receipt = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 11,
+            "authority": "wasm_verifier",
+            "verifier": "DirectMath.verifyAgainstMathProgramV9",
+            "reference_authority": "burn_math_program",
+            "candidate_authority": "burn_direct_math",
+            "operation_id": "numeric.add",
+            "label": "direct-add",
+            "fingerprint_algorithm": "fnv1a64_noncryptographic",
+            "reference_program_generation": "v9",
+            "program_identity": {
+                "schema": "burn-research.math-program-identity.v1",
+                "plan_hex": "42524d5009"
+            },
+            "program_identity_fingerprint": "fnv1a64:direct-program",
+            "mutable_state_in_program_identity": false,
+            "runtime_subject": {
+                "status": "bound",
+                "intent_id": projection.intent_id.clone(),
+                "workflow_revision": projection.workflow_revision,
+                "approval_id": projection.approval_id.clone(),
+                "subject_kind": projection.subject_kind.clone(),
+                "subject_identity": projection.subject_identity.clone(),
+                "authorization_policy_id": projection.authorization_policy_id.clone(),
+                "authorization_policy_revision": projection.authorization_policy_revision,
+                "authorization_is_revision": projection.authorization_is_revision
+            },
+            "input_count": 2,
+            "input_fingerprint": "fnv1a64:direct-input",
+            "reference_fingerprint": "fnv1a64:direct-reference",
+            "candidate_fingerprint": "fnv1a64:direct-candidate",
+            "tolerances": {"abs": 0.0, "rel": 0.0},
+            "result": {
+                "passed": true,
+                "len": 2,
+                "max_abs_error": 0.0,
+                "max_rel_error": 0.0,
+                "rmse": 0.0,
+                "first_failure": null
+            }
+        })
+        .to_string();
+
+        let evidence =
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+
+        assert_eq!(evidence.source_authority(), "wasm_verifier");
+        assert_eq!(evidence.evidence_authority(), "observation_only");
+        assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
+        assert_eq!(evidence.kind(), "direct_math_verifier_receipt");
+        assert_eq!(evidence.outcome(), "passed");
+        assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+        assert!(inbox.record(evidence).unwrap());
+
+        let json = inbox.to_json();
+        assert!(json.contains("\"direct_math_verifier_passed\":1"));
+        assert!(json.contains("\"candidate_authority\":\"burn_direct_math\""));
+        assert!(json.contains("\"reference_authority\":\"burn_math_program\""));
+        assert!(json.contains("\"reference_program_generation\":\"v9\""));
+        assert!(json.contains("\"diagnostic_created\":false"));
+        assert!(json.contains("\"state_transition\":\"none\""));
+        assert_eq!(snapshot, before);
+    }
+
+    #[test]
+    fn direct_math_adapter_fails_closed_on_authority_class_escalation() {
+        fn base_receipt() -> serde_json::Value {
+            serde_json::json!({
+                "schema_version": 1,
+                "schema_id": "burn-research.verifier-receipt.v1",
+                "receipt_id": 1,
+                "authority": "wasm_verifier",
+                "verifier": "DirectMath.verifyAgainstMathProgramV9",
+                "reference_authority": "burn_math_program",
+                "candidate_authority": "burn_direct_math",
+                "operation_id": "numeric.add",
+                "label": "direct",
+                "reference_program_generation": "v9",
+                "program_identity": {
+                    "schema": "burn-research.math-program-identity.v1",
+                    "plan_hex": "42524d5009"
+                },
+                "runtime_subject": {"status": "unbound"},
+                "result": {"passed": true}
+            })
+        }
+
+        let mut wrong_verifier = base_receipt();
+        wrong_verifier["verifier"] =
+            serde_json::Value::String("MathProgram.verifyFlat".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(
+                &wrong_verifier.to_string()
+            )
+            .is_err()
+        );
+
+        let mut wrong_candidate = base_receipt();
+        wrong_candidate["candidate_authority"] =
+            serde_json::Value::String("caller_supplied".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(
+                &wrong_candidate.to_string()
+            )
+            .is_err()
+        );
+
+        let mut wrong_reference = base_receipt();
+        wrong_reference["reference_authority"] =
+            serde_json::Value::String("burn_compiled_graph".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(
+                &wrong_reference.to_string()
+            )
+            .is_err()
+        );
+
+        let mut wrong_generation = base_receipt();
+        wrong_generation["reference_program_generation"] =
+            serde_json::Value::String("v8".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(
+                &wrong_generation.to_string()
+            )
+            .is_err()
+        );
+
+        let mut wrong_identity = base_receipt();
+        wrong_identity["program_identity"]["schema"] =
+            serde_json::Value::String("burn-research.program-identity.v1".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(
+                &wrong_identity.to_string()
+            )
+            .is_err()
+        );
+
+        let mut vector = base_receipt();
+        vector["authority"] = serde_json::Value::String("wasm_comparator".into());
+        vector["verifier"] = serde_json::Value::String("mathVerifyVectors".into());
+        vector["reference_authority"] =
+            serde_json::Value::String("caller_supplied".into());
+        assert!(
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(&vector.to_string())
+                .is_err()
+        );
+    }
+
+    #[test]
     fn duplicate_is_idempotent_and_inbox_is_bounded() {
         let snapshot = resolved_snapshot("intent-a");
         let projection = projection("intent-a", snapshot.revision, "spec-a");
