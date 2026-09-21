@@ -104,7 +104,9 @@
       "proves": [
         "actual cross-artifact receipt can be parsed by RuntimeEvidence::from_math_program_verifier_receipt_json",
         "kind/source_authority/evidence_authority/transport_integrity/outcome are derived by the typed adapter",
-        "runtime subject tuple is read from the actual receipt rather than manually reconstructed"
+        "runtime subject tuple is read from the actual receipt rather than manually reconstructed",
+        "receipt is classified exact and recorded into a subject-matched ResolutionEvidenceInbox",
+        "recording actual transported evidence does not create a diagnostic, state transition, revision, or action selection"
       ]
     }
   },
