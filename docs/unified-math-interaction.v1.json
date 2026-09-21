@@ -176,6 +176,12 @@
       "completed: plan-version dispatch recognizes v1-v9 while v5 3..8-input plans fail closed on the v1 one/two-input verifier surfaces",
       "completed: subject-bound fail-closed exact programIdentity requirement",
       "direct target remains caller-supplied comparator authority only; no independent direct verifier in v1"
+    ],
+    "checkpoint_6": [
+      "completed: MathProgram verifier receipt -> typed RuntimeEvidence reverse adapter",
+      "completed: exact runtime subject rejoin into ResolutionEvidenceInbox remains observation_only",
+      "completed: cross-artifact stdin adapter probe for actual packaged-WASM receipts",
+      "direct-target independent verifier remains deferred"
     ]
   },
   "acceptance": [
@@ -194,7 +200,9 @@
     "program binding exposes minimum compatible generation rather than selecting a concrete generation",
     "workspaceVerifyMathProgram1Receipt and workspaceVerifyMathProgram2Receipt execute canonical MathProgram replay as reference and emit wasm_verifier receipts with reference_authority=burn_math_program",
     "subject-bound MathProgram verification requires exact replay-derived programIdentity registration before reference execution or receipt allocation",
-    "direct-target comparison is not upgraded beyond caller-supplied vector authority"
+    "direct-target comparison is not upgraded beyond caller-supplied vector authority",
+    "actual MathProgram.verifyFlat receipt can be parsed by the native typed reverse adapter without manual host field extraction",
+    "MathProgram verifier evidence preserves wasm_verifier/burn_math_program source labels while ResolutionEvidenceInbox remains observation_only and creates no Resolution transition"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",
