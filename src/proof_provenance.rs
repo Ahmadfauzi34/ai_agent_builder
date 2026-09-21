@@ -6,10 +6,7 @@ use crate::math::{
     MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7, MathProgramV8,
     MathProgramV9,
 };
-use crate::math::{MathProgramBuilder, MathProgramV5Builder, MathProgramV9Builder};
-    use crate::math::program::OP_ABS;
-    use crate::registry::LayerRegistry;
-    use crate::resolution_runtime_bridge::workspace_bind_runtime_subject;
+use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
@@ -687,7 +684,10 @@ mod tests {
         workspace_verify_vector_receipt,
     };
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
+    use crate::math::program::OP_ABS;
+    use crate::math::{MathProgramBuilder, MathProgramV5Builder, MathProgramV9Builder};
     use crate::registry::LayerRegistry;
+    use crate::resolution_runtime_bridge::workspace_bind_runtime_subject;
     use crate::workspace::AgentWorkspace;
     use crate::workspace_ops::{workspace_compile, workspace_init_unary};
     use crate::WasmTensor;
