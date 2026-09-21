@@ -255,7 +255,9 @@ mod tests {
         )
         .unwrap();
 
-        let layer_id = workspace.reserve_layer_id("relu").unwrap();
+        let layer_id = workspace
+            .reserve_layer_id(&registry, "relu".into())
+            .unwrap();
         let spec = AgentLayerSpec::relu(layer_id);
         workspace_init_unary(
             &mut workspace,
@@ -263,7 +265,6 @@ mod tests {
             &mut registry,
             &spec,
             0,
-            1,
             "relu-input".into(),
         )
         .unwrap();
@@ -307,28 +308,30 @@ mod tests {
         let mut builder = AgentGraphBuilder::new(4).unwrap();
         let mut registry = LayerRegistry::new();
 
-        let first_id = workspace.reserve_layer_id("relu-a").unwrap();
+        let first_id = workspace
+            .reserve_layer_id(&registry, "relu-a".into())
+            .unwrap();
         let first = AgentLayerSpec::relu(first_id);
-        workspace_init_unary(
+        let first_output = workspace_init_unary(
             &mut workspace,
             &mut builder,
             &mut registry,
             &first,
             0,
-            1,
             "relu-a".into(),
         )
         .unwrap();
 
-        let second_id = workspace.reserve_layer_id("relu-b").unwrap();
+        let second_id = workspace
+            .reserve_layer_id(&registry, "relu-b".into())
+            .unwrap();
         let second = AgentLayerSpec::relu(second_id);
         workspace_init_unary(
             &mut workspace,
             &mut builder,
             &mut registry,
             &second,
-            1,
-            2,
+            first_output,
             "relu-b".into(),
         )
         .unwrap();
