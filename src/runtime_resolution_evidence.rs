@@ -552,12 +552,12 @@ impl RuntimeEvidence {
         let receipt_id = u32::try_from(receipt_id)
             .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
-        let reference_program_identity = receipt
+        let program_identity = receipt
             .get("program_identity")
             .filter(|value| value.is_object())
             .ok_or_else(|| format!("{CONTEXT}: missing program_identity object"))?;
         Self::require_exact_string(
-            reference_program_identity,
+            program_identity,
             "schema",
             "burn-research.program-identity.v1",
             CONTEXT,
@@ -572,7 +572,7 @@ impl RuntimeEvidence {
             subject,
             receipt_id,
             label,
-            reference_program_identity.to_string(),
+            program_identity.to_string(),
             passed,
             result.to_string(),
         )
