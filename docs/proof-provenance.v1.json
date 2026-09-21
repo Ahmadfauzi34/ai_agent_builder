@@ -126,6 +126,7 @@
     "contract": "burn-research.runtime-resolution-evidence.v1",
     "graph_receipt": "may be transported with source_authority=wasm_verifier, but ResolutionEvidenceInbox marks transport as host_structured_unverified and observation_only; the original runtime receipt remains authoritative",
     "vector_receipt": "may be transported with source_authority=wasm_comparator and caller-supplied-reference semantics, but the inbox does not authenticate the host transport",
-    "interpretation": "receipt fields transported into the inbox are observations only; pass/fail does not create ResolutionDiagnostic or transition ResolutionWorkflow"
+    "interpretation": "receipt fields transported into the inbox are observations only; pass/fail does not create ResolutionDiagnostic or transition ResolutionWorkflow",
+    "math_program_receipt": "may be transported with source_authority=wasm_verifier and reference_authority=burn_math_program through the typed MathProgram receipt adapter; ResolutionEvidenceInbox still marks transport host_structured_unverified and observation_only"
   }
 }

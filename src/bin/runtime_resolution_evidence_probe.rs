@@ -149,6 +149,64 @@ fn run() -> Result<(), String> {
         "graph verifier source-authority/transport semantics drift",
     );
     ensure(inbox.record(verifier)?, "graph verifier evidence was not recorded");
+
+    let math_program_receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 2,
+        "authority": "wasm_verifier",
+        "verifier": "MathProgram.verifyFlat",
+        "reference_authority": "burn_math_program",
+        "label": "math-program-mismatch",
+        "fingerprint_algorithm": "fnv1a64_noncryptographic",
+        "program_plan_version": 9,
+        "program_identity": {
+            "schema": "burn-research.math-program-identity.v1",
+            "plan_hex": "42524d5009"
+        },
+        "program_identity_fingerprint": "fnv1a64:probe-math-program",
+        "mutable_state_in_program_identity": false,
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "input_count": 2,
+        "input_fingerprint": "fnv1a64:probe-math-input",
+        "reference_fingerprint": "fnv1a64:probe-math-reference",
+        "candidate_fingerprint": "fnv1a64:probe-math-candidate",
+        "tolerances": {"abs": 0.0, "rel": 0.0},
+        "result": {
+            "passed": false,
+            "len": 3,
+            "max_abs_error": 1.0,
+            "max_rel_error": 1.0,
+            "rmse": 0.5773502691896257,
+            "first_failure": 1
+        }
+    })
+    .to_string();
+    let math_program =
+        RuntimeEvidence::from_math_program_verifier_receipt_json(&math_program_receipt)?;
+    ensure(
+        math_program.source_authority() == "wasm_verifier"
+            && math_program.evidence_authority() == "observation_only"
+            && math_program.transport_integrity() == "host_structured_unverified"
+            && math_program.outcome() == "failed"
+            && math_program.kind() == "math_program_verifier_receipt",
+        "MathProgram verifier source-authority/transport semantics drift",
+    );
+    ensure(
+        inbox.record(math_program)?,
+        "MathProgram verifier evidence was not recorded",
+    );
+
     ensure(
         resolution == before_resolution && resolution.compile_eligible(),
         "recording runtime evidence mutated Resolution state",
@@ -249,6 +307,7 @@ fn run() -> Result<(), String> {
             "\"agent_fault_rejoin\":true,",
             "\"structured_payload_adaptation\":true,",
             "\"verifier_source_authority_preserved\":true,",
+            "\"math_program_verifier_rejoin\":true,",
             "\"transport_observation_only\":true,",
             "\"resolution_state_unchanged\":true,",
             "\"stale_revision_rejected\":true,",
