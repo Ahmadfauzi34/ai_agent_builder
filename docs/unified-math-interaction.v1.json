@@ -142,7 +142,9 @@
     "valid_operations": "mathValidOperations",
     "valid_operations_schema": "burn-research.math-valid-operations.v1",
     "binding_plan": "mathPlanBinding",
-    "binding_plan_schema": "burn-research.math-binding-plan.v1"
+    "binding_plan_schema": "burn-research.math-binding-plan.v1",
+    "math_proof": "mathProofCapabilities",
+    "math_proof_schema": "burn-research.math-proof.v1"
   },
   "invariants": [
     "discovery is read-only and owns no persistent state",
@@ -169,7 +171,11 @@
       "completed: no automatic backend or program-generation selection"
     ],
     "checkpoint_5": [
-      "math proof correlation to existing verifier receipts"
+      "completed: canonical MathProgram plan -> exact replay-derived programIdentity binding",
+      "completed: verifier-backed MathProgram receipts for canonical plans declaring exactly 1 or 2 external inputs",
+      "completed: plan-version dispatch recognizes v1-v9 while v5 3..8-input plans fail closed on the v1 one/two-input verifier surfaces",
+      "completed: subject-bound fail-closed exact programIdentity requirement",
+      "direct target remains caller-supplied comparator authority only; no independent direct verifier in v1"
     ]
   },
   "acceptance": [
@@ -185,7 +191,10 @@
     "mathValidOperations never selects, ranks, recommends, executes, or mutates",
     "mathPlanBinding requires an explicit direct|program target and rejects auto selection",
     "mathPlanBinding returns no executable authority and performs no direct call or MathProgram mutation",
-    "program binding exposes minimum compatible generation rather than selecting a concrete generation"
+    "program binding exposes minimum compatible generation rather than selecting a concrete generation",
+    "workspaceVerifyMathProgram1Receipt and workspaceVerifyMathProgram2Receipt execute canonical MathProgram replay as reference and emit wasm_verifier receipts with reference_authority=burn_math_program",
+    "subject-bound MathProgram verification requires exact replay-derived programIdentity registration before reference execution or receipt allocation",
+    "direct-target comparison is not upgraded beyond caller-supplied vector authority"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",

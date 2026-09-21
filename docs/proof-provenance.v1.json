@@ -6,7 +6,8 @@
     "legacy_recordProof": "caller-controlled legacy journal entry; not verifier authority",
     "caller_attestation": "explicit caller claim only",
     "vector_receipt": "WASM comparator authority over equality/tolerance relative to a caller-supplied reference",
-    "graph_receipt": "WASM verifier authority using Burn CompiledGraph as the reference execution"
+    "graph_receipt": "WASM verifier authority using Burn CompiledGraph as the reference execution",
+    "math_program_receipt": "WASM verifier authority using replayed canonical MathProgram execution as the reference"
   },
   "surfaces": {
     "proofProvenanceCapabilities": {
@@ -30,6 +31,26 @@
     "workspaceProofLedger": {
       "mutation": "none",
       "returns": "legacy proofs, attestations, and compact verifier receipts as separate collections"
+    },
+    "mathProofCapabilities": {
+      "mutation": "none",
+      "returns": "burn-research.math-proof.v1 contract"
+    },
+    "workspaceBindRuntimeMathProgramPlan": {
+      "mutation": "AgentWorkspace runtime-program binding metadata only",
+      "identity_source": "canonical MathProgram plan replay; caller cannot inject identity"
+    },
+    "workspaceVerifyMathProgram1Receipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger after canonical MathProgram execution + comparison",
+      "verifier": "MathProgram.verifyFlat",
+      "reference_authority": "burn_math_program",
+      "inputs": 1
+    },
+    "workspaceVerifyMathProgram2Receipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger after canonical MathProgram execution + comparison",
+      "verifier": "MathProgram.verifyFlat",
+      "reference_authority": "burn_math_program",
+      "inputs": 2
     }
   },
   "receipt": {
@@ -57,8 +78,16 @@
       "source": "AgentWorkspace runtime-subject binding",
       "authority": "execution context supplied by the Resolution↔Runtime bridge; verifier does not independently authorize it",
       "unbound": "status=unbound remains valid for legacy/non-bridged execution",
-      "program_binding": "when runtime subject is bound, graph receipts require the exact CompiledGraph.programIdentity to have been registered by workspaceCompileForRuntimeSubject"
-    }
+      "program_binding": "when runtime subject is bound, graph and MathProgram verifier receipts require the exact replay/compile-derived programIdentity to be registered to that workspace subject"
+    },
+    "math_program_extra": [
+      "program_plan_version",
+      "program_identity",
+      "program_identity_fingerprint",
+      "input_count",
+      "reference_fingerprint",
+      "mutable_state_in_program_identity=false"
+    ]
   },
   "fingerprint": {
     "algorithm": "fnv1a64_noncryptographic",
@@ -71,7 +100,9 @@
     "receipt_import": "forbidden; callers cannot inject a verifier receipt JSON into the internal ledger",
     "legacy_compatibility": "recordProof remains available but must be interpreted as caller-controlled legacy state",
     "bound_subject_graph_receipt": "fail closed before graph execution/receipt allocation unless exact programIdentity is bound to the workspace subject",
-    "unbound_graph_receipt": "legacy unbound verification remains allowed"
+    "unbound_graph_receipt": "legacy unbound verification remains allowed",
+    "bound_subject_math_program_receipt": "fail closed before MathProgram reference execution/receipt allocation unless exact replay-derived programIdentity is bound to the workspace subject",
+    "unbound_math_program_receipt": "legacy/unbound MathProgram verification remains allowed"
   },
   "invariants": [
     "caller attestation cannot create verifier authority",
@@ -85,7 +116,11 @@
     "verifier receipts preserve the currently bound runtime subject context without upgrading that context into verifier authorization",
     "bound-subject graph receipts cannot relabel a graph whose exact programIdentity is absent from the workspace subject binding set",
     "programIdentity exact comparison is authoritative for subject-program binding; FNV fingerprints remain correlation metadata only",
-    "ResolutionEvidenceInbox preserves verifier/reference source labels but does not authenticate host-transported receipt fields or create Resolution state transitions"
+    "ResolutionEvidenceInbox preserves verifier/reference source labels but does not authenticate host-transported receipt fields or create Resolution state transitions",
+    "MathProgram verifier receipts derive programIdentity only from canonical plan replay; callers cannot inject a free-form verifier identity",
+    "MathProgram verifier receipt reference is produced by replayed canonical MathProgram execution",
+    "bound-subject MathProgram receipts cannot relabel an unbound plan; exact programIdentity must be registered first through workspaceBindRuntimeMathProgramPlan",
+    "direct math target has no independent verifier receipt in math-proof v1; workspaceVerifyVectorReceipt remains caller-supplied-reference authority only"
   ],
   "runtime_resolution_rejoin": {
     "contract": "burn-research.runtime-resolution-evidence.v1",

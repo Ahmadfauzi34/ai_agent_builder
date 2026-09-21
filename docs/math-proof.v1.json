@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.math-proof.v1",
+  "purpose": "Provide verifier-backed numerical proof for canonical MathProgram plans without upgrading caller-supplied vector comparison or creating a second math executor.",
+  "authority_model": {
+    "math_binding_plan": "projection_only; no proof authority",
+    "vector_receipt": "wasm_comparator against caller_supplied reference only",
+    "math_program_receipt": "wasm_verifier using replayed canonical MathProgram execution as reference",
+    "direct_operation_receipt": "not independently provided by v1; direct target must not be relabeled as MathProgram verifier authority",
+    "resolution": "external observation/interpretation remains unchanged"
+  },
+  "surfaces": {
+    "mathProofCapabilities": {
+      "mutation": "none"
+    },
+    "workspaceBindRuntimeMathProgramPlan": {
+      "mutation": "runtime program binding metadata only",
+      "requirement": "runtime subject must already be bound",
+      "identity_source": "canonical plan replay programIdentity; caller cannot supply identity string"
+    },
+    "workspaceVerifyMathProgram1Receipt": {
+      "inputs": 1,
+      "verifier": "MathProgram.verifyFlat",
+      "reference_authority": "burn_math_program",
+      "mutation": "verifier receipt ledger after successful verifier execution"
+    },
+    "workspaceVerifyMathProgram2Receipt": {
+      "inputs": 2,
+      "verifier": "MathProgram.verifyFlat",
+      "reference_authority": "burn_math_program",
+      "mutation": "verifier receipt ledger after successful verifier execution"
+    }
+  },
+  "plan_dispatch": {
+    "version_byte_offset": 4,
+    "versions": {
+      "4": "MathProgramV4",
+      "5": "MathProgramV5",
+      "6": "MathProgramV6",
+      "7": "MathProgramV7",
+      "8": "MathProgramV8",
+      "9": "MathProgramV9",
+      "1-3": "MathProgram"
+    },
+    "replay_policy": "from_plan must accept the exact canonical plan before execution or binding",
+    "input_count_policy": {
+      "verifier_surfaces": [
+        "workspaceVerifyMathProgram1Receipt",
+        "workspaceVerifyMathProgram2Receipt"
+      ],
+      "supported_external_inputs": [
+        1,
+        2
+      ],
+      "declared_count_source": "canonical plan byte 5",
+      "mismatch_policy": "fail closed before reference execution and receipt allocation",
+      "v5_note": "MathProgram v5 requires 3..8 external inputs, so v5 plans are recognized/replayable for identity but are not executable through the v1 one/two-input verifier surfaces"
+    }
+  },
+  "receipt": {
+    "schema_id": "burn-research.verifier-receipt.v1",
+    "authority": "wasm_verifier",
+    "verifier": "MathProgram.verifyFlat",
+    "reference_authority": "burn_math_program",
+    "fields": [
+      "receipt_id",
+      "label",
+      "program_identity",
+      "program_identity_fingerprint",
+      "program_plan_version",
+      "input_count",
+      "input_fingerprint",
+      "reference_fingerprint",
+      "candidate_fingerprint",
+      "runtime_subject",
+      "tolerances",
+      "result"
+    ]
+  },
+  "subject_binding": {
+    "unbound_workspace": "legacy/unbound MathProgram verification is allowed",
+    "bound_workspace": "exact replay-derived programIdentity must already be registered for the workspace runtime subject",
+    "binding_surface": "workspaceBindRuntimeMathProgramPlan",
+    "identity_policy": "exact_program_identity",
+    "fingerprint_policy": "FNV fingerprint is correlation metadata only"
+  },
+  "direct_target": {
+    "independent_verifier": "not provided in v1",
+    "allowed_existing_surface": "workspaceVerifyVectorReceipt",
+    "authority_limit": "caller_supplied reference; cannot be described as independent proof that the direct operation itself is correct"
+  },
+  "invariants": [
+    "binding plan is not proof",
+    "caller cannot inject a verifier receipt or MathProgram identity",
+    "programIdentity is derived from canonical plan replay",
+    "subject-bound verification fails before reference execution/receipt allocation when exact programIdentity is not bound",
+    "MathProgram execution is the reference authority for math-program receipts",
+    "numerical mismatch records a failed verifier receipt rather than becoming a transport error",
+    "malformed plan, input mismatch, non-finite candidate, or invalid tolerances do not allocate a receipt id",
+    "direct-target verification remains lower-authority caller-supplied comparison until a dedicated direct verifier exists",
+    "canonical plan declared input count must exactly match the selected verifier surface before reference execution"
+  ]
+}
