@@ -284,6 +284,241 @@ impl RuntimeEvidence {
         self.payload.outcome()
     }
 
+    fn parse_json_object<'a>(
+        raw: &'a str,
+        context: &str,
+    ) -> Result<serde_json::Value, String> {
+        let value: serde_json::Value =
+            serde_json::from_str(raw).map_err(|err| format!("{context}: invalid JSON: {err}"))?;
+        if !value.is_object() {
+            return Err(format!("{context}: root must be a JSON object"));
+        }
+        Ok(value)
+    }
+
+    fn require_string<'a>(
+        value: &'a serde_json::Value,
+        field: &str,
+        context: &str,
+    ) -> Result<&'a str, String> {
+        value
+            .get(field)
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("{context}: missing or non-string field {field}"))
+    }
+
+    fn require_bool(
+        value: &serde_json::Value,
+        field: &str,
+        context: &str,
+    ) -> Result<bool, String> {
+        value
+            .get(field)
+            .and_then(serde_json::Value::as_bool)
+            .ok_or_else(|| format!("{context}: missing or non-boolean field {field}"))
+    }
+
+    fn require_u64(
+        value: &serde_json::Value,
+        field: &str,
+        context: &str,
+    ) -> Result<u64, String> {
+        value
+            .get(field)
+            .and_then(serde_json::Value::as_u64)
+            .ok_or_else(|| format!("{context}: missing or non-u64 field {field}"))
+    }
+
+    fn require_exact_string(
+        value: &serde_json::Value,
+        field: &str,
+        expected: &str,
+        context: &str,
+    ) -> Result<(), String> {
+        let actual = Self::require_string(value, field, context)?;
+        if actual != expected {
+            return Err(format!(
+                "{context}: field {field} must be {expected}, got {actual}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn runtime_subject_from_receipt(
+        value: &serde_json::Value,
+        context: &str,
+    ) -> Result<Option<RuntimeEvidenceSubject>, String> {
+        let subject = value
+            .get("runtime_subject")
+            .ok_or_else(|| format!("{context}: missing runtime_subject"))?;
+        let status = Self::require_string(subject, "status", context)?;
+        if status == "unbound" {
+            return Ok(None);
+        }
+        if status != "bound" {
+            return Err(format!(
+                "{context}: runtime_subject.status must be bound|unbound, got {status}"
+            ));
+        }
+
+        Ok(Some(RuntimeEvidenceSubject {
+            intent_id: Self::require_string(subject, "intent_id", context)?.to_string(),
+            workflow_revision: Self::require_u64(subject, "workflow_revision", context)?,
+            approval_id: Self::require_string(subject, "approval_id", context)?.to_string(),
+            subject_kind: Self::require_string(subject, "subject_kind", context)?.to_string(),
+            subject_identity: Self::require_string(subject, "subject_identity", context)?
+                .to_string(),
+            authorization_policy_id: Self::require_string(
+                subject,
+                "authorization_policy_id",
+                context,
+            )?
+            .to_string(),
+            authorization_policy_revision: Self::require_u64(
+                subject,
+                "authorization_policy_revision",
+                context,
+            )?,
+            authorization_is_revision: Self::require_bool(
+                subject,
+                "authorization_is_revision",
+                context,
+            )?,
+        }))
+    }
+
+    /// Adapt the exact structured AgentFault envelope emitted by the WASM preflight surface.
+    ///
+    /// This parser never inspects legacy error text to choose an evidence class. The payload class
+    /// is fixed by this entry point and the source schema id is validated before projection.
+    pub fn from_bound_agent_fault_envelope(
+        projection: &RuntimeSubjectProjection,
+        envelope_json: &str,
+    ) -> Result<Self, String> {
+        const CONTEXT: &str = "RuntimeEvidence.from_bound_agent_fault_envelope";
+        let envelope = Self::parse_json_object(envelope_json, CONTEXT)?;
+        Self::require_exact_string(
+            &envelope,
+            "schema_id",
+            "burn-research.agent-fault.v1",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(&envelope, "status", "fault", CONTEXT)?;
+        let fault = envelope
+            .get("fault")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing fault object"))?;
+
+        if let Some(mutation) = fault.get("mutation").and_then(serde_json::Value::as_str) {
+            if mutation != "none" {
+                return Err(format!(
+                    "{CONTEXT}: AgentFault mutation must be none, got {mutation}"
+                ));
+            }
+        }
+
+        Self::bound_agent_fault(
+            projection,
+            Self::require_string(fault, "code", CONTEXT)?,
+            Self::require_string(fault, "class", CONTEXT)?,
+            Self::require_string(fault, "operation", CONTEXT)?,
+            Self::require_string(fault, "predicate", CONTEXT)?,
+            Self::require_bool(fault, "recoverable", CONTEXT)?,
+            Self::require_string(fault, "message", CONTEXT)?,
+        )
+    }
+
+    /// Adapt the exact structured Burn-backed graph verifier receipt emitted by WASM.
+    ///
+    /// The runtime subject is read from the receipt itself. The result object is retained as a
+    /// compact structured detail string; the original receipt remains the authoritative artifact.
+    pub fn from_graph_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
+        const CONTEXT: &str = "RuntimeEvidence.from_graph_verifier_receipt_json";
+        let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "schema_id",
+            "burn-research.verifier-receipt.v1",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(&receipt, "authority", "wasm_verifier", CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "verifier",
+            "CompiledGraph.verifyFlat",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(
+            &receipt,
+            "reference_authority",
+            "burn_compiled_graph",
+            CONTEXT,
+        )?;
+
+        let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
+        let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
+        let receipt_id = u32::try_from(receipt_id)
+            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let label = Self::require_string(&receipt, "label", CONTEXT)?;
+        let program_identity = receipt
+            .get("program_identity")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing program_identity object"))?;
+        Self::require_exact_string(
+            program_identity,
+            "schema",
+            "burn-research.program-identity.v1",
+            CONTEXT,
+        )?;
+        let result = receipt
+            .get("result")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing result object"))?;
+        let passed = Self::require_bool(result, "passed", CONTEXT)?;
+
+        Self::graph_verifier_receipt(
+            subject,
+            receipt_id,
+            label,
+            program_identity.to_string(),
+            passed,
+            result.to_string(),
+        )
+    }
+
+    /// Adapt the exact structured vector-comparator receipt emitted by WASM.
+    pub fn from_vector_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
+        const CONTEXT: &str = "RuntimeEvidence.from_vector_verifier_receipt_json";
+        let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "schema_id",
+            "burn-research.verifier-receipt.v1",
+            CONTEXT,
+        )?;
+        Self::require_exact_string(&receipt, "authority", "wasm_comparator", CONTEXT)?;
+        Self::require_exact_string(&receipt, "verifier", "mathVerifyVectors", CONTEXT)?;
+        Self::require_exact_string(
+            &receipt,
+            "reference_authority",
+            "caller_supplied",
+            CONTEXT,
+        )?;
+
+        let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
+        let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
+        let receipt_id = u32::try_from(receipt_id)
+            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let label = Self::require_string(&receipt, "label", CONTEXT)?;
+        let result = receipt
+            .get("result")
+            .filter(|value| value.is_object())
+            .ok_or_else(|| format!("{CONTEXT}: missing result object"))?;
+        let passed = Self::require_bool(result, "passed", CONTEXT)?;
+
+        Self::vector_verifier_receipt(subject, receipt_id, label, passed, result.to_string())
+    }
+
     pub fn agent_fault(
         subject: Option<RuntimeEvidenceSubject>,
         code: impl Into<String>,
