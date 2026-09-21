@@ -40,19 +40,22 @@ fn string_array_json(values: &[String]) -> String {
 }
 
 fn parse_roles(value: &str) -> Result<Vec<String>, String> {
-    let parsed: serde_json::Value = serde_json::from_str(value)
-        .map_err(|error| format!("InputPortConsumerSpec.accepted_roles_json: invalid JSON: {error}"))?;
-    let items = parsed
-        .as_array()
-        .ok_or_else(|| {
+    let trimmed = value.trim();
+    if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
+        return Err(
             "InputPortConsumerSpec.accepted_roles_json: expected JSON array of role strings"
-                .to_string()
-        })?;
-    if items.is_empty() {
+                .to_string(),
+        );
+    }
+
+    let inner = trimmed[1..trimmed.len() - 1].trim();
+    if inner.is_empty() {
         return Err(
             "InputPortConsumerSpec.accepted_roles_json: at least one role is required".to_string(),
         );
     }
+
+    let items = inner.split(',').collect::<Vec<_>>();
     if items.len() > MAX_ACCEPTED_ROLES {
         return Err(format!(
             "InputPortConsumerSpec.accepted_roles_json: {} roles exceeds limit {MAX_ACCEPTED_ROLES}",
@@ -61,10 +64,21 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
     }
 
     let mut unique = BTreeSet::new();
-    for value in items {
-        let role = value.as_str().ok_or_else(|| {
-            "InputPortConsumerSpec.accepted_roles_json: every entry must be a string".to_string()
-        })?;
+    for item in items {
+        let token = item.trim();
+        if token.len() < 2 || !token.starts_with('"') || !token.ends_with('"') {
+            return Err(
+                "InputPortConsumerSpec.accepted_roles_json: every entry must be a quoted string"
+                    .to_string(),
+            );
+        }
+        let role = &token[1..token.len() - 1];
+        if role.contains(['"', '\\']) {
+            return Err(
+                "InputPortConsumerSpec.accepted_roles_json: escaped role strings are not supported"
+                    .to_string(),
+            );
+        }
         if !role_valid(role) {
             return Err(format!(
                 "InputPortConsumerSpec.accepted_roles_json: invalid role {role}"
@@ -72,6 +86,7 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
         }
         unique.insert(role.to_string());
     }
+
     Ok(unique.into_iter().collect())
 }
 
