@@ -172,7 +172,8 @@
     ],
     "checkpoint_5": [
       "completed: canonical MathProgram plan -> exact replay-derived programIdentity binding",
-      "completed: verifier-backed 1-input and 2-input MathProgram receipts across plan versions v1-v9",
+      "completed: verifier-backed MathProgram receipts for canonical plans declaring exactly 1 or 2 external inputs",
+      "completed: plan-version dispatch recognizes v1-v9 while v5 3..8-input plans fail closed on the v1 one/two-input verifier surfaces",
       "completed: subject-bound fail-closed exact programIdentity requirement",
       "direct target remains caller-supplied comparator authority only; no independent direct verifier in v1"
     ]
