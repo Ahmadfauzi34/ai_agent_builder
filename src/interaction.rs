@@ -275,6 +275,7 @@ mod tests {
         assert!(capabilities.contains("proofProvenanceCapabilities"));
         assert!(capabilities.contains("resolutionRuntimeBridgeCapabilities"));
         assert!(capabilities.contains("runtimeResolutionEvidenceCapabilities"));
+        assert!(capabilities.contains("mathInteractionCapabilities"));
         assert!(capabilities.contains("raw_protocol"));
     }
 
