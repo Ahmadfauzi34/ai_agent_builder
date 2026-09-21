@@ -182,6 +182,12 @@
       "completed: exact runtime subject rejoin into ResolutionEvidenceInbox remains observation_only",
       "completed: cross-artifact stdin adapter probe for actual packaged-WASM receipts",
       "direct-target independent verifier remains deferred"
+    ],
+    "checkpoint_7": [
+      "completed: verifier-owned direct execution vs one-step MathProgramV9 reference",
+      "completed: no caller-supplied candidate/reference in direct proof path",
+      "completed: subject-bound direct verifier requires generated reference programIdentity binding",
+      "completed: explicit cosine epsilon requirement removes default-parameter proof ambiguity"
     ]
   },
   "acceptance": [
@@ -202,7 +208,10 @@
     "subject-bound MathProgram verification requires exact replay-derived programIdentity registration before reference execution or receipt allocation",
     "direct-target comparison is not upgraded beyond caller-supplied vector authority",
     "actual MathProgram.verifyFlat receipt can be parsed by the native typed reverse adapter without manual host field extraction",
-    "MathProgram verifier evidence preserves wasm_verifier/burn_math_program source labels while ResolutionEvidenceInbox remains observation_only and creates no Resolution transition"
+    "MathProgram verifier evidence preserves wasm_verifier/burn_math_program source labels while ResolutionEvidenceInbox remains observation_only and creates no Resolution transition",
+    "workspaceVerifyDirectMath1Receipt/workspaceVerifyDirectMath2Receipt execute both direct and canonical V9 reference paths internally and emit wasm_verifier receipts",
+    "direct verifier receipts identify candidate_authority=burn_direct_math and reference_authority=burn_math_program",
+    "subject-bound direct verification requires workspaceBindRuntimeDirectMathOperation before execution"
   ],
   "preflight": {
     "role": "read_only_metadata_preflight",

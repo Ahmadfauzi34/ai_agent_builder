@@ -6,7 +6,7 @@
     "math_binding_plan": "projection_only; no proof authority",
     "vector_receipt": "wasm_comparator against caller_supplied reference only",
     "math_program_receipt": "wasm_verifier using replayed canonical MathProgram execution as reference",
-    "direct_operation_receipt": "not independently provided by v1; direct target must not be relabeled as MathProgram verifier authority",
+    "direct_operation_receipt": "wasm_verifier executes the canonical direct implementation and compares it against an internally constructed one-step MathProgramV9 reference; caller supplies neither reference nor candidate",
     "resolution": "external observation/interpretation remains unchanged"
   },
   "surfaces": {
@@ -29,6 +29,25 @@
       "verifier": "MathProgram.verifyFlat",
       "reference_authority": "burn_math_program",
       "mutation": "verifier receipt ledger after successful verifier execution"
+    },
+    "workspaceBindRuntimeDirectMathOperation": {
+      "mutation": "runtime program binding metadata only",
+      "requirement": "runtime subject must already be bound",
+      "identity_source": "canonical operation id + validated params -> internally compiled one-step MathProgramV9 programIdentity"
+    },
+    "workspaceVerifyDirectMath1Receipt": {
+      "inputs": 1,
+      "verifier": "DirectMath.verifyAgainstMathProgramV9",
+      "candidate_authority": "burn_direct_math",
+      "reference_authority": "burn_math_program",
+      "mutation": "verifier receipt ledger after direct execution + independent V9 reference execution + comparison"
+    },
+    "workspaceVerifyDirectMath2Receipt": {
+      "inputs": 2,
+      "verifier": "DirectMath.verifyAgainstMathProgramV9",
+      "candidate_authority": "burn_direct_math",
+      "reference_authority": "burn_math_program",
+      "mutation": "verifier receipt ledger after direct execution + independent V9 reference execution + comparison"
     }
   },
   "plan_dispatch": {
@@ -85,9 +104,14 @@
     "fingerprint_policy": "FNV fingerprint is correlation metadata only"
   },
   "direct_target": {
-    "independent_verifier": "not provided in v1",
-    "allowed_existing_surface": "workspaceVerifyVectorReceipt",
-    "authority_limit": "caller_supplied reference; cannot be described as independent proof that the direct operation itself is correct"
+    "independent_verifier": "provided by workspaceVerifyDirectMath1Receipt/workspaceVerifyDirectMath2Receipt",
+    "candidate_execution": "verifier invokes the existing canonical direct surface internally",
+    "reference_execution": "verifier builds and runs a one-step MathProgramV9 reference internally",
+    "caller_reference": "none",
+    "caller_candidate": "none",
+    "subject_binding": "subject-bound verification requires the exact internally generated V9 reference programIdentity to be registered through workspaceBindRuntimeDirectMathOperation",
+    "cosine_policy": "explicit epsilon required for verification even though the direct public surface supports a default; verifier never guesses the default",
+    "shared_kernel_note": "direct and MathProgram paths may share underlying Burn numerical kernels; receipt proves path equivalence for the call, not implementation diversity below Burn"
   },
   "invariants": [
     "binding plan is not proof",
@@ -98,6 +122,12 @@
     "numerical mismatch records a failed verifier receipt rather than becoming a transport error",
     "malformed plan, input mismatch, non-finite candidate, or invalid tolerances do not allocate a receipt id",
     "direct-target verification remains lower-authority caller-supplied comparison until a dedicated direct verifier exists",
-    "canonical plan declared input count must exactly match the selected verifier surface before reference execution"
+    "canonical plan declared input count must exactly match the selected verifier surface before reference execution",
+    "direct verifier caller cannot supply the candidate output or numerical reference",
+    "direct verifier always uses an internally generated one-step MathProgramV9 reference for the same canonical operation and explicit parameters",
+    "subject-bound direct verification fails before execution/receipt allocation until the generated reference programIdentity is bound",
+    "direct cosine verification requires an explicit epsilon to avoid silently coupling proof semantics to a direct-surface default",
+    "direct verifier receipt candidate_authority=burn_direct_math and reference_authority=burn_math_program",
+    "direct-vs-program verification proves execution-path equivalence at the math interaction boundary and does not claim independent numerical kernels below Burn"
   ]
 }

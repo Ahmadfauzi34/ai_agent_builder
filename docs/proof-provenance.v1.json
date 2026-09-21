@@ -7,7 +7,8 @@
     "caller_attestation": "explicit caller claim only",
     "vector_receipt": "WASM comparator authority over equality/tolerance relative to a caller-supplied reference",
     "graph_receipt": "WASM verifier authority using Burn CompiledGraph as the reference execution",
-    "math_program_receipt": "WASM verifier authority using replayed canonical MathProgram execution as the reference"
+    "math_program_receipt": "WASM verifier authority using replayed canonical MathProgram execution as the reference",
+    "direct_math_receipt": "WASM verifier authority produced by executing the canonical direct math path and an internally generated one-step MathProgramV9 reference; caller supplies neither output candidate nor reference"
   },
   "surfaces": {
     "proofProvenanceCapabilities": {
@@ -51,6 +52,22 @@
       "verifier": "MathProgram.verifyFlat",
       "reference_authority": "burn_math_program",
       "inputs": 2
+    },
+    "workspaceBindRuntimeDirectMathOperation": {
+      "mutation": "AgentWorkspace runtime-program binding metadata only",
+      "identity_source": "canonical operation+params compiled internally to one-step MathProgramV9"
+    },
+    "workspaceVerifyDirectMath1Receipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger after direct/reference execution",
+      "verifier": "DirectMath.verifyAgainstMathProgramV9",
+      "candidate_authority": "burn_direct_math",
+      "reference_authority": "burn_math_program"
+    },
+    "workspaceVerifyDirectMath2Receipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger after direct/reference execution",
+      "verifier": "DirectMath.verifyAgainstMathProgramV9",
+      "candidate_authority": "burn_direct_math",
+      "reference_authority": "burn_math_program"
     }
   },
   "receipt": {
@@ -120,7 +137,11 @@
     "MathProgram verifier receipts derive programIdentity only from canonical plan replay; callers cannot inject a free-form verifier identity",
     "MathProgram verifier receipt reference is produced by replayed canonical MathProgram execution",
     "bound-subject MathProgram receipts cannot relabel an unbound plan; exact programIdentity must be registered first through workspaceBindRuntimeMathProgramPlan",
-    "direct math target has no independent verifier receipt in math-proof v1; workspaceVerifyVectorReceipt remains caller-supplied-reference authority only"
+    "direct math target has no independent verifier receipt in math-proof v1; workspaceVerifyVectorReceipt remains caller-supplied-reference authority only",
+    "direct math verifier receipts are not caller-supplied vector comparisons",
+    "direct verifier executes both candidate and reference paths internally",
+    "direct verifier subject binding uses the exact generated MathProgramV9 programIdentity",
+    "direct verifier does not claim numerical implementation independence below shared Burn kernels"
   ],
   "runtime_resolution_rejoin": {
     "contract": "burn-research.runtime-resolution-evidence.v1",
