@@ -56,7 +56,17 @@ fn valid_actions_overlay_keeps_canonical_candidates_visible() {
     assert_eq!(projection["execution_authorized"], false);
     assert_eq!(projection["decision_authority"], "agent");
 
-    let canonical = projection["canonical_actions"].as_array().unwrap();
+    assert_eq!(
+        projection["canonical_valid_actions"]["schema_id"],
+        "burn-research.agent-interaction.v1"
+    );
+    assert_eq!(
+        projection["canonical_valid_actions"]["projection_only"],
+        true
+    );
+    let canonical = projection["canonical_valid_actions"]["actions"]
+        .as_array()
+        .unwrap();
     let unary = canonical
         .iter()
         .find(|entry| entry["operation"] == "workspaceInitUnary")
