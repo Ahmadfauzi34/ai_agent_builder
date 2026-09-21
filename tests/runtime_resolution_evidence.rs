@@ -325,6 +325,66 @@ fn direct_math_receipt_adapter_preserves_dual_runtime_authority_and_exact_subjec
 }
 
 #[test]
+fn failed_direct_math_receipt_remains_observation_only() {
+    let (snapshot, projection) = forward_bridge_fixture();
+    let before = snapshot.clone();
+    let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+
+    let receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 44,
+        "authority": "wasm_verifier",
+        "verifier": "DirectMath.verifyAgainstMathProgramV9",
+        "candidate_authority": "burn_direct_math",
+        "reference_authority": "burn_math_program",
+        "reference_program_generation": "v9",
+        "operation_id": "numeric.add",
+        "label": "direct-add-mismatch",
+        "program_identity": {
+            "schema": "burn-research.math-program-identity.v1",
+            "plan_hex": "42524d5009"
+        },
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "result": {
+            "passed": false,
+            "len": 2,
+            "max_abs_error": 1.0,
+            "max_rel_error": 1.0,
+            "rmse": 0.7071067811865476,
+            "first_failure": 0
+        }
+    })
+    .to_string();
+
+    let evidence =
+        RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+    assert_eq!(evidence.outcome(), "failed");
+    assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+    assert!(inbox.record(evidence).unwrap());
+
+    let json: serde_json::Value = serde_json::from_str(&inbox.to_json()).unwrap();
+    assert_eq!(json["summary"]["direct_math_verifier_failed"], 1);
+    assert_eq!(json["resolution_effect"]["diagnostic_created"], false);
+    assert_eq!(json["resolution_effect"]["state_transition"], "none");
+    assert_eq!(json["resolution_effect"]["revision_created"], false);
+    assert_eq!(json["resolution_effect"]["action_selected"], false);
+    assert_eq!(json["resolution_effect"]["interpretation_required"], true);
+    assert_eq!(snapshot, before);
+    assert!(snapshot.compile_eligible());
+}
+
+#[test]
 fn vector_receipt_adapter_preserves_caller_reference_authority_and_bound_subject() {
     let (snapshot, projection) = forward_bridge_fixture();
     let inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
