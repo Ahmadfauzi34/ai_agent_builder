@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.input-port-routing.v1",
+  "role": "read_only_semantic_routing_projection",
+  "scope": {
+    "external_input_slot": 0,
+    "state_ownership": "none",
+    "execution_effect": "none",
+    "selection_effect": "none"
+  },
+  "authorities": {
+    "interaction_state": "AgentWorkspace + AgentGraphBuilder + LayerRegistry",
+    "consumer_requirements": "InputPortConsumerSpec caller declaration",
+    "semantic_input_metadata": "AgentWorkspace input port metadata",
+    "execution": "existing workspace operations and LayerRegistry",
+    "decision": "agent"
+  },
+  "surfaces": {
+    "inputPortRoutingCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "interactionValidActionsForInputConsumer": {
+      "mutation": "none",
+      "arguments": [
+        "AgentWorkspace",
+        "AgentGraphBuilder",
+        "LayerRegistry",
+        "InputPortConsumerSpec"
+      ],
+      "returns": "canonical validActions plus slot-0 semantic consumer overlay",
+      "candidate_policy": "annotation_only; incompatible or unknown semantic status does not remove canonical candidates"
+    },
+    "inputPortConsumerEdgeCompatibility": {
+      "mutation": "none",
+      "arguments": [
+        "AgentWorkspace",
+        "AgentGraphBuilder",
+        "InputPortConsumerSpec",
+        "step_index"
+      ],
+      "returns": "exact graph-step projection plus semantic compatibility when that step consumes external slot 0"
+    }
+  },
+  "valid_actions_overlay": {
+    "affected_operations": [
+      "workspaceInitUnary",
+      "workspaceInitBinary"
+    ],
+    "candidate_slot": 0,
+    "unary_position": "input",
+    "binary_positions": [
+      "left",
+      "right"
+    ],
+    "candidate_retained": true,
+    "execution_authorized": false,
+    "decision_authority": "agent"
+  },
+  "edge_projection": {
+    "edge_identity": "AgentGraphBuilder step index",
+    "topology_authority": "AgentGraphBuilder",
+    "semantic_policy": "caller-selected InputPortConsumerSpec",
+    "non_external_edge": "reported as not_applicable rather than inferred or rejected",
+    "layer_semantics": "never inferred from numerical layer type"
+  },
+  "invariants": [
+    "routing projection does not mutate workspace, graph builder, or registry",
+    "canonical validActions output remains the underlying state projection",
+    "semantic incompatibility is advisory and never rewrites canonical action availability",
+    "edge compatibility applies only to graph steps that actually read slot 0",
+    "routing projection never binds a consumer contract persistently",
+    "routing projection never authorizes execution or selects an action"
+  ],
+  "future_extensions": [
+    "persistent edge consumer bindings",
+    "role-aware candidate grouping",
+    "multiple external input ports",
+    "inter-graph semantic handoff",
+    "state/reward lifecycle routing"
+  ]
+}
