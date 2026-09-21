@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-input-port.v1",
+  "role": "optional_semantic_input_port",
+  "scope": {
+    "slot": 0,
+    "data_plane": "existing external f32 rank-4 input",
+    "metadata_plane": "semantic role and provenance descriptor",
+    "execution_effect": "none"
+  },
+  "authority": {
+    "metadata": "AgentWorkspace",
+    "shape_layout_contract": "agent-input-contract.v1",
+    "runtime_subject": "ResolutionRuntimeBridge",
+    "execution": "Burn"
+  },
+  "canonical_roles": [
+    "observation",
+    "state",
+    "feature",
+    "candidate",
+    "parameter",
+    "reward",
+    "context"
+  ],
+  "extension_role_policy": "custom roles must use x- namespace with lowercase ascii token syntax",
+  "provenance": {
+    "source": "required bounded caller-supplied source identity",
+    "revision": "caller-supplied source or payload revision",
+    "fingerprint": "optional bounded opaque fingerprint; empty binds as null",
+    "runtime_subject": "not duplicated here; derive subject binding from AgentWorkspace when present"
+  },
+  "surfaces": {
+    "inputPortCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "workspaceBindInputPortMetadata": {
+      "mutation": "AgentWorkspace metadata only",
+      "arguments": [
+        "workspace",
+        "role",
+        "source",
+        "revision",
+        "fingerprint"
+      ],
+      "returns": "true when metadata changed, false when identical"
+    },
+    "workspaceClearInputPortMetadata": {
+      "mutation": "AgentWorkspace metadata only"
+    },
+    "workspaceInputPortMetadata": {
+      "mutation": "none",
+      "returns": "bound metadata or explicit unbound marker"
+    }
+  },
+  "composition": {
+    "input_contract": "shape/layout/dtype remain owned by agent-input-contract.v1",
+    "semantic_port": "role/provenance remain independent of shape/layout binding",
+    "runtime_subject": "workspace runtime subject may coexist and remains the only subject authority",
+    "introspection": "describeWorkspace and describeGraph expose semantic port metadata when bound"
+  },
+  "invariants": [
+    "semantic metadata does not allocate tensors",
+    "semantic metadata does not initialize or mutate LayerRegistry",
+    "semantic metadata does not alter AgentGraphBuilder topology",
+    "semantic metadata does not authorize execution",
+    "semantic metadata does not duplicate runtime subject authority",
+    "unbound semantic metadata preserves existing runtime behavior",
+    "custom roles remain possible through the x- extension namespace"
+  ],
+  "future_extensions": [
+    "multiple external input ports",
+    "consumer-role policies",
+    "payload fingerprint verification",
+    "inter-graph port handoff",
+    "state/reward lifecycle contracts"
+  ]
+}
