@@ -133,7 +133,13 @@
     "binding": "workspaceBindInputPortMetadata",
     "clearing": "workspaceClearInputPortMetadata",
     "inspection": "workspaceInputPortMetadata",
-    "policy": "optional semantic role/provenance metadata for external slot 0; no execution authority"
+    "policy": "optional semantic role/provenance metadata for external slot 0; no execution authority",
+    "consumer_contract": {
+      "capability": "inputPortConsumerCapabilities",
+      "spec": "InputPortConsumerSpec",
+      "compatibility": "inputPortConsumerCompatibility",
+      "policy": "read-only advisory preflight; consumer requirements are caller-declared, operation choice remains agent authority, and compatibility never authorizes execution"
+    }
   },
   "proof_provenance": {
     "capability": "proofProvenanceCapabilities",
