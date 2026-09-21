@@ -242,7 +242,7 @@ impl RuntimeEvidencePayload {
                 detail,
             } => format!(
                 concat!(
-                    "{",
+                    "{{",
                     "\"kind\":\"math_program_verifier_receipt\",",
                     "\"evidence_authority\":\"observation_only\",",
                     "\"source_authority\":\"wasm_verifier\",",
@@ -254,7 +254,7 @@ impl RuntimeEvidencePayload {
                     "\"program_identity\":\"{}\",",
                     "\"passed\":{},",
                     "\"detail\":\"{}\"",
-                    "}"
+                    "}}"
                 ),
                 if *passed { "passed" } else { "failed" },
                 receipt_id,
