@@ -126,7 +126,7 @@ enum RuntimeEvidencePayload {
         receipt_id: u32,
         operation_id: String,
         label: String,
-        program_identity: String,
+        reference_program_identity: String,
         passed: bool,
         detail: String,
     },
@@ -218,7 +218,7 @@ impl RuntimeEvidencePayload {
             Self::GraphVerifierReceipt {
                 receipt_id,
                 label,
-                program_identity,
+                reference_program_identity,
                 passed,
                 detail,
             } => format!(
@@ -232,15 +232,15 @@ impl RuntimeEvidencePayload {
                     "\"outcome\":\"{}\",",
                     "\"receipt_id\":{},",
                     "\"label\":\"{}\",",
-                    "\"program_identity\":\"{}\",",
+                    "\"reference_program_identity\":\"{}\",",
                     "\"passed\":{},",
-                    "\"detail\":\"{}\"",
+                    "\"detail\":\"{}\"" ,
                     "}}"
                 ),
                 if *passed { "passed" } else { "failed" },
                 receipt_id,
                 json_escape(label),
-                json_escape(program_identity),
+                json_escape(reference_program_identity),
                 passed,
                 json_escape(detail),
             ),
@@ -277,7 +277,7 @@ impl RuntimeEvidencePayload {
                 receipt_id,
                 operation_id,
                 label,
-                program_identity,
+                reference_program_identity,
                 passed,
                 detail,
             } => format!(
@@ -552,12 +552,12 @@ impl RuntimeEvidence {
         let receipt_id = u32::try_from(receipt_id)
             .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
-        let program_identity = receipt
+        let reference_program_identity = receipt
             .get("program_identity")
             .filter(|value| value.is_object())
             .ok_or_else(|| format!("{CONTEXT}: missing program_identity object"))?;
         Self::require_exact_string(
-            program_identity,
+            reference_program_identity,
             "schema",
             "burn-research.program-identity.v1",
             CONTEXT,
@@ -572,7 +572,7 @@ impl RuntimeEvidence {
             subject,
             receipt_id,
             label,
-            program_identity.to_string(),
+            reference_program_identity.to_string(),
             passed,
             result.to_string(),
         )
@@ -895,7 +895,7 @@ impl RuntimeEvidence {
         receipt_id: u32,
         operation_id: impl Into<String>,
         label: impl Into<String>,
-        program_identity: impl Into<String>,
+        reference_program_identity: impl Into<String>,
         passed: bool,
         detail: impl Into<String>,
     ) -> Result<Self, String> {
@@ -907,7 +907,7 @@ impl RuntimeEvidence {
         }
         let operation_id = operation_id.into();
         let label = label.into();
-        let program_identity = program_identity.into();
+        let reference_program_identity = reference_program_identity.into();
         let detail = detail.into();
 
         validate_nonempty_bounded(
@@ -921,9 +921,9 @@ impl RuntimeEvidence {
             "RuntimeEvidence.direct_math_verifier_receipt.label",
         )?;
         validate_nonempty_bounded(
-            &program_identity,
+            &reference_program_identity,
             MAX_PROGRAM_IDENTITY_BYTES,
-            "RuntimeEvidence.direct_math_verifier_receipt.program_identity",
+            "RuntimeEvidence.direct_math_verifier_receipt.reference_program_identity",
         )?;
         if detail.len() > MAX_DETAIL_BYTES {
             return Err(format!(
@@ -1041,7 +1041,7 @@ impl RuntimeEvidence {
         receipt_id: u32,
         operation_id: impl Into<String>,
         label: impl Into<String>,
-        program_identity: impl Into<String>,
+        reference_program_identity: impl Into<String>,
         passed: bool,
         detail: impl Into<String>,
     ) -> Result<Self, String> {
@@ -1050,7 +1050,7 @@ impl RuntimeEvidence {
             receipt_id,
             operation_id,
             label,
-            program_identity,
+            reference_program_identity,
             passed,
             detail,
         )
