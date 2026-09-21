@@ -1758,16 +1758,38 @@ mod tests {
     }
 
     #[test]
-    fn math_proof_contract_does_not_upgrade_direct_vector_comparison() {
+    fn math_proof_contract_adds_direct_verifier_without_upgrading_vector_comparison() {
         let capabilities: serde_json::Value =
             serde_json::from_str(&math_proof_capabilities()).unwrap();
+
         assert_eq!(
             capabilities["authority_model"]["direct_operation_receipt"],
-            "not independently provided by v1; direct target must not be relabeled as MathProgram verifier authority"
+            "wasm_verifier executes the canonical direct implementation and compares it against an internally constructed one-step MathProgramV9 reference; caller supplies neither reference nor candidate"
         );
         assert_eq!(
-            capabilities["direct_target"]["authority_limit"],
-            "caller_supplied reference; cannot be described as independent proof that the direct operation itself is correct"
+            capabilities["direct_target"]["independent_verifier"],
+            "provided by workspaceVerifyDirectMath1Receipt/workspaceVerifyDirectMath2Receipt"
         );
+        assert_eq!(
+            capabilities["surfaces"]["workspaceVerifyDirectMath1Receipt"]["candidate_authority"],
+            "burn_direct_math"
+        );
+        assert_eq!(
+            capabilities["surfaces"]["workspaceVerifyDirectMath1Receipt"]["reference_authority"],
+            "burn_math_program"
+        );
+
+        let mut workspace = AgentWorkspace::new(2).unwrap();
+        let vector = workspace_verify_vector_receipt(
+            &mut workspace,
+            &[1.0],
+            &[1.0],
+            0.0,
+            0.0,
+            "vector-stays-caller-reference".into(),
+        )
+        .unwrap();
+        assert!(vector.contains("\"authority\":\"wasm_comparator\""));
+        assert!(vector.contains("\"reference_authority\":\"caller_supplied\""));
     }
 }
