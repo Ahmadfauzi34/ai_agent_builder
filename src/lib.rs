@@ -9,6 +9,7 @@ pub mod response_intent_execution_gate;
 pub mod response_dispatch_requirements;
 pub mod response_dispatch_request;
 pub mod response_dispatch_executor_preflight;
+pub mod revision_dispatch_execution_adapter;
 pub mod authorization;
 pub mod coprocessor;
 pub mod contracts;

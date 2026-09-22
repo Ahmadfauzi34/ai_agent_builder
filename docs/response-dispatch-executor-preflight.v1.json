@@ -65,10 +65,14 @@
     "external authority absence remains explicit instead of guessed",
     "runtime reverify remains deferred until real handle binding exists"
   ],
+  "next_boundary": {
+    "propose_revision": "burn-research.revision-dispatch-execution-adapter.v1",
+    "rule": "only a preflight-ready revision request against the same chain may enter the mutation adapter"
+  },
   "future_extensions": [
     "external review authority adapter",
     "runtime verifier handle binding and executor preflight",
-    "explicit executor adapters that consume ready requests",
-    "execution receipts correlated to request_fingerprint"
+    "runtime verifier execution adapters",
+    "execution receipt rejoin as typed evidence"
   ]
 }

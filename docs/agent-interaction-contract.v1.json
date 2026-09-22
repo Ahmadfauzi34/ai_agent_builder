@@ -298,5 +298,16 @@
     "reverify_policy": "deferred upstream until real runtime handles are bound",
     "execution_authorized": false,
     "mutation": "none"
+  },
+  "revision_dispatch_execution_adapter": {
+    "contract": "burn-research.revision-dispatch-execution-adapter.v1",
+    "execute": "execute_revision_dispatch_request",
+    "role": "explicit caller-triggered adapter for the existing ResolutionRevisionChain.open_revision authority",
+    "supported_action": "propose_revision only",
+    "precondition": "current revision executor preflight must be request_ready=true and executor_ready=true against the same chain",
+    "receipt": "burn-research.revision-dispatch-execution-receipt.v1",
+    "execution_trigger": "explicit_caller_invocation",
+    "authorization_claim": "none",
+    "mutation": "committed_on_success"
   }
 }
