@@ -21,6 +21,7 @@ pub mod input_port;
 pub mod input_port_consumer;
 pub mod input_port_edge_binding;
 pub mod input_port_routing;
+pub mod semantic_lifecycle;
 pub mod introspection;
 pub mod layers;
 pub mod math;
