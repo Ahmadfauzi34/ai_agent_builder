@@ -18,6 +18,7 @@ pub mod effective_spec;
 pub mod effective_spec_inherit_remainder;
 pub mod es;
 pub mod graph;
+pub mod graph_reverify_runtime_binding;
 mod graph_plan;
 pub mod graph_parameters;
 pub mod graph_parameters_wasm;
