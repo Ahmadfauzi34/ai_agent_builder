@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.graph-reverify-runtime-binding.v1",
+  "role": "real_handle_derived_graph_reverify_binding_nonexecuting",
+  "purpose": "Bind an evidence-selected graph reverify ResponseIntent to the exact current runtime graph, registry, workspace subject, input tensor, candidate buffer, tolerances, and label without executing the graph or verifier.",
+  "binding_source": "real_runtime_handles",
+  "supported_evidence_kind": "graph_verifier_receipt",
+  "authority": "runtime_verifier",
+  "operation": "CompiledGraph.verifyFlat",
+  "execution_authorized": false,
+  "execution_effect": "none",
+  "mutation": "none",
+  "upstream": {
+    "intent": "burn-research.agent-response-intent.v1 selected_action=reverify",
+    "requirements": "burn-research.response-dispatch-requirements.v1",
+    "serializable_dispatch_request": "not used for runtime handles; ResponseDispatchRequest v1 intentionally keeps reverify deferred"
+  },
+  "exact_correspondence": [
+    "current ResponseIntent and dispatch requirements must still be ready",
+    "workspace runtime subject must exactly equal the ResolutionEvidenceInbox target",
+    "selected source evidence must still exist at the ResponseIntent entry index",
+    "source evidence must be graph_verifier_receipt",
+    "current CompiledGraph programIdentity must be structurally equal to the selected evidence program identity",
+    "current CompiledGraph must validate against the supplied LayerRegistry",
+    "subject-bound workspace must contain the exact current graph programIdentity",
+    "input tensor fingerprint and shape are derived from the supplied WasmTensor",
+    "candidate fingerprint and length are derived from the supplied f32 buffer",
+    "candidate values must be finite and non-empty",
+    "tolerances reuse the canonical comparator tolerance validator",
+    "label reuses the canonical verifier receipt label validator"
+  ],
+  "binding_identity": {
+    "binding_fingerprint": "fnv1a64 over ResponseIntent/evidence/dispatch/requirements identity + exact graph program identity + input shape/fingerprint + candidate fingerprint/length + tolerance bits + label",
+    "free_form_encoding": "length-prefixed",
+    "security": "deterministic correlation only; not authentication, authorization, or a capability token"
+  },
+  "preflight": {
+    "recomputes": [
+      "current dispatch/requirements identity",
+      "workspace exact-subject correspondence",
+      "source evidence and program identity correspondence",
+      "graph/registry structural binding",
+      "runtime program binding",
+      "input fingerprint and shape",
+      "candidate fingerprint and length",
+      "tolerance bits",
+      "label",
+      "binding fingerprint"
+    ],
+    "execution": "none",
+    "verifier_receipt_allocation": "none"
+  },
+  "bound_runtime_fields": [
+    "source_entry_index",
+    "source_evidence_fingerprint",
+    "response_intent_fingerprint",
+    "dispatch_fingerprint",
+    "requirements_fingerprint",
+    "program_identity",
+    "input_shape",
+    "input_fingerprint",
+    "candidate_fingerprint",
+    "candidate_len",
+    "abs_tol",
+    "rel_tol",
+    "label",
+    "binding_fingerprint"
+  ],
+  "invariants": [
+    "a reverify intent cannot silently bind a different graph than the graph verifier evidence selected by the agent",
+    "runtime handles are inspected directly; caller-supplied string handle identities are not accepted",
+    "binding and preflight execute no graph numerics and allocate no verifier receipt",
+    "ready_nonexecuting never means execution authorized",
+    "existing CompiledGraph.verifyFlat and workspaceVerifyGraphReceipt remain the canonical verifier authorities",
+    "the binding does not mutate ResolutionEvidenceInbox, Resolution state, AgentWorkspace, CompiledGraph, LayerRegistry, input tensor, or candidate buffer"
+  ],
+  "next_boundary": {
+    "planned": "explicit graph reverify execution adapter",
+    "rule": "execution adapter must consume a current ready binding plus the same real runtime handles, invoke the canonical verifier receipt surface, and return/rejoin the resulting verifier receipt"
+  }
+}
