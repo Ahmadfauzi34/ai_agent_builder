@@ -135,7 +135,7 @@ fn lineage_json(lineage: &AgentGraphSemanticInputLineage) -> String {
     )
 }
 
-fn transition_record_json(transition: &AgentGraphSemanticLifecycleTransition) -> String {
+pub(crate) fn transition_record_json(transition: &AgentGraphSemanticLifecycleTransition) -> String {
     let inputs = transition
         .inputs
         .iter()
