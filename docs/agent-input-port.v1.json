@@ -59,7 +59,8 @@
     "semantic_port": "role/provenance remain independent of shape/layout binding",
     "runtime_subject": "workspace runtime subject may coexist and remains the only subject authority",
     "introspection": "describeWorkspace and describeGraph expose semantic port metadata when bound",
-    "consumer_contract": "agent-input-port-consumer.v1 evaluates caller-declared consumer requirements against role/provenance without authorizing execution"
+    "consumer_contract": "agent-input-port-consumer.v1 evaluates caller-declared consumer requirements against role/provenance without authorizing execution",
+    "multi_source_manifest": "semantic-ingress-manifest.v1 can describe multiple logical ingress ports while explicitly preserving the current single runtime-backed graph input at slot 0"
   },
   "invariants": [
     "semantic metadata does not allocate tensors",
@@ -71,7 +72,7 @@
     "custom roles remain possible through the x- extension namespace"
   ],
   "future_extensions": [
-    "multiple external input ports",
+    "versioned executable multi-input graph plan/runtime",
     "payload fingerprint verification",
     "consumer contracts bound to graph edges",
     "inter-graph port handoff",
