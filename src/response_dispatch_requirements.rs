@@ -252,7 +252,7 @@ fn requirement_profile(
         EvidenceResponseAction::Ignore => Ok(("none", "none", Vec::new())),
         EvidenceResponseAction::Reverify => reverify_requirements(intent.evidence_kind()),
         EvidenceResponseAction::RequestInformation => Ok((
-            "external_resolution_review.request_information",
+            "external_resolution_review",
             "caller_structured_payload",
             vec![
                 requirement("information_request", true, "structured_request", "caller"),
@@ -266,7 +266,7 @@ fn requirement_profile(
             ],
         )),
         EvidenceResponseAction::ProposeRevision => Ok((
-            "ResolutionRevisionChain.open_revision",
+            "ResolutionRevisionChain",
             "caller_structured_payload",
             vec![
                 requirement("revision_key", true, "revision_key", "caller"),
@@ -374,12 +374,26 @@ pub fn response_dispatch_requirements(
         }
     };
 
-    if executor_contract != "none" && route.operation != executor_contract {
+    let route_contract_matches = match intent.selected_action() {
+        EvidenceResponseAction::Ignore => {
+            route.operation == "no_op" && executor_contract == "none"
+        }
+        EvidenceResponseAction::Reverify => route.operation == executor_contract,
+        EvidenceResponseAction::RequestInformation => {
+            route.operation == "request_information"
+                && executor_contract == "external_resolution_review"
+        }
+        EvidenceResponseAction::ProposeRevision => {
+            route.operation == "open_revision"
+                && executor_contract == "ResolutionRevisionChain"
+        }
+    };
+    if !route_contract_matches {
         return ResponseDispatchRequirements {
             ready: false,
             status: format!(
-                "closed:executor_contract_mismatch:route={} profile={executor_contract}",
-                route.operation
+                "closed:executor_contract_mismatch:authority={} operation={} contract={executor_contract}",
+                route.authority, route.operation
             ),
             selected_action: intent.selected_action(),
             evidence_kind: intent.evidence_kind().to_string(),
@@ -528,7 +542,7 @@ mod tests {
         assert!(projection.ready);
         assert_eq!(
             projection.executor_contract.as_deref(),
-            Some("ResolutionRevisionChain.open_revision")
+            Some("ResolutionRevisionChain")
         );
         assert!(projection
             .requirements
