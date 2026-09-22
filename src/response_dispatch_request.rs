@@ -57,6 +57,14 @@ fn json_string_array(values: &[String]) -> String {
     )
 }
 
+fn canonical_string_list(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| length_prefixed(value))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ResponseDispatchRequestPayload {
     Ignore,
@@ -351,6 +359,8 @@ fn current_requirements(
 fn request_fingerprint(
     requirements: &ResponseDispatchRequirements,
     payload: &ResponseDispatchRequestPayload,
+    bound_requirements: &[String],
+    unbound_optional_requirements: &[String],
 ) -> Result<String, String> {
     let dispatch = requirements
         .dispatch_fingerprint
@@ -361,10 +371,15 @@ fn request_fingerprint(
         .as_deref()
         .ok_or_else(|| "ResponseDispatchRequest: requirements fingerprint missing".to_string())?;
     let canonical = format!(
-        "v1|intent={}|dispatch={dispatch}|requirements={requirement_fingerprint}|action={}|payload={}|",
+        concat!(
+            "v1|intent={}|dispatch={dispatch}|requirements={requirement_fingerprint}|",
+            "action={}|payload={}|bound={}|unbound_optional={}|"
+        ),
         requirements.response_intent_fingerprint,
         requirements.selected_action.as_str(),
         payload.canonical(),
+        canonical_string_list(bound_requirements),
+        canonical_string_list(unbound_optional_requirements),
     );
     Ok(fnv1a64(canonical.bytes()))
 }
@@ -447,7 +462,12 @@ fn build_request(
         &bound_requirements,
         &unbound_optional_requirements,
     )?;
-    let request_fingerprint = request_fingerprint(&requirements, &payload)?;
+    let request_fingerprint = request_fingerprint(
+        &requirements,
+        &payload,
+        &bound_requirements,
+        &unbound_optional_requirements,
+    )?;
     let dispatch_fingerprint = requirements
         .dispatch_fingerprint
         .clone()
@@ -672,8 +692,13 @@ pub fn preflight_response_dispatch_request(
             == Some(&request.requirements_fingerprint);
 
     let request_fingerprint_matches = if requirements.ready {
-        request_fingerprint(&requirements, &request.payload)
-            .is_ok_and(|fingerprint| fingerprint == request.request_fingerprint)
+        request_fingerprint(
+            &requirements,
+            &request.payload,
+            &request.bound_requirements,
+            &request.unbound_optional_requirements,
+        )
+        .is_ok_and(|fingerprint| fingerprint == request.request_fingerprint)
     } else {
         false
     };
