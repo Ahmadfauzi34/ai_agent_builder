@@ -150,6 +150,106 @@ fn run() -> Result<(), String> {
     );
     ensure(inbox.record(verifier)?, "graph verifier evidence was not recorded");
 
+    let semantic_program_identity = serde_json::json!({
+        "schema": "burn-research.program-identity.v1",
+        "plan_hex": "probe-semantic",
+        "layer_init_fingerprints": []
+    });
+    let semantic_graph_identity = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.semantic-graph-identity.v1",
+        "topology_authority": "AgentGraphBuilder",
+        "semantic_binding_count": 1,
+        "execution_program_identity_effect": "none",
+        "fingerprint": "fnv1a64:probe-semantic-graph"
+    });
+    let semantic_lifecycle_identity = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.semantic-lifecycle-identity.v1",
+        "base_semantic_graph_identity": semantic_graph_identity.clone(),
+        "transition_count": 1,
+        "execution_program_identity_effect": "none",
+        "fingerprint": "fnv1a64:probe-semantic-lifecycle"
+    });
+    let semantic_execution_context = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.semantic-execution-context.v1",
+        "projection_only": true,
+        "authority": {
+            "execution_identity": "CompiledGraph.programIdentity",
+            "semantic_graph": "AgentGraphBuilder.semanticGraphIdentity",
+            "semantic_lifecycle": "AgentGraphBuilder.semanticLifecycleIdentity",
+            "context": "derived_projection"
+        },
+        "program_identity": semantic_program_identity.clone(),
+        "semantic_graph_identity": semantic_graph_identity,
+        "semantic_lifecycle_identity": semantic_lifecycle_identity,
+        "lifecycle_coverage_complete": true,
+        "context_fingerprint": "fnv1a64:probe-semantic-context",
+        "fingerprint_algorithm": "fnv1a64_noncryptographic",
+        "program_identity_effect": "none",
+        "execution_effect": "none"
+    });
+    let semantic_verifier_receipt = serde_json::json!({
+        "schema_version": 1,
+        "schema_id": "burn-research.verifier-receipt.v1",
+        "receipt_id": 4,
+        "authority": "wasm_verifier",
+        "verifier": "CompiledGraph.verifyFlat",
+        "reference_authority": "burn_compiled_graph",
+        "label": "semantic-graph-match",
+        "fingerprint_algorithm": "fnv1a64_noncryptographic",
+        "program_identity": semantic_program_identity,
+        "program_identity_fingerprint": "fnv1a64:probe-semantic-program",
+        "mutable_state_in_program_identity": false,
+        "runtime_subject": {
+            "status": "bound",
+            "intent_id": projection.intent_id.clone(),
+            "workflow_revision": projection.workflow_revision,
+            "approval_id": projection.approval_id.clone(),
+            "subject_kind": projection.subject_kind.clone(),
+            "subject_identity": projection.subject_identity.clone(),
+            "authorization_policy_id": projection.authorization_policy_id.clone(),
+            "authorization_policy_revision": projection.authorization_policy_revision,
+            "authorization_is_revision": projection.authorization_is_revision
+        },
+        "semantic_execution_context": semantic_execution_context,
+        "semantic_context_fingerprint": "fnv1a64:probe-semantic-context",
+        "input_fingerprint": "fnv1a64:probe-semantic-input",
+        "reference_fingerprint": "fnv1a64:probe-semantic-reference",
+        "candidate_fingerprint": "fnv1a64:probe-semantic-candidate",
+        "tolerances": {"abs": 0.0, "rel": 0.0},
+        "result": {
+            "passed": true,
+            "len": 2,
+            "max_abs_error": 0.0,
+            "max_rel_error": 0.0,
+            "rmse": 0.0,
+            "first_failure": null
+        }
+    })
+    .to_string();
+    let semantic_verifier =
+        RuntimeEvidence::from_graph_verifier_receipt_json(&semantic_verifier_receipt)?;
+    let semantic_verifier_json: serde_json::Value =
+        serde_json::from_str(&semantic_verifier.to_json())
+            .map_err(|error| format!("semantic verifier projection parse failed: {error}"))?;
+    ensure(
+        semantic_verifier_json["payload"]["semantic_context_fingerprint"]
+            == "fnv1a64:probe-semantic-context",
+        "semantic verifier context fingerprint was not preserved",
+    );
+    ensure(
+        semantic_verifier_json["payload"]["semantic_execution_context"]
+            .as_str()
+            .is_some(),
+        "semantic verifier execution context was not preserved",
+    );
+    ensure(
+        inbox.record(semantic_verifier)?,
+        "semantic graph verifier evidence was not recorded",
+    );
+
     let math_program_receipt = serde_json::json!({
         "schema_version": 1,
         "schema_id": "burn-research.verifier-receipt.v1",
@@ -358,6 +458,7 @@ fn run() -> Result<(), String> {
             "\"agent_fault_rejoin\":true,",
             "\"structured_payload_adaptation\":true,",
             "\"verifier_source_authority_preserved\":true,",
+            "\"semantic_graph_context_rejoin\":true,",
             "\"math_program_verifier_rejoin\":true,",
             "\"direct_math_verifier_rejoin\":true,",
             "\"transport_observation_only\":true,",
