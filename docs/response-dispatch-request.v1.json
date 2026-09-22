@@ -76,7 +76,8 @@
       "future executor runtime handle identity",
       "future mutable authority state after request creation",
       "caller authentication"
-    ]
+    ],
+    "next_boundary": "burn-research.response-dispatch-executor-preflight.v1"
   },
   "authority": {
     "selection": "caller/agent through AgentResponseIntent",
@@ -100,7 +101,7 @@
   ],
   "future_extensions": [
     "executor-specific runtime handle binding for reverify",
-    "explicit execution adapters consuming ResponseDispatchRequest",
+    "explicit execution adapters consuming only executor-preflight-ready ResponseDispatchRequest",
     "execution receipt carrying request_fingerprint and dispatch_fingerprint",
     "optional structured diagnostic materialization request"
   ]
