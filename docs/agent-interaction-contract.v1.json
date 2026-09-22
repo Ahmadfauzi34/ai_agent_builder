@@ -19,7 +19,8 @@
     "unknown or parameter-specific conditions remain deferred to the authoritative call boundary",
     "escape hatches remain available and are not removed by the canonical interaction layer",
     "runtime evidence interpretation never chooses, ranks, or executes a response candidate",
-    "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response"
+    "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response",
+    "response intent execution gate may project an authority handoff but never executes or authorizes that handoff"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -249,5 +250,19 @@
       "candidate handoff"
     ],
     "escape_hatch": "independent Resolution review/revision APIs remain callable outside this evidence-derived intent path"
+  },
+  "response_intent_execution_gate": {
+    "contract": "burn-research.response-intent-execution-gate.v1",
+    "project": "response_intent_execution_gate",
+    "role": "validate a ResponseIntent and project the authority/operation handoff without executing it",
+    "dispatchable": "means route is structurally valid against current inbox evidence and ResponseIntent preflight",
+    "execution_authorized": false,
+    "mutation": "none",
+    "authorities": {
+      "ignore": "none/no-op",
+      "reverify": "runtime verifier",
+      "request_information": "external resolution review",
+      "propose_revision": "ResolutionRevisionChain"
+    }
   }
 }

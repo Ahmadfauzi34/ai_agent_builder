@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.response-intent-execution-gate.v1",
+  "role": "validated_dispatch_projection_only",
+  "purpose": "Validate a preflight-ready AgentResponseIntent and project the exact authority/operation handoff required for execution without executing or authorizing that handoff.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1",
+    "validation": "preflight_response_intent must report ready_nonexecuting"
+  },
+  "gate_semantics": {
+    "dispatchable_true": "intent still matches recorded evidence and its selected candidate, so a caller may explicitly invoke the projected authority boundary",
+    "dispatchable_false": "intent is stale, tampered, unavailable, or otherwise not preflight-ready",
+    "execution_authorized": false,
+    "mutation": "none"
+  },
+  "routes": {
+    "ignore": {
+      "authority": "none",
+      "operation": "no_op",
+      "explicit_executor_required": false,
+      "effect": "evidence remains recorded; no Resolution mutation"
+    },
+    "reverify": {
+      "authority": "runtime_verifier",
+      "operation_source": "evidence kind",
+      "operations": {
+        "graph_verifier_receipt": "CompiledGraph.verifyFlat",
+        "math_program_verifier_receipt": "MathProgram.verifyFlat",
+        "direct_math_verifier_receipt": "DirectMath.verifyAgainstMathProgramV9",
+        "vector_verifier_receipt": "mathVerifyVectors"
+      },
+      "explicit_executor_required": true
+    },
+    "request_information": {
+      "authority": "external_resolution_review",
+      "operation": "request_information",
+      "existing_diagnostic_boundary": "ResolutionReviewSession::request_diagnostic or ResolutionRevisionChain::request_diagnostic when caller chooses to materialize a ResolutionDiagnostic",
+      "explicit_executor_required": true
+    },
+    "propose_revision": {
+      "authority": "ResolutionRevisionChain",
+      "operation": "open_revision",
+      "explicit_executor_required": true,
+      "required_caller_payload": [
+        "revision_key",
+        "optional parent_revision_id"
+      ]
+    }
+  },
+  "identity": {
+    "dispatch_fingerprint": "fnv1a64 over response_intent_fingerprint + selected action + authority + operation + route mode",
+    "fingerprint_security": "deterministic correlation only; not a cryptographic authorization token"
+  },
+  "invariants": [
+    "the gate never invokes a verifier",
+    "the gate never opens a revision",
+    "the gate never creates a diagnostic or information request",
+    "the gate never mutates ResolutionEvidenceInbox",
+    "the gate never mutates Resolution state",
+    "dispatchable does not mean authorized",
+    "ResponseIntent remains selection provenance, not execution authority",
+    "the projected destination authority remains the existing verifier/review/revision boundary",
+    "ignore is represented as an explicit no-op route rather than deleting evidence",
+    "a failed ResponseIntent preflight produces a closed gate and no executable route"
+  ]
+}
