@@ -302,6 +302,11 @@ fn non_external_edge_and_incompatible_consumer_cannot_be_persisted() {
             .unwrap_err()
             .contains("does not consume external slot 0")
     );
+    let internal_status: serde_json::Value = serde_json::from_str(
+        &input_port_consumer_edge_binding(&workspace, &builder, 1).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(internal_status["status"], "not_applicable");
 
     let reward_consumer = InputPortConsumerSpec::new(
         "reward-only".into(),
