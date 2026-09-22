@@ -405,6 +405,30 @@ mod tests {
     }
 
     #[test]
+    fn authority_state_rejection_preserves_request_ready() {
+        let (inbox, review, _) = fixture();
+        let mut chain = ResolutionRevisionChain::from_approved(review.snapshot()).unwrap();
+        let intent = create_agent_response_intent(
+            &inbox,
+            0,
+            EvidenceResponseAction::ProposeRevision,
+            "agent",
+        )
+        .unwrap();
+        let request =
+            create_revision_dispatch_request(&inbox, &intent, &chain, "r1", None).unwrap();
+
+        chain.open_revision(None, "r1").unwrap();
+
+        let preflight =
+            preflight_revision_dispatch_executor(&inbox, &intent, &request, &chain);
+        assert!(preflight.request_ready);
+        assert!(!preflight.executor_ready);
+        assert!(preflight.status.contains("revision_executor_rejected"));
+        assert!(!preflight.execution_authorized);
+    }
+
+    #[test]
     fn stale_request_closes_before_authority_preflight() {
         let (inbox, _, projection) = fixture();
         let intent =
