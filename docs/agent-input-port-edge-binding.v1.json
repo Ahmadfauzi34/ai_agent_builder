@@ -11,7 +11,8 @@
   },
   "binding": {
     "edge_identity": "exact AgentGraphBuilder step_index",
-    "eligibility": "step must consume external slot 0 and caller-selected InputPortConsumerSpec must be compatible at bind time",
+    "topology_origin": "an input position is external only when ordered topology resolves it to the original slot-0 value rather than a prior step output",
+    "eligibility": "step must consume topology-resolved external input and caller-selected InputPortConsumerSpec must be compatible at bind time",
     "immutability": "first successful binding wins; identical rebinding is idempotent and conflicting rebinding fails closed",
     "input_snapshot": [
       "role",
@@ -74,6 +75,7 @@
     "binding never changes AgentGraphBuilder executable plan bytes",
     "binding never mutates AgentWorkspace or LayerRegistry",
     "binding never authorizes execution",
+    "slot index alone never proves external origin after an earlier step writes that slot",
     "binding meaning is caller-selected and never inferred from numerical layer type",
     "conflicting rebinding fails without mutating the existing binding",
     "input provenance drift is observable but does not rewrite history"
