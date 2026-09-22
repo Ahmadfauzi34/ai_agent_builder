@@ -109,25 +109,43 @@ fn run() -> Result<(), String> {
         "execution receipt did not add exactly one observation",
     );
 
-    let evidence = inbox
-        .observations()
-        .last()
-        .ok_or_else(|| "execution evidence missing after rejoin".to_string())?;
+    let (
+        evidence_kind,
+        evidence_outcome,
+        evidence_source_authority,
+        evidence_authority,
+        evidence_transport_integrity,
+    ) = {
+        let evidence = inbox
+            .observations()
+            .last()
+            .ok_or_else(|| "execution evidence missing after rejoin".to_string())?;
+        (
+            evidence.kind().to_string(),
+            evidence.outcome().to_string(),
+            evidence.source_authority().to_string(),
+            evidence.evidence_authority().to_string(),
+            evidence.transport_integrity().to_string(),
+        )
+    };
     ensure(
-        evidence.kind() == "revision_dispatch_execution_receipt",
+        evidence_kind == "revision_dispatch_execution_receipt",
         "execution evidence kind mismatch",
     );
-    ensure(evidence.outcome() == "committed", "execution evidence outcome mismatch");
     ensure(
-        evidence.source_authority() == "ResolutionRevisionChain",
+        evidence_outcome == "committed",
+        "execution evidence outcome mismatch",
+    );
+    ensure(
+        evidence_source_authority == "ResolutionRevisionChain",
         "execution source authority mismatch",
     );
     ensure(
-        evidence.evidence_authority() == "observation_only",
+        evidence_authority == "observation_only",
         "execution evidence authority escalated",
     );
     ensure(
-        evidence.transport_integrity() == "native_typed_correlated",
+        evidence_transport_integrity == "native_typed_correlated",
         "execution evidence transport classification mismatch",
     );
 
@@ -190,11 +208,11 @@ fn run() -> Result<(), String> {
                 "receipt_fingerprint": receipt.receipt_fingerprint,
             },
             "evidence": {
-                "kind": evidence.kind(),
-                "outcome": evidence.outcome(),
-                "source_authority": evidence.source_authority(),
-                "evidence_authority": evidence.evidence_authority(),
-                "transport_integrity": evidence.transport_integrity(),
+                "kind": evidence_kind,
+                "outcome": evidence_outcome,
+                "source_authority": evidence_source_authority,
+                "evidence_authority": evidence_authority,
+                "transport_integrity": evidence_transport_integrity,
             },
             "interpretation": {
                 "ignore": interpretation.available(EvidenceResponseAction::Ignore),
