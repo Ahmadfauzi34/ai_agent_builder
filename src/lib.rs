@@ -6,6 +6,7 @@ use wasm_bindgen::prelude::*;
 pub mod agent;
 pub mod agent_response_intent;
 pub mod response_intent_execution_gate;
+pub mod response_dispatch_requirements;
 pub mod authorization;
 pub mod coprocessor;
 pub mod contracts;
