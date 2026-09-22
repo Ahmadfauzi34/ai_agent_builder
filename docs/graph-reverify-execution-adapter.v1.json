@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.graph-reverify-execution-adapter.v1",
+  "role": "explicit_graph_reverify_execution_adapter",
+  "purpose": "Execute only a current ready GraphReverifyRuntimeBinding against the same real runtime handles by invoking the existing canonical workspaceVerifyGraphReceipt surface, then optionally rejoin the resulting canonical verifier receipt as observation-only RuntimeEvidence through a separate explicit call.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1 selected_action=reverify",
+    "binding": "burn-research.graph-reverify-runtime-binding.v1",
+    "runtime_handles": [
+      "mutable AgentWorkspace",
+      "CompiledGraph",
+      "LayerRegistry",
+      "WasmTensor input",
+      "f32 candidate buffer",
+      "abs_tol",
+      "rel_tol",
+      "label"
+    ]
+  },
+  "execution": {
+    "trigger": "explicit_caller_invocation",
+    "authorization_claim": "none",
+    "preflight": "preflight_graph_reverify_runtime_binding must report ready=true immediately before execution",
+    "canonical_surface": "workspaceVerifyGraphReceipt",
+    "canonical_authority": "wasm_verifier",
+    "canonical_verifier": "CompiledGraph.verifyFlat",
+    "reference_authority": "burn_compiled_graph",
+    "adapter_authority": "correlation_only_not_verifier_authority"
+  },
+  "semantics": {
+    "automatic_action_selection": false,
+    "execution_authorized": false,
+    "execution_trigger": "explicit_caller_invocation",
+    "rejoin_trigger": "separate_explicit_caller_invocation",
+    "selection_authority": "agent_or_caller"
+  },
+  "transaction": {
+    "rollback_snapshot": "AgentWorkspace is cloned immediately before canonical verifier invocation",
+    "success_postcondition": "exactly one verifier receipt is appended, next receipt id advances exactly one, and exactly one of passed/failed verifier counters advances",
+    "canonical_error": "workspace is restored from the clone",
+    "postcondition_mismatch": "workspace is restored from the clone",
+    "numerical_mismatch": "not an execution error; canonical failed verifier receipt remains committed"
+  },
+  "execution_result": {
+    "schema_id": "burn-research.graph-reverify-execution-result.v1",
+    "role": "correlated_graph_reverify_execution_result",
+    "fields": [
+      "source_entry_index",
+      "source_evidence_fingerprint",
+      "binding_fingerprint",
+      "response_intent_fingerprint",
+      "dispatch_fingerprint",
+      "execution_fingerprint",
+      "verifier_receipt_id",
+      "verifier_outcome",
+      "verifier_receipt",
+      "before_verifier_receipt_count",
+      "after_verifier_receipt_count"
+    ],
+    "execution_fingerprint": "fnv1a64 correlation over binding/intent/dispatch + canonical verifier receipt id/outcome/raw receipt bytes",
+    "fingerprint_security": "deterministic correlation only; not authentication, authorization, integrity protection, or a capability token",
+    "canonical_verifier_receipt_preserved": true
+  },
+  "rejoin": {
+    "function": "rejoin_graph_reverify_execution_result",
+    "trigger": "separate_explicit_caller_invocation",
+    "validation": [
+      "current intent remains graph reverify",
+      "binding still correlates to current response intent",
+      "execution result matches binding/source evidence/dispatch fingerprints",
+      "execution fingerprint recomputes exactly",
+      "canonical receipt adapts through RuntimeEvidence.from_graph_verifier_receipt_json",
+      "adapted evidence source_authority remains wasm_verifier",
+      "adapted evidence_authority remains observation_only",
+      "adapted evidence outcome matches execution result",
+      "ResolutionEvidenceInbox exact-subject classification must accept the evidence"
+    ],
+    "evidence_authority": "observation_only",
+    "mutation": "evidence inbox append only",
+    "automatic_action_selection": false,
+    "automatic_resolution_transition": false,
+    "automatic_revision_creation": false
+  },
+  "repeat_policy": {
+    "mode": "explicit_repeat_allowed",
+    "rationale": "reverify observes live current registry state; repeated explicit invocations may intentionally produce distinct verifier receipts even when the binding is unchanged",
+    "one_shot_capability": false
+  },
+  "registry_state_policy": {
+    "mode": "live_current_state_not_snapshotted",
+    "rule": "execution uses the live LayerRegistry state after the current binding preflight",
+    "identity_boundary": "mutable learned state is not promoted into CompiledGraph.programIdentity"
+  },
+  "invariants": [
+    "the adapter cannot execute a non-reverify intent",
+    "the adapter cannot execute when GraphReverifyRuntimeBinding preflight is closed",
+    "the adapter never substitutes caller strings for runtime handles",
+    "the adapter calls the existing workspaceVerifyGraphReceipt canonical verifier surface",
+    "the execution result does not claim verifier authority",
+    "numerical failure remains a verifier outcome rather than an adapter error",
+    "canonical execution appends exactly one verifier receipt or the workspace is rolled back",
+    "execution itself does not mutate ResolutionEvidenceInbox",
+    "rejoin is a separate explicit operation",
+    "rejoined verifier evidence remains observation_only",
+    "rejoin does not select the next agent action",
+    "rejoin does not create a Resolution transition or revision",
+    "agent remains selection authority for any subsequent response"
+  ]
+}

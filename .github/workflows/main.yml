@@ -45,6 +45,7 @@ jobs:
           python3 -m json.tool docs/revision-dispatch-execution-adapter.v1.json >/dev/null
           python3 -m json.tool docs/revision-execution-evidence-rejoin.v1.json >/dev/null
           python3 -m json.tool docs/graph-reverify-runtime-binding.v1.json >/dev/null
+          python3 -m json.tool docs/graph-reverify-execution-adapter.v1.json >/dev/null
           python3 -m json.tool docs/unified-math-interaction.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
@@ -96,6 +97,9 @@ jobs:
 
       - name: Build native graph reverify runtime binding probe
         run: cargo build --release --bin graph_reverify_runtime_binding_probe
+
+      - name: Build native graph reverify execution adapter probe
+        run: cargo build --release --bin graph_reverify_execution_adapter_probe
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
@@ -337,6 +341,12 @@ jobs:
         with:
           name: graph-reverify-runtime-binding-native-probe
           path: target/release/graph_reverify_runtime_binding_probe
+
+      - name: Upload native graph reverify execution adapter probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: graph-reverify-execution-adapter-native-probe
+          path: target/release/graph_reverify_execution_adapter_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

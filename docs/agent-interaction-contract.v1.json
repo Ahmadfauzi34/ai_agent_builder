@@ -326,5 +326,15 @@
     "binding_source": "real_runtime_handles",
     "execution_authorized": false,
     "mutation": "none"
+  },
+  "graph_reverify_execution_adapter": {
+    "contract": "burn-research.graph-reverify-execution-adapter.v1",
+    "execute": "execute_graph_reverify_binding",
+    "rejoin": "rejoin_graph_reverify_execution_result",
+    "canonical_surface": "workspaceVerifyGraphReceipt",
+    "canonical_authority": "wasm_verifier",
+    "execution_trigger": "explicit_caller_invocation",
+    "rejoin_authority": "observation_only",
+    "automatic_action_selection": false
   }
 }
