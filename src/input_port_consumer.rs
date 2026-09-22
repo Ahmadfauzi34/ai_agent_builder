@@ -103,6 +103,23 @@ impl InputPortConsumerEvaluation {
     }
 }
 
+pub(crate) fn evaluate_consumer_requirements(
+    accepted_roles: &[String],
+    allow_extension_roles: bool,
+    require_fingerprint: bool,
+    minimum_revision: u64,
+    role: &str,
+    revision: u64,
+    fingerprint_present: bool,
+) -> InputPortConsumerEvaluation {
+    InputPortConsumerEvaluation {
+        role_match: accepted_roles.iter().any(|value| value == role)
+            || (allow_extension_roles && role.starts_with("x-")),
+        fingerprint_ok: !require_fingerprint || fingerprint_present,
+        revision_ok: minimum_revision == 0 || revision >= minimum_revision,
+    }
+}
+
 #[wasm_bindgen]
 pub struct InputPortConsumerSpec {
     consumer_id: String,
@@ -144,11 +161,15 @@ impl InputPortConsumerSpec {
         revision: u64,
         fingerprint_present: bool,
     ) -> InputPortConsumerEvaluation {
-        InputPortConsumerEvaluation {
-            role_match: self.role_matches(role),
-            fingerprint_ok: !self.require_fingerprint || fingerprint_present,
-            revision_ok: self.minimum_revision == 0 || revision >= self.minimum_revision,
-        }
+        evaluate_consumer_requirements(
+            &self.accepted_roles,
+            self.allow_extension_roles,
+            self.require_fingerprint,
+            self.minimum_revision,
+            role,
+            revision,
+            fingerprint_present,
+        )
     }
 
     pub(crate) fn json(&self) -> String {
