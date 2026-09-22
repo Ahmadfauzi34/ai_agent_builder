@@ -309,5 +309,13 @@
     "execution_trigger": "explicit_caller_invocation",
     "authorization_claim": "none",
     "mutation": "committed_on_success"
+  },
+  "revision_execution_evidence_rejoin": {
+    "contract": "burn-research.revision-execution-evidence-rejoin.v1",
+    "record": "record_revision_dispatch_execution_receipt",
+    "role": "correlate a committed revision execution receipt back into the exact originating evidence inbox as observation-only evidence",
+    "source_authority": "ResolutionRevisionChain",
+    "automatic_action_selection": false,
+    "mutation": "evidence inbox append only"
   }
 }
