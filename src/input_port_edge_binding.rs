@@ -99,15 +99,23 @@ fn canonical_binding_identity(
     let positions = positions.join(",");
     fnv1a64(&format!(
         concat!(
-            "v1|step={step_index}|positions={positions}|consumer={}|roles={roles}|",
+            "v1|step={}|positions={}|consumer={}|roles={}|",
             "extension={}|fingerprint_required={}|minimum_revision={}|",
-            "input_role={input_role}|input_source={input_source}|input_revision={input_revision}|",
-            "input_fingerprint={input_fingerprint}|compatibility={compatibility_at_bind}"
+            "input_role={}|input_source={}|input_revision={}|",
+            "input_fingerprint={}|compatibility={}"
         ),
+        step_index,
+        positions,
         consumer.snapshot_consumer_id(),
+        roles,
         consumer.snapshot_allow_extension_roles(),
         consumer.snapshot_require_fingerprint(),
         consumer.snapshot_minimum_revision(),
+        input_role,
+        input_source,
+        input_revision,
+        input_fingerprint,
+        compatibility_at_bind,
     ))
 }
 
