@@ -276,7 +276,13 @@ pub fn input_port_consumer_edge_binding(
             builder.num_slots()
         ));
     }
-    external_positions(builder, step_index, "inputPortConsumerEdgeBinding")?;
+    let positions =
+        external_positions(builder, step_index, "inputPortConsumerEdgeBinding")?;
+    if positions.is_empty() {
+        return Ok(format!(
+            "{{\"schema_version\":1,\"schema_id\":\"burn-research.input-port-edge-binding-status.v1\",\"status\":\"not_applicable\",\"step_index\":{step_index},\"reason\":\"step_does_not_consume_external_slot_0\"}}"
+        ));
+    }
 
     let Some(binding) = builder.semantic_edge_binding(step_index) else {
         return Ok(format!(
