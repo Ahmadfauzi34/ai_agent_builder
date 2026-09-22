@@ -76,8 +76,9 @@
     "mutable learned state is not silently promoted into programIdentity; exact learned-state snapshotting remains a separate concern"
   ],
   "next_boundary": {
-    "planned": "explicit graph reverify execution adapter",
-    "rule": "execution adapter must consume a current ready binding plus the same real runtime handles, invoke the canonical verifier receipt surface, and return/rejoin the resulting verifier receipt"
+    "status": "implemented_by_graph_reverify_execution_adapter_v1",
+    "contract": "burn-research.graph-reverify-execution-adapter.v1",
+    "rule": "execution consumes a current ready binding plus the same real runtime handles, invokes workspaceVerifyGraphReceipt, and returns a correlated result whose canonical verifier receipt may rejoin only through a separate explicit call"
   },
   "registry_state_policy": {
     "mode": "live_current_state_not_snapshotted",
