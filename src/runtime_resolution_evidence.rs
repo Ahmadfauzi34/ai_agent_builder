@@ -4,6 +4,7 @@ use crate::authorization::{AuthorizationPolicy, AuthorizationSnapshot};
 use crate::effective_spec::ApprovedEffectiveSpec;
 use crate::resolution::ResolutionSnapshot;
 use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
+use crate::workspace::AgentWorkspace;
 
 const RUNTIME_RESOLUTION_EVIDENCE_V1: &str =
     include_str!("../docs/runtime-resolution-evidence.v1.json");
@@ -456,6 +457,15 @@ impl RuntimeEvidence {
 
     pub fn outcome(&self) -> &'static str {
         self.payload.outcome()
+    }
+
+    pub(crate) fn graph_program_identity(&self) -> Option<&str> {
+        match &self.payload {
+            RuntimeEvidencePayload::GraphVerifierReceipt {
+                program_identity, ..
+            } => Some(program_identity.as_str()),
+            _ => None,
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1651,6 +1661,20 @@ impl ResolutionEvidenceInbox {
 
     pub(crate) fn target_approval_id(&self) -> &str {
         &self.target.approval_id
+    }
+
+    pub(crate) fn target_matches_workspace(&self, workspace: &AgentWorkspace) -> bool {
+        let Some(binding) = workspace.runtime_subject_binding() else {
+            return false;
+        };
+        binding.intent_id == self.target.intent_id
+            && binding.workflow_revision == self.target.workflow_revision
+            && binding.approval_id == self.target.approval_id
+            && binding.subject_kind == self.target.subject_kind
+            && binding.subject_identity == self.target.subject_identity
+            && binding.authorization_policy_id == self.target.authorization_policy_id
+            && binding.authorization_policy_revision == self.target.authorization_policy_revision
+            && binding.authorization_is_revision == self.target.authorization_is_revision
     }
 
     pub fn to_json(&self) -> String {
