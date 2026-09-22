@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "schema_id": "burn-research.runtime-resolution-evidence.v1",
-  "role": "typed_runtime_evidence_rejoin",
+  "role": "typed_runtime_and_execution_evidence_rejoin",
   "state_ownership": "separate_bounded_inbox",
-  "purpose": "Carry runtime faults and verifier outcomes back toward the exact Resolution revision and approved runtime subject without converting them into ResolutionDiagnostic or changing ResolutionWorkflow state.",
+  "purpose": "Carry runtime faults, verifier outcomes, and correlated committed execution receipts back toward the exact Resolution revision and approved runtime subject without automatically creating Resolution diagnostics, transitions, revisions, or agent actions.",
   "authorities": {
     "resolution_state": "ResolutionWorkflow / ResolutionSnapshot",
     "semantic_subject": "RuntimeSubjectProjection from the approved+authorized forward bridge",
@@ -12,11 +12,12 @@
     "vector_verifier": "source-authority label transported from a structured vector comparator receipt; the inbox itself does not authenticate the receipt",
     "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action",
     "math_program_verifier": "source-authority label transported from a structured MathProgram verifier receipt; original runtime receipt remains authoritative and inbox transport remains observation_only",
-    "direct_math_verifier": "source-authority label transported from a structured DirectMath.verifyAgainstMathProgramV9 receipt; candidate authority remains burn_direct_math, reference authority remains burn_math_program, and inbox transport remains observation_only"
+    "direct_math_verifier": "source-authority label transported from a structured DirectMath.verifyAgainstMathProgramV9 receipt; candidate authority remains burn_direct_math, reference authority remains burn_math_program, and inbox transport remains observation_only",
+    "revision_dispatch_execution": "source-authority label from the canonical ResolutionRevisionChain.open_revision execution receipt; rejoin remains observation_only and cannot create another revision"
   },
   "native_types": {
     "RuntimeEvidenceSubject": "exact intent/revision/approval/subject/authorization-policy tuple",
-    "RuntimeEvidence": "typed AgentFault, graph-verifier, MathProgram-verifier, DirectMath-verifier, or vector-verifier observation",
+    "RuntimeEvidence": "typed AgentFault, graph-verifier, MathProgram-verifier, DirectMath-verifier, vector-verifier, or committed revision-dispatch execution observation",
     "ResolutionEvidenceInbox": "bounded evidence collection tied to one compile-eligible ResolutionSnapshot and one exact RuntimeSubjectProjection",
     "RejoinStatus": [
       "exact",
@@ -39,7 +40,8 @@
     "canonical_constructor": "ResolutionEvidenceInbox::from_authorized(resolution, approved_spec, current_policy, authorization) re-runs RuntimeSubjectProjection::from_authorized before creating the inbox",
     "lower_level_constructor": "ResolutionEvidenceInbox::new(resolution, projection) is an escape hatch for hosts that already validated the projection",
     "authorization_freshness": "canonical construction fails closed when the authorization snapshot is stale for the current policy",
-    "semantic_context": "semantic graph proof context is stored only inside the graph-verifier observation; no separate semantic authority or mutable Resolution state is created"
+    "semantic_context": "semantic graph proof context is stored only inside the graph-verifier observation; no separate semantic authority or mutable Resolution state is created",
+    "execution_receipt": "committed revision execution evidence is bound internally to the exact inbox target only after intent/request/chain correlation; callers cannot supply a replacement RuntimeSubjectProjection for this evidence class"
   },
   "interpretation_policy": {
     "automatic_diagnostic_creation": false,
@@ -54,7 +56,8 @@
     "unbound_runtime": "representable but cannot be rejoined into a subject-bound ResolutionEvidenceInbox",
     "transport_integrity": "host_structured_unverified",
     "evidence_authority": "observation_only",
-    "runtime_authority": "The original verifier receipt in the runtime/proof boundary remains the authoritative verification artifact."
+    "runtime_authority": "The original verifier receipt in the runtime/proof boundary remains the authoritative verification artifact.",
+    "execution_receipt": "revision dispatch receipts use native_typed_correlated transport after typed receipt + request + chain post-state validation; this remains noncryptographic correlation, not authentication"
   },
   "invariants": [
     "runtime evidence never mutates ResolutionWorkflow",
@@ -78,7 +81,10 @@
     "semantic execution context rejoin never changes programIdentity authority, never authorizes execution, and never creates Resolution state transitions",
     "partial or internally inconsistent semantic graph proof context fails closed at the structured graph-receipt adapter",
     "evidence interpretation may enumerate response candidates but never selects or ranks them",
-    "interpretation reads only evidence already admitted into the exact-subject inbox"
+    "interpretation reads only evidence already admitted into the exact-subject inbox",
+    "committed revision-dispatch execution receipts rejoin as observation_only evidence with source_authority=ResolutionRevisionChain",
+    "revision execution receipt rejoin cannot create a second revision or select another response action",
+    "execution receipt subject binding is inherited from the exact inbox target only after receipt/request/intent/chain correlation succeeds"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -298,5 +304,14 @@
     ],
     "policy": "candidate projection only; no selection, ranking, execution, diagnostic creation, revision creation, or Resolution mutation",
     "escape_hatch": "independent review/revision APIs remain available even when an evidence-derived candidate is unavailable"
+  },
+  "execution_receipt_rejoin": {
+    "contract": "burn-research.revision-execution-evidence-rejoin.v1",
+    "kind": "revision_dispatch_execution_receipt",
+    "outcome": "committed",
+    "source_authority": "ResolutionRevisionChain",
+    "source_operation": "open_revision",
+    "transport_integrity": "native_typed_correlated",
+    "inbox_summary_counter": "revision_dispatch_committed"
   }
 }
