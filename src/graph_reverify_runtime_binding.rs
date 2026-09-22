@@ -49,14 +49,6 @@ fn shape_canonical(shape: &[usize]) -> String {
         .join("x")
 }
 
-fn program_identity_equal(left: &str, right: &str) -> Result<bool, String> {
-    let left: serde_json::Value = serde_json::from_str(left)
-        .map_err(|error| format!("GraphReverifyRuntimeBinding: invalid source programIdentity JSON: {error}"))?;
-    let right: serde_json::Value = serde_json::from_str(right)
-        .map_err(|error| format!("GraphReverifyRuntimeBinding: invalid runtime programIdentity JSON: {error}"))?;
-    Ok(left == right)
-}
-
 fn binding_fingerprint(
     intent: &AgentResponseIntent,
     dispatch_fingerprint: &str,
@@ -375,7 +367,7 @@ pub fn create_graph_reverify_runtime_binding(
 
     graph.validate_registry_binding(registry)?;
     let program_identity = graph.program_identity();
-    if !program_identity_equal(source_program_identity, &program_identity)? {
+    if source_program_identity != program_identity {
         return Err(
             "GraphReverifyRuntimeBinding: graph programIdentity does not match selected evidence"
                 .to_string(),
@@ -457,12 +449,8 @@ pub fn preflight_graph_reverify_runtime_binding(
             binding.source_entry_index == intent.entry_index()
                 && binding.source_evidence_fingerprint == intent.evidence_fingerprint()
                 && evidence.kind() == "graph_verifier_receipt"
-                && evidence
-                    .graph_program_identity()
-                    .is_some_and(|identity| {
-                        program_identity_equal(identity, &binding.program_identity)
-                            .unwrap_or(false)
-                    })
+                && evidence.graph_program_identity()
+                    == Some(binding.program_identity.as_str())
         });
 
     let current_program_identity = graph.program_identity();
