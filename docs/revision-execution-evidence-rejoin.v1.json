@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.revision-execution-evidence-rejoin.v1",
+  "role": "committed_revision_execution_receipt_to_observation_evidence",
+  "purpose": "Rejoin a successfully committed revision dispatch execution receipt into the exact originating ResolutionEvidenceInbox as observation-only evidence after proving correspondence with the current ResponseIntent, dispatch request, and revision-chain post-state.",
+  "source_authority": "ResolutionRevisionChain",
+  "source_operation": "open_revision",
+  "evidence_authority": "observation_only",
+  "transport_integrity": "native_typed_correlated",
+  "automatic_action_selection": false,
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox used by the originating response path",
+    "intent": "current AgentResponseIntent",
+    "request": "current ResponseDispatchRequest",
+    "chain": "current ResolutionRevisionChain containing the committed revision",
+    "receipt": "typed burn-research.revision-dispatch-execution-receipt.v1"
+  },
+  "validation": [
+    "selected action must remain propose_revision",
+    "originating ResponseDispatchRequest preflight must still be ready against the same inbox and intent",
+    "request, response-intent, and dispatch fingerprints must exactly match the receipt",
+    "receipt lineage, revision key, and optional parent must exactly match the request payload",
+    "receipt authority tuple must remain explicit_caller_invocation + authorization_claim none + mutation committed",
+    "receipt revision-count delta must be exactly one",
+    "receipt_fingerprint is recomputed from the canonical v1 receipt fields",
+    "current revision chain must have the same lineage and contain the committed revision with matching key and parent",
+    "current revision chain may have advanced after this receipt, but it may not be older than the receipt post-state"
+  ],
+  "evidence_projection": {
+    "kind": "revision_dispatch_execution_receipt",
+    "outcome": "committed",
+    "source_authority": "ResolutionRevisionChain",
+    "source_operation": "open_revision",
+    "transport_integrity": "native_typed_correlated",
+    "retains": [
+      "receipt_fingerprint",
+      "request_fingerprint",
+      "response_intent_fingerprint",
+      "dispatch_fingerprint",
+      "lineage_id",
+      "revision_id",
+      "revision_key",
+      "parent_revision_id",
+      "before_revision_count",
+      "after_revision_count"
+    ]
+  },
+  "interpretation": {
+    "ignore": "available",
+    "reverify": "not applicable",
+    "request_information": "not derived from a committed execution receipt",
+    "propose_revision": "not derived from a committed execution receipt",
+    "note": "independent review/revision APIs remain available for other reasons"
+  },
+  "resolution_effect": {
+    "diagnostic_created_by_rejoin": false,
+    "state_transition_by_rejoin": "none",
+    "revision_created_by_rejoin": false,
+    "action_selected_by_rejoin": false,
+    "interpretation_required": true,
+    "note": "the source execution already created the revision before rejoin; recording its receipt must not create another revision"
+  },
+  "identity": {
+    "receipt_fingerprint": "recomputed fnv1a64 correlation fingerprint using the same canonical fields as the execution adapter",
+    "security": "correlation and tamper-consistency check only; not cryptographic authentication or authorization"
+  },
+  "invariants": [
+    "a valid receipt cannot be rebound to an arbitrary RuntimeSubjectProjection",
+    "subject binding is inherited internally from the exact inbox target only after request/intent/chain correlation succeeds",
+    "duplicate receipt recording is idempotent",
+    "receipt rejoin never opens another revision",
+    "receipt rejoin never upgrades ResolutionRevisionChain source authority into Resolution decision authority",
+    "committed execution evidence does not automatically generate another propose_revision candidate"
+  ],
+  "future_extensions": [
+    "execution receipts for runtime verifier adapters",
+    "external review result receipts",
+    "higher-level cycle correlation across multiple authority executions"
+  ]
+}
