@@ -317,5 +317,14 @@
     "source_authority": "ResolutionRevisionChain",
     "automatic_action_selection": false,
     "mutation": "evidence inbox append only"
+  },
+  "graph_reverify_runtime_binding": {
+    "contract": "burn-research.graph-reverify-runtime-binding.v1",
+    "create": "create_graph_reverify_runtime_binding",
+    "preflight": "preflight_graph_reverify_runtime_binding",
+    "role": "bind an evidence-selected graph reverify intent to exact real runtime handles without executing the verifier",
+    "binding_source": "real_runtime_handles",
+    "execution_authorized": false,
+    "mutation": "none"
   }
 }
