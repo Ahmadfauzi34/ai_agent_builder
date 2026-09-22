@@ -36,6 +36,10 @@ fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
+fn length_prefixed(value: &str) -> String {
+    format!("{}:{}", value.len(), value)
+}
+
 fn json_string_or_null(value: Option<&str>) -> String {
     value
         .map(|value| format!("\"{}\"", json_escape(value)))
@@ -83,16 +87,19 @@ impl ResponseDispatchRequestPayload {
                 information_request,
                 actor,
             } => format!(
-                "request_information|request={information_request}|actor={}|",
-                actor.as_deref().unwrap_or("")
+                "request_information|request={}|actor={}|",
+                length_prefixed(information_request),
+                length_prefixed(actor.as_deref().unwrap_or(""))
             ),
             Self::ProposeRevision {
                 lineage_id,
                 revision_key,
                 parent_revision_id,
             } => format!(
-                "propose_revision|lineage={lineage_id}|key={revision_key}|parent={}|",
-                parent_revision_id.as_deref().unwrap_or("")
+                "propose_revision|lineage={}|key={}|parent={}|",
+                length_prefixed(lineage_id),
+                length_prefixed(revision_key),
+                length_prefixed(parent_revision_id.as_deref().unwrap_or(""))
             ),
         }
     }
