@@ -357,23 +357,32 @@ mod tests {
     }
 
     #[test]
-    fn tampered_intent_closes_gate_without_route() {
-        let (_, inbox) = failed_graph_inbox();
-        let mut intent = create_agent_response_intent(
-            &inbox,
+    fn intent_against_different_evidence_closes_gate_without_route() {
+        let (resolution, inbox_a) = failed_graph_inbox();
+        let intent = create_agent_response_intent(
+            &inbox_a,
             0,
             EvidenceResponseAction::Reverify,
             "agent",
         )
         .unwrap();
 
-        // Test-only module access proves the gate consumes the existing preflight,
-        // rather than silently repairing a modified intent.
-        intent.response_intent_fingerprint = "fnv1a64:tampered".to_string();
+        let projection = projection("intent-gate", resolution.revision, "spec-gate");
+        let mut inbox_b = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
+        let different = RuntimeEvidence::bound_graph_verifier_receipt(
+            &projection,
+            2,
+            "passed",
+            "{\"schema\":\"burn-research.program-identity.v1\",\"plan\":\"y\"}",
+            true,
+            "match",
+        )
+        .unwrap();
+        inbox_b.record(different).unwrap();
 
-        let gate = response_intent_execution_gate(&inbox, &intent);
+        let gate = response_intent_execution_gate(&inbox_b, &intent);
         assert!(!gate.dispatchable);
-        assert!(gate.gate_status.contains("response_intent_fingerprint_mismatch"));
+        assert!(gate.gate_status.contains("evidence_fingerprint_mismatch"));
         assert!(gate.route.is_none());
         assert!(gate.dispatch_fingerprint.is_none());
         assert!(!gate.execution_authorized);
