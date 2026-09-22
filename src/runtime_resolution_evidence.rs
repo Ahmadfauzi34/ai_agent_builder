@@ -1505,6 +1505,18 @@ impl ResolutionEvidenceInbox {
         &self.entries
     }
 
+    pub(crate) fn target_intent_id(&self) -> &str {
+        &self.target.intent_id
+    }
+
+    pub(crate) fn target_workflow_revision(&self) -> u64 {
+        self.target.workflow_revision
+    }
+
+    pub(crate) fn target_approval_id(&self) -> &str {
+        &self.target.approval_id
+    }
+
     pub fn to_json(&self) -> String {
         let mut fault_count = 0usize;
         let mut graph_passed = 0usize;

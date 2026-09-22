@@ -21,7 +21,8 @@
     "runtime evidence interpretation never chooses, ranks, or executes a response candidate",
     "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response",
     "response intent execution gate may project an authority handoff but never executes or authorizes that handoff",
-    "response dispatch requirements describe machine-readable handoff inputs but bind no values and grant no authority"
+    "response dispatch requirements describe machine-readable handoff inputs but bind no values and grant no authority",
+    "response dispatch request may bind serializable caller payload but never fabricates runtime handles, executes an authority, or grants authorization"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -274,5 +275,18 @@
     "execution_authorized": false,
     "mutation": "none",
     "identity": "requirements_fingerprint correlates the gate dispatch fingerprint with its ordered requirement profile and is not an authorization token"
+  },
+  "response_dispatch_request": {
+    "contract": "burn-research.response-dispatch-request.v1",
+    "bindability": "response_dispatch_request_bindability",
+    "preflight": "preflight_response_dispatch_request",
+    "serializable_factories": [
+      "create_ignore_dispatch_request",
+      "create_information_dispatch_request",
+      "create_revision_dispatch_request"
+    ],
+    "reverify_policy": "runtime_handle_binding_deferred; graph/program/tensor handles are never represented by opaque caller strings",
+    "execution_authorized": false,
+    "mutation": "none"
   }
 }

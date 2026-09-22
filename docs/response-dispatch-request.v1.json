@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.response-dispatch-request.v1",
+  "role": "bound_serializable_dispatch_request_nonexecuting",
+  "purpose": "Bind serializable caller payload to a currently-ready response dispatch requirement profile without executing the destination authority or fabricating runtime handle bindings.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1",
+    "requirements": "burn-research.response-dispatch-requirements.v1"
+  },
+  "semantics": {
+    "execution_authorized": false,
+    "mutation": "none",
+    "execution": "none",
+    "runtime_handle_binding": "deferred for reverify"
+  },
+  "bindability": {
+    "ignore": "serializable_payload_bindable",
+    "request_information": "serializable_payload_bindable",
+    "propose_revision": "serializable_payload_bindable",
+    "reverify": "runtime_handle_binding_deferred"
+  },
+  "payloads": {
+    "ignore": {
+      "bound_fields": [],
+      "effect": "explicit no-op request only"
+    },
+    "request_information": {
+      "required": [
+        "information_request"
+      ],
+      "optional": [
+        "actor"
+      ],
+      "left_unbound_optional": [
+        "diagnostic_materialization"
+      ],
+      "effect": "records caller request data only; creates no ResolutionDiagnostic"
+    },
+    "propose_revision": {
+      "required": [
+        "revision_key"
+      ],
+      "optional": [
+        "parent_revision_id"
+      ],
+      "target_context": [
+        "ResolutionRevisionChain.lineage_id"
+      ],
+      "validation": [
+        "revision_key uses the same canonical validator as ResolutionRevisionChain.open_revision",
+        "revision chain root intent/revision/approval must match the evidence inbox target",
+        "an explicit parent revision must already be approved/compile-eligible"
+      ],
+      "effect": "records revision request payload only; does not call open_revision"
+    },
+    "reverify": {
+      "status": "runtime_handle_binding_deferred",
+      "reason": "CompiledGraph, LayerRegistry, MathProgram, WasmTensor, and related runtime values must not be replaced by caller-supplied string identities",
+      "next_boundary": "future executor-specific runtime handle adapter"
+    }
+  },
+  "identity": {
+    "request_fingerprint": "fnv1a64 over ResponseIntent fingerprint + dispatch fingerprint + requirements fingerprint + selected action + canonical serialized request payload + ordered bound requirements + ordered explicitly-unbound optional requirements",
+    "fingerprint_security": "deterministic correlation only; not cryptographic integrity, authentication, authorization, or a capability token"
+  },
+  "preflight": {
+    "function": "preflight_response_dispatch_request",
+    "checks": [
+      "response intent fingerprint/action/evidence kind still match",
+      "dispatch fingerprint/authority/operation/executor contract/payload mode still match current projection",
+      "requirements fingerprint still matches current projection",
+      "request fingerprint still matches its payload, requirement-accounting lists, and current upstream projections"
+    ],
+    "does_not_check": [
+      "future executor runtime handle identity",
+      "future mutable authority state after request creation",
+      "caller authentication"
+    ]
+  },
+  "authority": {
+    "selection": "caller/agent through AgentResponseIntent",
+    "request_payload": "caller-provided serializable values",
+    "revision_validation": "canonical ResolutionRevisionChain predicates reused read-only",
+    "execution": "none in this contract"
+  },
+  "invariants": [
+    "execution_authorized is always false",
+    "request creation never invokes a verifier",
+    "request creation never opens a revision",
+    "request creation never creates or submits a ResolutionDiagnostic",
+    "request creation never mutates ResolutionEvidenceInbox",
+    "request creation never mutates Resolution state",
+    "request creation never treats an opaque string as a runtime graph/program/tensor handle",
+    "a closed or stale requirements projection cannot produce a request",
+    "every required dispatch requirement must be bound and every optional requirement must be explicitly bound or recorded unbound",
+    "request_fingerprint commits to the bound/unbound requirement accounting exported by the request",
+    "direct authority APIs remain independently callable escape hatches",
+    "executor-specific state must be revalidated again at the actual execution boundary"
+  ],
+  "future_extensions": [
+    "executor-specific runtime handle binding for reverify",
+    "explicit execution adapters consuming ResponseDispatchRequest",
+    "execution receipt carrying request_fingerprint and dispatch_fingerprint",
+    "optional structured diagnostic materialization request"
+  ]
+}
