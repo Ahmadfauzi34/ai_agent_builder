@@ -69,11 +69,17 @@
     "canonical_valid_actions preserves the full interactionValidActions envelope and underlying action state projection",
     "semantic incompatibility is advisory and never rewrites canonical action availability",
     "edge compatibility applies only to graph steps that actually read slot 0",
-    "routing projection never binds a consumer contract persistently",
+    "routing projection itself never binds a consumer contract persistently",
+    "persistent binding is delegated to agent-input-port-edge-binding.v1 and remains outside routing projection authority",
     "routing projection never authorizes execution or selects an action"
   ],
+  "persistent_binding": {
+    "contract": "agent-input-port-edge-binding.v1",
+    "bind": "bindInputPortConsumerEdge",
+    "inspection": "inputPortConsumerEdgeBinding",
+    "semantic_identity": "semanticGraphIdentity"
+  },
   "future_extensions": [
-    "persistent edge consumer bindings",
     "role-aware candidate grouping",
     "multiple external input ports",
     "inter-graph semantic handoff",
