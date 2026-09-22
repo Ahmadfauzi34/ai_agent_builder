@@ -448,8 +448,10 @@ mod tests {
         assert_eq!(status(&manifest, &registry, &graph, &bundle)["registry_binding_current"], false);
         assert!(manifest.run(&registry, &graph, &bundle).is_err());
 
+        let other_layer = AgentLayerSpec::sub(22);
+        registry.init_agent_layer(&other_layer).unwrap();
         let mut other = AgentGraphBuilder::new(3).unwrap();
-        other.add_binary(&replacement, 0, 1, 2).unwrap();
+        other.add_binary(&other_layer, 0, 1, 2).unwrap();
         other.set_output(2).unwrap();
         let mut other_plan = MultiInputGraphPlan::new(&other).unwrap();
         other_plan.add_input_port(0, "observation".into(), 1, 2, 1, 1, "feature_axis1_singleton".into(), true, 2).unwrap();
