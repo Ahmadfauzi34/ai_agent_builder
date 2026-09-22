@@ -182,6 +182,8 @@ agentCapabilities()
 
 The facade is an ergonomics layer. Registry/execution contracts and Burn-backed semantics remain authoritative below it.
 
+For multiple external tensor inputs, `SemanticIngressManifestV2` maps logical port IDs to the exact `MultiInputGraphPlan.v1` slots. Its read-only `status`, `inputPortStatus`, and `consumerCompatibility` explain the current binding. Its `run` and `verifyFlat` methods recheck bridge coverage, then delegate to `CompiledMultiInputGraph`; they do not introduce another numerical execution engine. The packaged `interactive_multi_input_ingress.mjs` exposes this flow as a persistent JSON Lines session through the verified Node adapter. See `docs/interactive-multi-input-ingress.md` in the repository for a reproducible transcript.
+
 Raw compatibility surfaces may remain present even when the typed facade is preferred. Their existence is not evidence of duplicated execution engines.
 
 ## Failure classification

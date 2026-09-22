@@ -26,14 +26,14 @@ pub(crate) struct MultiInputPortContract {
 }
 
 #[derive(Clone)]
-struct BoundInput {
+pub(crate) struct BoundInput {
     tensor: WasmTensor,
-    role: String,
+    pub(crate) role: String,
     layout: String,
-    source: String,
-    revision: u64,
-    fingerprint: String,
-    value_fingerprint: String,
+    pub(crate) source: String,
+    pub(crate) revision: u64,
+    pub(crate) fingerprint: String,
+    pub(crate) value_fingerprint: String,
 }
 
 #[derive(Clone)]
@@ -60,6 +60,7 @@ pub struct MultiInputInputBundle {
 pub(crate) struct InputPreflight {
     pub(crate) ready: bool,
     pub(crate) json: String,
+    pub(crate) port_checks: Vec<(u8, bool)>,
 }
 
 fn json_escape(value: &str) -> String {
@@ -628,6 +629,10 @@ impl MultiInputInputBundle {
                 .all(|(bound, declared)| bound.contract == *declared)
     }
 
+    pub(crate) fn bound_input(&self, slot: u8) -> Option<&BoundInput> {
+        self.ports.iter().find(|port| port.contract.slot == slot)?.bound.as_ref()
+    }
+
     pub(crate) fn input_preflight(&self, plan: &MultiInputGraphPlan) -> InputPreflight {
         // Compare exact canonical bytes; the short FNV value is correlation only.
         let plan_matches = self.matches_plan_internal(plan);
@@ -635,6 +640,7 @@ impl MultiInputInputBundle {
         let mut missing_count = 0usize;
         let mut mismatch_count = 0usize;
         let mut port_json = Vec::with_capacity(self.ports.len());
+        let mut port_checks = Vec::with_capacity(self.ports.len());
         for binding in &self.ports {
             let contract = &binding.contract;
             let bound = binding.bound.as_ref();
@@ -642,6 +648,7 @@ impl MultiInputInputBundle {
             if !present {
                 missing_count += 1;
                 ready = false;
+                port_checks.push((contract.slot, false));
                 port_json.push(format!(
                     "{{\"slot\":{},\"status\":\"missing\",\"required\":true}}",
                     contract.slot
@@ -668,6 +675,7 @@ impl MultiInputInputBundle {
                 mismatch_count += 1;
                 ready = false;
             }
+            port_checks.push((contract.slot, port_ready));
             port_json.push(format!(
                 concat!(
                     "{{",
@@ -737,7 +745,7 @@ impl MultiInputInputBundle {
             bool_json(ready),
             port_json.join(","),
         );
-        InputPreflight { ready, json }
+        InputPreflight { ready, json, port_checks }
     }
 
     pub(crate) fn bound_inputs(&self) -> Vec<(u8, WasmTensor)> {

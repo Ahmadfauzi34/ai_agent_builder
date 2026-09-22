@@ -73,7 +73,7 @@ fn validate_text(
     Ok(())
 }
 
-fn validate_logical_port_id(value: &str) -> Result<(), String> {
+pub(crate) fn validate_logical_port_id(value: &str) -> Result<(), String> {
     validate_text(
         value,
         MAX_LOGICAL_PORT_ID_BYTES,

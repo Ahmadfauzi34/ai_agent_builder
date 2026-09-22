@@ -1331,6 +1331,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"input_contract\":\"inputContractCapabilities\",",
             "\"multi_input_graph\":\"multiInputGraphCapabilities\",",
             "\"semantic_ingress_manifest\":\"semanticIngressManifestCapabilities\",",
+            "\"semantic_ingress_manifest_v2\":\"semanticIngressManifestV2Capabilities\",",
             "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
             "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
             "\"math_interaction\":\"mathInteractionCapabilities\",",

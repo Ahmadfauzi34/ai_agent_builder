@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "schema_id": "burn-research.semantic-ingress-manifest.v2",
+  "status": "implemented_runtime_bridge",
+  "scope": {
+    "manifest_class": "SemanticIngressManifestV2",
+    "plan": "MultiInputGraphPlan.v1",
+    "graph": "CompiledMultiInputGraph",
+    "bundle": "MultiInputInputBundle",
+    "legacy_semantic_ingress_manifest_v1": "unchanged_single_input_slot0_contract"
+  },
+  "surfaces": {
+    "constructor": "snapshots and validates the exact multi-input plan bytes",
+    "addRuntimePort": "maps one stable logical ID to exactly one declared external slot and expected source",
+    "addDeferredPort": "describes an optional or required semantic port with no graph input backing",
+    "toJSON": "describes exact plan bytes, sorted logical ports and a correlation-only manifest fingerprint",
+    "inputPortStatus": "read-only per-slot input contract and actual binding status",
+    "consumerCompatibility": "read-only semantic role, fingerprint-presence and minimum-revision predicates for one candidate consumer",
+    "status": "read-only complete logical coverage, exact plan binding, registry binding and graph preflight",
+    "run": "requires current bridge status then delegates to CompiledMultiInputGraph.run, which repeats graph preflight",
+    "verifyFlat": "requires current bridge status and delegates numerical verification to CompiledMultiInputGraph.verifyFlat"
+  },
+  "required_runtime_port_policy": {
+    "all_multi_input_plan_slots_must_have_exactly_one_logical_mapping": true,
+    "all_runtime_ports_required": true,
+    "declared_role_shape_layout_revision_and_fingerprint_policy_from_plan": true,
+    "expected_source_must_match_bound_source": true,
+    "required_deferred_port_blocks_runtime_coverage": true,
+    "optional_deferred_port_does_not_block_runtime_coverage": true,
+    "exact_plan_bytes_compared_with_compiled_graph_and_input_bundle": true,
+    "registry_structural_binding_checked": true
+  },
+  "runtime_status_values": {
+    "runtime_backing_missing": "a graph input has no logical port mapping",
+    "runtime_input_unbound": "a mapped graph input has no tensor",
+    "bundle_plan_mismatch": "bundle belongs to another exact input plan",
+    "source_mismatch": "bound source differs from the manifest declaration",
+    "contract_mismatch": "graph input plan predicates reject the bound tensor or metadata",
+    "runtime_backing_current": "mapped source and graph input contract agree",
+    "deferred_no_runtime_backing": "the logical port has no executable graph input"
+  },
+  "authority": {
+    "execution_authorized_by_status": false,
+    "manifest_mutates_graph_registry_or_bundle": false,
+    "burn_remains_final_tensor_and_operator_authority": true,
+    "consumer_compatibility_authorizes_graph_execution": false,
+    "source_match_establishes_origin_authenticity": false,
+    "manifest_fingerprint": "FNV-1a for correlation only, not authentication"
+  },
+  "explicit_limits": [
+    "Source is caller-declared; origin authentication and subject binding are outside this version.",
+    "Consumer compatibility checks semantic metadata only; actual operator compatibility is decided by graph execution.",
+    "The legacy semantic manifest v1 continues to describe the separate single-input workspace path."
+  ]
+}

@@ -31,6 +31,7 @@ jobs:
           python3 -m json.tool docs/agent-input-port-routing.v1.json >/dev/null
           python3 -m json.tool docs/agent-input-port-edge-binding.v1.json >/dev/null
           python3 -m json.tool docs/semantic-ingress-manifest.v1.json >/dev/null
+          python3 -m json.tool docs/semantic-ingress-manifest.v2.json >/dev/null
           python3 -m json.tool docs/agent-semantic-lifecycle.v1.json >/dev/null
           python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
@@ -174,6 +175,9 @@ jobs:
 
       - name: Run packaged WASM artifact audit
         run: node scripts/audit_wasm_artifact.mjs pkg
+
+      - name: Run interactive multi-input ingress audit
+        run: node scripts/audit_interactive_multi_input_ingress.mjs pkg
 
       - name: Run Node host adapter audit
         run: node scripts/audit_node_host.mjs pkg

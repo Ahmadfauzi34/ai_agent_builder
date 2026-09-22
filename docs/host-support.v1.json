@@ -21,6 +21,8 @@
       "role": "verified_wasm_host_adapter",
       "module_system": "esm",
       "adapter": "node.mjs",
+      "interactive_runner": "interactive_multi_input_ingress.mjs",
+      "interactive_protocol": "JSON Lines with one response per request",
       "types": "node.d.mts",
       "initialization": "filesystem_read_plus_initSync",
       "communication": "node_adapter_to_generated_wasm_bindgen_surface",
