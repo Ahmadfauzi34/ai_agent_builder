@@ -72,8 +72,13 @@
     "routing projection never binds a consumer contract persistently",
     "routing projection never authorizes execution or selects an action"
   ],
+  "persistent_edge_binding": {
+    "contract": "agent-input-port-edge-binding.v1",
+    "bind": "bindInputPortConsumerEdge",
+    "inspect": "inputPortConsumerEdgeBinding",
+    "policy": "optional immutable provenance owned by AgentGraphBuilder; excluded from execution plan bytes and never authorizes execution"
+  },
   "future_extensions": [
-    "persistent edge consumer bindings",
     "role-aware candidate grouping",
     "multiple external input ports",
     "inter-graph semantic handoff",
