@@ -102,6 +102,11 @@
     "requirements_fingerprint": "fnv1a64 over dispatch fingerprint + executor contract + payload mode + ordered requirement descriptors",
     "fingerprint_security": "deterministic correlation only; not authentication, authorization, or cryptographic integrity"
   },
+  "serializable_request_binding": {
+    "next_contract": "burn-research.response-dispatch-request.v1",
+    "rule": "ignore, request_information, and propose_revision may bind serializable payload without execution; reverify remains runtime_handle_binding_deferred",
+    "execution_authorized": false
+  },
   "invariants": [
     "requirements projection reuses response_intent_execution_gate and cannot reopen a closed gate",
     "the projection never binds actual executor values",
