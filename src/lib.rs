@@ -46,6 +46,7 @@ pub mod runtime_resolution_evidence;
 pub mod runtime_evidence_interpretation;
 pub mod semantic_lifecycle;
 pub mod semantic_execution_context;
+pub mod semantic_ingress_manifest;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]

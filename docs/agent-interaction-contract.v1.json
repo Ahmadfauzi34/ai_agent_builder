@@ -22,7 +22,8 @@
     "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response",
     "response intent execution gate may project an authority handoff but never executes or authorizes that handoff",
     "response dispatch requirements describe machine-readable handoff inputs but bind no values and grant no authority",
-    "response dispatch request may bind serializable caller payload but never fabricates runtime handles, executes an authority, or grants authorization"
+    "response dispatch request may bind serializable caller payload but never fabricates runtime handles, executes an authority, or grants authorization",
+    "semantic ingress manifests may describe multiple logical inputs but never claim multi-input graph execution while CompiledGraph remains single-input slot-0 backed"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -166,6 +167,12 @@
       "projection": "semanticLifecycleProjection",
       "identity": "semanticLifecycleIdentity",
       "policy": "agent-declared role transitions form immutable provenance chains across graph steps; external lineage is anchored to persistent input edge binding and internal lineage to prior transition fingerprints; no numerical semantics or action authority are introduced"
+    },
+    "semantic_ingress_manifest": {
+      "capability": "semanticIngressManifestCapabilities",
+      "manifest": "SemanticIngressManifest",
+      "status": "semanticIngressManifestStatus",
+      "policy": "multiple logical ingress ports may be declared, but current CompiledGraph execution has exactly one real external input backing at slot 0; all additional ports must remain explicitly deferred and never imply execution support"
     }
   },
   "proof_provenance": {

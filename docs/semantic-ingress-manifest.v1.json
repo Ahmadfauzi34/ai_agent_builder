@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.semantic-ingress-manifest.v1",
+  "role": "multi_source_semantic_ingress_manifest_nonexecuting",
+  "purpose": "Represent multiple logical external semantic inputs such as observation, memory, objective and constraints while explicitly preserving the current single-input graph runtime boundary.",
+  "scope": {
+    "logical_ports": "multiple",
+    "runtime_backed_external_ports": 1,
+    "runtime_backed_slot": 0,
+    "data_plane": "CompiledGraph.run still accepts one WasmTensor and seeds only slot 0",
+    "execution_effect": "none"
+  },
+  "execution": {
+    "runtime_backed_external_ports": 1,
+    "runtime_backed_slot": 0,
+    "multi_input_execution": "deferred",
+    "compiler_policy": "current CompiledGraph compiler begins with only slot 0 filled",
+    "runtime_policy": "current CompiledGraph.run places the supplied WasmTensor only into slot 0"
+  },
+  "semantics": {
+    "execution_authorized": false,
+    "mutation": "manifest_object_only",
+    "decision_authority": "agent_or_caller",
+    "deferred_port_meaning": "declared semantic ingress with no executable graph input backing yet"
+  },
+  "port": {
+    "logical_port_id": "required stable lowercase ascii token",
+    "role": "agent-input-port.v1 canonical role or x- extension role",
+    "provenance": [
+      "source",
+      "revision",
+      "fingerprint"
+    ],
+    "required": "whether current runtime coverage must include this port for the manifest to report complete coverage",
+    "runtime_backing": [
+      "graph_input_slot0",
+      "deferred"
+    ]
+  },
+  "surfaces": {
+    "SemanticIngressManifest": {
+      "state_owner": "caller-owned manifest object",
+      "mutation": "manifest object only"
+    },
+    "addRuntimeBackedPort": {
+      "rule": "runtime_slot must be 0 and only one logical port may claim slot-0 backing"
+    },
+    "addDeferredPort": {
+      "rule": "declares semantic intent only and never claims executable graph backing"
+    },
+    "manifestFingerprint": {
+      "identity": "order-independent FNV-1a correlation over the declared logical port set",
+      "security": "not authentication or authorization"
+    },
+    "semanticIngressManifestStatus": {
+      "mutation": "none",
+      "workspace_read": "compares the manifest's runtime-backed port against current slot-0 semantic metadata",
+      "runtime_coverage_complete": "true only when every required manifest port has current real runtime backing"
+    }
+  },
+  "status": {
+    "runtime_backing_current": "slot-0 workspace semantic metadata exactly matches the runtime-backed declaration",
+    "runtime_backing_drifted": "slot-0 workspace semantic metadata differs from the declaration",
+    "runtime_input_unbound": "slot-0 semantic input metadata is currently unbound",
+    "deferred_no_runtime_backing": "logical ingress is declared but the graph runtime has no backing surface for it yet"
+  },
+  "identity": {
+    "manifest_fingerprint": "stable set identity for logical ingress declarations",
+    "program_identity_effect": "none",
+    "semantic_graph_identity_effect": "none until a future explicit binding contract exists"
+  },
+  "invariants": [
+    "the manifest never claims slot 1 or later is an executable external graph input",
+    "the manifest never alters CompiledGraph plan bytes",
+    "the manifest never alters Burn programIdentity",
+    "the manifest never mutates AgentWorkspace, AgentGraphBuilder or LayerRegistry",
+    "the manifest never authorizes execution",
+    "a required deferred port makes runtime_coverage_complete false",
+    "runtime coverage describes backing availability, not permission to execute",
+    "existing slot-0 input contract and semantic input port remain canonical for the real graph input"
+  ],
+  "roadmap": {
+    "current_checkpoint": "multi-source declaration and runtime-coverage truth",
+    "next_executable_boundary": "versioned multi-input graph plan/compiler/runtime contract",
+    "later": [
+      "memory_t to memory_t+1 handoff",
+      "objective and constraint runtime ports",
+      "inter-graph semantic handoff"
+    ]
+  }
+}
