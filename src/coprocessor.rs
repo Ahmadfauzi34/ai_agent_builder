@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-fn validate_tolerance(abs_tol: f64, rel_tol: f64) -> Result<(), String> {
+pub(crate) fn validate_tolerance(abs_tol: f64, rel_tol: f64) -> Result<(), String> {
     if !abs_tol.is_finite() || abs_tol < 0.0 {
         return Err(format!(
             "mathVerifyVectors: abs_tol must be finite and >= 0, got {abs_tol}"
