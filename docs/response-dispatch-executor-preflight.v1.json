@@ -72,7 +72,7 @@
   "future_extensions": [
     "external review authority adapter",
     "runtime verifier handle binding and executor preflight",
-    "runtime verifier execution adapters",
+    "additional MathProgram/direct/vector runtime verifier execution adapters",
     "execution receipt rejoin as typed evidence"
   ],
   "reverify": {
