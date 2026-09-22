@@ -90,6 +90,19 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
     Ok(unique.into_iter().collect())
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct InputPortConsumerEvaluation {
+    pub(crate) role_match: bool,
+    pub(crate) fingerprint_ok: bool,
+    pub(crate) revision_ok: bool,
+}
+
+impl InputPortConsumerEvaluation {
+    pub(crate) fn compatible(self) -> bool {
+        self.role_match && self.fingerprint_ok && self.revision_ok
+    }
+}
+
 #[wasm_bindgen]
 pub struct InputPortConsumerSpec {
     consumer_id: String,
@@ -123,6 +136,19 @@ impl InputPortConsumerSpec {
 
     pub(crate) fn snapshot_minimum_revision(&self) -> u64 {
         self.minimum_revision
+    }
+
+    pub(crate) fn evaluate_metadata(
+        &self,
+        role: &str,
+        revision: u64,
+        fingerprint_present: bool,
+    ) -> InputPortConsumerEvaluation {
+        InputPortConsumerEvaluation {
+            role_match: self.role_matches(role),
+            fingerprint_ok: !self.require_fingerprint || fingerprint_present,
+            revision_ok: self.minimum_revision == 0 || revision >= self.minimum_revision,
+        }
     }
 
     pub(crate) fn json(&self) -> String {
@@ -235,21 +261,19 @@ pub fn input_port_consumer_compatibility(
         );
     };
 
-    let role_match = consumer.role_matches(&metadata.role);
     let fingerprint_present = !metadata.fingerprint.is_empty();
-    let fingerprint_ok = !consumer.require_fingerprint || fingerprint_present;
-    let revision_ok =
-        consumer.minimum_revision == 0 || metadata.revision >= consumer.minimum_revision;
-    let compatible = role_match && fingerprint_ok && revision_ok;
+    let evaluation =
+        consumer.evaluate_metadata(&metadata.role, metadata.revision, fingerprint_present);
+    let compatible = evaluation.compatible();
 
     let mut reasons = Vec::<String>::new();
-    if !role_match {
+    if !evaluation.role_match {
         reasons.push("role_not_accepted".to_string());
     }
-    if !fingerprint_ok {
+    if !evaluation.fingerprint_ok {
         reasons.push("fingerprint_required".to_string());
     }
-    if !revision_ok {
+    if !evaluation.revision_ok {
         reasons.push("revision_too_old".to_string());
     }
 
@@ -287,9 +311,9 @@ pub fn input_port_consumer_compatibility(
         json_escape(&metadata.source),
         metadata.revision,
         bool_json(fingerprint_present),
-        bool_json(role_match),
-        bool_json(fingerprint_ok),
-        bool_json(revision_ok),
+        bool_json(evaluation.role_match),
+        bool_json(evaluation.fingerprint_ok),
+        bool_json(evaluation.revision_ok),
         string_array_json(&reasons),
     )
 }
