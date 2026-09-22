@@ -1964,6 +1964,24 @@ mod tests {
     }
 
     #[test]
+    fn graph_receipt_adapter_canonicalizes_program_identity_for_runtime_correlation() {
+        let snapshot = resolved_snapshot("intent-canonical-graph");
+        let projection =
+            projection("intent-canonical-graph", snapshot.revision, "spec-canonical-graph");
+        let receipt = semantic_graph_receipt(&projection);
+
+        let evidence =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&receipt.to_string()).unwrap();
+
+        assert_eq!(
+            evidence.graph_program_identity(),
+            Some(
+                "{\"schema\":\"burn-research.program-identity.v1\",\"plan_hex\":\"0100000000000100000001000000\",\"layer_init_fingerprints\":[\"type=01;id=1;variant=ff;flags=00;payload=\"]}"
+            )
+        );
+    }
+
+    #[test]
     fn exact_fault_rejoins_without_mutating_resolution_state() {
         let snapshot = resolved_snapshot("intent-a");
         let before = snapshot.clone();
