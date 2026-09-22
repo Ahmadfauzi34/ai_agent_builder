@@ -18,7 +18,8 @@
     "availability never bypasses operation-specific validation",
     "unknown or parameter-specific conditions remain deferred to the authoritative call boundary",
     "escape hatches remain available and are not removed by the canonical interaction layer",
-    "runtime evidence interpretation never chooses, ranks, or executes a response candidate"
+    "runtime evidence interpretation never chooses, ranks, or executes a response candidate",
+    "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -231,5 +232,22 @@
     "ranking": "none",
     "mutation": "none",
     "escape_hatch": "existing Resolution review/revision APIs remain independently callable"
+  },
+  "agent_response_intent": {
+    "contract": "burn-research.agent-response-intent.v1",
+    "create": "create_agent_response_intent",
+    "preflight": "preflight_response_intent",
+    "role": "explicit caller/agent selection encoded as immutable nonexecuting value object",
+    "selection_authority": "caller/agent",
+    "execution_authority": "none",
+    "mutation": "none",
+    "binds": [
+      "recorded evidence fingerprint",
+      "entry index",
+      "selected response action",
+      "candidate target boundary",
+      "candidate handoff"
+    ],
+    "escape_hatch": "independent Resolution review/revision APIs remain callable outside this evidence-derived intent path"
   }
 }

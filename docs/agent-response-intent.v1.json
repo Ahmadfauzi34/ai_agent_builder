@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.agent-response-intent.v1",
+  "role": "explicit_agent_selection_nonexecuting",
+  "state_ownership": "caller_value_object",
+  "purpose": "Represent an explicit caller/agent selection of one currently available runtime-evidence response candidate without executing it or mutating Resolution state.",
+  "creation": {
+    "source": "interpret_recorded_evidence over a recorded exact-subject ResolutionEvidenceInbox entry",
+    "requires": [
+      "selected response candidate is currently available in the evidence interpretation projection",
+      "selector is non-empty and bounded",
+      "exact evidence fingerprint is captured at selection time"
+    ],
+    "unavailable_candidate": "fails closed; independent review/revision escape hatches remain available outside this evidence-derived intent path"
+  },
+  "identity": {
+    "evidence_fingerprint": "fnv1a64 over exact RuntimeEvidence.to_json bytes",
+    "response_intent_fingerprint": "fnv1a64 over selector + evidence fingerprint + selected action + target boundary + handoff + entry index",
+    "fingerprint_security": "deterministic correlation only; not a cryptographic signature"
+  },
+  "fields": [
+    "selector",
+    "entry_index",
+    "evidence_kind",
+    "evidence_outcome",
+    "evidence_fingerprint",
+    "selected_action",
+    "target_boundary",
+    "handoff",
+    "response_intent_fingerprint"
+  ],
+  "authority": {
+    "selection": "explicit caller/agent input",
+    "candidate_availability": "runtime-evidence interpretation projection",
+    "execution": "none",
+    "resolution_mutation": "none"
+  },
+  "preflight": {
+    "surface": "preflight_response_intent",
+    "checks": [
+      "entry still exists",
+      "evidence fingerprint still matches",
+      "selected action is still available from the current interpretation projection",
+      "candidate target boundary/handoff still match the intent snapshot"
+    ],
+    "effect": "read-only",
+    "ready": "means the intent remains structurally admissible for a future execution adapter; it does not authorize or execute anything"
+  },
+  "mutation_policy": {
+    "inbox": "none",
+    "resolution": "none",
+    "revision": "none",
+    "diagnostic": "none",
+    "verifier": "none",
+    "runtime": "none"
+  },
+  "invariants": [
+    "ResponseIntent is immutable after construction",
+    "ResponseIntent never opens a revision",
+    "ResponseIntent never creates a ResolutionDiagnostic",
+    "ResponseIntent never invokes a verifier",
+    "ResponseIntent never authorizes execution",
+    "selection is explicit caller/agent input rather than interpreter choice",
+    "an unavailable evidence-derived candidate cannot be encoded as ResponseIntent",
+    "independent Resolution review/revision APIs remain escape hatches outside this evidence-derived path",
+    "preflight only validates current correspondence and does not execute the intent"
+  ]
+}

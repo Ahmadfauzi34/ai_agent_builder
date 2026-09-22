@@ -79,6 +79,14 @@
     "reverify never invokes a verifier automatically",
     "passed evidence does not become a prohibition against independent revision APIs",
     "failed evidence does not automatically imply revision",
-    "transport/source authority labels remain unchanged"
-  ]
+    "transport/source authority labels remain unchanged",
+    "candidate availability and explicit caller selection remain separate: interpretation proposes possibilities, ResponseIntent records the caller/agent choice"
+  ],
+  "selection_handoff": {
+    "next_contract": "burn-research.agent-response-intent.v1",
+    "create": "create_agent_response_intent",
+    "rule": "only an available evidence-derived candidate can become ResponseIntent; the interpreter itself still selects nothing",
+    "preflight": "preflight_response_intent",
+    "execution": "outside this contract"
+  }
 }
