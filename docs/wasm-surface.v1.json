@@ -68,6 +68,13 @@
       "minimumRevision",
       "requireFingerprint"
     ],
+    "SemanticLifecycleTransitionSpec": [
+      "constructor",
+      "describe",
+      "expectedInputRoles",
+      "outputRole",
+      "transitionId"
+    ],
     "AgentWorkspace": [
       "constructor",
       "forgetLayer",
@@ -582,6 +589,7 @@
     "agentLayoutContract",
     "agentLayoutContractVersion",
     "agentSpecLayout",
+    "bindSemanticLifecycleTransition",
     "comparisonCapabilities",
     "describeGraph",
     "describeWorkspace",
@@ -639,6 +647,10 @@
     "resolutionRuntimeBridgeCapabilities",
     "runtimeResolutionEvidenceCapabilities",
     "semanticGraphIdentity",
+    "semanticLifecycleCapabilities",
+    "semanticLifecycleIdentity",
+    "semanticLifecycleTrace",
+    "semanticLifecycleTransition",
     "setGraphParametersFlat",
     "statisticsCapabilities",
     "tensorTransformCapabilities",
