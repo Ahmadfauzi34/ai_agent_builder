@@ -190,7 +190,7 @@ pub fn execute_revision_dispatch_request(
     let postcondition_ok = revision_id == expected_revision_id
         && after_revision_count == before_revision_count + 1
         && committed_revision.is_some_and(|revision| {
-            revision.revision_key == *revision_key
+            revision.revision_key.as_str() == revision_key.as_str()
                 && revision.parent_revision_id.as_deref() == parent_revision_id.as_deref()
         });
 
