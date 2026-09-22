@@ -911,6 +911,20 @@ pub(crate) struct AgentGraphSemanticEdgeBinding {
     pub(crate) binding_fingerprint: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AgentGraphInputOrigin {
+    ExternalInput,
+    StepOutput { step_index: u32 },
+    Unresolved,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphInputOriginRecord {
+    pub(crate) position: &'static str,
+    pub(crate) slot: u8,
+    pub(crate) origin: AgentGraphInputOrigin,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct AgentGraphSemanticInputLineage {
     pub(crate) position: String,
@@ -1021,6 +1035,76 @@ impl AgentGraphBuilder {
 
     pub(crate) fn introspection_output_slot(&self) -> Option<u8> {
         self.output_slot
+    }
+
+    pub(crate) fn input_origins_for_step(
+        &self,
+        step_index: u32,
+    ) -> Result<Vec<AgentGraphInputOriginRecord>, String> {
+        let index = usize::try_from(step_index)
+            .map_err(|_| "AgentGraphBuilder.inputOriginsForStep: step index conversion failed".to_string())?;
+        let Some(step) = self.steps.get(index).copied() else {
+            return Err(format!(
+                "AgentGraphBuilder.inputOriginsForStep: step index {step_index} is outside num_steps {}",
+                self.steps.len()
+            ));
+        };
+
+        let origin_for_slot = |slot: u8| {
+            self.steps[..index]
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, prior)| prior.out_slot == slot)
+                .map(|(writer_index, _)| AgentGraphInputOrigin::StepOutput {
+                    step_index: writer_index as u32,
+                })
+                .unwrap_or_else(|| {
+                    if slot == 0 {
+                        AgentGraphInputOrigin::ExternalInput
+                    } else {
+                        AgentGraphInputOrigin::Unresolved
+                    }
+                })
+        };
+
+        if step.arity == 1 {
+            Ok(vec![AgentGraphInputOriginRecord {
+                position: "input",
+                slot: step.in_slot,
+                origin: origin_for_slot(step.in_slot),
+            }])
+        } else {
+            Ok(vec![
+                AgentGraphInputOriginRecord {
+                    position: "left",
+                    slot: step.in_slot,
+                    origin: origin_for_slot(step.in_slot),
+                },
+                AgentGraphInputOriginRecord {
+                    position: "right",
+                    slot: step.in_slot2,
+                    origin: origin_for_slot(step.in_slot2),
+                },
+            ])
+        }
+    }
+
+    pub(crate) fn external_input_positions_for_step(
+        &self,
+        step_index: u32,
+    ) -> Result<Vec<&'static str>, String> {
+        Ok(self
+            .input_origins_for_step(step_index)?
+            .into_iter()
+            .filter_map(|record| {
+                if record.origin == AgentGraphInputOrigin::ExternalInput {
+                    Some(record.position)
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 
     pub(crate) fn semantic_edge_binding(
