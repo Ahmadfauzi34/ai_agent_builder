@@ -8,6 +8,12 @@
     "intent": "burn-research.agent-response-intent.v1",
     "requirements": "burn-research.response-dispatch-requirements.v1"
   },
+  "semantics": {
+    "execution_authorized": false,
+    "mutation": "none",
+    "execution": "none",
+    "runtime_handle_binding": "deferred for reverify"
+  },
   "bindability": {
     "ignore": "serializable_payload_bindable",
     "request_information": "serializable_payload_bindable",
