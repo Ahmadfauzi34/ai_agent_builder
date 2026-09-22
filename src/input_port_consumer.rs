@@ -100,12 +100,12 @@ pub struct InputPortConsumerSpec {
 }
 
 impl InputPortConsumerSpec {
-    fn role_matches(&self, role: &str) -> bool {
+    pub(crate) fn role_matches(&self, role: &str) -> bool {
         self.accepted_roles.iter().any(|value| value == role)
             || (self.allow_extension_roles && role.starts_with("x-"))
     }
 
-    fn json(&self) -> String {
+    pub(crate) fn json(&self) -> String {
         format!(
             concat!(
                 "{{",
@@ -124,6 +124,35 @@ impl InputPortConsumerSpec {
             bool_json(self.require_fingerprint),
             self.minimum_revision,
         )
+    }
+
+    pub(crate) fn accepted_roles_slice(&self) -> &[String] {
+        &self.accepted_roles
+    }
+
+    pub(crate) fn consumer_id_ref(&self) -> &str {
+        &self.consumer_id
+    }
+
+    pub(crate) fn allow_extension_roles_value(&self) -> bool {
+        self.allow_extension_roles
+    }
+
+    pub(crate) fn require_fingerprint_value(&self) -> bool {
+        self.require_fingerprint
+    }
+
+    pub(crate) fn minimum_revision_value(&self) -> u64 {
+        self.minimum_revision
+    }
+
+    pub(crate) fn is_compatible_with_workspace(&self, workspace: &AgentWorkspace) -> Option<bool> {
+        let metadata = workspace.input_port_metadata()?;
+        let role_match = self.role_matches(&metadata.role);
+        let fingerprint_present = !metadata.fingerprint.is_empty();
+        let fingerprint_ok = !self.require_fingerprint || fingerprint_present;
+        let revision_ok = self.minimum_revision == 0 || metadata.revision >= self.minimum_revision;
+        Some(role_match && fingerprint_ok && revision_ok)
     }
 }
 

@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.input-port-edge-binding.v1",
+  "role": "persistent_semantic_graph_provenance",
+  "scope": {
+    "external_input_slot": 0,
+    "state_owner": "AgentGraphBuilder",
+    "execution_plan_effect": "none",
+    "numerical_effect": "none",
+    "decision_authority": "agent"
+  },
+  "binding": {
+    "edge_identity": "exact AgentGraphBuilder step_index",
+    "eligibility": "step must consume external slot 0 and caller-selected InputPortConsumerSpec must be compatible at bind time",
+    "immutability": "first successful binding wins; identical rebinding is idempotent and conflicting rebinding fails closed",
+    "input_snapshot": [
+      "role",
+      "source",
+      "revision",
+      "fingerprint"
+    ],
+    "consumer_snapshot": [
+      "consumer_id",
+      "accepted_roles",
+      "allow_extension_roles",
+      "require_fingerprint",
+      "minimum_revision"
+    ],
+    "clear_surface": "none; changing semantic meaning requires a new graph builder or graph revision"
+  },
+  "identity": {
+    "surface": "semanticGraphIdentity",
+    "schema_id": "burn-research.semantic-graph-identity.v1",
+    "includes": [
+      "num_slots",
+      "ordered topology steps",
+      "configured output slot",
+      "ordered semantic edge binding fingerprints"
+    ],
+    "explicit_non_identity": "Burn programIdentity remains based on executable plan bytes and is not changed by semantic edge binding"
+  },
+  "drift": {
+    "inspection": "inputPortConsumerEdgeBinding",
+    "states": [
+      "current",
+      "drifted_compatible",
+      "drifted_incompatible",
+      "input_unbound"
+    ],
+    "policy": "drift is reported; binding is never silently rewritten"
+  },
+  "surfaces": {
+    "inputPortEdgeBindingCapabilities": {
+      "mutation": "none"
+    },
+    "bindInputPortConsumerEdge": {
+      "mutation": "AgentGraphBuilder semantic metadata only",
+      "returns": "true for first binding, false for identical idempotent binding"
+    },
+    "inputPortConsumerEdgeBinding": {
+      "mutation": "none",
+      "returns": "persistent binding plus current drift/compatibility status"
+    },
+    "semanticGraphIdentity": {
+      "mutation": "none",
+      "returns": "semantic topology/provenance fingerprint separate from executable programIdentity"
+    }
+  },
+  "invariants": [
+    "binding never changes AgentGraphBuilder executable plan bytes",
+    "binding never mutates AgentWorkspace or LayerRegistry",
+    "binding never authorizes execution",
+    "binding meaning is caller-selected and never inferred from numerical layer type",
+    "conflicting rebinding fails without mutating the existing binding",
+    "input provenance drift is observable but does not rewrite history"
+  ]
+}

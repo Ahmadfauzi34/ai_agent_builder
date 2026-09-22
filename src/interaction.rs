@@ -175,6 +175,7 @@ pub fn interaction_capabilities() -> String {
         "\"input_port\":\"inputPortCapabilities\",",
         "\"input_port_consumer\":\"inputPortConsumerCapabilities\",",
         "\"input_port_routing\":\"inputPortRoutingCapabilities\",",
+        "\"input_port_edge_binding\":\"inputPortEdgeBindingCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",

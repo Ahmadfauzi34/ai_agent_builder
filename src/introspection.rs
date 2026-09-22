@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
+use crate::input_port_edge_binding::{binding_record_json, semantic_graph_identity_json};
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
@@ -415,7 +416,8 @@ pub fn describe_graph(
                         "\"metadata_type_matches_builder\":{},",
                         "\"registry_present\":{},",
                         "\"registry_fingerprint\":{},",
-                        "\"layout_lookup\":{}",
+                        "\"layout_lookup\":{},",
+                        "\"semantic_input_edge_binding\":{}",
                         "}}"
                     ),
                     index,
@@ -436,6 +438,10 @@ pub fn describe_graph(
                         .unwrap_or_else(|| "null".to_string()),
                     constructor
                         .map(|name| format!("\"agentLayoutContract.constructors.{}\"", json_escape(name)))
+                        .unwrap_or_else(|| "null".to_string()),
+                    builder
+                        .semantic_edge_binding(index as u32)
+                        .map(binding_record_json)
                         .unwrap_or_else(|| "null".to_string()),
                 )
             },
@@ -467,6 +473,7 @@ pub fn describe_graph(
             "\"external_input_port\":{},",
             "\"runtime_subject\":{},",
             "\"runtime_program_bindings\":{{\"count\":{},\"identity_policy\":\"exact_program_identity\",\"claim_policy\":\"no_precompile_identity_inference\"}},",
+            "\"semantic_graph_identity\":{},",
             "\"num_steps\":{},",
             "\"configured_output_slot\":{},",
             "\"written_slots\":[{}],",
@@ -478,6 +485,7 @@ pub fn describe_graph(
         input_port_json(workspace),
         runtime_subject_binding_json(workspace),
         workspace.runtime_program_binding_count(),
+        semantic_graph_identity_json(builder),
         builder.num_steps(),
         builder
             .introspection_output_slot()

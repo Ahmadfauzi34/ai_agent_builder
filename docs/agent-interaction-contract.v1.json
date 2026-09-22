@@ -145,6 +145,13 @@
       "valid_actions_overlay": "interactionValidActionsForInputConsumer",
       "edge_projection": "inputPortConsumerEdgeCompatibility",
       "policy": "semantic routing is annotation-only; the full canonical interactionValidActions envelope is preserved, candidates remain visible, and graph-step semantics are never inferred from numerical layer type"
+    },
+    "edge_binding": {
+      "capability": "inputPortEdgeBindingCapabilities",
+      "bind": "bindInputPortConsumerEdge",
+      "inspection": "inputPortConsumerEdgeBinding",
+      "semantic_identity": "semanticGraphIdentity",
+      "policy": "agent-selected consumer semantics persist on exact graph steps as immutable provenance; binding never changes Burn executable plan identity or authorizes execution"
     }
   },
   "proof_provenance": {
