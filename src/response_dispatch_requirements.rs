@@ -533,6 +533,124 @@ mod tests {
     }
 
     #[test]
+    fn reverify_requirement_matrix_matches_all_typed_verifier_receipts() {
+        let (resolution, projection, _) = fixture(false);
+
+        let cases = vec![
+            (
+                RuntimeEvidence::bound_math_program_verifier_receipt(
+                    &projection,
+                    2,
+                    "math-program",
+                    "{\"schema\":\"burn-research.math-program-identity.v1\",\"plan\":\"math\"}",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "MathProgram.verifyFlat",
+                vec!["math_program", "program_inputs", "candidate", "abs_tol", "rel_tol"],
+            ),
+            (
+                RuntimeEvidence::bound_direct_math_verifier_receipt(
+                    &projection,
+                    3,
+                    "numeric.add",
+                    "direct-add",
+                    "{\"schema\":\"burn-research.math-program-identity.v1\",\"plan\":\"direct\"}",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "DirectMath.verifyAgainstMathProgramV9",
+                vec![
+                    "canonical_operation",
+                    "operation_inputs",
+                    "u32_params",
+                    "f32_params",
+                    "abs_tol",
+                    "rel_tol",
+                ],
+            ),
+            (
+                RuntimeEvidence::bound_vector_verifier_receipt(
+                    &projection,
+                    4,
+                    "vector",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "mathVerifyVectors",
+                vec!["reference", "candidate", "abs_tol", "rel_tol"],
+            ),
+        ];
+
+        for (evidence, contract, required_names) in cases {
+            let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
+            assert!(inbox.record(evidence).unwrap());
+            let intent = create_agent_response_intent(
+                &inbox,
+                0,
+                EvidenceResponseAction::Reverify,
+                "agent",
+            )
+            .unwrap();
+
+            let projection = response_dispatch_requirements(&inbox, &intent);
+            assert!(projection.ready);
+            assert_eq!(projection.executor_contract.as_deref(), Some(contract));
+            assert_eq!(projection.operation.as_deref(), Some(contract));
+            assert!(!projection.execution_authorized);
+            for name in required_names {
+                assert!(
+                    projection
+                        .requirements
+                        .iter()
+                        .any(|item| item.name == name && item.required),
+                    "missing required requirement {name} for {contract}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn request_information_exposes_structured_review_requirements() {
+        let (_, _, inbox) = fixture(false);
+        let intent = create_agent_response_intent(
+            &inbox,
+            0,
+            EvidenceResponseAction::RequestInformation,
+            "agent",
+        )
+        .unwrap();
+
+        let projection = response_dispatch_requirements(&inbox, &intent);
+        assert!(projection.ready);
+        assert_eq!(
+            projection.executor_contract.as_deref(),
+            Some("external_resolution_review")
+        );
+        assert_eq!(projection.operation.as_deref(), Some("request_information"));
+        assert_eq!(
+            projection.payload_mode.as_deref(),
+            Some("caller_structured_payload")
+        );
+        assert!(projection
+            .requirements
+            .iter()
+            .any(|item| item.name == "information_request" && item.required));
+        assert!(projection
+            .requirements
+            .iter()
+            .any(|item| item.name == "actor" && !item.required));
+        assert!(projection
+            .requirements
+            .iter()
+            .any(|item| item.name == "diagnostic_materialization" && !item.required));
+        assert!(!projection.execution_authorized);
+    }
+
+    #[test]
     fn propose_revision_exposes_exact_structured_caller_payload() {
         let (_, _, inbox) = fixture(false);
         let intent = create_agent_response_intent(
