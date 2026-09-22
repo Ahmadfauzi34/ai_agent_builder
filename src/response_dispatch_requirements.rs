@@ -221,7 +221,12 @@ fn reverify_requirements(
             "DirectMath.verifyAgainstMathProgramV9",
             "typed_operation_verifier_inputs",
             vec![
-                requirement("canonical_operation", true, "operation_id", "response_intent"),
+                requirement(
+                    "canonical_operation",
+                    true,
+                    "operation_id",
+                    "caller_runtime_context",
+                ),
                 requirement("operation_inputs", true, "runtime_tensor_set", "caller"),
                 requirement("u32_params", true, "u32_parameter_buffer", "caller"),
                 requirement("f32_params", true, "f32_parameter_buffer", "caller"),
