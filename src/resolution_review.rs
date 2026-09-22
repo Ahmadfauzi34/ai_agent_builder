@@ -284,7 +284,7 @@ enum TerminalKind {
     Invalid,
 }
 
-fn validate_actor(actor: impl Into<String>) -> Result<String, String> {
+pub(crate) fn validate_actor(actor: impl Into<String>) -> Result<String, String> {
     let actor = actor.into();
     if actor.trim().is_empty() {
         return Err("ResolutionReviewSession: actor must not be empty".to_string());
