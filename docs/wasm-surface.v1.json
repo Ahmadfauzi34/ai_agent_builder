@@ -589,6 +589,7 @@
       "transpose"
     ],
     "CompiledMultiInputGraph": [
+      "constructor",
       "inputPlanV1",
       "preflight",
       "programIdentity",
