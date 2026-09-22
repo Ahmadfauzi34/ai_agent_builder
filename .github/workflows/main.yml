@@ -29,6 +29,7 @@ jobs:
           python3 -m json.tool docs/agent-input-port-consumer.v1.json >/dev/null
           python3 -m json.tool docs/agent-input-port-routing.v1.json >/dev/null
           python3 -m json.tool docs/agent-input-port-edge-binding.v1.json >/dev/null
+          python3 -m json.tool docs/semantic-ingress-manifest.v1.json >/dev/null
           python3 -m json.tool docs/agent-semantic-lifecycle.v1.json >/dev/null
           python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
