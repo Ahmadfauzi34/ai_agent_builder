@@ -895,11 +895,28 @@ struct AgentGraphStep {
     out_slot: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphSemanticEdgeBinding {
+    pub(crate) step_index: u32,
+    pub(crate) external_input_positions: Vec<String>,
+    pub(crate) consumer_id: String,
+    pub(crate) accepted_roles: Vec<String>,
+    pub(crate) allow_extension_roles: bool,
+    pub(crate) require_fingerprint: bool,
+    pub(crate) minimum_revision: u64,
+    pub(crate) bound_role: String,
+    pub(crate) bound_source: String,
+    pub(crate) bound_revision: u64,
+    pub(crate) bound_fingerprint: String,
+    pub(crate) binding_fingerprint: String,
+}
+
 #[wasm_bindgen]
 pub struct AgentGraphBuilder {
     num_slots: u32,
     steps: Vec<AgentGraphStep>,
     output_slot: Option<u8>,
+    semantic_edge_bindings: Vec<AgentGraphSemanticEdgeBinding>,
 }
 
 impl AgentGraphBuilder {
@@ -984,6 +1001,53 @@ impl AgentGraphBuilder {
     pub(crate) fn introspection_output_slot(&self) -> Option<u8> {
         self.output_slot
     }
+
+    pub(crate) fn semantic_edge_binding(
+        &self,
+        step_index: u32,
+    ) -> Option<&AgentGraphSemanticEdgeBinding> {
+        self.semantic_edge_bindings
+            .iter()
+            .find(|binding| binding.step_index == step_index)
+    }
+
+    pub(crate) fn semantic_edge_bindings(&self) -> &[AgentGraphSemanticEdgeBinding] {
+        &self.semantic_edge_bindings
+    }
+
+    pub(crate) fn bind_semantic_edge(
+        &mut self,
+        binding: AgentGraphSemanticEdgeBinding,
+    ) -> Result<bool, String> {
+        let index = usize::try_from(binding.step_index)
+            .map_err(|_| "AgentGraphBuilder.bindSemanticEdge: step index conversion failed".to_string())?;
+        if index >= self.steps.len() {
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticEdge: step index {} is outside num_steps {}",
+                binding.step_index,
+                self.steps.len()
+            ));
+        }
+
+        if let Some(existing) = self
+            .semantic_edge_bindings
+            .iter()
+            .find(|existing| existing.step_index == binding.step_index)
+        {
+            if existing == &binding {
+                return Ok(false);
+            }
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticEdge: step {} already has a different immutable semantic binding",
+                binding.step_index
+            ));
+        }
+
+        self.semantic_edge_bindings.push(binding);
+        self.semantic_edge_bindings
+            .sort_by_key(|binding| binding.step_index);
+        Ok(true)
+    }
 }
 
 #[wasm_bindgen]
@@ -999,6 +1063,7 @@ impl AgentGraphBuilder {
             num_slots,
             steps: Vec::new(),
             output_slot: None,
+            semantic_edge_bindings: Vec::new(),
         })
     }
 
