@@ -152,6 +152,15 @@
       "inspection": "inputPortConsumerEdgeBinding",
       "semantic_identity": "semanticGraphIdentity",
       "policy": "agent-selected consumer semantics persist on exact graph steps as immutable provenance; binding never changes Burn executable plan identity or authorizes execution"
+    },
+    "semantic_lifecycle": {
+      "capability": "semanticLifecycleCapabilities",
+      "spec": "SemanticLifecycleTransitionSpec",
+      "bind": "bindSemanticLifecycleTransition",
+      "inspection": "semanticLifecycleTransition",
+      "trace": "semanticLifecycleTrace",
+      "identity": "semanticLifecycleIdentity",
+      "policy": "agent-declared semantic role transitions persist as immutable provenance over topology-derived input origins; lifecycle state never changes executable plan identity, semanticGraphIdentity, or execution authority"
     }
   },
   "proof_provenance": {
