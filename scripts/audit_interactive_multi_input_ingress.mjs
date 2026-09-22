@@ -1,5 +1,5 @@
 import path from 'node:path';
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 
 const packageDir = path.resolve(process.argv[2] ?? 'pkg');
 const requests = [
@@ -50,4 +50,16 @@ assert(responses[8].ok && JSON.stringify(responses[8].result.values) === '[4,6]'
 assert(responses[8].result.ingress.ready === true, 'ready ingress report missing');
 assert(responses[9].result.reference.verification.passed === true, 'reference verification failed');
 assert(responses[10].result.closed === true, 'session did not close');
+const closeWithoutEof = await new Promise((resolve, reject) => {
+  const child = spawn(process.execPath, [path.join(packageDir, 'interactive_multi_input_ingress.mjs')], {stdio: ['pipe', 'pipe', 'pipe']});
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', chunk => { stdout += chunk; });
+  child.stderr.on('data', chunk => { stderr += chunk; });
+  child.on('error', reject);
+  const timeout = setTimeout(() => { child.kill(); reject(new Error('close waited for stdin EOF')); }, 5000);
+  child.on('close', code => { clearTimeout(timeout); resolve({code, stdout, stderr}); });
+  child.stdin.write('{"op":"close","request_id":"without-eof"}\n');
+});
+assert(closeWithoutEof.code === 0 && JSON.parse(closeWithoutEof.stdout.trim()).result.closed, `close without EOF failed: ${closeWithoutEof.stderr}`);
 console.log(JSON.stringify({verdict:'PASS',protocol:'JSON Lines',rejected_source:responses[3].result.status.ports[1].status,reference:responses[8].result.values,verified:responses[9].result.reference.verification.passed}));

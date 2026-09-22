@@ -164,4 +164,5 @@ for await (const line of input) {
   }
   if (command?.op === 'close') break;
 }
+input.close();
 releaseSession(session);
