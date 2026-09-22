@@ -111,7 +111,7 @@ fn stored_consumer_compatible(
     Some(role_match && fingerprint_ok && revision_ok)
 }
 
-fn binding_json(binding: &AgentGraphSemanticEdgeBinding) -> String {
+pub(crate) fn binding_record_json(binding: &AgentGraphSemanticEdgeBinding) -> String {
     format!(
         concat!(
             "{{",
@@ -321,7 +321,7 @@ pub fn input_port_consumer_edge_binding(
             .map(bool_json)
             .unwrap_or("null"),
         bool_json(snapshot_match),
-        binding_json(binding),
+        binding_record_json(binding),
         semantic_graph_identity_json(builder),
     ))
 }
