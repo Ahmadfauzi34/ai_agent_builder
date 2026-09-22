@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.response-dispatch-executor-preflight.v1",
+  "role": "executor_acceptance_preflight_nonexecuting",
+  "purpose": "Validate whether a bound response dispatch request is structurally acceptable to its destination authority without invoking that authority or granting execution permission.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1",
+    "request": "burn-research.response-dispatch-request.v1",
+    "authority_context": "provided only for authority classes modeled locally"
+  },
+  "semantics": {
+    "execution_authorized": false,
+    "execution": "none",
+    "mutation": "none",
+    "request_preflight": "must pass before authority-specific checks run",
+    "executor_ready": "means the local preflight can prove the modeled destination authority would accept the request shape/context; it is not permission to execute"
+  },
+  "routes": {
+    "ignore": {
+      "status": "ready_noop",
+      "authority_context": "none",
+      "preflight": "no-op route requires no executor state"
+    },
+    "request_information": {
+      "status": "deferred:external_resolution_review_authority",
+      "authority_context": "external authority is not modeled in this crate",
+      "executor_ready": false
+    },
+    "propose_revision": {
+      "generic_status": "deferred:resolution_revision_chain_context_required",
+      "typed_preflight": "preflight_revision_dispatch_executor",
+      "method": "clone ResolutionRevisionChain and call open_revision on the clone",
+      "executor_ready": "true only when clone acceptance succeeds and original chain snapshot is unchanged"
+    },
+    "reverify": {
+      "status": "not representable as ResponseDispatchRequest v1",
+      "reason": "runtime handle binding remains deferred upstream in response-dispatch-request.v1"
+    }
+  },
+  "surfaces": {
+    "response_dispatch_executor_preflight_capabilities": "returns this embedded contract",
+    "response_dispatch_executor_preflight": "generic request + route preflight; never mutates authority state",
+    "preflight_revision_dispatch_executor": "revision authority preflight using a cloned ResolutionRevisionChain"
+  },
+  "output": {
+    "request_ready": "upstream dispatch request still matches current inbox/intent projections",
+    "executor_ready": "authority-specific acceptance preflight succeeded where locally modeled",
+    "status": "stable machine-readable state",
+    "authority": "destination authority from the request",
+    "operation": "routed operation from the request",
+    "executor_contract": "destination executor contract",
+    "request_fingerprint": "identity of the bound dispatch request being checked",
+    "authority_context": "which concrete authority context was or was not available",
+    "simulated_effect": "nonexecuting description of what the cloned/no-op preflight would accept"
+  },
+  "invariants": [
+    "request preflight must pass before executor-specific checks",
+    "executor_ready never implies execution_authorized",
+    "no verifier is invoked",
+    "no external review is invoked",
+    "no revision is opened on the caller-owned chain",
+    "revision acceptance is simulated only on a clone",
+    "a stale request cannot reach authority-specific preflight",
+    "external authority absence remains explicit instead of guessed",
+    "runtime reverify remains deferred until real handle binding exists"
+  ],
+  "future_extensions": [
+    "external review authority adapter",
+    "runtime verifier handle binding and executor preflight",
+    "explicit executor adapters that consume ready requests",
+    "execution receipts correlated to request_fingerprint"
+  ]
+}

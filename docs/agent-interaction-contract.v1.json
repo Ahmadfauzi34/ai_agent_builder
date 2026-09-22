@@ -288,5 +288,15 @@
     "reverify_policy": "runtime_handle_binding_deferred; graph/program/tensor handles are never represented by opaque caller strings",
     "execution_authorized": false,
     "mutation": "none"
+  },
+  "response_dispatch_executor_preflight": {
+    "contract": "burn-research.response-dispatch-executor-preflight.v1",
+    "generic_preflight": "response_dispatch_executor_preflight",
+    "revision_preflight": "preflight_revision_dispatch_executor",
+    "role": "prove modeled destination authority acceptance without executing the request",
+    "external_review_policy": "deferred because the external review authority is not modeled locally",
+    "reverify_policy": "deferred upstream until real runtime handles are bound",
+    "execution_authorized": false,
+    "mutation": "none"
   }
 }
