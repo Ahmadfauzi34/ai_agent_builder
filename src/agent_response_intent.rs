@@ -342,7 +342,7 @@ pub fn preflight_response_intent(
 mod tests {
     use super::{
         agent_response_intent_capabilities, create_agent_response_intent,
-        preflight_response_intent,
+        preflight_response_intent, MAX_SELECTOR_BYTES,
     };
     use crate::resolution::ResolutionWorkflow;
     use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
@@ -501,6 +501,40 @@ mod tests {
             first.response_intent_fingerprint(),
             revision.response_intent_fingerprint()
         );
+    }
+
+    #[test]
+    fn preflight_fails_closed_when_intent_snapshot_is_tampered() {
+        let resolution = resolved_snapshot("intent-a");
+        let projection = projection("intent-a", resolution.revision, "spec-a");
+        let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
+
+        let failed = RuntimeEvidence::bound_graph_verifier_receipt(
+            &projection,
+            1,
+            "failed",
+            "{\"schema\":\"burn-research.program-identity.v1\",\"plan\":\"x\"}",
+            false,
+            "mismatch",
+        )
+        .unwrap();
+        inbox.record(failed).unwrap();
+
+        let mut intent = create_agent_response_intent(
+            &inbox,
+            0,
+            EvidenceResponseAction::Reverify,
+            "agent-a",
+        )
+        .unwrap();
+        intent.evidence_fingerprint = "fnv1a64:tampered".to_string();
+
+        let preflight = preflight_response_intent(&inbox, &intent);
+        assert!(!preflight.ready);
+        assert_eq!(preflight.status, "evidence_fingerprint_mismatch");
+        assert!(preflight.entry_exists);
+        assert!(!preflight.evidence_matches);
+        assert!(!preflight.execution_authorized);
     }
 
     #[test]
