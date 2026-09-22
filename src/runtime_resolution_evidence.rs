@@ -4,6 +4,7 @@ use crate::authorization::{AuthorizationPolicy, AuthorizationSnapshot};
 use crate::effective_spec::ApprovedEffectiveSpec;
 use crate::resolution::ResolutionSnapshot;
 use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
+use crate::workspace::AgentWorkspace;
 
 const RUNTIME_RESOLUTION_EVIDENCE_V1: &str =
     include_str!("../docs/runtime-resolution-evidence.v1.json");
@@ -458,6 +459,15 @@ impl RuntimeEvidence {
         self.payload.outcome()
     }
 
+    pub(crate) fn graph_program_identity(&self) -> Option<&str> {
+        match &self.payload {
+            RuntimeEvidencePayload::GraphVerifierReceipt {
+                program_identity, ..
+            } => Some(program_identity.as_str()),
+            _ => None,
+        }
+    }
+
     #[cfg(not(target_arch = "wasm32"))]
     fn parse_json_object(
         raw: &str,
@@ -521,6 +531,47 @@ impl RuntimeEvidence {
             ));
         }
         Ok(())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn canonical_graph_program_identity_json(
+        value: &serde_json::Value,
+        context: &str,
+    ) -> Result<String, String> {
+        Self::require_exact_string(
+            value,
+            "schema",
+            "burn-research.program-identity.v1",
+            context,
+        )?;
+        let plan_hex = Self::require_string(value, "plan_hex", context)?;
+        let fingerprints = value
+            .get("layer_init_fingerprints")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                format!("{context}: program_identity.layer_init_fingerprints must be an array")
+            })?;
+        let fingerprints = fingerprints
+            .iter()
+            .enumerate()
+            .map(|(index, fingerprint)| {
+                fingerprint
+                    .as_str()
+                    .map(|fingerprint| format!("\"{}\"", json_escape(fingerprint)))
+                    .ok_or_else(|| {
+                        format!(
+                            "{context}: program_identity.layer_init_fingerprints[{index}] must be a string"
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, String>>()?
+            .join(",");
+
+        Ok(format!(
+            "{{\"schema\":\"burn-research.program-identity.v1\",\"plan_hex\":\"{}\",\"layer_init_fingerprints\":[{}]}}",
+            json_escape(plan_hex),
+            fingerprints,
+        ))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -652,6 +703,8 @@ impl RuntimeEvidence {
             "burn-research.program-identity.v1",
             CONTEXT,
         )?;
+        let canonical_program_identity =
+            Self::canonical_graph_program_identity_json(program_identity, CONTEXT)?;
         let result = receipt
             .get("result")
             .filter(|value| value.is_object())
@@ -666,7 +719,7 @@ impl RuntimeEvidence {
                 subject,
                 receipt_id,
                 label,
-                program_identity.to_string(),
+                canonical_program_identity.clone(),
                 passed,
                 result.to_string(),
             ),
@@ -821,7 +874,7 @@ impl RuntimeEvidence {
                     subject,
                     receipt_id,
                     label,
-                    program_identity.to_string(),
+                    canonical_program_identity,
                     semantic_context.to_string(),
                     receipt_fingerprint,
                     passed,
@@ -1653,6 +1706,20 @@ impl ResolutionEvidenceInbox {
         &self.target.approval_id
     }
 
+    pub(crate) fn target_matches_workspace(&self, workspace: &AgentWorkspace) -> bool {
+        let Some(binding) = workspace.runtime_subject_binding() else {
+            return false;
+        };
+        binding.intent_id == self.target.intent_id
+            && binding.workflow_revision == self.target.workflow_revision
+            && binding.approval_id == self.target.approval_id
+            && binding.subject_kind == self.target.subject_kind
+            && binding.subject_identity == self.target.subject_identity
+            && binding.authorization_policy_id == self.target.authorization_policy_id
+            && binding.authorization_policy_revision == self.target.authorization_policy_revision
+            && binding.authorization_is_revision == self.target.authorization_is_revision
+    }
+
     pub fn to_json(&self) -> String {
         let mut fault_count = 0usize;
         let mut graph_passed = 0usize;
@@ -1894,6 +1961,24 @@ mod tests {
                 "max_rel": 0.0
             }
         })
+    }
+
+    #[test]
+    fn graph_receipt_adapter_canonicalizes_program_identity_for_runtime_correlation() {
+        let snapshot = resolved_snapshot("intent-canonical-graph");
+        let projection =
+            projection("intent-canonical-graph", snapshot.revision, "spec-canonical-graph");
+        let receipt = semantic_graph_receipt(&projection);
+
+        let evidence =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&receipt.to_string()).unwrap();
+
+        assert_eq!(
+            evidence.graph_program_identity(),
+            Some(
+                "{\"schema\":\"burn-research.program-identity.v1\",\"plan_hex\":\"0100000000000100000001000000\",\"layer_init_fingerprints\":[\"type=01;id=1;variant=ff;flags=00;payload=\"]}"
+            )
+        );
     }
 
     #[test]

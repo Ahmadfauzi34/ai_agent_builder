@@ -42,7 +42,7 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn validate_label(label: &str, context: &str) -> Result<(), String> {
+pub(crate) fn validate_label(label: &str, context: &str) -> Result<(), String> {
     if label.is_empty() {
         return Err(format!("{context}: label must be non-empty"));
     }
@@ -68,7 +68,7 @@ fn bytes_fingerprint(bytes: &[u8]) -> String {
     format!("fnv1a64:{:016x}", fnv1a64(bytes.iter().copied()))
 }
 
-fn f32_fingerprint(values: &[f32]) -> String {
+pub(crate) fn f32_fingerprint(values: &[f32]) -> String {
     let bytes = values
         .iter()
         .flat_map(|value| value.to_bits().to_le_bytes())
@@ -76,7 +76,7 @@ fn f32_fingerprint(values: &[f32]) -> String {
     bytes_fingerprint(&bytes)
 }
 
-fn tensor_fingerprint(tensor: &WasmTensor) -> String {
+pub(crate) fn tensor_fingerprint(tensor: &WasmTensor) -> String {
     let mut bytes = Vec::new();
     for dim in tensor.shape() {
         bytes.extend_from_slice(&(dim as u64).to_le_bytes());

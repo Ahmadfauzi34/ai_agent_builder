@@ -18,7 +18,11 @@
     "ignore": "serializable_payload_bindable",
     "request_information": "serializable_payload_bindable",
     "propose_revision": "serializable_payload_bindable",
-    "reverify": "runtime_handle_binding_deferred"
+    "reverify": "serializable_runtime_handle_binding_deferred",
+    "graph_reverify_typed_path": {
+      "contract": "burn-research.graph-reverify-runtime-binding.v1",
+      "note": "graph reverify uses real CompiledGraph/LayerRegistry/WasmTensor/candidate inputs directly rather than representing handles as strings"
+    }
   },
   "payloads": {
     "ignore": {
@@ -97,7 +101,8 @@
     "every required dispatch requirement must be bound and every optional requirement must be explicitly bound or recorded unbound",
     "request_fingerprint commits to the bound/unbound requirement accounting exported by the request",
     "direct authority APIs remain independently callable escape hatches",
-    "executor-specific state must be revalidated again at the actual execution boundary"
+    "executor-specific state must be revalidated again at the actual execution boundary",
+    "graph reverify real-handle binding does not weaken the serializable request rule: runtime handles are never represented by caller-supplied string identities"
   ],
   "future_extensions": [
     "executor-specific runtime handle binding for reverify",

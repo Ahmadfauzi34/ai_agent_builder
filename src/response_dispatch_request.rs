@@ -952,7 +952,7 @@ mod tests {
             serde_json::from_str(response_dispatch_request_capabilities()).unwrap();
         assert_eq!(
             contract["bindability"]["reverify"],
-            "runtime_handle_binding_deferred"
+            "serializable_runtime_handle_binding_deferred"
         );
         assert_eq!(contract["semantics"]["execution_authorized"], false);
         assert_eq!(contract["semantics"]["mutation"], "none");
