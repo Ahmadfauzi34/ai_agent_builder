@@ -8,7 +8,7 @@
     "resolution_state": "ResolutionWorkflow / ResolutionSnapshot",
     "semantic_subject": "RuntimeSubjectProjection from the approved+authorized forward bridge",
     "agent_fault": "runtime preflight observation only; not semantic diagnosis and not numerical proof",
-    "graph_verifier": "source-authority label transported from a structured graph verifier receipt; the inbox itself does not authenticate the receipt",
+    "graph_verifier": "source-authority label transported from a structured graph verifier receipt; optional semantic execution context remains observation-only provenance and the inbox itself does not authenticate the receipt",
     "vector_verifier": "source-authority label transported from a structured vector comparator receipt; the inbox itself does not authenticate the receipt",
     "interpretation": "caller/agent Resolution review step remains authoritative for deciding whether evidence implies revision, a new diagnostic, rejection, or no action",
     "math_program_verifier": "source-authority label transported from a structured MathProgram verifier receipt; original runtime receipt remains authoritative and inbox transport remains observation_only",
@@ -38,7 +38,8 @@
     "evidence_order": "append-only within the bounded inbox",
     "canonical_constructor": "ResolutionEvidenceInbox::from_authorized(resolution, approved_spec, current_policy, authorization) re-runs RuntimeSubjectProjection::from_authorized before creating the inbox",
     "lower_level_constructor": "ResolutionEvidenceInbox::new(resolution, projection) is an escape hatch for hosts that already validated the projection",
-    "authorization_freshness": "canonical construction fails closed when the authorization snapshot is stale for the current policy"
+    "authorization_freshness": "canonical construction fails closed when the authorization snapshot is stale for the current policy",
+    "semantic_context": "semantic graph proof context is stored only inside the graph-verifier observation; no separate semantic authority or mutable Resolution state is created"
   },
   "interpretation_policy": {
     "automatic_diagnostic_creation": false,
@@ -72,7 +73,10 @@
     "MathProgram verifier observation preserves verifier=MathProgram.verifyFlat and reference_authority=burn_math_program without upgrading inbox transport into proof authority",
     "MathProgram receipt program_identity.schema must be burn-research.math-program-identity.v1; graph program identities cannot cross the adapter class boundary",
     "graph/vector/MathProgram/DirectMath adapters are authority-class-specific and fail closed on cross-class receipt tuples",
-    "DirectMath verifier observation preserves verifier=DirectMath.verifyAgainstMathProgramV9, candidate_authority=burn_direct_math, reference_authority=burn_math_program, and reference_program_generation=v9 without upgrading inbox transport into proof authority"
+    "DirectMath verifier observation preserves verifier=DirectMath.verifyAgainstMathProgramV9, candidate_authority=burn_direct_math, reference_authority=burn_math_program, and reference_program_generation=v9 without upgrading inbox transport into proof authority",
+    "semantic graph verifier observation preserves semantic_execution_context + semantic_context_fingerprint when both are present and structurally coherent",
+    "semantic execution context rejoin never changes programIdentity authority, never authorizes execution, and never creates Resolution state transitions",
+    "partial or internally inconsistent semantic graph proof context fails closed at the structured graph-receipt adapter"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -89,7 +93,8 @@
         "inbox capacity is bounded at 64 entries",
         "structured AgentFault and verifier receipt JSON are adapted without manual host field mapping",
         "structured MathProgram verifier receipt can rejoin the exact subject as observation-only evidence without changing Resolution state",
-        "structured DirectMath verifier receipt can rejoin the exact subject as observation-only evidence while preserving candidate/reference authority and without changing Resolution state"
+        "structured DirectMath verifier receipt can rejoin the exact subject as observation-only evidence while preserving candidate/reference authority and without changing Resolution state",
+        "semantic graph verifier context can rejoin the exact subject while Resolution state remains unchanged"
       ]
     },
     "wasm_package": {
@@ -147,13 +152,21 @@
         "authority=wasm_verifier",
         "verifier=CompiledGraph.verifyFlat",
         "reference_authority=burn_compiled_graph",
-        "program_identity.schema=burn-research.program-identity.v1"
+        "program_identity.schema=burn-research.program-identity.v1",
+        "semantic_execution_context + semantic_context_fingerprint must be both absent or both present",
+        "when present: semantic_execution_context.schema_id=burn-research.semantic-execution-context.v1",
+        "when present: projection_only=true, program_identity_effect=none, execution_effect=none",
+        "when present: context program_identity exactly equals receipt program_identity",
+        "when present: semantic lifecycle base graph identity exactly equals semantic_graph_identity",
+        "when present: top-level semantic_context_fingerprint equals context.context_fingerprint"
       ],
       "projected_fields": [
         "receipt_id",
         "label",
         "program_identity",
-        "result.passed"
+        "result.passed",
+        "semantic_execution_context (optional serialized structured provenance)",
+        "semantic_context_fingerprint (optional)"
       ],
       "detail_projection": "serialized receipt.result object",
       "source_only_fields": [
@@ -165,7 +178,8 @@
         "candidate_fingerprint",
         "tolerances"
       ],
-      "authority": "wasm_verifier source label / observation_only transport"
+      "authority": "wasm_verifier source label / observation_only transport",
+      "semantic_context_authority": "observation_only transported provenance; original WASM verifier receipt remains authoritative"
     },
     "vector_verifier_receipt": {
       "constructor": "RuntimeEvidence::from_vector_verifier_receipt_json",
