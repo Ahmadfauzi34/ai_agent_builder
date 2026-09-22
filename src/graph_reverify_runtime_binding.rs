@@ -544,12 +544,12 @@ mod tests {
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
     use crate::agent_response_intent::create_agent_response_intent;
     use crate::proof_provenance::workspace_verify_graph_receipt;
-    use crate::protocol::LAYER_ACTIVATION;
     use crate::registry::LayerRegistry;
     use crate::resolution_review::ResolutionReviewSession;
     use crate::resolution_runtime_bridge::{
-        bind_runtime_subject, workspace_compile_for_runtime_subject, RuntimeSubjectProjection,
+        bind_runtime_subject_projection, RuntimeSubjectProjection,
     };
+    use crate::workspace_ops::workspace_compile_for_runtime_subject;
     use crate::runtime_evidence_interpretation::EvidenceResponseAction;
     use crate::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
     use crate::workspace::AgentWorkspace;
@@ -587,11 +587,10 @@ mod tests {
         };
 
         let mut workspace = AgentWorkspace::new(2).unwrap();
-        bind_runtime_subject(&mut workspace, &projection).unwrap();
+        bind_runtime_subject_projection(&mut workspace, &projection).unwrap();
 
         let mut registry = LayerRegistry::new();
-        let spec = AgentLayerSpec::activation(7, 0).unwrap();
-        assert_eq!(spec.layer_type(), LAYER_ACTIVATION);
+        let spec = AgentLayerSpec::relu(7);
         registry.init_agent_layer(&spec).unwrap();
         let mut builder = AgentGraphBuilder::new(2).unwrap();
         builder.add_unary(&spec, 0, 1).unwrap();
@@ -631,8 +630,7 @@ mod tests {
     #[test]
     fn real_runtime_handles_bind_without_executing_graph_again() {
         let (inbox, intent, workspace, _builder, registry, graph, input, candidate) = fixture();
-        let receipt_count_before: serde_json::Value =
-            serde_json::from_str(&workspace.verifier_receipts()).unwrap();
+        let workspace_before = workspace.snapshot();
 
         let binding = create_graph_reverify_runtime_binding(
             &inbox,
@@ -663,9 +661,7 @@ mod tests {
         assert!(preflight.ready);
         assert!(!preflight.execution_authorized);
 
-        let receipt_count_after: serde_json::Value =
-            serde_json::from_str(&workspace.verifier_receipts()).unwrap();
-        assert_eq!(receipt_count_before, receipt_count_after);
+        assert_eq!(workspace.snapshot(), workspace_before);
     }
 
     #[test]
@@ -707,7 +703,7 @@ mod tests {
     #[test]
     fn binding_rejects_graph_that_does_not_match_selected_evidence() {
         let (inbox, intent, workspace, _builder, mut registry, _graph, input, candidate) = fixture();
-        let other_spec = AgentLayerSpec::activation(9, 1).unwrap();
+        let other_spec = AgentLayerSpec::gelu(9);
         registry.init_agent_layer(&other_spec).unwrap();
         let mut other_builder = AgentGraphBuilder::new(2).unwrap();
         other_builder.add_unary(&other_spec, 0, 1).unwrap();
