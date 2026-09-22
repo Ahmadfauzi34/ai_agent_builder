@@ -911,12 +911,47 @@ pub(crate) struct AgentGraphSemanticEdgeBinding {
     pub(crate) binding_fingerprint: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AgentGraphInputOrigin {
+    ExternalInput,
+    StepOutput { step_index: u32 },
+    Unresolved,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphInputOriginRecord {
+    pub(crate) position: &'static str,
+    pub(crate) slot: u8,
+    pub(crate) origin: AgentGraphInputOrigin,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphSemanticLifecycleInput {
+    pub(crate) position: String,
+    pub(crate) slot: u8,
+    pub(crate) role: String,
+    pub(crate) origin_kind: String,
+    pub(crate) origin_step_index: Option<u32>,
+    pub(crate) origin_fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphSemanticLifecycleTransition {
+    pub(crate) step_index: u32,
+    pub(crate) transition_id: String,
+    pub(crate) inputs: Vec<AgentGraphSemanticLifecycleInput>,
+    pub(crate) output_slot: u8,
+    pub(crate) output_role: String,
+    pub(crate) transition_fingerprint: String,
+}
+
 #[wasm_bindgen]
 pub struct AgentGraphBuilder {
     num_slots: u32,
     steps: Vec<AgentGraphStep>,
     output_slot: Option<u8>,
     semantic_edge_bindings: Vec<AgentGraphSemanticEdgeBinding>,
+    semantic_lifecycle_transitions: Vec<AgentGraphSemanticLifecycleTransition>,
 }
 
 impl AgentGraphBuilder {
@@ -1002,6 +1037,125 @@ impl AgentGraphBuilder {
         self.output_slot
     }
 
+    pub(crate) fn input_origins_for_step(
+        &self,
+        step_index: u32,
+    ) -> Result<Vec<AgentGraphInputOriginRecord>, String> {
+        let index = usize::try_from(step_index)
+            .map_err(|_| "AgentGraphBuilder.inputOriginsForStep: step index conversion failed".to_string())?;
+        let Some(step) = self.steps.get(index).copied() else {
+            return Err(format!(
+                "AgentGraphBuilder.inputOriginsForStep: step index {step_index} is outside num_steps {}",
+                self.steps.len()
+            ));
+        };
+
+        let origin_for_slot = |slot: u8| {
+            self.steps[..index]
+                .iter()
+                .enumerate()
+                .rev()
+                .find(|(_, prior)| prior.out_slot == slot)
+                .map(|(writer_index, _)| AgentGraphInputOrigin::StepOutput {
+                    step_index: writer_index as u32,
+                })
+                .unwrap_or_else(|| {
+                    if slot == 0 {
+                        AgentGraphInputOrigin::ExternalInput
+                    } else {
+                        AgentGraphInputOrigin::Unresolved
+                    }
+                })
+        };
+
+        if step.arity == 1 {
+            Ok(vec![AgentGraphInputOriginRecord {
+                position: "input",
+                slot: step.in_slot,
+                origin: origin_for_slot(step.in_slot),
+            }])
+        } else {
+            Ok(vec![
+                AgentGraphInputOriginRecord {
+                    position: "left",
+                    slot: step.in_slot,
+                    origin: origin_for_slot(step.in_slot),
+                },
+                AgentGraphInputOriginRecord {
+                    position: "right",
+                    slot: step.in_slot2,
+                    origin: origin_for_slot(step.in_slot2),
+                },
+            ])
+        }
+    }
+
+    pub(crate) fn external_input_positions_for_step(
+        &self,
+        step_index: u32,
+    ) -> Result<Vec<&'static str>, String> {
+        Ok(self
+            .input_origins_for_step(step_index)?
+            .into_iter()
+            .filter_map(|record| {
+                if record.origin == AgentGraphInputOrigin::ExternalInput {
+                    Some(record.position)
+                } else {
+                    None
+                }
+            })
+            .collect())
+    }
+
+    pub(crate) fn semantic_lifecycle_transition(
+        &self,
+        step_index: u32,
+    ) -> Option<&AgentGraphSemanticLifecycleTransition> {
+        self.semantic_lifecycle_transitions
+            .iter()
+            .find(|transition| transition.step_index == step_index)
+    }
+
+    pub(crate) fn semantic_lifecycle_transitions(
+        &self,
+    ) -> &[AgentGraphSemanticLifecycleTransition] {
+        &self.semantic_lifecycle_transitions
+    }
+
+    pub(crate) fn bind_semantic_lifecycle_transition(
+        &mut self,
+        transition: AgentGraphSemanticLifecycleTransition,
+    ) -> Result<bool, String> {
+        let index = usize::try_from(transition.step_index)
+            .map_err(|_| "AgentGraphBuilder.bindSemanticLifecycleTransition: step index conversion failed".to_string())?;
+        if index >= self.steps.len() {
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticLifecycleTransition: step index {} is outside num_steps {}",
+                transition.step_index,
+                self.steps.len()
+            ));
+        }
+
+        if let Some(existing) = self
+            .semantic_lifecycle_transitions
+            .iter()
+            .find(|existing| existing.step_index == transition.step_index)
+        {
+            if existing == &transition {
+                return Ok(false);
+            }
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticLifecycleTransition: step {} already has a different immutable semantic lifecycle transition",
+                transition.step_index
+            ));
+        }
+
+        self.semantic_lifecycle_transitions.push(transition);
+        self.semantic_lifecycle_transitions
+            .sort_by_key(|transition| transition.step_index);
+        Ok(true)
+    }
+
     pub(crate) fn semantic_edge_binding(
         &self,
         step_index: u32,
@@ -1064,6 +1218,7 @@ impl AgentGraphBuilder {
             steps: Vec::new(),
             output_slot: None,
             semantic_edge_bindings: Vec::new(),
+            semantic_lifecycle_transitions: Vec::new(),
         })
     }
 
