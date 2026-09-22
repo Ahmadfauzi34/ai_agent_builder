@@ -139,6 +139,18 @@ enum RuntimeEvidencePayload {
         passed: bool,
         detail: String,
     },
+    RevisionDispatchExecutionReceipt {
+        receipt_fingerprint: String,
+        request_fingerprint: String,
+        response_intent_fingerprint: String,
+        dispatch_fingerprint: String,
+        lineage_id: String,
+        revision_id: String,
+        revision_key: String,
+        parent_revision_id: Option<String>,
+        before_revision_count: usize,
+        after_revision_count: usize,
+    },
 }
 
 impl RuntimeEvidencePayload {
@@ -149,6 +161,7 @@ impl RuntimeEvidencePayload {
             | Self::MathProgramVerifierReceipt { .. }
             | Self::DirectMathVerifierReceipt { .. } => "wasm_verifier",
             Self::VectorVerifierReceipt { .. } => "wasm_comparator",
+            Self::RevisionDispatchExecutionReceipt { .. } => "ResolutionRevisionChain",
         }
     }
 
@@ -157,7 +170,10 @@ impl RuntimeEvidencePayload {
     }
 
     pub fn transport_integrity(&self) -> &'static str {
-        "host_structured_unverified"
+        match self {
+            Self::RevisionDispatchExecutionReceipt { .. } => "native_typed_correlated",
+            _ => "host_structured_unverified",
+        }
     }
 
     pub fn kind(&self) -> &'static str {
@@ -167,6 +183,7 @@ impl RuntimeEvidencePayload {
             Self::MathProgramVerifierReceipt { .. } => "math_program_verifier_receipt",
             Self::DirectMathVerifierReceipt { .. } => "direct_math_verifier_receipt",
             Self::VectorVerifierReceipt { .. } => "vector_verifier_receipt",
+            Self::RevisionDispatchExecutionReceipt { .. } => "revision_dispatch_execution_receipt",
         }
     }
 
@@ -183,6 +200,7 @@ impl RuntimeEvidencePayload {
                     "failed"
                 }
             }
+            Self::RevisionDispatchExecutionReceipt { .. } => "committed",
         }
     }
 
