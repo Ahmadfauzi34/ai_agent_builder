@@ -45,6 +45,9 @@ fn run() -> Result<(), String> {
         .ok_or_else(|| "receipt.verifier must be a string".to_string())?;
 
     let evidence = match verifier {
+        "CompiledGraph.verifyFlat" => {
+            RuntimeEvidence::from_graph_verifier_receipt_json(raw.trim())?
+        }
         "MathProgram.verifyFlat" => {
             RuntimeEvidence::from_math_program_verifier_receipt_json(raw.trim())?
         }
@@ -53,7 +56,7 @@ fn run() -> Result<(), String> {
         }
         other => {
             return Err(format!(
-                "unsupported verifier {other}; expected MathProgram.verifyFlat or DirectMath.verifyAgainstMathProgramV9"
+                "unsupported verifier {other}; expected CompiledGraph.verifyFlat, MathProgram.verifyFlat, or DirectMath.verifyAgainstMathProgramV9"
             ))
         }
     };
@@ -109,6 +112,18 @@ fn run() -> Result<(), String> {
         return Err("adapter probe evidence recording mutated Resolution state".to_string());
     }
 
+    let evidence_json: serde_json::Value = serde_json::from_str(&evidence.to_json())
+        .map_err(|error| format!("projected evidence JSON parse failed: {error}"))?;
+    let semantic_context_fingerprint = evidence_json
+        .get("payload")
+        .and_then(|payload| payload.get("semantic_context_fingerprint"))
+        .and_then(serde_json::Value::as_str);
+    let semantic_execution_context_preserved = evidence_json
+        .get("payload")
+        .and_then(|payload| payload.get("semantic_execution_context"))
+        .and_then(serde_json::Value::as_str)
+        .is_some();
+
     println!(
         "{}",
         serde_json::json!({
@@ -120,6 +135,8 @@ fn run() -> Result<(), String> {
             "transport_integrity": evidence.transport_integrity(),
             "outcome": evidence.outcome(),
             "verifier": verifier,
+            "semantic_execution_context_preserved": semantic_execution_context_preserved,
+            "semantic_context_fingerprint": semantic_context_fingerprint,
             "subject_bound": true,
             "subject": {
                 "intent_id": subject.intent_id,

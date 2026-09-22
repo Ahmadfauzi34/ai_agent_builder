@@ -12,6 +12,7 @@ pub const MAX_RUNTIME_EVIDENCE_ENTRIES: usize = 64;
 const MAX_SHORT_FIELD_BYTES: usize = 256;
 const MAX_DETAIL_BYTES: usize = 4096;
 const MAX_PROGRAM_IDENTITY_BYTES: usize = 16_384;
+const MAX_SEMANTIC_EXECUTION_CONTEXT_BYTES: usize = 32_768;
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
@@ -112,6 +113,8 @@ enum RuntimeEvidencePayload {
         receipt_id: u32,
         label: String,
         program_identity: String,
+        semantic_execution_context: Option<String>,
+        semantic_context_fingerprint: Option<String>,
         passed: bool,
         detail: String,
     },
@@ -219,31 +222,48 @@ impl RuntimeEvidencePayload {
                 receipt_id,
                 label,
                 program_identity,
+                semantic_execution_context,
+                semantic_context_fingerprint,
                 passed,
                 detail,
-            } => format!(
-                concat!(
-                    "{{",
-                    "\"kind\":\"graph_verifier_receipt\",",
-                    "\"evidence_authority\":\"observation_only\",",
-                    "\"source_authority\":\"wasm_verifier\",",
-                    "\"transport_integrity\":\"host_structured_unverified\",",
-                    "\"reference_authority\":\"burn_compiled_graph\",",
-                    "\"outcome\":\"{}\",",
-                    "\"receipt_id\":{},",
-                    "\"label\":\"{}\",",
-                    "\"program_identity\":\"{}\",",
-                    "\"passed\":{},",
-                    "\"detail\":\"{}\"",
-                    "}}"
-                ),
-                if *passed { "passed" } else { "failed" },
-                receipt_id,
-                json_escape(label),
-                json_escape(program_identity),
-                passed,
-                json_escape(detail),
-            ),
+            } => {
+                let semantic = match (
+                    semantic_execution_context.as_deref(),
+                    semantic_context_fingerprint.as_deref(),
+                ) {
+                    (Some(context), Some(fingerprint)) => format!(
+                        ",\"semantic_execution_context\":\"{}\",\"semantic_context_fingerprint\":\"{}\"",
+                        json_escape(context),
+                        json_escape(fingerprint),
+                    ),
+                    _ => String::new(),
+                };
+                format!(
+                    concat!(
+                        "{{",
+                        "\"kind\":\"graph_verifier_receipt\",",
+                        "\"evidence_authority\":\"observation_only\",",
+                        "\"source_authority\":\"wasm_verifier\",",
+                        "\"transport_integrity\":\"host_structured_unverified\",",
+                        "\"reference_authority\":\"burn_compiled_graph\",",
+                        "\"outcome\":\"{}\",",
+                        "\"receipt_id\":{},",
+                        "\"label\":\"{}\",",
+                        "\"program_identity\":\"{}\",",
+                        "\"passed\":{},",
+                        "\"detail\":\"{}\"",
+                        "{}",
+                        "}}"
+                    ),
+                    if *passed { "passed" } else { "failed" },
+                    receipt_id,
+                    json_escape(label),
+                    json_escape(program_identity),
+                    passed,
+                    json_escape(detail),
+                    semantic,
+                )
+            },
             Self::MathProgramVerifierReceipt {
                 receipt_id,
                 label,
@@ -568,14 +588,180 @@ impl RuntimeEvidence {
             .ok_or_else(|| format!("{CONTEXT}: missing result object"))?;
         let passed = Self::require_bool(result, "passed", CONTEXT)?;
 
-        Self::graph_verifier_receipt(
-            subject,
-            receipt_id,
-            label,
-            program_identity.to_string(),
-            passed,
-            result.to_string(),
-        )
+        match (
+            receipt.get("semantic_execution_context"),
+            receipt.get("semantic_context_fingerprint"),
+        ) {
+            (None, None) => Self::graph_verifier_receipt(
+                subject,
+                receipt_id,
+                label,
+                program_identity.to_string(),
+                passed,
+                result.to_string(),
+            ),
+            (Some(semantic_context), Some(receipt_fingerprint)) => {
+                if !semantic_context.is_object() {
+                    return Err(format!(
+                        "{CONTEXT}: semantic_execution_context must be a JSON object"
+                    ));
+                }
+                Self::require_exact_string(
+                    semantic_context,
+                    "schema_id",
+                    "burn-research.semantic-execution-context.v1",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    semantic_context,
+                    "program_identity_effect",
+                    "none",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    semantic_context,
+                    "execution_effect",
+                    "none",
+                    CONTEXT,
+                )?;
+                if !Self::require_bool(semantic_context, "projection_only", CONTEXT)? {
+                    return Err(format!(
+                        "{CONTEXT}: semantic_execution_context.projection_only must be true"
+                    ));
+                }
+                Self::require_exact_string(
+                    semantic_context,
+                    "fingerprint_algorithm",
+                    "fnv1a64_noncryptographic",
+                    CONTEXT,
+                )?;
+                let context_authority = semantic_context
+                    .get("authority")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!("{CONTEXT}: semantic_execution_context missing authority object")
+                    })?;
+                Self::require_exact_string(
+                    context_authority,
+                    "execution_identity",
+                    "CompiledGraph.programIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "semantic_graph",
+                    "AgentGraphBuilder.semanticGraphIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "semantic_lifecycle",
+                    "AgentGraphBuilder.semanticLifecycleIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "context",
+                    "derived_projection",
+                    CONTEXT,
+                )?;
+
+                let context_program_identity = semantic_context
+                    .get("program_identity")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!(
+                            "{CONTEXT}: semantic_execution_context missing program_identity object"
+                        )
+                    })?;
+                if context_program_identity != program_identity {
+                    return Err(format!(
+                        "{CONTEXT}: semantic execution context program_identity does not match receipt program_identity"
+                    ));
+                }
+
+                let semantic_graph_identity = semantic_context
+                    .get("semantic_graph_identity")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!(
+                            "{CONTEXT}: semantic_execution_context missing semantic_graph_identity object"
+                        )
+                    })?;
+                Self::require_exact_string(
+                    semantic_graph_identity,
+                    "schema_id",
+                    "burn-research.semantic-graph-identity.v1",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    semantic_graph_identity,
+                    "execution_program_identity_effect",
+                    "none",
+                    CONTEXT,
+                )?;
+
+                let semantic_lifecycle_identity = semantic_context
+                    .get("semantic_lifecycle_identity")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!(
+                            "{CONTEXT}: semantic_execution_context missing semantic_lifecycle_identity object"
+                        )
+                    })?;
+                Self::require_exact_string(
+                    semantic_lifecycle_identity,
+                    "schema_id",
+                    "burn-research.semantic-lifecycle-identity.v1",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    semantic_lifecycle_identity,
+                    "execution_program_identity_effect",
+                    "none",
+                    CONTEXT,
+                )?;
+
+                let lifecycle_base = semantic_lifecycle_identity
+                    .get("base_semantic_graph_identity")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!(
+                            "{CONTEXT}: semantic lifecycle identity missing base_semantic_graph_identity object"
+                        )
+                    })?;
+                if lifecycle_base != semantic_graph_identity {
+                    return Err(format!(
+                        "{CONTEXT}: semantic lifecycle base graph identity does not match semantic_graph_identity"
+                    ));
+                }
+
+                let context_fingerprint =
+                    Self::require_string(semantic_context, "context_fingerprint", CONTEXT)?;
+                let receipt_fingerprint = receipt_fingerprint.as_str().ok_or_else(|| {
+                    format!("{CONTEXT}: semantic_context_fingerprint must be a string")
+                })?;
+                if receipt_fingerprint != context_fingerprint {
+                    return Err(format!(
+                        "{CONTEXT}: semantic_context_fingerprint does not match semantic_execution_context.context_fingerprint"
+                    ));
+                }
+
+                Self::semantic_graph_verifier_receipt(
+                    subject,
+                    receipt_id,
+                    label,
+                    program_identity.to_string(),
+                    semantic_context.to_string(),
+                    receipt_fingerprint,
+                    passed,
+                    result.to_string(),
+                )
+            }
+            _ => Err(format!(
+                "{CONTEXT}: semantic_execution_context and semantic_context_fingerprint must be present together"
+            )),
+        }
     }
 
     /// Adapt the exact structured MathProgram verifier receipt emitted by WASM.
@@ -801,33 +987,56 @@ impl RuntimeEvidence {
         })
     }
 
-    pub fn graph_verifier_receipt(
+    fn graph_verifier_receipt_internal(
         subject: Option<RuntimeEvidenceSubject>,
         receipt_id: u32,
-        label: impl Into<String>,
-        program_identity: impl Into<String>,
+        label: String,
+        program_identity: String,
+        semantic_execution_context: Option<String>,
+        semantic_context_fingerprint: Option<String>,
         passed: bool,
-        detail: impl Into<String>,
+        detail: String,
+        context: &str,
     ) -> Result<Self, String> {
         if receipt_id == 0 {
-            return Err("RuntimeEvidence.graph_verifier_receipt: receipt id must be > 0".to_string());
+            return Err(format!("{context}: receipt id must be > 0"));
         }
-        let label = label.into();
-        let program_identity = program_identity.into();
-        let detail = detail.into();
         validate_nonempty_bounded(
             &label,
             MAX_SHORT_FIELD_BYTES,
-            "RuntimeEvidence.graph_verifier_receipt.label",
+            &format!("{context}.label"),
         )?;
         validate_nonempty_bounded(
             &program_identity,
             MAX_PROGRAM_IDENTITY_BYTES,
-            "RuntimeEvidence.graph_verifier_receipt.program_identity",
+            &format!("{context}.program_identity"),
         )?;
+        match (
+            semantic_execution_context.as_deref(),
+            semantic_context_fingerprint.as_deref(),
+        ) {
+            (None, None) => {}
+            (Some(semantic_context), Some(fingerprint)) => {
+                validate_nonempty_bounded(
+                    semantic_context,
+                    MAX_SEMANTIC_EXECUTION_CONTEXT_BYTES,
+                    &format!("{context}.semantic_execution_context"),
+                )?;
+                validate_nonempty_bounded(
+                    fingerprint,
+                    MAX_SHORT_FIELD_BYTES,
+                    &format!("{context}.semantic_context_fingerprint"),
+                )?;
+            }
+            _ => {
+                return Err(format!(
+                    "{context}: semantic_execution_context and semantic_context_fingerprint must be supplied together"
+                ))
+            }
+        }
         if detail.len() > MAX_DETAIL_BYTES {
             return Err(format!(
-                "RuntimeEvidence.graph_verifier_receipt.detail: {} bytes exceeds limit {MAX_DETAIL_BYTES}",
+                "{context}.detail: {} bytes exceeds limit {MAX_DETAIL_BYTES}",
                 detail.len()
             ));
         }
@@ -838,10 +1047,56 @@ impl RuntimeEvidence {
                 receipt_id,
                 label,
                 program_identity,
+                semantic_execution_context,
+                semantic_context_fingerprint,
                 passed,
                 detail,
             },
         })
+    }
+
+    pub fn graph_verifier_receipt(
+        subject: Option<RuntimeEvidenceSubject>,
+        receipt_id: u32,
+        label: impl Into<String>,
+        program_identity: impl Into<String>,
+        passed: bool,
+        detail: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::graph_verifier_receipt_internal(
+            subject,
+            receipt_id,
+            label.into(),
+            program_identity.into(),
+            None,
+            None,
+            passed,
+            detail.into(),
+            "RuntimeEvidence.graph_verifier_receipt",
+        )
+    }
+
+    pub fn semantic_graph_verifier_receipt(
+        subject: Option<RuntimeEvidenceSubject>,
+        receipt_id: u32,
+        label: impl Into<String>,
+        program_identity: impl Into<String>,
+        semantic_execution_context: impl Into<String>,
+        semantic_context_fingerprint: impl Into<String>,
+        passed: bool,
+        detail: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::graph_verifier_receipt_internal(
+            subject,
+            receipt_id,
+            label.into(),
+            program_identity.into(),
+            Some(semantic_execution_context.into()),
+            Some(semantic_context_fingerprint.into()),
+            passed,
+            detail.into(),
+            "RuntimeEvidence.semantic_graph_verifier_receipt",
+        )
     }
 
     pub fn math_program_verifier_receipt(
@@ -1013,6 +1268,28 @@ impl RuntimeEvidence {
             receipt_id,
             label,
             program_identity,
+            passed,
+            detail,
+        )
+    }
+
+    pub fn bound_semantic_graph_verifier_receipt(
+        projection: &RuntimeSubjectProjection,
+        receipt_id: u32,
+        label: impl Into<String>,
+        program_identity: impl Into<String>,
+        semantic_execution_context: impl Into<String>,
+        semantic_context_fingerprint: impl Into<String>,
+        passed: bool,
+        detail: impl Into<String>,
+    ) -> Result<Self, String> {
+        Self::semantic_graph_verifier_receipt(
+            Some(RuntimeEvidenceSubject::from_projection(projection)),
+            receipt_id,
+            label,
+            program_identity,
+            semantic_execution_context,
+            semantic_context_fingerprint,
             passed,
             detail,
         )
@@ -1232,6 +1509,7 @@ impl ResolutionEvidenceInbox {
         let mut fault_count = 0usize;
         let mut graph_passed = 0usize;
         let mut graph_failed = 0usize;
+        let mut graph_semantic_context = 0usize;
         let mut math_program_passed = 0usize;
         let mut math_program_failed = 0usize;
         let mut direct_math_passed = 0usize;
@@ -1242,7 +1520,14 @@ impl ResolutionEvidenceInbox {
         for evidence in &self.entries {
             match &evidence.payload {
                 RuntimeEvidencePayload::AgentFault { .. } => fault_count += 1,
-                RuntimeEvidencePayload::GraphVerifierReceipt { passed, .. } => {
+                RuntimeEvidencePayload::GraphVerifierReceipt {
+                    semantic_execution_context,
+                    passed,
+                    ..
+                } => {
+                    if semantic_execution_context.is_some() {
+                        graph_semantic_context += 1;
+                    }
                     if *passed {
                         graph_passed += 1;
                     } else {
@@ -1292,6 +1577,7 @@ impl ResolutionEvidenceInbox {
                     "\"agent_faults\":{},",
                     "\"graph_verifier_passed\":{},",
                     "\"graph_verifier_failed\":{},",
+                    "\"graph_verifier_with_semantic_context\":{},",
                     "\"math_program_verifier_passed\":{},",
                     "\"math_program_verifier_failed\":{},",
                     "\"direct_math_verifier_passed\":{},",
@@ -1315,6 +1601,7 @@ impl ResolutionEvidenceInbox {
             fault_count,
             graph_passed,
             graph_failed,
+            graph_semantic_context,
             math_program_passed,
             math_program_failed,
             direct_math_passed,
@@ -1370,6 +1657,91 @@ mod tests {
         }
     }
 
+    fn semantic_graph_receipt(
+        projection: &RuntimeSubjectProjection,
+    ) -> serde_json::Value {
+        let program_identity = serde_json::json!({
+            "schema": "burn-research.program-identity.v1",
+            "plan_hex": "0100000000000100000001000000",
+            "layer_init_fingerprints": ["type=01;id=1;variant=ff;flags=00;payload="]
+        });
+        let semantic_graph_identity = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.semantic-graph-identity.v1",
+            "topology_authority": "AgentGraphBuilder",
+            "semantic_binding_count": 1,
+            "execution_program_identity_effect": "none",
+            "fingerprint": "fnv1a64:graph"
+        });
+        let semantic_lifecycle_identity = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.semantic-lifecycle-identity.v1",
+            "base_semantic_graph_identity": semantic_graph_identity.clone(),
+            "transition_count": 1,
+            "execution_program_identity_effect": "none",
+            "fingerprint": "fnv1a64:lifecycle"
+        });
+        let semantic_execution_context = serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.semantic-execution-context.v1",
+            "projection_only": true,
+            "authority": {
+                "execution_identity": "CompiledGraph.programIdentity",
+                "semantic_graph": "AgentGraphBuilder.semanticGraphIdentity",
+                "semantic_lifecycle": "AgentGraphBuilder.semanticLifecycleIdentity",
+                "context": "derived_projection"
+            },
+            "program_identity": program_identity.clone(),
+            "semantic_graph_identity": semantic_graph_identity,
+            "semantic_lifecycle_identity": semantic_lifecycle_identity,
+            "lifecycle_coverage_complete": true,
+            "context_fingerprint": "fnv1a64:semantic-context",
+            "fingerprint_algorithm": "fnv1a64_noncryptographic",
+            "program_identity_effect": "none",
+            "execution_effect": "none"
+        });
+
+        serde_json::json!({
+            "schema_version": 1,
+            "schema_id": "burn-research.verifier-receipt.v1",
+            "receipt_id": 17,
+            "authority": "wasm_verifier",
+            "verifier": "CompiledGraph.verifyFlat",
+            "reference_authority": "burn_compiled_graph",
+            "label": "semantic-graph-check",
+            "fingerprint_algorithm": "fnv1a64_noncryptographic",
+            "program_identity": program_identity,
+            "program_identity_fingerprint": "fnv1a64:program",
+            "mutable_state_in_program_identity": false,
+            "runtime_subject": {
+                "status": "bound",
+                "intent_id": projection.intent_id.clone(),
+                "workflow_revision": projection.workflow_revision,
+                "approval_id": projection.approval_id.clone(),
+                "subject_kind": projection.subject_kind.clone(),
+                "subject_identity": projection.subject_identity.clone(),
+                "authorization_policy_id": projection.authorization_policy_id.clone(),
+                "authorization_policy_revision": projection.authorization_policy_revision,
+                "authorization_is_revision": projection.authorization_is_revision
+            },
+            "semantic_execution_context": semantic_execution_context,
+            "semantic_context_fingerprint": "fnv1a64:semantic-context",
+            "input_fingerprint": "fnv1a64:input",
+            "reference_fingerprint": "fnv1a64:reference",
+            "candidate_fingerprint": "fnv1a64:candidate",
+            "tolerances": {"abs": 0.0, "rel": 0.0},
+            "result": {
+                "schema_version": 1,
+                "metric": "max_abs",
+                "passed": true,
+                "checked": 2,
+                "finite_checked": 2,
+                "max_abs": 0.0,
+                "max_rel": 0.0
+            }
+        })
+    }
+
     #[test]
     fn exact_fault_rejoins_without_mutating_resolution_state() {
         let snapshot = resolved_snapshot("intent-a");
@@ -1420,6 +1792,142 @@ mod tests {
         assert!(json.contains("\"graph_verifier_failed\":1"));
         assert!(json.contains("\"interpretation_required\":true"));
         assert!(snapshot.compile_eligible());
+    }
+
+    #[test]
+    fn semantic_graph_receipt_rejoins_with_lineage_as_observation_only() {
+        let snapshot = resolved_snapshot("intent-a");
+        let before = snapshot.clone();
+        let projection = projection("intent-a", snapshot.revision, "spec-a");
+        let receipt = semantic_graph_receipt(&projection);
+
+        let evidence =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&receipt.to_string()).unwrap();
+        assert_eq!(evidence.kind(), "graph_verifier_receipt");
+        assert_eq!(evidence.source_authority(), "wasm_verifier");
+        assert_eq!(evidence.evidence_authority(), "observation_only");
+        assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
+        assert_eq!(evidence.outcome(), "passed");
+
+        let evidence_json: serde_json::Value =
+            serde_json::from_str(&evidence.to_json()).unwrap();
+        assert_eq!(
+            evidence_json["payload"]["semantic_context_fingerprint"],
+            "fnv1a64:semantic-context"
+        );
+        let transported_context = evidence_json["payload"]["semantic_execution_context"]
+            .as_str()
+            .unwrap();
+        let transported_context: serde_json::Value =
+            serde_json::from_str(transported_context).unwrap();
+        assert_eq!(
+            transported_context["schema_id"],
+            "burn-research.semantic-execution-context.v1"
+        );
+        assert_eq!(
+            transported_context["semantic_graph_identity"]["fingerprint"],
+            "fnv1a64:graph"
+        );
+        assert_eq!(
+            transported_context["semantic_lifecycle_identity"]["fingerprint"],
+            "fnv1a64:lifecycle"
+        );
+
+        let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+        assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
+        assert!(inbox.record(evidence).unwrap());
+        assert_eq!(snapshot, before);
+
+        let inbox_json: serde_json::Value =
+            serde_json::from_str(&inbox.to_json()).unwrap();
+        assert_eq!(
+            inbox_json["summary"]["graph_verifier_with_semantic_context"],
+            1
+        );
+        assert_eq!(inbox_json["resolution_effect"]["diagnostic_created"], false);
+        assert_eq!(inbox_json["resolution_effect"]["state_transition"], "none");
+        assert_eq!(inbox_json["resolution_effect"]["revision_created"], false);
+        assert_eq!(inbox_json["resolution_effect"]["action_selected"], false);
+        assert_eq!(
+            inbox_json["entries"][0]["payload"]["semantic_context_fingerprint"],
+            "fnv1a64:semantic-context"
+        );
+    }
+
+    #[test]
+    fn semantic_graph_receipt_validation_fails_closed_on_partial_or_mismatched_context() {
+        let snapshot = resolved_snapshot("intent-a");
+        let projection = projection("intent-a", snapshot.revision, "spec-a");
+
+        let mut partial = semantic_graph_receipt(&projection);
+        partial
+            .as_object_mut()
+            .unwrap()
+            .remove("semantic_context_fingerprint");
+        let err =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&partial.to_string()).unwrap_err();
+        assert!(err.contains("must be present together"));
+
+        let mut bad_fingerprint = semantic_graph_receipt(&projection);
+        bad_fingerprint["semantic_context_fingerprint"] =
+            serde_json::json!("fnv1a64:different");
+        let err = RuntimeEvidence::from_graph_verifier_receipt_json(
+            &bad_fingerprint.to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("semantic_context_fingerprint does not match"));
+
+        let mut bad_program = semantic_graph_receipt(&projection);
+        bad_program["semantic_execution_context"]["program_identity"]["plan_hex"] =
+            serde_json::json!("different");
+        let err =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&bad_program.to_string()).unwrap_err();
+        assert!(err.contains("program_identity does not match"));
+
+        let mut bad_lineage = semantic_graph_receipt(&projection);
+        bad_lineage["semantic_execution_context"]["semantic_lifecycle_identity"]
+            ["base_semantic_graph_identity"]["fingerprint"] =
+            serde_json::json!("fnv1a64:different-graph");
+        let err = RuntimeEvidence::from_graph_verifier_receipt_json(
+            &bad_lineage.to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("base graph identity does not match"));
+    }
+
+    #[test]
+    fn legacy_graph_receipt_remains_semantic_context_free() {
+        let snapshot = resolved_snapshot("intent-a");
+        let projection = projection("intent-a", snapshot.revision, "spec-a");
+        let mut receipt = semantic_graph_receipt(&projection);
+        receipt
+            .as_object_mut()
+            .unwrap()
+            .remove("semantic_execution_context");
+        receipt
+            .as_object_mut()
+            .unwrap()
+            .remove("semantic_context_fingerprint");
+
+        let evidence =
+            RuntimeEvidence::from_graph_verifier_receipt_json(&receipt.to_string()).unwrap();
+        let evidence_json: serde_json::Value =
+            serde_json::from_str(&evidence.to_json()).unwrap();
+        assert!(evidence_json["payload"]
+            .get("semantic_execution_context")
+            .is_none());
+        assert!(evidence_json["payload"]
+            .get("semantic_context_fingerprint")
+            .is_none());
+
+        let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
+        assert!(inbox.record(evidence).unwrap());
+        let inbox_json: serde_json::Value =
+            serde_json::from_str(&inbox.to_json()).unwrap();
+        assert_eq!(
+            inbox_json["summary"]["graph_verifier_with_semantic_context"],
+            0
+        );
     }
 
     #[test]

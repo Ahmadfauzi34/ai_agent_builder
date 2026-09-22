@@ -188,11 +188,12 @@
     "accepts": [
       "structured AgentFault fields",
       "graph verifier receipt fields",
+      "semantic graph verifier execution-context provenance",
       "MathProgram verifier receipt fields",
       "DirectMath verifier receipt fields",
       "vector verifier receipt fields"
     ],
-    "policy": "evidence is classified against the exact Resolution revision + runtime subject; no automatic ResolutionDiagnostic or state transition"
+    "policy": "evidence is classified against the exact Resolution revision + runtime subject; semantic graph proof context is preserved as observation-only provenance; no automatic ResolutionDiagnostic or state transition"
   },
   "math_interaction": {
     "capability": "mathInteractionCapabilities",
