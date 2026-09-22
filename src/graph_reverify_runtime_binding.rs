@@ -183,6 +183,7 @@ impl GraphReverifyRuntimeBinding {
                 "\"requirements_fingerprint\":\"{}\",",
                 "\"authority\":\"runtime_verifier\",",
                 "\"operation\":\"CompiledGraph.verifyFlat\",",
+                "\"registry_state_policy\":\"live_current_state_not_snapshotted\",",
                 "\"runtime\":{{",
                     "\"program_identity\":{},",
                     "\"input_shape\":[{}],",
