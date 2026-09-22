@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
+use crate::input_port_edge_binding::binding_json;
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
@@ -410,6 +411,7 @@ pub fn describe_graph(
                         "\"layer_id\":{},",
                         "\"input_slots\":{},",
                         "\"output_slot\":{},",
+                        "\"semantic_input_consumer_binding\":{},",
                         "\"workspace_metadata\":{},",
                         "\"metadata_valid\":{},",
                         "\"metadata_type_matches_builder\":{},",
@@ -426,6 +428,10 @@ pub fn describe_graph(
                     layer_id,
                     input_slots,
                     out_slot,
+                    builder
+                        .input_port_binding(u32::try_from(index).unwrap_or(u32::MAX))
+                        .map(binding_json)
+                        .unwrap_or_else(|| "null".to_string()),
                     if metadata.is_some() { "true" } else { "false" },
                     if metadata_valid { "true" } else { "false" },
                     if metadata_matches_type { "true" } else { "false" },
@@ -459,6 +465,7 @@ pub fn describe_graph(
             "\"authority\":{{",
                 "\"topology\":\"AgentGraphBuilder\",",
                 "\"semantic_metadata\":\"AgentWorkspace when available\",",
+                "\"semantic_edge_provenance\":\"AgentGraphBuilder immutable optional binding\",",
                 "\"execution_binding\":\"LayerRegistry\"",
             "}},",
             "\"unknown_metadata_policy\":\"report_null_do_not_infer\",",
@@ -468,6 +475,7 @@ pub fn describe_graph(
             "\"runtime_subject\":{},",
             "\"runtime_program_bindings\":{{\"count\":{},\"identity_policy\":\"exact_program_identity\",\"claim_policy\":\"no_precompile_identity_inference\"}},",
             "\"num_steps\":{},",
+            "\"semantic_edge_binding_count\":{},",
             "\"configured_output_slot\":{},",
             "\"written_slots\":[{}],",
             "\"steps\":[{}]",
@@ -479,6 +487,7 @@ pub fn describe_graph(
         runtime_subject_binding_json(workspace),
         workspace.runtime_program_binding_count(),
         builder.num_steps(),
+        builder.input_port_binding_count(),
         builder
             .introspection_output_slot()
             .map(|value| value.to_string())
