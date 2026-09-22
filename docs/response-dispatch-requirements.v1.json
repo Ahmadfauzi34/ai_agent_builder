@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.response-dispatch-requirements.v1",
+  "role": "typed_handoff_requirements_projection_only",
+  "purpose": "Convert a dispatchable nonexecuting ResponseIntent route into a machine-readable requirement profile for the existing destination authority without binding values, executing the route, or granting authorization.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1",
+    "gate": "burn-research.response-intent-execution-gate.v1"
+  },
+  "semantics": {
+    "ready_true": "the execution gate is dispatchable and the route has a known typed requirement profile",
+    "ready_false": "the gate is closed, the route is missing, or the route/profile correspondence is invalid",
+    "execution_authorized": false,
+    "mutation": "none",
+    "value_binding": "none; this contract describes required input classes only"
+  },
+  "profiles": {
+    "ignore": {
+      "executor_contract": "none",
+      "operation": "no_op",
+      "payload_mode": "none",
+      "requirements": []
+    },
+    "reverify_graph": {
+      "executor_contract": "CompiledGraph.verifyFlat",
+      "payload_mode": "typed_runtime_verifier_inputs",
+      "required": [
+        "compiled_graph",
+        "layer_registry",
+        "input_tensor",
+        "candidate",
+        "abs_tol",
+        "rel_tol"
+      ]
+    },
+    "reverify_math_program": {
+      "executor_contract": "MathProgram.verifyFlat",
+      "payload_mode": "typed_runtime_verifier_inputs",
+      "required": [
+        "math_program",
+        "program_inputs",
+        "candidate",
+        "abs_tol",
+        "rel_tol"
+      ]
+    },
+    "reverify_direct_math": {
+      "executor_contract": "DirectMath.verifyAgainstMathProgramV9",
+      "payload_mode": "typed_operation_verifier_inputs",
+      "required": [
+        "canonical_operation",
+        "operation_inputs",
+        "u32_params",
+        "f32_params",
+        "abs_tol",
+        "rel_tol"
+      ],
+      "note": "canonical_operation is not inferred from AgentResponseIntent and remains caller/runtime-context input"
+    },
+    "reverify_vector": {
+      "executor_contract": "mathVerifyVectors",
+      "payload_mode": "typed_runtime_verifier_inputs",
+      "required": [
+        "reference",
+        "candidate",
+        "abs_tol",
+        "rel_tol"
+      ]
+    },
+    "request_information": {
+      "executor_contract": "external_resolution_review",
+      "operation": "request_information",
+      "payload_mode": "caller_structured_payload",
+      "required": [
+        "information_request"
+      ],
+      "optional": [
+        "actor",
+        "diagnostic_materialization"
+      ]
+    },
+    "propose_revision": {
+      "executor_contract": "ResolutionRevisionChain",
+      "operation": "open_revision",
+      "payload_mode": "caller_structured_payload",
+      "required": [
+        "revision_key"
+      ],
+      "optional": [
+        "parent_revision_id"
+      ]
+    }
+  },
+  "requirement_fields": {
+    "name": "stable requirement key",
+    "required": "whether the next authority handoff requires the value",
+    "value_class": "machine-readable value category, not a serialized value schema",
+    "source_authority": "which caller/runtime boundary is expected to supply the value"
+  },
+  "identity": {
+    "requirements_fingerprint": "fnv1a64 over dispatch fingerprint + executor contract + payload mode + ordered requirement descriptors",
+    "fingerprint_security": "deterministic correlation only; not authentication, authorization, or cryptographic integrity"
+  },
+  "invariants": [
+    "requirements projection reuses response_intent_execution_gate and cannot reopen a closed gate",
+    "the projection never binds actual executor values",
+    "the projection never invokes a verifier, review session, or revision chain",
+    "the projection never mutates ResolutionEvidenceInbox or Resolution state",
+    "executor_contract and routed operation remain distinct concepts",
+    "ready does not mean execution authorized",
+    "requirement source labels do not authenticate caller-supplied values",
+    "existing direct authority APIs remain independently callable escape hatches"
+  ],
+  "future_extensions": [
+    "typed dispatch request value binding",
+    "executor-specific payload validation",
+    "explicit execution adapters that consume validated dispatch requests",
+    "execution receipt correlation back to the originating dispatch fingerprint"
+  ]
+}
