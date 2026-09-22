@@ -59,7 +59,8 @@
   },
   "edge_projection": {
     "edge_identity": "AgentGraphBuilder step index",
-    "topology_authority": "AgentGraphBuilder",
+    "topology_authority": "AgentGraphBuilder ordered input-origin resolution",
+    "external_origin_rule": "slot 0 is external only when no prior graph step has written slot 0",
     "semantic_policy": "caller-selected InputPortConsumerSpec",
     "non_external_edge": "reported as not_applicable rather than inferred or rejected",
     "layer_semantics": "never inferred from numerical layer type"
@@ -68,7 +69,8 @@
     "routing projection does not mutate workspace, graph builder, or registry",
     "canonical_valid_actions preserves the full interactionValidActions envelope and underlying action state projection",
     "semantic incompatibility is advisory and never rewrites canonical action availability",
-    "edge compatibility applies only to graph steps that actually read slot 0",
+    "edge compatibility applies only when topology origin resolves an input position to the original external slot 0 value",
+    "a later read of slot 0 after an earlier step writes slot 0 is internal provenance, not external input",
     "routing projection itself never binds a consumer contract persistently",
     "persistent binding is delegated to agent-input-port-edge-binding.v1 and remains outside routing projection authority",
     "routing projection never authorizes execution or selects an action"
@@ -79,10 +81,14 @@
     "inspection": "inputPortConsumerEdgeBinding",
     "semantic_identity": "semanticGraphIdentity"
   },
+  "semantic_lifecycle": {
+    "contract": "agent-semantic-lifecycle.v1",
+    "capability": "semanticLifecycleCapabilities",
+    "policy": "persistent role transitions consume topology-origin and edge-binding provenance without changing routing projection authority"
+  },
   "future_extensions": [
     "role-aware candidate grouping",
     "multiple external input ports",
-    "inter-graph semantic handoff",
-    "state/reward lifecycle routing"
+    "inter-graph semantic handoff"
   ]
 }
