@@ -546,7 +546,7 @@ fn semantic_graph_ledger_receipt_json(
 ) -> String {
     format!(
         concat!(
-            "{",
+            "{{",
             "\"schema_version\":1,",
             "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
             "\"receipt_id\":{},",
@@ -562,7 +562,7 @@ fn semantic_graph_ledger_receipt_json(
             "\"runtime_subject\":{},",
             "\"tolerances\":{},",
             "\"result\":{}",
-            "}"
+            "}}"
         ),
         receipt_id,
         json_escape(label),
@@ -835,7 +835,7 @@ pub fn workspace_verify_semantic_graph_receipt(
 
     Ok(format!(
         concat!(
-            "{",
+            "{{",
             "\"schema_version\":1,",
             "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
             "\"receipt_id\":{},",
@@ -855,7 +855,7 @@ pub fn workspace_verify_semantic_graph_receipt(
             "\"candidate_fingerprint\":\"{}\",",
             "\"tolerances\":{},",
             "\"result\":{}",
-            "}"
+            "}}"
         ),
         receipt_id,
         json_escape(&label),
