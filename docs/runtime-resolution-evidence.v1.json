@@ -76,7 +76,9 @@
     "DirectMath verifier observation preserves verifier=DirectMath.verifyAgainstMathProgramV9, candidate_authority=burn_direct_math, reference_authority=burn_math_program, and reference_program_generation=v9 without upgrading inbox transport into proof authority",
     "semantic graph verifier observation preserves semantic_execution_context + semantic_context_fingerprint when both are present and structurally coherent",
     "semantic execution context rejoin never changes programIdentity authority, never authorizes execution, and never creates Resolution state transitions",
-    "partial or internally inconsistent semantic graph proof context fails closed at the structured graph-receipt adapter"
+    "partial or internally inconsistent semantic graph proof context fails closed at the structured graph-receipt adapter",
+    "evidence interpretation may enumerate response candidates but never selects or ranks them",
+    "interpretation reads only evidence already admitted into the exact-subject inbox"
   ],
   "audit_artifacts": {
     "native_probe": {
@@ -120,6 +122,18 @@
         "runtime subject tuple is read from the actual receipt rather than manually reconstructed",
         "receipt is classified exact and recorded into a subject-matched ResolutionEvidenceInbox",
         "recording actual transported evidence does not create a diagnostic, state transition, revision, or action selection"
+      ]
+    },
+    "interpretation_probe": {
+      "artifact_name": "runtime-evidence-interpretation-native-probe",
+      "executable": "runtime_evidence_interpretation_probe",
+      "proves": [
+        "fault evidence exposes ignore/request_information/propose_revision but not reverify",
+        "failed verifier evidence exposes all four response candidates",
+        "passed verifier evidence exposes ignore/reverify without deriving information-request or revision candidates",
+        "selected_action and default_action remain null and ranking remains none",
+        "interpreter does not mutate inbox or Resolution state",
+        "unrecorded inbox entries cannot be interpreted"
       ]
     }
   },
@@ -271,5 +285,18 @@
       ],
       "authority": "wasm_verifier source label / burn_direct_math candidate / burn_math_program reference / observation_only transport"
     }
+  },
+  "interpretation_layer": {
+    "contract": "burn-research.runtime-evidence-interpretation.v1",
+    "native_projection": "interpret_recorded_evidence",
+    "input": "recorded entry from exact-subject ResolutionEvidenceInbox",
+    "actions": [
+      "ignore",
+      "reverify",
+      "request_information",
+      "propose_revision"
+    ],
+    "policy": "candidate projection only; no selection, ranking, execution, diagnostic creation, revision creation, or Resolution mutation",
+    "escape_hatch": "independent review/revision APIs remain available even when an evidence-derived candidate is unavailable"
   }
 }
