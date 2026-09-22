@@ -43,6 +43,7 @@ jobs:
           python3 -m json.tool docs/response-dispatch-request.v1.json >/dev/null
           python3 -m json.tool docs/response-dispatch-executor-preflight.v1.json >/dev/null
           python3 -m json.tool docs/revision-dispatch-execution-adapter.v1.json >/dev/null
+          python3 -m json.tool docs/revision-execution-evidence-rejoin.v1.json >/dev/null
           python3 -m json.tool docs/unified-math-interaction.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
@@ -88,6 +89,9 @@ jobs:
 
       - name: Build native revision dispatch execution adapter probe
         run: cargo build --release --bin revision_dispatch_execution_adapter_probe
+
+      - name: Build native revision execution evidence rejoin probe
+        run: cargo build --release --bin revision_execution_evidence_rejoin_probe
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
@@ -317,6 +321,12 @@ jobs:
         with:
           name: revision-dispatch-execution-adapter-native-probe
           path: target/release/revision_dispatch_execution_adapter_probe
+
+      - name: Upload native revision execution evidence rejoin probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: revision-execution-evidence-rejoin-native-probe
+          path: target/release/revision_execution_evidence_rejoin_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
