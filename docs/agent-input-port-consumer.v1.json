@@ -60,8 +60,14 @@
     "edge_projection": "inputPortConsumerEdgeCompatibility",
     "policy": "caller-selected consumer semantics are projected onto canonical actions and exact graph steps without persistent binding"
   },
+  "persistent_edge_binding": {
+    "contract": "agent-input-port-edge-binding.v1",
+    "bind": "bindInputPortConsumerEdge",
+    "inspection": "inputPortConsumerEdgeBinding",
+    "semantic_identity": "semanticGraphIdentity",
+    "policy": "an explicitly selected compatible consumer may be persisted on an exact graph step as immutable provenance without changing execution program identity"
+  },
   "future_extensions": [
-    "persistent consumer bindings on graph edges",
     "enumerate compatible consumers",
     "state and reward lifecycle contracts",
     "multiple external input ports"
