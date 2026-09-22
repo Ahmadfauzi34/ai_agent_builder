@@ -1323,6 +1323,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\",\"semantic_execution_context\":\"semanticExecutionContextCapabilities\",\"semantic_graph_receipt\":\"workspaceVerifySemanticGraphReceipt\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
+            "\"semantic_ingress_manifest\":\"semanticIngressManifestCapabilities\",",
             "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
             "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
             "\"math_interaction\":\"mathInteractionCapabilities\",",
