@@ -139,6 +139,18 @@ enum RuntimeEvidencePayload {
         passed: bool,
         detail: String,
     },
+    RevisionDispatchExecutionReceipt {
+        receipt_fingerprint: String,
+        request_fingerprint: String,
+        response_intent_fingerprint: String,
+        dispatch_fingerprint: String,
+        lineage_id: String,
+        revision_id: String,
+        revision_key: String,
+        parent_revision_id: Option<String>,
+        before_revision_count: usize,
+        after_revision_count: usize,
+    },
 }
 
 impl RuntimeEvidencePayload {
@@ -149,6 +161,7 @@ impl RuntimeEvidencePayload {
             | Self::MathProgramVerifierReceipt { .. }
             | Self::DirectMathVerifierReceipt { .. } => "wasm_verifier",
             Self::VectorVerifierReceipt { .. } => "wasm_comparator",
+            Self::RevisionDispatchExecutionReceipt { .. } => "ResolutionRevisionChain",
         }
     }
 
@@ -157,7 +170,10 @@ impl RuntimeEvidencePayload {
     }
 
     pub fn transport_integrity(&self) -> &'static str {
-        "host_structured_unverified"
+        match self {
+            Self::RevisionDispatchExecutionReceipt { .. } => "native_typed_correlated",
+            _ => "host_structured_unverified",
+        }
     }
 
     pub fn kind(&self) -> &'static str {
@@ -167,6 +183,7 @@ impl RuntimeEvidencePayload {
             Self::MathProgramVerifierReceipt { .. } => "math_program_verifier_receipt",
             Self::DirectMathVerifierReceipt { .. } => "direct_math_verifier_receipt",
             Self::VectorVerifierReceipt { .. } => "vector_verifier_receipt",
+            Self::RevisionDispatchExecutionReceipt { .. } => "revision_dispatch_execution_receipt",
         }
     }
 
@@ -183,6 +200,7 @@ impl RuntimeEvidencePayload {
                     "failed"
                 }
             }
+            Self::RevisionDispatchExecutionReceipt { .. } => "committed",
         }
     }
 
@@ -353,6 +371,58 @@ impl RuntimeEvidencePayload {
                 passed,
                 json_escape(detail),
             ),
+            Self::RevisionDispatchExecutionReceipt {
+                receipt_fingerprint,
+                request_fingerprint,
+                response_intent_fingerprint,
+                dispatch_fingerprint,
+                lineage_id,
+                revision_id,
+                revision_key,
+                parent_revision_id,
+                before_revision_count,
+                after_revision_count,
+            } => {
+                let parent_revision_id = parent_revision_id
+                    .as_deref()
+                    .map(|value| format!("\"{}\"", json_escape(value)))
+                    .unwrap_or_else(|| "null".to_string());
+                format!(
+                    concat!(
+                        "{{",
+                        "\"kind\":\"revision_dispatch_execution_receipt\",",
+                        "\"evidence_authority\":\"observation_only\",",
+                        "\"source_authority\":\"ResolutionRevisionChain\",",
+                        "\"source_operation\":\"open_revision\",",
+                        "\"transport_integrity\":\"native_typed_correlated\",",
+                        "\"outcome\":\"committed\",",
+                        "\"receipt_fingerprint\":\"{}\",",
+                        "\"request_fingerprint\":\"{}\",",
+                        "\"response_intent_fingerprint\":\"{}\",",
+                        "\"dispatch_fingerprint\":\"{}\",",
+                        "\"lineage_id\":\"{}\",",
+                        "\"revision_id\":\"{}\",",
+                        "\"revision_key\":\"{}\",",
+                        "\"parent_revision_id\":{},",
+                        "\"before_revision_count\":{},",
+                        "\"after_revision_count\":{},",
+                        "\"execution_trigger\":\"explicit_caller_invocation\",",
+                        "\"authorization_claim\":\"none\",",
+                        "\"source_mutation\":\"committed\"",
+                        "}}"
+                    ),
+                    json_escape(receipt_fingerprint),
+                    json_escape(request_fingerprint),
+                    json_escape(response_intent_fingerprint),
+                    json_escape(dispatch_fingerprint),
+                    json_escape(lineage_id),
+                    json_escape(revision_id),
+                    json_escape(revision_key),
+                    parent_revision_id,
+                    before_revision_count,
+                    after_revision_count,
+                )
+            }
         }
     }
 }
@@ -1349,6 +1419,72 @@ impl RuntimeEvidence {
         )
     }
 
+    pub(crate) fn bound_revision_dispatch_execution_receipt_for_inbox(
+        inbox: &ResolutionEvidenceInbox,
+        receipt_fingerprint: impl Into<String>,
+        request_fingerprint: impl Into<String>,
+        response_intent_fingerprint: impl Into<String>,
+        dispatch_fingerprint: impl Into<String>,
+        lineage_id: impl Into<String>,
+        revision_id: impl Into<String>,
+        revision_key: impl Into<String>,
+        parent_revision_id: Option<String>,
+        before_revision_count: usize,
+        after_revision_count: usize,
+    ) -> Result<Self, String> {
+        const CONTEXT: &str =
+            "RuntimeEvidence.bound_revision_dispatch_execution_receipt_for_inbox";
+        if after_revision_count != before_revision_count.saturating_add(1) {
+            return Err(format!(
+                "{CONTEXT}: revision count delta must be exactly one, got {before_revision_count}->{after_revision_count}"
+            ));
+        }
+        let receipt_fingerprint = receipt_fingerprint.into();
+        let request_fingerprint = request_fingerprint.into();
+        let response_intent_fingerprint = response_intent_fingerprint.into();
+        let dispatch_fingerprint = dispatch_fingerprint.into();
+        let lineage_id = lineage_id.into();
+        let revision_id = revision_id.into();
+        let revision_key = revision_key.into();
+        for (value, field) in [
+            (&receipt_fingerprint, "receipt_fingerprint"),
+            (&request_fingerprint, "request_fingerprint"),
+            (&response_intent_fingerprint, "response_intent_fingerprint"),
+            (&dispatch_fingerprint, "dispatch_fingerprint"),
+            (&lineage_id, "lineage_id"),
+            (&revision_id, "revision_id"),
+            (&revision_key, "revision_key"),
+        ] {
+            validate_nonempty_bounded(
+                value,
+                MAX_SHORT_FIELD_BYTES,
+                &format!("{CONTEXT}.{field}"),
+            )?;
+        }
+        if let Some(parent_revision_id) = parent_revision_id.as_deref() {
+            validate_nonempty_bounded(
+                parent_revision_id,
+                MAX_SHORT_FIELD_BYTES,
+                &format!("{CONTEXT}.parent_revision_id"),
+            )?;
+        }
+        Ok(Self {
+            subject: Some(inbox.target.clone()),
+            payload: RuntimeEvidencePayload::RevisionDispatchExecutionReceipt {
+                receipt_fingerprint,
+                request_fingerprint,
+                response_intent_fingerprint,
+                dispatch_fingerprint,
+                lineage_id,
+                revision_id,
+                revision_key,
+                parent_revision_id,
+                before_revision_count,
+                after_revision_count,
+            },
+        })
+    }
+
     pub fn to_json(&self) -> String {
         let subject = self
             .subject
@@ -1528,6 +1664,7 @@ impl ResolutionEvidenceInbox {
         let mut direct_math_failed = 0usize;
         let mut vector_passed = 0usize;
         let mut vector_failed = 0usize;
+        let mut revision_dispatch_committed = 0usize;
 
         for evidence in &self.entries {
             match &evidence.payload {
@@ -1567,6 +1704,9 @@ impl ResolutionEvidenceInbox {
                         vector_failed += 1;
                     }
                 }
+                RuntimeEvidencePayload::RevisionDispatchExecutionReceipt { .. } => {
+                    revision_dispatch_committed += 1;
+                }
             }
         }
 
@@ -1595,7 +1735,8 @@ impl ResolutionEvidenceInbox {
                     "\"direct_math_verifier_passed\":{},",
                     "\"direct_math_verifier_failed\":{},",
                     "\"vector_verifier_passed\":{},",
-                    "\"vector_verifier_failed\":{}",
+                    "\"vector_verifier_failed\":{},",
+                    "\"revision_dispatch_committed\":{}",
                 "}},",
                 "\"resolution_effect\":{{",
                     "\"diagnostic_created\":false,",
@@ -1620,6 +1761,7 @@ impl ResolutionEvidenceInbox {
             direct_math_failed,
             vector_passed,
             vector_failed,
+            revision_dispatch_committed,
             entries,
         )
     }

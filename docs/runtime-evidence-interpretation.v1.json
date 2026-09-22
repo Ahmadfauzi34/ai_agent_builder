@@ -67,6 +67,13 @@
       "reverify": true,
       "request_information": false,
       "propose_revision": false
+    },
+    "revision_dispatch_execution_receipt": {
+      "outcome": "committed",
+      "ignore": "available",
+      "reverify": "unavailable",
+      "request_information": "unavailable from this evidence",
+      "propose_revision": "unavailable from this evidence"
     }
   },
   "invariants": [
@@ -80,7 +87,8 @@
     "passed evidence does not become a prohibition against independent revision APIs",
     "failed evidence does not automatically imply revision",
     "transport/source authority labels remain unchanged",
-    "candidate availability and explicit caller selection remain separate: interpretation proposes possibilities, ResponseIntent records the caller/agent choice"
+    "candidate availability and explicit caller selection remain separate: interpretation proposes possibilities, ResponseIntent records the caller/agent choice",
+    "a committed revision execution receipt does not mechanically derive another revision proposal"
   ],
   "selection_handoff": {
     "next_contract": "burn-research.agent-response-intent.v1",

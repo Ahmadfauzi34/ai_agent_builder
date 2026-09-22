@@ -40,7 +40,12 @@
       "mutation"
     ],
     "receipt_fingerprint": "fnv1a64 over request/intent/dispatch identity + lineage + committed revision id + before/after revision counts",
-    "fingerprint_security": "deterministic correlation only; not cryptographic integrity, authentication, authorization, or capability"
+    "fingerprint_security": "deterministic correlation only; not cryptographic integrity, authentication, authorization, or capability",
+    "rejoin": {
+      "contract": "burn-research.revision-execution-evidence-rejoin.v1",
+      "rule": "typed receipt may rejoin only through exact inbox + current intent/request + matching revision-chain post-state validation",
+      "evidence_authority": "observation_only"
+    }
   },
   "scope": {
     "supported_action": "propose_revision",
@@ -61,10 +66,10 @@
     "replay of the same request is rejected by current executor state and creates no second revision",
     "postcondition mismatch rolls back the caller-owned chain",
     "the receipt preserves request_fingerprint and dispatch_fingerprint correlation",
-    "external review and runtime verifier execution remain outside this adapter"
+    "external review and runtime verifier execution remain outside this adapter",
+    "the execution receipt does not itself carry a replacement runtime subject tuple; exact-subject rejoin is derived from the originating inbox"
   ],
   "future_extensions": [
-    "execution receipt rejoin as typed runtime/response evidence",
     "caller authorization token or policy binding if revision mutation later requires stronger authority semantics",
     "runtime verifier execution adapters after real handle binding",
     "external resolution review adapter"
