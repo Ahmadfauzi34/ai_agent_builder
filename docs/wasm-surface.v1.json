@@ -68,6 +68,13 @@
       "minimumRevision",
       "requireFingerprint"
     ],
+    "SemanticTransitionSpec": [
+      "constructor",
+      "describe",
+      "inputRoles",
+      "outputRole",
+      "transitionId"
+    ],
     "AgentWorkspace": [
       "constructor",
       "forgetLayer",
@@ -639,11 +646,16 @@
     "resolutionRuntimeBridgeCapabilities",
     "runtimeResolutionEvidenceCapabilities",
     "semanticGraphIdentity",
+    "semanticLifecycleCapabilities",
+    "semanticLifecycleIdentity",
+    "semanticLifecycleProjection",
+    "semanticLifecycleTransition",
     "setGraphParametersFlat",
     "statisticsCapabilities",
     "tensorTransformCapabilities",
     "validateAgentLayoutEdge",
     "bindInputPortConsumerEdge",
+    "bindSemanticLifecycleTransition",
     "workspaceBindInputContract",
     "workspaceBindInputPortMetadata",
     "workspaceBindRuntimeDirectMathOperation",
