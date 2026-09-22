@@ -372,10 +372,12 @@ fn request_fingerprint(
         .ok_or_else(|| "ResponseDispatchRequest: requirements fingerprint missing".to_string())?;
     let canonical = format!(
         concat!(
-            "v1|intent={}|dispatch={dispatch}|requirements={requirement_fingerprint}|",
+            "v1|intent={}|dispatch={}|requirements={}|",
             "action={}|payload={}|bound={}|unbound_optional={}|"
         ),
         requirements.response_intent_fingerprint,
+        dispatch,
+        requirement_fingerprint,
         requirements.selected_action.as_str(),
         payload.canonical(),
         canonical_string_list(bound_requirements),
