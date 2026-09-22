@@ -105,7 +105,7 @@
     "graph reverify real-handle binding does not weaken the serializable request rule: runtime handles are never represented by caller-supplied string identities"
   ],
   "future_extensions": [
-    "executor-specific runtime handle binding for reverify",
+    "additional runtime-handle bindings for MathProgram/direct/vector reverify classes",
     "explicit execution adapters consuming only executor-preflight-ready ResponseDispatchRequest",
     "execution receipt carrying request_fingerprint and dispatch_fingerprint",
     "optional structured diagnostic materialization request"
