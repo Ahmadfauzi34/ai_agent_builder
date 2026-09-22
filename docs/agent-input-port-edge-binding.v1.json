@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.input-port-edge-binding.v1",
+  "role": "persistent_semantic_graph_provenance",
+  "scope": {
+    "owner": "AgentGraphBuilder",
+    "edge_identity": "exact step_index",
+    "external_input_slot": 0,
+    "execution_effect": "none",
+    "numerical_effect": "none",
+    "selection_effect": "none"
+  },
+  "binding_policy": {
+    "optional": true,
+    "first_bind": "persist caller-selected InputPortConsumerSpec plus exact input-port metadata snapshot",
+    "idempotent_rebind": "same binding returns created=false",
+    "conflicting_rebind": "rejected",
+    "clear": "not provided in v1",
+    "graph_without_binding": "remains valid as an explicit lower-level escape hatch"
+  },
+  "binding_snapshot": {
+    "consumer": [
+      "consumer_id",
+      "accepted_roles",
+      "allow_extension_roles",
+      "require_fingerprint",
+      "minimum_revision"
+    ],
+    "input_port": [
+      "role",
+      "source",
+      "revision",
+      "fingerprint"
+    ],
+    "topology": [
+      "step_index",
+      "external_input_positions"
+    ],
+    "compatibility_at_bind": "compatible|incompatible",
+    "binding_identity": "deterministic fnv1a64 fingerprint over canonical binding fields"
+  },
+  "surfaces": {
+    "inputPortEdgeBindingCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "bindInputPortConsumerEdge": {
+      "mutation": "AgentGraphBuilder semantic provenance only",
+      "requirements": [
+        "workspace and builder num_slots match",
+        "step exists",
+        "step consumes external slot 0",
+        "semantic input-port metadata is bound"
+      ],
+      "execution_authorized": false,
+      "decision_authority": "agent"
+    },
+    "inputPortConsumerEdgeBinding": {
+      "mutation": "none",
+      "returns": "persistent binding plus current input drift/compatibility status"
+    }
+  },
+  "drift_status": {
+    "exact": "current input metadata exactly matches bound snapshot",
+    "drifted": "current input metadata differs from bound snapshot",
+    "unknown": "semantic input metadata is currently unbound",
+    "effect": "observation only; never mutates topology or blocks execution"
+  },
+  "invariants": [
+    "binding metadata is excluded from canonical graph plan bytes",
+    "binding metadata does not initialize or mutate LayerRegistry",
+    "binding metadata does not authorize execution",
+    "binding metadata does not infer consumer meaning from numerical layer type",
+    "binding applies only to a step that actually consumes slot 0",
+    "binding is immutable once created for a step",
+    "compatibility at bind may be incompatible because final decision authority remains with the agent",
+    "current drift is reported but never converted into automatic execution rejection"
+  ],
+  "future_extensions": [
+    "persistent bindings for multiple external input ports",
+    "inter-graph semantic handoff identities",
+    "state/reward lifecycle provenance",
+    "proof receipts referencing semantic edge binding identity"
+  ]
+}
