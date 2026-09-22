@@ -94,7 +94,8 @@
         "structured AgentFault and verifier receipt JSON are adapted without manual host field mapping",
         "structured MathProgram verifier receipt can rejoin the exact subject as observation-only evidence without changing Resolution state",
         "structured DirectMath verifier receipt can rejoin the exact subject as observation-only evidence while preserving candidate/reference authority and without changing Resolution state",
-        "semantic graph verifier context can rejoin the exact subject while Resolution state remains unchanged"
+        "semantic graph verifier context can rejoin the exact subject while Resolution state remains unchanged",
+        "synthetic semantic CompiledGraph receipt preserves semantic execution context and fingerprint through exact inbox rejoin"
       ]
     },
     "wasm_package": {
@@ -104,12 +105,15 @@
         "reverse bridge state is not owned by WASM"
       ]
     },
-    "acceptance": "run downloaded exact-head native probe, pipe actual packaged-WASM MathProgram and DirectMath verifier receipts into the downloaded native adapter probe, and inspect packaged WASM capability surface outside CI",
+    "acceptance": "run downloaded exact-head native probe, pipe actual packaged-WASM semantic graph, MathProgram, and DirectMath verifier receipts into the downloaded native adapter probe, and inspect packaged WASM capability surface outside CI",
     "native_adapter_probe": {
       "artifact_name": "runtime-resolution-evidence-adapter-probe",
       "executable": "runtime_resolution_evidence_adapter_probe",
-      "input": "one actual MathProgram.verifyFlat or DirectMath.verifyAgainstMathProgramV9 verifier receipt JSON object on stdin",
+      "input": "one actual CompiledGraph.verifyFlat, MathProgram.verifyFlat, or DirectMath.verifyAgainstMathProgramV9 verifier receipt JSON object on stdin",
       "proves": [
+        "semantic graph receipt rejoin remains observation_only and does not create a diagnostic, state transition, revision, or action selection",
+        "semantic_execution_context + semantic_context_fingerprint survive projection into RuntimeEvidence and exact-subject inbox recording",
+        "actual cross-artifact semantic CompiledGraph receipt can be parsed by RuntimeEvidence::from_graph_verifier_receipt_json",
         "actual cross-artifact MathProgram receipt can be parsed by RuntimeEvidence::from_math_program_verifier_receipt_json",
         "actual cross-artifact DirectMath receipt can be parsed by RuntimeEvidence::from_direct_math_verifier_receipt_json",
         "kind/source_authority/evidence_authority/transport_integrity/outcome are derived by the strict typed adapter selected from receipt.verifier",
