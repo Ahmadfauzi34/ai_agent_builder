@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.semantic-lifecycle.v1",
+  "role": "persistent_semantic_dataflow_provenance",
+  "scope": {
+    "state_owner": "AgentGraphBuilder",
+    "execution_plan_effect": "none",
+    "numerical_effect": "none",
+    "semantic_graph_identity_effect": "none",
+    "decision_authority": "agent"
+  },
+  "topology_origin": {
+    "authority": "ordered AgentGraphBuilder steps",
+    "external_input_rule": "slot 0 is external only until an earlier step writes slot 0",
+    "internal_input_rule": "each input resolves to the latest prior step that wrote the consumed slot",
+    "unresolved_input": "binding fails closed"
+  },
+  "transition_spec": {
+    "surface": "SemanticLifecycleTransitionSpec",
+    "fields": [
+      "transition_id",
+      "expected_input_roles",
+      "output_role"
+    ],
+    "role_policy": "canonical input-port roles or valid x- extension roles",
+    "semantic_policy": "roles are caller-declared and never inferred from numerical layer type"
+  },
+  "binding": {
+    "surface": "bindSemanticLifecycleTransition",
+    "edge_identity": "exact AgentGraphBuilder step_index",
+    "external_anchor": "persistent input-port edge binding on the same step",
+    "internal_anchor": "persistent semantic lifecycle transition on the latest prior writer step",
+    "continuity_check": "expected_input_roles must exactly match resolved upstream semantic roles by input position",
+    "immutability": "first successful transition wins; identical rebinding is idempotent and conflicting rebinding fails closed"
+  },
+  "provenance": {
+    "input_sources": [
+      "external_input_binding",
+      "step_output_transition"
+    ],
+    "output_provenance": "transition fingerprint",
+    "history_policy": "upstream provenance fingerprints are snapshotted into each immutable transition"
+  },
+  "identity": {
+    "surface": "semanticLifecycleIdentity",
+    "schema_id": "burn-research.semantic-lifecycle-identity.v1",
+    "includes": [
+      "semanticGraphIdentity fingerprint",
+      "ordered lifecycle transition fingerprints"
+    ],
+    "explicit_non_identity": [
+      "CompiledGraph.programIdentity",
+      "semanticGraphIdentity"
+    ]
+  },
+  "inspection": {
+    "transition": "semanticLifecycleTransition",
+    "trace": "semanticLifecycleTrace",
+    "projection_only": true
+  },
+  "invariants": [
+    "lifecycle binding never changes executable graph plan bytes",
+    "lifecycle binding never changes CompiledGraph.programIdentity",
+    "lifecycle binding never changes semanticGraphIdentity",
+    "lifecycle binding never mutates AgentWorkspace or LayerRegistry",
+    "lifecycle binding never authorizes execution",
+    "slot number alone never proves external-input origin after that slot has been overwritten",
+    "semantic roles are never inferred from layer type",
+    "downstream lifecycle binding fails if upstream semantic provenance is missing",
+    "conflicting rebinding fails without rewriting existing provenance"
+  ],
+  "examples": [
+    {
+      "path": [
+        "observation",
+        "feature",
+        "candidate"
+      ],
+      "meaning": "explicit agent-declared semantic lifecycle over ordered graph steps"
+    },
+    {
+      "path": [
+        "state",
+        "feature",
+        "state"
+      ],
+      "meaning": "state transformation remains descriptive provenance, not runtime policy"
+    }
+  ]
+}
