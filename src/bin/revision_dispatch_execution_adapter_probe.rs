@@ -141,7 +141,8 @@ fn run() -> Result<(), String> {
         serde_json::json!({
             "schema": "burn-research.revision-dispatch-execution-adapter-probe.v1",
             "status": "passed",
-            "receipt": serde_json::from_str::<serde_json::Value>(&receipt.to_json())?,
+            "receipt": serde_json::from_str::<serde_json::Value>(&receipt.to_json())
+                .map_err(|error| error.to_string())?,
             "single_commit": after.revisions.len() == 1,
             "replay_rejected": replay.is_err(),
             "wrong_route_rejected": wrong_route.is_err(),
