@@ -293,6 +293,7 @@ pub fn preflight_response_intent(
                 evidence_matches: false,
                 candidate_available: false,
                 candidate_snapshot_matches: false,
+                intent_fingerprint_matches: false,
                 execution_authorized: false,
             }
         }
@@ -321,6 +322,7 @@ pub fn preflight_response_intent(
                 evidence_matches: true,
                 candidate_available: false,
                 candidate_snapshot_matches: false,
+                intent_fingerprint_matches: false,
                 execution_authorized: false,
             }
         }
