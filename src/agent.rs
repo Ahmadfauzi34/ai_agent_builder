@@ -1320,7 +1320,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"engine\":\"burn-research\",",
             "\"purpose\":\"agent_math_coprocessor\",",
             "\"tensor\":{{\"dtype\":\"f32\",\"rank_max\":4,\"owned\":\"WasmTensor\",\"shared\":\"TensorView\"}},",
-            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\"}},",
+            "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\",\"semantic_execution_context\":\"semanticExecutionContextCapabilities\",\"semantic_graph_receipt\":\"workspaceVerifySemanticGraphReceipt\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
             "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",

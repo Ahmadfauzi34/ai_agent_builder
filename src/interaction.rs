@@ -177,6 +177,7 @@ pub fn interaction_capabilities() -> String {
         "\"input_port_routing\":\"inputPortRoutingCapabilities\",",
         "\"input_port_edge_binding\":\"inputPortEdgeBindingCapabilities\",",
         "\"semantic_lifecycle\":\"semanticLifecycleCapabilities\",",
+        "\"semantic_execution_context\":\"semanticExecutionContextCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",

@@ -35,6 +35,7 @@ pub mod resolution_runtime_bridge;
 pub mod resolution_subject;
 pub mod runtime_resolution_evidence;
 pub mod semantic_lifecycle;
+pub mod semantic_execution_context;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]

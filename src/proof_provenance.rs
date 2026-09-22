@@ -1,6 +1,8 @@
 use wasm_bindgen::prelude::*;
 
+use crate::agent::AgentGraphBuilder;
 use crate::coprocessor::verify_vectors_metrics;
+use crate::semantic_execution_context::semantic_execution_context_for;
 use crate::graph::CompiledGraph;
 use crate::math::program::{
     OP_ABS, OP_ADD, OP_CROSS_ENTROPY, OP_DIV, OP_DOT, OP_ENTROPY, OP_EXP,
@@ -530,6 +532,50 @@ fn ledger_receipt_json(
     )
 }
 
+fn semantic_graph_ledger_receipt_json(
+    receipt_id: u32,
+    label: &str,
+    input_fingerprint: &str,
+    candidate_fingerprint: &str,
+    program_identity_fingerprint: &str,
+    semantic_context_fingerprint: &str,
+    runtime_subject_json: &str,
+    abs_tol: f64,
+    rel_tol: f64,
+    result_json: &str,
+) -> String {
+    format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
+            "\"receipt_id\":{},",
+            "\"authority\":\"wasm_verifier\",",
+            "\"verifier\":\"CompiledGraph.verifyFlat\",",
+            "\"reference_authority\":\"burn_compiled_graph\",",
+            "\"label\":\"{}\",",
+            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
+            "\"input_fingerprint\":\"{}\",",
+            "\"candidate_fingerprint\":\"{}\",",
+            "\"program_identity_fingerprint\":\"{}\",",
+            "\"semantic_context_fingerprint\":\"{}\",",
+            "\"runtime_subject\":{},",
+            "\"tolerances\":{},",
+            "\"result\":{}",
+            "}}"
+        ),
+        receipt_id,
+        json_escape(label),
+        json_escape(input_fingerprint),
+        json_escape(candidate_fingerprint),
+        json_escape(program_identity_fingerprint),
+        json_escape(semantic_context_fingerprint),
+        runtime_subject_json,
+        tolerances_json(abs_tol, rel_tol),
+        result_json,
+    )
+}
+
 /// Return the embedded proof-provenance contract.
 #[wasm_bindgen(js_name = proofProvenanceCapabilities)]
 pub fn proof_provenance_capabilities() -> String {
@@ -731,6 +777,100 @@ pub fn workspace_verify_graph_receipt(
     ))
 }
 
+
+
+/// Verify a Burn graph while binding the current semantic graph/lifecycle identities
+/// into the returned proof context. Numerical authority remains CompiledGraph.verifyFlat.
+#[wasm_bindgen(js_name = workspaceVerifySemanticGraphReceipt)]
+pub fn workspace_verify_semantic_graph_receipt(
+    workspace: &mut AgentWorkspace,
+    builder: &AgentGraphBuilder,
+    graph: &CompiledGraph,
+    registry: &LayerRegistry,
+    input: &WasmTensor,
+    candidate: &[f32],
+    abs_tol: f64,
+    rel_tol: f64,
+    label: String,
+) -> Result<String, String> {
+    validate_label(&label, "workspaceVerifySemanticGraphReceipt")?;
+
+    let semantic_context = semantic_execution_context_for(builder, graph, registry)?;
+    let program_identity = graph.program_identity();
+    workspace.require_runtime_program_identity_if_bound(
+        &program_identity,
+        "workspaceVerifySemanticGraphReceipt",
+    )?;
+
+    let reference = graph.run(registry, input)?.to_array();
+    let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
+
+    let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
+    let input_fingerprint = tensor_fingerprint(input);
+    let reference_fingerprint = f32_fingerprint(&reference);
+    let candidate_fingerprint = f32_fingerprint(candidate);
+    let result_json = report.to_json();
+    let runtime_subject = runtime_subject_binding_json(workspace);
+    let receipt_id = workspace.next_verifier_receipt_id();
+
+    let compact = semantic_graph_ledger_receipt_json(
+        receipt_id,
+        &label,
+        &input_fingerprint,
+        &candidate_fingerprint,
+        &program_identity_fingerprint,
+        &semantic_context.context_fingerprint,
+        &runtime_subject,
+        abs_tol,
+        rel_tol,
+        &result_json,
+    );
+
+    let stored = workspace.record_verifier_receipt_internal(
+        "CompiledGraph.verifyFlat".into(),
+        report.passed,
+        compact,
+    )?;
+    debug_assert_eq!(stored, receipt_id);
+
+    Ok(format!(
+        concat!(
+            "{{",
+            "\"schema_version\":1,",
+            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
+            "\"receipt_id\":{},",
+            "\"authority\":\"wasm_verifier\",",
+            "\"verifier\":\"CompiledGraph.verifyFlat\",",
+            "\"reference_authority\":\"burn_compiled_graph\",",
+            "\"label\":\"{}\",",
+            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
+            "\"program_identity\":{},",
+            "\"program_identity_fingerprint\":\"{}\",",
+            "\"mutable_state_in_program_identity\":false,",
+            "\"runtime_subject\":{},",
+            "\"semantic_execution_context\":{},",
+            "\"semantic_context_fingerprint\":\"{}\",",
+            "\"input_fingerprint\":\"{}\",",
+            "\"reference_fingerprint\":\"{}\",",
+            "\"candidate_fingerprint\":\"{}\",",
+            "\"tolerances\":{},",
+            "\"result\":{}",
+            "}}"
+        ),
+        receipt_id,
+        json_escape(&label),
+        program_identity,
+        json_escape(&program_identity_fingerprint),
+        runtime_subject,
+        semantic_context.json(),
+        json_escape(&semantic_context.context_fingerprint),
+        json_escape(&input_fingerprint),
+        json_escape(&reference_fingerprint),
+        json_escape(&candidate_fingerprint),
+        tolerances_json(abs_tol, rel_tol),
+        result_json,
+    ))
+}
 
 
 /// Bind a replay-derived MathProgram programIdentity to an already-bound runtime subject.

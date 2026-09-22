@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.semantic-execution-context.v1",
+  "role": "derived_semantic_proof_context",
+  "purpose": "Bind current semantic graph and lifecycle identities to an exact executable CompiledGraph for proof correlation without changing Burn programIdentity or execution.",
+  "authority": {
+    "execution_identity": "CompiledGraph.programIdentity",
+    "semantic_graph_identity": "AgentGraphBuilder.semanticGraphIdentity",
+    "semantic_lifecycle_identity": "AgentGraphBuilder.semanticLifecycleIdentity",
+    "context": "derived projection only"
+  },
+  "validation": {
+    "registry_binding": "supplied CompiledGraph must validate against the current LayerRegistry",
+    "builder_graph_match": "recompiling the supplied AgentGraphBuilder to the CompiledGraph output slot must reproduce the exact canonical plan and programIdentity",
+    "failure": "mismatch fails closed before a semantic proof context is emitted"
+  },
+  "identity": {
+    "context_fingerprint": "fnv1a64 over exact programIdentity + semanticGraphIdentity + semanticLifecycleIdentity + lifecycle coverage flag",
+    "fingerprint_security": "deterministic correlation only; not a cryptographic signature",
+    "program_identity_effect": "none"
+  },
+  "coverage": {
+    "lifecycle_coverage_complete": "true when every graph step has a semantic lifecycle transition",
+    "policy": "incomplete semantic lifecycle remains representable; the context reports it rather than silently rejecting it"
+  },
+  "surfaces": {
+    "semanticExecutionContextCapabilities": {
+      "mutation": "none",
+      "returns": "this embedded contract"
+    },
+    "semanticExecutionContext": {
+      "mutation": "none",
+      "arguments": [
+        "AgentGraphBuilder",
+        "CompiledGraph",
+        "LayerRegistry"
+      ],
+      "returns": "validated semantic execution context projection"
+    },
+    "workspaceVerifySemanticGraphReceipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger only",
+      "numerical_verifier": "CompiledGraph.verifyFlat semantics",
+      "reference_authority": "burn_compiled_graph",
+      "semantic_context": "derived and validated from current builder + graph + registry"
+    }
+  },
+  "invariants": [
+    "semantic execution context never changes executable graph plan bytes",
+    "semantic execution context never changes Burn programIdentity",
+    "semantic execution context never mutates AgentGraphBuilder or LayerRegistry",
+    "semantic execution context does not authorize execution or choose semantic roles",
+    "a foreign or stale builder cannot relabel an already compiled graph",
+    "semantic-only changes may change context_fingerprint while programIdentity remains identical",
+    "numerical verifier authority remains Burn CompiledGraph execution; semantic context is provenance carried alongside that proof"
+  ]
+}

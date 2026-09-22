@@ -169,7 +169,9 @@
     "vector_receipt": "workspaceVerifyVectorReceipt",
     "graph_receipt": "workspaceVerifyGraphReceipt",
     "ledger": "workspaceProofLedger",
-    "policy": "legacy recordProof, caller attestation, and verifier receipts remain distinct authority classes"
+    "policy": "legacy recordProof, caller attestation, verifier receipts, and semantic proof context remain distinct authority classes; semantic context enriches graph proof provenance without changing Burn programIdentity",
+    "semantic_execution_context": "semanticExecutionContext",
+    "semantic_graph_receipt": "workspaceVerifySemanticGraphReceipt"
   },
   "resolution_runtime_bridge": {
     "capability": "resolutionRuntimeBridgeCapabilities",
