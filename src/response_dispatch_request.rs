@@ -921,9 +921,17 @@ mod tests {
 
     #[test]
     fn capability_contract_declares_runtime_handles_deferred_and_no_execution() {
-        let contract = response_dispatch_request_capabilities();
-        assert!(contract.contains("\"runtime_handle_binding_deferred\""));
-        assert!(contract.contains("\"execution_authorized\": false"));
-        assert!(contract.contains("\"bound_serializable_dispatch_request_nonexecuting\""));
+        let contract: serde_json::Value =
+            serde_json::from_str(response_dispatch_request_capabilities()).unwrap();
+        assert_eq!(
+            contract["bindability"]["reverify"],
+            "runtime_handle_binding_deferred"
+        );
+        assert_eq!(contract["semantics"]["execution_authorized"], false);
+        assert_eq!(contract["semantics"]["mutation"], "none");
+        assert_eq!(
+            contract["role"],
+            "bound_serializable_dispatch_request_nonexecuting"
+        );
     }
 }
