@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.revision-dispatch-execution-adapter.v1",
+  "role": "explicit_revision_dispatch_execution_adapter",
+  "purpose": "Execute only a preflight-ready propose_revision dispatch request against the caller-provided ResolutionRevisionChain and return a deterministic execution receipt correlated to the originating dispatch request.",
+  "input_boundary": {
+    "inbox": "exact-subject ResolutionEvidenceInbox",
+    "intent": "burn-research.agent-response-intent.v1",
+    "request": "burn-research.response-dispatch-request.v1",
+    "authority": "mutable caller-provided ResolutionRevisionChain"
+  },
+  "semantics": {
+    "execution_trigger": "explicit_caller_invocation",
+    "authorization_claim": "none",
+    "mutation": "committed_on_success",
+    "preflight": "preflight_revision_dispatch_executor must report request_ready=true and executor_ready=true immediately before mutation",
+    "authority_operation": "ResolutionRevisionChain.open_revision"
+  },
+  "transaction": {
+    "simulation": "executor preflight first proves acceptance on a cloned ResolutionRevisionChain",
+    "rollback_snapshot": "the actual adapter clones the caller-owned chain before mutation",
+    "commit": "canonical open_revision succeeds and postconditions match the simulated revision id and expected revision-count delta",
+    "rollback": "if canonical execution errors after preflight or postconditions mismatch, the caller-owned chain is restored from the clone"
+  },
+  "receipt": {
+    "schema_id": "burn-research.revision-dispatch-execution-receipt.v1",
+    "fields": [
+      "receipt_fingerprint",
+      "request_fingerprint",
+      "response_intent_fingerprint",
+      "dispatch_fingerprint",
+      "lineage_id",
+      "revision_id",
+      "revision_key",
+      "parent_revision_id",
+      "before_revision_count",
+      "after_revision_count",
+      "execution_trigger",
+      "authorization_claim",
+      "mutation"
+    ],
+    "receipt_fingerprint": "fnv1a64 over request/intent/dispatch identity + lineage + committed revision id + before/after revision counts",
+    "fingerprint_security": "deterministic correlation only; not cryptographic integrity, authentication, authorization, or capability"
+  },
+  "scope": {
+    "supported_action": "propose_revision",
+    "unsupported_actions": [
+      "ignore",
+      "request_information",
+      "reverify"
+    ],
+    "reason": "this adapter owns only the locally modeled ResolutionRevisionChain mutation boundary"
+  },
+  "invariants": [
+    "the adapter cannot execute a request whose current request preflight is closed",
+    "the adapter cannot execute unless revision executor preflight is ready against the same chain state",
+    "the adapter never infers authorization from executor_ready",
+    "explicit caller invocation is the execution trigger",
+    "the adapter calls the existing canonical ResolutionRevisionChain.open_revision authority",
+    "a successful call creates exactly one revision",
+    "replay of the same request is rejected by current executor state and creates no second revision",
+    "postcondition mismatch rolls back the caller-owned chain",
+    "the receipt preserves request_fingerprint and dispatch_fingerprint correlation",
+    "external review and runtime verifier execution remain outside this adapter"
+  ],
+  "future_extensions": [
+    "execution receipt rejoin as typed runtime/response evidence",
+    "caller authorization token or policy binding if revision mutation later requires stronger authority semantics",
+    "runtime verifier execution adapters after real handle binding",
+    "external resolution review adapter"
+  ]
+}
