@@ -151,7 +151,7 @@
       "bind": "bindInputPortConsumerEdge",
       "inspection": "inputPortConsumerEdgeBinding",
       "semantic_identity": "semanticGraphIdentity",
-      "policy": "agent-selected consumer semantics persist on exact graph steps as immutable provenance; binding never changes Burn executable plan identity or authorizes execution"
+      "policy": "agent-selected consumer semantics persist on exact graph steps as immutable provenance; compatible and incompatible choices are both recordable, compatibility_at_bind is evidence only, and binding never changes Burn executable plan identity or authorizes execution"
     }
   },
   "proof_provenance": {
