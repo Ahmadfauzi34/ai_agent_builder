@@ -335,6 +335,74 @@ mod tests {
     }
 
     #[test]
+    fn reverify_route_matches_each_typed_verifier_receipt() {
+        let resolution = resolved_snapshot("intent-gate-matrix");
+        let projection = projection(
+            "intent-gate-matrix",
+            resolution.revision,
+            "spec-gate-matrix",
+        );
+
+        let cases = vec![
+            (
+                RuntimeEvidence::bound_math_program_verifier_receipt(
+                    &projection,
+                    1,
+                    "math",
+                    "{\"schema\":\"burn-research.math-program-identity.v1\"}",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "MathProgram.verifyFlat",
+            ),
+            (
+                RuntimeEvidence::bound_direct_math_verifier_receipt(
+                    &projection,
+                    2,
+                    "direct",
+                    7,
+                    "add",
+                    "burn_direct_math",
+                    "burn_math_program",
+                    "{\"schema\":\"burn-research.math-program-identity.v1\"}",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "DirectMath.verifyAgainstMathProgramV9",
+            ),
+            (
+                RuntimeEvidence::bound_vector_verifier_receipt(
+                    &projection,
+                    3,
+                    "vector",
+                    false,
+                    "mismatch",
+                )
+                .unwrap(),
+                "mathVerifyVectors",
+            ),
+        ];
+
+        for (evidence, operation) in cases {
+            let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
+            inbox.record(evidence).unwrap();
+            let intent = create_agent_response_intent(
+                &inbox,
+                0,
+                EvidenceResponseAction::Reverify,
+                "agent",
+            )
+            .unwrap();
+            let gate = response_intent_execution_gate(&inbox, &intent);
+            assert!(gate.dispatchable);
+            assert_eq!(gate.route.as_ref().unwrap().operation, operation);
+            assert!(!gate.execution_authorized);
+        }
+    }
+
+    #[test]
     fn ignore_is_explicit_noop_route_and_keeps_evidence_recorded() {
         let (_, inbox) = failed_graph_inbox();
         let before_len = inbox.len();
