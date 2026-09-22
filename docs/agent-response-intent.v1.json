@@ -63,6 +63,14 @@
     "selection is explicit caller/agent input rather than interpreter choice",
     "an unavailable evidence-derived candidate cannot be encoded as ResponseIntent",
     "independent Resolution review/revision APIs remain escape hatches outside this evidence-derived path",
-    "preflight only validates current correspondence and does not execute the intent"
-  ]
+    "preflight only validates current correspondence and does not execute the intent",
+    "ResponseIntent may become dispatchable through the execution gate while remaining non-authoritative and nonexecuting"
+  ],
+  "execution_gate": {
+    "next_contract": "burn-research.response-intent-execution-gate.v1",
+    "project": "response_intent_execution_gate",
+    "rule": "only a currently preflight-ready ResponseIntent can produce a dispatchable route",
+    "execution_authorized": false,
+    "mutation": "none"
+  }
 }
