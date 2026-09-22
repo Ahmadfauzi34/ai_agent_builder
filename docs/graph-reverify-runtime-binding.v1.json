@@ -72,10 +72,17 @@
     "binding and preflight execute no graph numerics and allocate no verifier receipt",
     "ready_nonexecuting never means execution authorized",
     "existing CompiledGraph.verifyFlat and workspaceVerifyGraphReceipt remain the canonical verifier authorities",
-    "the binding does not mutate ResolutionEvidenceInbox, Resolution state, AgentWorkspace, CompiledGraph, LayerRegistry, input tensor, or candidate buffer"
+    "the binding does not mutate ResolutionEvidenceInbox, Resolution state, AgentWorkspace, CompiledGraph, LayerRegistry, input tensor, or candidate buffer",
+    "mutable learned state is not silently promoted into programIdentity; exact learned-state snapshotting remains a separate concern"
   ],
   "next_boundary": {
     "planned": "explicit graph reverify execution adapter",
     "rule": "execution adapter must consume a current ready binding plus the same real runtime handles, invoke the canonical verifier receipt surface, and return/rejoin the resulting verifier receipt"
+  },
+  "registry_state_policy": {
+    "mode": "live_current_state_not_snapshotted",
+    "rationale": "CompiledGraph programIdentity intentionally represents structure/init identity rather than mutable learned state. Reverify is allowed to observe current registry weights at execution time.",
+    "preflight": "validates current graph/registry structural binding but does not freeze or hash mutable learned weights",
+    "consequence": "compatible learned-weight changes do not invalidate the binding solely because weights changed; the eventual verifier result reflects the live state"
   }
 }
