@@ -72,14 +72,6 @@ pub enum ResponseDispatchRequestPayload {
 }
 
 impl ResponseDispatchRequestPayload {
-    fn kind(&self) -> &'static str {
-        match self {
-            Self::Ignore => "ignore",
-            Self::RequestInformation { .. } => "request_information",
-            Self::ProposeRevision { .. } => "propose_revision",
-        }
-    }
-
     fn canonical(&self) -> String {
         match self {
             Self::Ignore => "ignore".to_string(),
@@ -377,12 +369,84 @@ fn request_fingerprint(
     Ok(fnv1a64(canonical.bytes()))
 }
 
+fn validate_requirement_accounting(
+    requirements: &ResponseDispatchRequirements,
+    bound_requirements: &[String],
+    unbound_optional_requirements: &[String],
+) -> Result<(), String> {
+    let mut seen = std::collections::BTreeSet::new();
+    for name in bound_requirements {
+        if !seen.insert(name.as_str()) {
+            return Err(format!(
+                "ResponseDispatchRequest: duplicate bound requirement {name}"
+            ));
+        }
+        if !requirements.requirements.iter().any(|item| item.name == *name) {
+            return Err(format!(
+                "ResponseDispatchRequest: unknown bound requirement {name}"
+            ));
+        }
+    }
+
+    for name in unbound_optional_requirements {
+        if !seen.insert(name.as_str()) {
+            return Err(format!(
+                "ResponseDispatchRequest: requirement {name} cannot be both bound and unbound"
+            ));
+        }
+        let requirement = requirements
+            .requirements
+            .iter()
+            .find(|item| item.name == *name)
+            .ok_or_else(|| {
+                format!("ResponseDispatchRequest: unknown unbound requirement {name}")
+            })?;
+        if requirement.required {
+            return Err(format!(
+                "ResponseDispatchRequest: required requirement {name} cannot remain unbound"
+            ));
+        }
+    }
+
+    for requirement in &requirements.requirements {
+        if requirement.required
+            && !bound_requirements
+                .iter()
+                .any(|name| name == &requirement.name)
+        {
+            return Err(format!(
+                "ResponseDispatchRequest: required requirement {} is not bound",
+                requirement.name
+            ));
+        }
+        if !requirement.required
+            && !bound_requirements
+                .iter()
+                .any(|name| name == &requirement.name)
+            && !unbound_optional_requirements
+                .iter()
+                .any(|name| name == &requirement.name)
+        {
+            return Err(format!(
+                "ResponseDispatchRequest: optional requirement {} is not accounted for",
+                requirement.name
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn build_request(
     requirements: ResponseDispatchRequirements,
     payload: ResponseDispatchRequestPayload,
     bound_requirements: Vec<String>,
     unbound_optional_requirements: Vec<String>,
 ) -> Result<ResponseDispatchRequest, String> {
+    validate_requirement_accounting(
+        &requirements,
+        &bound_requirements,
+        &unbound_optional_requirements,
+    )?;
     let request_fingerprint = request_fingerprint(&requirements, &payload)?;
     let dispatch_fingerprint = requirements
         .dispatch_fingerprint
