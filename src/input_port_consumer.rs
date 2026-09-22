@@ -105,7 +105,27 @@ impl InputPortConsumerSpec {
             || (self.allow_extension_roles && role.starts_with("x-"))
     }
 
-    fn json(&self) -> String {
+    pub(crate) fn snapshot_consumer_id(&self) -> &str {
+        &self.consumer_id
+    }
+
+    pub(crate) fn snapshot_accepted_roles(&self) -> &[String] {
+        &self.accepted_roles
+    }
+
+    pub(crate) fn snapshot_allow_extension_roles(&self) -> bool {
+        self.allow_extension_roles
+    }
+
+    pub(crate) fn snapshot_require_fingerprint(&self) -> bool {
+        self.require_fingerprint
+    }
+
+    pub(crate) fn snapshot_minimum_revision(&self) -> u64 {
+        self.minimum_revision
+    }
+
+    pub(crate) fn json(&self) -> String {
         format!(
             concat!(
                 "{{",
