@@ -74,5 +74,12 @@
     "runtime verifier handle binding and executor preflight",
     "runtime verifier execution adapters",
     "execution receipt rejoin as typed evidence"
-  ]
+  ],
+  "reverify": {
+    "graph_typed_binding": {
+      "contract": "burn-research.graph-reverify-runtime-binding.v1",
+      "status": "nonexecuting binding + preflight available",
+      "execution": "still deferred to a dedicated graph reverify execution adapter"
+    }
+  }
 }
