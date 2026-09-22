@@ -52,30 +52,10 @@ fn external_positions(
     step_index: u32,
     context: &str,
 ) -> Result<Vec<String>, String> {
-    let index = usize::try_from(step_index)
-        .map_err(|_| format!("{context}: step index conversion failed"))?;
-    let steps = builder.introspection_steps();
-    let Some((arity, _, _, in_slot, in_slot2, _)) = steps.get(index).copied() else {
-        return Err(format!(
-            "{context}: step index {step_index} is outside num_steps {}",
-            steps.len()
-        ));
-    };
-
-    let mut positions = Vec::new();
-    if arity == 1 {
-        if in_slot == 0 {
-            positions.push("input".to_string());
-        }
-    } else {
-        if in_slot == 0 {
-            positions.push("left".to_string());
-        }
-        if in_slot2 == 0 {
-            positions.push("right".to_string());
-        }
-    }
-    Ok(positions)
+    builder
+        .external_input_positions_for_step(step_index)
+        .map(|positions| positions.into_iter().map(str::to_string).collect())
+        .map_err(|error| format!("{context}: {error}"))
 }
 
 fn binding_fingerprint(
