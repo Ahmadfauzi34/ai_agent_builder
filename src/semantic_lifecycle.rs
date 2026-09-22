@@ -183,7 +183,7 @@ fn exact_external_binding_current(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
     step_index: u32,
-) -> Result<(&str, String), String> {
+) -> Result<(String, String), String> {
     let binding = builder.semantic_edge_binding(step_index).ok_or_else(|| {
         format!(
             "bindSemanticLifecycleTransition: step {step_index} reads external slot 0 but has no persistent input edge binding"
@@ -203,7 +203,7 @@ fn exact_external_binding_current(
         ));
     }
 
-    Ok((&binding.bound_role, binding.binding_fingerprint.clone()))
+    Ok((binding.bound_role.clone(), binding.binding_fingerprint.clone()))
 }
 
 fn resolve_input_lineage(
@@ -219,7 +219,7 @@ fn resolve_input_lineage(
         return Ok(AgentGraphSemanticInputLineage {
             position: position.to_string(),
             slot,
-            role: role.to_string(),
+            role,
             source_kind: "external_input_edge_binding".to_string(),
             source_step_index: None,
             source_fingerprint: fingerprint,
