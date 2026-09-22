@@ -65,7 +65,7 @@
     "bind": "bindInputPortConsumerEdge",
     "inspection": "inputPortConsumerEdgeBinding",
     "semantic_identity": "semanticGraphIdentity",
-    "policy": "an explicitly selected compatible consumer may be persisted on an exact graph step as immutable provenance without changing execution program identity"
+    "policy": "an explicitly selected consumer may be persisted on an exact graph step as immutable provenance whether currently compatible or incompatible; compatibility_at_bind records the observed status and never changes execution program identity"
   },
   "future_extensions": [
     "enumerate compatible consumers",

@@ -247,7 +247,7 @@ fn provenance_drift_is_reported_without_mutating_binding_history() {
 }
 
 #[test]
-fn non_external_edge_and_incompatible_consumer_cannot_be_persisted() {
+fn topology_origin_is_enforced_while_consumer_compatibility_remains_advisory() {
     let mut workspace = AgentWorkspace::new(4).unwrap();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
     let mut registry = LayerRegistry::new();
@@ -279,7 +279,7 @@ fn non_external_edge_and_incompatible_consumer_cannot_be_persisted() {
         .reserve_layer_id(&registry, "relu-b".into())
         .unwrap();
     let second = AgentLayerSpec::relu(second_id);
-    workspace_init_unary(
+    let second_output = workspace_init_unary(
         &mut workspace,
         &mut builder,
         &mut registry,
@@ -316,11 +316,36 @@ fn non_external_edge_and_incompatible_consumer_cannot_be_persisted() {
         0,
     )
     .unwrap();
-    assert!(
-        bind_input_port_consumer_edge(&workspace, &mut builder, &reward_consumer, 0)
-            .unwrap_err()
-            .contains("incompatible")
+
+    let program_before = builder
+        .compile_with_output(&registry, second_output)
+        .unwrap()
+        .program_identity();
+
+    assert!(bind_input_port_consumer_edge(
+        &workspace,
+        &mut builder,
+        &reward_consumer,
+        0,
+    )
+    .unwrap());
+
+    let bound: serde_json::Value = serde_json::from_str(
+        &input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(bound["binding"]["compatibility_at_bind"], "incompatible");
+    assert_eq!(bound["current_compatible"], false);
+    assert_eq!(
+        bound["binding"]["consumer"]["consumer_id"],
+        "reward-only"
     );
+
+    let program_after = builder
+        .compile_with_output(&registry, second_output)
+        .unwrap()
+        .program_identity();
+    assert_eq!(program_before, program_after);
 }
 
 #[test]
@@ -332,4 +357,8 @@ fn capability_contract_keeps_binding_outside_execution_authority() {
     assert_eq!(caps["scope"]["execution_plan_effect"], "none");
     assert_eq!(caps["scope"]["numerical_effect"], "none");
     assert_eq!(caps["scope"]["decision_authority"], "agent");
+    assert_eq!(
+        caps["binding"]["compatibility_policy"],
+        "advisory: compatible and incompatible consumer choices may both be persisted; compatibility_at_bind records the fact"
+    );
 }

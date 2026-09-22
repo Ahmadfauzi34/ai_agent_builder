@@ -93,6 +93,18 @@ fn binding_fingerprint(
     fnv1a64(canonical.as_bytes())
 }
 
+fn binding_snapshot_compatible(binding: &AgentGraphSemanticEdgeBinding) -> bool {
+    let role_match = binding
+        .accepted_roles
+        .iter()
+        .any(|role| role == &binding.bound_role)
+        || (binding.allow_extension_roles && binding.bound_role.starts_with("x-"));
+    let fingerprint_ok = !binding.require_fingerprint || !binding.bound_fingerprint.is_empty();
+    let revision_ok =
+        binding.minimum_revision == 0 || binding.bound_revision >= binding.minimum_revision;
+    role_match && fingerprint_ok && revision_ok
+}
+
 fn stored_consumer_compatible(
     binding: &AgentGraphSemanticEdgeBinding,
     workspace: &AgentWorkspace,
@@ -130,7 +142,8 @@ pub(crate) fn binding_record_json(binding: &AgentGraphSemanticEdgeBinding) -> St
                 "\"revision\":{},",
                 "\"fingerprint\":{}",
             "}},",
-            "\"binding_fingerprint\":\"{}\"",
+            "\"binding_fingerprint\":\"{}\",",
+            "\"compatibility_at_bind\":\"{}\"" ,
             "}}"
         ),
         binding.step_index,
@@ -149,6 +162,11 @@ pub(crate) fn binding_record_json(binding: &AgentGraphSemanticEdgeBinding) -> St
             format!("\"{}\"", json_escape(&binding.bound_fingerprint))
         },
         json_escape(&binding.binding_fingerprint),
+        if binding_snapshot_compatible(binding) {
+            "compatible"
+        } else {
+            "incompatible"
+        },
     )
 }
 
@@ -216,20 +234,11 @@ pub fn bind_input_port_consumer_edge(
         ));
     }
 
-    match consumer.is_compatible_with_workspace(workspace) {
-        None => {
-            return Err(
-                "bindInputPortConsumerEdge: semantic input port is unbound; compatibility is unknown"
-                    .to_string(),
-            )
-        }
-        Some(false) => {
-            return Err(
-                "bindInputPortConsumerEdge: consumer contract is incompatible with current semantic input port"
-                    .to_string(),
-            )
-        }
-        Some(true) => {}
+    if consumer.is_compatible_with_workspace(workspace).is_none() {
+        return Err(
+            "bindInputPortConsumerEdge: semantic input port is unbound; compatibility is unknown"
+                .to_string(),
+        );
     }
 
     let metadata = workspace
