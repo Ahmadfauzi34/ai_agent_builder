@@ -79,7 +79,8 @@
     "graph_typed_binding": {
       "contract": "burn-research.graph-reverify-runtime-binding.v1",
       "status": "nonexecuting binding + preflight available",
-      "execution": "still deferred to a dedicated graph reverify execution adapter"
+      "execution_contract": "burn-research.graph-reverify-execution-adapter.v1",
+      "execution": "explicit real-handle execution available through canonical workspaceVerifyGraphReceipt"
     }
   }
 }
