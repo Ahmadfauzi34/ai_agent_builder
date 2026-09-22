@@ -28,6 +28,13 @@
     "reference_authority": "burn_compiled_graph",
     "adapter_authority": "correlation_only_not_verifier_authority"
   },
+  "semantics": {
+    "automatic_action_selection": false,
+    "execution_authorized": false,
+    "execution_trigger": "explicit_caller_invocation",
+    "rejoin_trigger": "separate_explicit_caller_invocation",
+    "selection_authority": "agent_or_caller"
+  },
   "transaction": {
     "rollback_snapshot": "AgentWorkspace is cloned immediately before canonical verifier invocation",
     "success_postcondition": "exactly one verifier receipt is appended, next receipt id advances exactly one, and exactly one of passed/failed verifier counters advances",
