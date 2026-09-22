@@ -624,6 +624,47 @@ impl RuntimeEvidence {
                     "none",
                     CONTEXT,
                 )?;
+                if !Self::require_bool(semantic_context, "projection_only", CONTEXT)? {
+                    return Err(format!(
+                        "{CONTEXT}: semantic_execution_context.projection_only must be true"
+                    ));
+                }
+                Self::require_exact_string(
+                    semantic_context,
+                    "fingerprint_algorithm",
+                    "fnv1a64_noncryptographic",
+                    CONTEXT,
+                )?;
+                let context_authority = semantic_context
+                    .get("authority")
+                    .filter(|value| value.is_object())
+                    .ok_or_else(|| {
+                        format!("{CONTEXT}: semantic_execution_context missing authority object")
+                    })?;
+                Self::require_exact_string(
+                    context_authority,
+                    "execution_identity",
+                    "CompiledGraph.programIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "semantic_graph",
+                    "AgentGraphBuilder.semanticGraphIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "semantic_lifecycle",
+                    "AgentGraphBuilder.semanticLifecycleIdentity",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    context_authority,
+                    "context",
+                    "derived_projection",
+                    CONTEXT,
+                )?;
 
                 let context_program_identity = semantic_context
                     .get("program_identity")
@@ -653,6 +694,12 @@ impl RuntimeEvidence {
                     "burn-research.semantic-graph-identity.v1",
                     CONTEXT,
                 )?;
+                Self::require_exact_string(
+                    semantic_graph_identity,
+                    "execution_program_identity_effect",
+                    "none",
+                    CONTEXT,
+                )?;
 
                 let semantic_lifecycle_identity = semantic_context
                     .get("semantic_lifecycle_identity")
@@ -666,6 +713,12 @@ impl RuntimeEvidence {
                     semantic_lifecycle_identity,
                     "schema_id",
                     "burn-research.semantic-lifecycle-identity.v1",
+                    CONTEXT,
+                )?;
+                Self::require_exact_string(
+                    semantic_lifecycle_identity,
+                    "execution_program_identity_effect",
+                    "none",
                     CONTEXT,
                 )?;
 
