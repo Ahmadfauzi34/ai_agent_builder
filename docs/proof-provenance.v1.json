@@ -8,7 +8,8 @@
     "vector_receipt": "WASM comparator authority over equality/tolerance relative to a caller-supplied reference",
     "graph_receipt": "WASM verifier authority using Burn CompiledGraph as the reference execution",
     "math_program_receipt": "WASM verifier authority using replayed canonical MathProgram execution as the reference",
-    "direct_math_receipt": "WASM verifier authority produced by executing the canonical direct math path and an internally generated one-step MathProgramV9 reference; caller supplies neither output candidate nor reference"
+    "direct_math_receipt": "WASM verifier authority produced by executing the canonical direct math path and an internally generated one-step MathProgramV9 reference; caller supplies neither output candidate nor reference",
+    "semantic_graph_receipt": "WASM graph verifier authority using Burn CompiledGraph as numerical reference while carrying a validated semanticExecutionContext projection"
   },
   "surfaces": {
     "proofProvenanceCapabilities": {
@@ -68,6 +69,20 @@
       "verifier": "DirectMath.verifyAgainstMathProgramV9",
       "candidate_authority": "burn_direct_math",
       "reference_authority": "burn_math_program"
+    },
+    "semanticExecutionContextCapabilities": {
+      "mutation": "none",
+      "returns": "burn-research.semantic-execution-context.v1 contract"
+    },
+    "semanticExecutionContext": {
+      "mutation": "none",
+      "returns": "validated executable+semantic identity projection"
+    },
+    "workspaceVerifySemanticGraphReceipt": {
+      "mutation": "AgentWorkspace verifier-receipt ledger after Burn-backed graph verification",
+      "verifier": "CompiledGraph.verifyFlat",
+      "reference_authority": "burn_compiled_graph",
+      "semantic_context": "validated AgentGraphBuilder semantic graph/lifecycle identities bound to the exact supplied CompiledGraph"
     }
   },
   "receipt": {
@@ -89,7 +104,9 @@
       "program_identity",
       "program_identity_fingerprint",
       "reference_fingerprint",
-      "mutable_state_in_program_identity=false"
+      "mutable_state_in_program_identity=false",
+      "semantic_execution_context (semantic receipt surface only)",
+      "semantic_context_fingerprint (semantic receipt surface only)"
     ],
     "runtime_subject": {
       "source": "AgentWorkspace runtime-subject binding",
@@ -119,7 +136,8 @@
     "bound_subject_graph_receipt": "fail closed before graph execution/receipt allocation unless exact programIdentity is bound to the workspace subject",
     "unbound_graph_receipt": "legacy unbound verification remains allowed",
     "bound_subject_math_program_receipt": "fail closed before MathProgram reference execution/receipt allocation unless exact replay-derived programIdentity is bound to the workspace subject",
-    "unbound_math_program_receipt": "legacy/unbound MathProgram verification remains allowed"
+    "unbound_math_program_receipt": "legacy/unbound MathProgram verification remains allowed",
+    "semantic_graph_receipt": "fail closed before numerical execution/receipt allocation when the current builder+registry cannot reproduce the exact supplied CompiledGraph programIdentity and canonical plan"
   },
   "invariants": [
     "caller attestation cannot create verifier authority",
@@ -141,7 +159,9 @@
     "direct math verifier receipts are not caller-supplied vector comparisons",
     "direct verifier executes both candidate and reference paths internally",
     "direct verifier subject binding uses the exact generated MathProgramV9 programIdentity",
-    "direct verifier does not claim numerical implementation independence below shared Burn kernels"
+    "direct verifier does not claim numerical implementation independence below shared Burn kernels",
+    "semantic graph verifier receipts bind semanticGraphIdentity and semanticLifecycleIdentity as proof context without changing programIdentity or numerical verifier authority",
+    "a stale or foreign AgentGraphBuilder cannot relabel an existing CompiledGraph semantic proof context"
   ],
   "runtime_resolution_rejoin": {
     "contract": "burn-research.runtime-resolution-evidence.v1",
