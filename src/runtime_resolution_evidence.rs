@@ -371,6 +371,58 @@ impl RuntimeEvidencePayload {
                 passed,
                 json_escape(detail),
             ),
+            Self::RevisionDispatchExecutionReceipt {
+                receipt_fingerprint,
+                request_fingerprint,
+                response_intent_fingerprint,
+                dispatch_fingerprint,
+                lineage_id,
+                revision_id,
+                revision_key,
+                parent_revision_id,
+                before_revision_count,
+                after_revision_count,
+            } => {
+                let parent_revision_id = parent_revision_id
+                    .as_deref()
+                    .map(|value| format!("\"{}\"", json_escape(value)))
+                    .unwrap_or_else(|| "null".to_string());
+                format!(
+                    concat!(
+                        "{{",
+                        "\"kind\":\"revision_dispatch_execution_receipt\",",
+                        "\"evidence_authority\":\"observation_only\",",
+                        "\"source_authority\":\"ResolutionRevisionChain\",",
+                        "\"source_operation\":\"open_revision\",",
+                        "\"transport_integrity\":\"native_typed_correlated\",",
+                        "\"outcome\":\"committed\",",
+                        "\"receipt_fingerprint\":\"{}\",",
+                        "\"request_fingerprint\":\"{}\",",
+                        "\"response_intent_fingerprint\":\"{}\",",
+                        "\"dispatch_fingerprint\":\"{}\",",
+                        "\"lineage_id\":\"{}\",",
+                        "\"revision_id\":\"{}\",",
+                        "\"revision_key\":\"{}\",",
+                        "\"parent_revision_id\":{},",
+                        "\"before_revision_count\":{},",
+                        "\"after_revision_count\":{},",
+                        "\"execution_trigger\":\"explicit_caller_invocation\",",
+                        "\"authorization_claim\":\"none\",",
+                        "\"source_mutation\":\"committed\"",
+                        "}}"
+                    ),
+                    json_escape(receipt_fingerprint),
+                    json_escape(request_fingerprint),
+                    json_escape(response_intent_fingerprint),
+                    json_escape(dispatch_fingerprint),
+                    json_escape(lineage_id),
+                    json_escape(revision_id),
+                    json_escape(revision_key),
+                    parent_revision_id,
+                    before_revision_count,
+                    after_revision_count,
+                )
+            }
         }
     }
 }
