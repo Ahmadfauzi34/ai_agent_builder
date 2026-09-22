@@ -20,7 +20,7 @@
     "workspace runtime subject must exactly equal the ResolutionEvidenceInbox target",
     "selected source evidence must still exist at the ResponseIntent entry index",
     "source evidence must be graph_verifier_receipt",
-    "current CompiledGraph programIdentity must be structurally equal to the selected evidence program identity",
+    "selected graph verifier evidence program identity is canonicalized at the host receipt-adapter boundary and must exactly equal the current CompiledGraph.programIdentity",
     "current CompiledGraph must validate against the supplied LayerRegistry",
     "subject-bound workspace must contain the exact current graph programIdentity",
     "input tensor fingerprint and shape are derived from the supplied WasmTensor",
@@ -84,5 +84,10 @@
     "rationale": "CompiledGraph programIdentity intentionally represents structure/init identity rather than mutable learned state. Reverify is allowed to observe current registry weights at execution time.",
     "preflight": "validates current graph/registry structural binding but does not freeze or hash mutable learned weights",
     "consequence": "compatible learned-weight changes do not invalidate the binding solely because weights changed; the eventual verifier result reflects the live state"
+  },
+  "program_identity_transport": {
+    "receipt_adapter": "RuntimeEvidence.from_graph_verifier_receipt_json validates the structured graph identity and projects it into the canonical CompiledGraph.programIdentity field order",
+    "runtime_binding": "uses exact string equality after canonical host projection; no serde_json dependency is introduced into the WASM runtime",
+    "rationale": "preserve cross-target minimal dependencies while avoiding JSON object key-order false negatives"
   }
 }
