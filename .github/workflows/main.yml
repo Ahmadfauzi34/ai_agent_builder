@@ -38,6 +38,7 @@ jobs:
           python3 -m json.tool docs/runtime-resolution-evidence.v1.json >/dev/null
           python3 -m json.tool docs/runtime-evidence-interpretation.v1.json >/dev/null
           python3 -m json.tool docs/agent-response-intent.v1.json >/dev/null
+          python3 -m json.tool docs/response-intent-execution-gate.v1.json >/dev/null
           python3 -m json.tool docs/unified-math-interaction.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
@@ -68,6 +69,9 @@ jobs:
 
       - name: Build native agent response intent probe
         run: cargo build --release --bin agent_response_intent_probe
+
+      - name: Build native response intent execution gate probe
+        run: cargo build --release --bin response_intent_execution_gate_probe
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
@@ -267,6 +271,12 @@ jobs:
         with:
           name: agent-response-intent-native-probe
           path: target/release/agent_response_intent_probe
+
+      - name: Upload native response intent execution gate probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: response-intent-execution-gate-native-probe
+          path: target/release/response_intent_execution_gate_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
