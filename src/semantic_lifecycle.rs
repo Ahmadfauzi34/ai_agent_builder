@@ -1,7 +1,8 @@
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{
-    AgentGraphBuilder, AgentGraphSemanticInputLineage, AgentGraphSemanticLifecycleTransition,
+    AgentGraphBuilder, AgentGraphInputOrigin, AgentGraphSemanticInputLineage,
+    AgentGraphSemanticLifecycleTransition,
 };
 use crate::input_port::role_valid;
 use crate::input_port_edge_binding::semantic_graph_identity_json;
@@ -166,19 +167,6 @@ pub(crate) fn transition_record_json(transition: &AgentGraphSemanticLifecycleTra
     )
 }
 
-fn latest_prior_producer(
-    builder: &AgentGraphBuilder,
-    step_index: u32,
-    slot: u8,
-) -> Option<u32> {
-    let steps = builder.introspection_steps();
-    let upper = usize::try_from(step_index).ok()?.min(steps.len());
-    (0..upper)
-        .rev()
-        .find(|index| steps[*index].5 == slot)
-        .and_then(|index| u32::try_from(index).ok())
-}
-
 fn exact_external_binding_current(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
@@ -213,40 +201,54 @@ fn resolve_input_lineage(
     position: &str,
     slot: u8,
 ) -> Result<AgentGraphSemanticInputLineage, String> {
-    if slot == 0 {
-        let (role, fingerprint) =
-            exact_external_binding_current(workspace, builder, step_index)?;
-        return Ok(AgentGraphSemanticInputLineage {
-            position: position.to_string(),
-            slot,
-            role,
-            source_kind: "external_input_edge_binding".to_string(),
-            source_step_index: None,
-            source_fingerprint: fingerprint,
-        });
-    }
-
-    let producer_step = latest_prior_producer(builder, step_index, slot).ok_or_else(|| {
-        format!(
-            "bindSemanticLifecycleTransition: {position} slot {slot} has no prior topology producer with lifecycle provenance"
-        )
-    })?;
-    let producer = builder
-        .semantic_lifecycle_transition(producer_step)
+    let origin = builder
+        .input_origins_for_step(step_index)
+        .map_err(|error| format!("bindSemanticLifecycleTransition: {error}"))?
+        .into_iter()
+        .find(|record| record.position == position && record.slot == slot)
         .ok_or_else(|| {
             format!(
-                "bindSemanticLifecycleTransition: {position} slot {slot} producer step {producer_step} has no semantic lifecycle transition"
+                "bindSemanticLifecycleTransition: {position} slot {slot} is not an input of step {step_index}"
             )
         })?;
 
-    Ok(AgentGraphSemanticInputLineage {
-        position: position.to_string(),
-        slot,
-        role: producer.output_role.clone(),
-        source_kind: "prior_transition".to_string(),
-        source_step_index: Some(producer_step),
-        source_fingerprint: producer.transition_fingerprint.clone(),
-    })
+    match origin.origin {
+        AgentGraphInputOrigin::ExternalInput => {
+            let (role, fingerprint) =
+                exact_external_binding_current(workspace, builder, step_index)?;
+            Ok(AgentGraphSemanticInputLineage {
+                position: position.to_string(),
+                slot,
+                role,
+                source_kind: "external_input_edge_binding".to_string(),
+                source_step_index: None,
+                source_fingerprint: fingerprint,
+            })
+        }
+        AgentGraphInputOrigin::StepOutput {
+            step_index: producer_step,
+        } => {
+            let producer = builder
+                .semantic_lifecycle_transition(producer_step)
+                .ok_or_else(|| {
+                    format!(
+                        "bindSemanticLifecycleTransition: {position} slot {slot} producer step {producer_step} has no semantic lifecycle transition"
+                    )
+                })?;
+
+            Ok(AgentGraphSemanticInputLineage {
+                position: position.to_string(),
+                slot,
+                role: producer.output_role.clone(),
+                source_kind: "prior_transition".to_string(),
+                source_step_index: Some(producer_step),
+                source_fingerprint: producer.transition_fingerprint.clone(),
+            })
+        }
+        AgentGraphInputOrigin::Unresolved => Err(format!(
+            "bindSemanticLifecycleTransition: {position} slot {slot} has no prior topology producer with lifecycle provenance"
+        )),
+    }
 }
 
 fn transition_fingerprint(
