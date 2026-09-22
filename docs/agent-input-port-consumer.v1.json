@@ -67,9 +67,13 @@
     "semantic_identity": "semanticGraphIdentity",
     "policy": "an explicitly selected compatible consumer may be persisted on an exact graph step as immutable provenance without changing execution program identity"
   },
+  "semantic_lifecycle": {
+    "contract": "agent-semantic-lifecycle.v1",
+    "spec": "SemanticLifecycleTransitionSpec",
+    "policy": "persistent consumer bindings anchor external semantic provenance; downstream roles remain explicitly agent-declared and topology-derived"
+  },
   "future_extensions": [
     "enumerate compatible consumers",
-    "state and reward lifecycle contracts",
     "multiple external input ports"
   ]
 }
