@@ -39,6 +39,10 @@
     ],
     "explicit_non_identity": "Burn programIdentity remains based on executable plan bytes and is not changed by semantic edge binding"
   },
+  "downstream_semantic_lifecycle": {
+    "contract": "agent-semantic-lifecycle.v1",
+    "policy": "an external lifecycle transition must anchor slot-0 lineage to this persistent edge binding and must reject bind-time provenance drift"
+  },
   "drift": {
     "inspection": "inputPortConsumerEdgeBinding",
     "states": [

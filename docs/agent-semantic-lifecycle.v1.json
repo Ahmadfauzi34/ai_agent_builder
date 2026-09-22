@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.semantic-lifecycle.v1",
+  "role": "persistent_agent_declared_semantic_transition_provenance",
+  "scope": {
+    "state_owner": "AgentGraphBuilder",
+    "execution_plan_effect": "none",
+    "numerical_effect": "none",
+    "topology_effect": "none",
+    "decision_authority": "agent"
+  },
+  "roles": {
+    "vocabulary": "agent-input-port.v1 canonical roles plus x- extension namespace",
+    "inference_policy": "never infer role from numerical layer type",
+    "transition_policy": "input and output roles are explicitly declared by SemanticTransitionSpec"
+  },
+  "lineage": {
+    "external_slot_0": "must resolve through an existing persistent input edge binding on the exact step and that binding must match current external input provenance at bind time",
+    "internal_slot": "must resolve to the latest prior topology step that writes the slot and that producer must already have a semantic lifecycle transition",
+    "missing_lineage": "fail closed",
+    "slot_reuse": "latest prior producer before the consumer step is authoritative"
+  },
+  "binding": {
+    "surface": "bindSemanticLifecycleTransition",
+    "spec": "SemanticTransitionSpec",
+    "edge_identity": "exact AgentGraphBuilder step_index",
+    "immutability": "first successful binding wins; identical rebinding is idempotent and conflicting rebinding fails closed",
+    "clear_surface": "none; changing semantic meaning requires a new graph builder or graph revision"
+  },
+  "identity": {
+    "surface": "semanticLifecycleIdentity",
+    "schema_id": "burn-research.semantic-lifecycle-identity.v1",
+    "base_identity": "semanticGraphIdentity",
+    "includes": [
+      "semantic graph identity",
+      "ordered lifecycle transition fingerprints"
+    ],
+    "explicit_non_identity": "CompiledGraph.programIdentity remains executable-machine identity and is not changed by lifecycle transitions"
+  },
+  "inspection": {
+    "single_transition": "semanticLifecycleTransition",
+    "projection": "semanticLifecycleProjection",
+    "graph_introspection": "describeGraph exposes semantic_lifecycle_transition per step and semantic_lifecycle_identity at graph level"
+  },
+  "surfaces": {
+    "semanticLifecycleCapabilities": {
+      "mutation": "none"
+    },
+    "SemanticTransitionSpec": {
+      "fields": [
+        "transition_id",
+        "input_roles",
+        "output_role"
+      ],
+      "authority": "caller declaration"
+    },
+    "bindSemanticLifecycleTransition": {
+      "mutation": "AgentGraphBuilder semantic lifecycle metadata only",
+      "returns": "true for first binding, false for identical idempotent binding"
+    },
+    "semanticLifecycleTransition": {
+      "mutation": "none"
+    },
+    "semanticLifecycleProjection": {
+      "mutation": "none"
+    },
+    "semanticLifecycleIdentity": {
+      "mutation": "none"
+    }
+  },
+  "invariants": [
+    "semantic lifecycle transition never changes executable plan bytes",
+    "semantic lifecycle transition never mutates AgentWorkspace or LayerRegistry",
+    "semantic lifecycle transition never authorizes execution or selects an action",
+    "semantic lifecycle transition never infers role from layer type",
+    "external lineage is anchored to persistent edge binding provenance",
+    "internal lineage is anchored to a prior transition fingerprint",
+    "conflicting transition rebinding fails without rewriting history",
+    "partial lifecycle coverage is reported explicitly rather than auto-filled"
+  ]
+}

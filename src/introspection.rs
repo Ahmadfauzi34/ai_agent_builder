@@ -4,6 +4,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
 use crate::input_port_edge_binding::{binding_record_json, semantic_graph_identity_json};
+use crate::semantic_lifecycle::{semantic_lifecycle_identity_json, transition_record_json};
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
@@ -417,7 +418,8 @@ pub fn describe_graph(
                         "\"registry_present\":{},",
                         "\"registry_fingerprint\":{},",
                         "\"layout_lookup\":{},",
-                        "\"semantic_input_edge_binding\":{}",
+                        "\"semantic_input_edge_binding\":{},",
+                        "\"semantic_lifecycle_transition\":{}",
                         "}}"
                     ),
                     index,
@@ -442,6 +444,10 @@ pub fn describe_graph(
                     builder
                         .semantic_edge_binding(index as u32)
                         .map(binding_record_json)
+                        .unwrap_or_else(|| "null".to_string()),
+                    builder
+                        .semantic_lifecycle_transition(index as u32)
+                        .map(transition_record_json)
                         .unwrap_or_else(|| "null".to_string()),
                 )
             },
@@ -474,6 +480,7 @@ pub fn describe_graph(
             "\"runtime_subject\":{},",
             "\"runtime_program_bindings\":{{\"count\":{},\"identity_policy\":\"exact_program_identity\",\"claim_policy\":\"no_precompile_identity_inference\"}},",
             "\"semantic_graph_identity\":{},",
+            "\"semantic_lifecycle_identity\":{},",
             "\"num_steps\":{},",
             "\"configured_output_slot\":{},",
             "\"written_slots\":[{}],",
@@ -486,6 +493,7 @@ pub fn describe_graph(
         runtime_subject_binding_json(workspace),
         workspace.runtime_program_binding_count(),
         semantic_graph_identity_json(builder),
+        semantic_lifecycle_identity_json(builder),
         builder.num_steps(),
         builder
             .introspection_output_slot()

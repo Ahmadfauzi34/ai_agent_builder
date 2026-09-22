@@ -911,12 +911,33 @@ pub(crate) struct AgentGraphSemanticEdgeBinding {
     pub(crate) binding_fingerprint: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphSemanticInputLineage {
+    pub(crate) position: String,
+    pub(crate) slot: u8,
+    pub(crate) role: String,
+    pub(crate) source_kind: String,
+    pub(crate) source_step_index: Option<u32>,
+    pub(crate) source_fingerprint: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphSemanticLifecycleTransition {
+    pub(crate) step_index: u32,
+    pub(crate) transition_id: String,
+    pub(crate) inputs: Vec<AgentGraphSemanticInputLineage>,
+    pub(crate) output_slot: u8,
+    pub(crate) output_role: String,
+    pub(crate) transition_fingerprint: String,
+}
+
 #[wasm_bindgen]
 pub struct AgentGraphBuilder {
     num_slots: u32,
     steps: Vec<AgentGraphStep>,
     output_slot: Option<u8>,
     semantic_edge_bindings: Vec<AgentGraphSemanticEdgeBinding>,
+    semantic_lifecycle_transitions: Vec<AgentGraphSemanticLifecycleTransition>,
 }
 
 impl AgentGraphBuilder {
@@ -1048,6 +1069,55 @@ impl AgentGraphBuilder {
             .sort_by_key(|binding| binding.step_index);
         Ok(true)
     }
+    pub(crate) fn semantic_lifecycle_transition(
+        &self,
+        step_index: u32,
+    ) -> Option<&AgentGraphSemanticLifecycleTransition> {
+        self.semantic_lifecycle_transitions
+            .iter()
+            .find(|transition| transition.step_index == step_index)
+    }
+
+    pub(crate) fn semantic_lifecycle_transitions(
+        &self,
+    ) -> &[AgentGraphSemanticLifecycleTransition] {
+        &self.semantic_lifecycle_transitions
+    }
+
+    pub(crate) fn bind_semantic_lifecycle_transition(
+        &mut self,
+        transition: AgentGraphSemanticLifecycleTransition,
+    ) -> Result<bool, String> {
+        let index = usize::try_from(transition.step_index)
+            .map_err(|_| "AgentGraphBuilder.bindSemanticLifecycleTransition: step index conversion failed".to_string())?;
+        if index >= self.steps.len() {
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticLifecycleTransition: step index {} is outside num_steps {}",
+                transition.step_index,
+                self.steps.len()
+            ));
+        }
+
+        if let Some(existing) = self
+            .semantic_lifecycle_transitions
+            .iter()
+            .find(|existing| existing.step_index == transition.step_index)
+        {
+            if existing == &transition {
+                return Ok(false);
+            }
+            return Err(format!(
+                "AgentGraphBuilder.bindSemanticLifecycleTransition: step {} already has a different immutable semantic lifecycle transition",
+                transition.step_index
+            ));
+        }
+
+        self.semantic_lifecycle_transitions.push(transition);
+        self.semantic_lifecycle_transitions
+            .sort_by_key(|transition| transition.step_index);
+        Ok(true)
+    }
+
 }
 
 #[wasm_bindgen]
@@ -1064,6 +1134,7 @@ impl AgentGraphBuilder {
             steps: Vec::new(),
             output_slot: None,
             semantic_edge_bindings: Vec::new(),
+            semantic_lifecycle_transitions: Vec::new(),
         })
     }
 
