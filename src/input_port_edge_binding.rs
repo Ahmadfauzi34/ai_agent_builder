@@ -88,9 +88,27 @@ fn binding_fingerprint(
     fingerprint: &str,
 ) -> String {
     let canonical = format!(
-        "v1|step={step_index}|positions={}|consumer={}|role={role}|source={source}|revision={revision}|fingerprint={fingerprint}",
-        positions.join(","),
+        concat!(
+            "{{",
+            "\"schema\":\"burn-research.input-port-edge-binding-fingerprint.v1\",",
+            "\"step_index\":{},",
+            "\"positions\":{},",
+            "\"consumer\":{},",
+            "\"input\":{{",
+                "\"role\":\"{}\",",
+                "\"source\":\"{}\",",
+                "\"revision\":{},",
+                "\"fingerprint\":\"{}\"" ,
+            "}}",
+            "}}"
+        ),
+        step_index,
+        string_array_json(positions),
         consumer.json(),
+        json_escape(role),
+        json_escape(source),
+        revision,
+        json_escape(fingerprint),
     );
     fnv1a64(canonical.as_bytes())
 }
