@@ -15,8 +15,9 @@
     "transition_policy": "input and output roles are explicitly declared by SemanticTransitionSpec"
   },
   "lineage": {
-    "external_slot_0": "must resolve through an existing persistent input edge binding on the exact step and that binding must match current external input provenance at bind time",
-    "internal_slot": "must resolve to the latest prior topology step that writes the slot and that producer must already have a semantic lifecycle transition",
+    "origin_authority": "ordered AgentGraphBuilder topology",
+    "external_slot_0": "slot 0 is external only when no prior step has written slot 0; that origin must resolve through an exact persistent input edge binding whose provenance still matches current external metadata",
+    "internal_slot": "any consumed slot, including slot 0 after overwrite, resolves to the latest prior topology step that writes the slot and that producer must already have a semantic lifecycle transition",
     "missing_lineage": "fail closed",
     "slot_reuse": "latest prior producer before the consumer step is authoritative"
   },
@@ -74,6 +75,7 @@
     "semantic lifecycle transition never authorizes execution or selects an action",
     "semantic lifecycle transition never infers role from layer type",
     "external lineage is anchored to persistent edge binding provenance",
+    "slot index 0 is not sufficient to classify lineage as external after a prior write",
     "internal lineage is anchored to a prior transition fingerprint",
     "conflicting transition rebinding fails without rewriting history",
     "partial lifecycle coverage is reported explicitly rather than auto-filled"
