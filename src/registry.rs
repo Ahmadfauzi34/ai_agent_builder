@@ -763,4 +763,12 @@ impl LayerRegistry {
     pub fn compile_graph(&self, plan: &[u8]) -> Result<crate::graph::CompiledGraph, String> {
         crate::graph::CompiledGraph::build(self, plan)
     }
+
+    #[wasm_bindgen(js_name = compileMultiInputGraph)]
+    pub fn compile_multi_input_graph(
+        &self,
+        plan: &crate::multi_input_graph::MultiInputGraphPlan,
+    ) -> Result<crate::graph::CompiledMultiInputGraph, String> {
+        crate::graph::CompiledMultiInputGraph::build(self, plan)
+    }
 }

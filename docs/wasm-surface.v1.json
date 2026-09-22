@@ -8,6 +8,7 @@
       "compile",
       "compileWithOutput",
       "constructor",
+      "multiInputPlanV1",
       "numSlots",
       "numSteps",
       "setOutput"
@@ -127,6 +128,7 @@
     ],
     "LayerRegistry": [
       "compileGraph",
+      "compileMultiInputGraph",
       "constructor",
       "destroyLayer",
       "forwardBinaryLayer",
@@ -585,6 +587,34 @@
       "selectAxis",
       "slice",
       "transpose"
+    ],
+    "CompiledMultiInputGraph": [
+      "inputPlanV1",
+      "preflight",
+      "programIdentity",
+      "programPlan",
+      "requiredInputSlots",
+      "run",
+      "validateRegistryBinding",
+      "verifyFlat"
+    ],
+    "MultiInputGraphPlan": [
+      "addInputPort",
+      "constructor",
+      "fromBytes",
+      "inputSlots",
+      "planFingerprint",
+      "portCount",
+      "programPlan",
+      "toBytes",
+      "toJSON"
+    ],
+    "MultiInputInputBundle": [
+      "bindInput",
+      "boundPortCount",
+      "clearInput",
+      "constructor",
+      "planFingerprint"
     ]
   },
   "default_init": "__wbg_init",
@@ -647,6 +677,7 @@
     "mathProofCapabilities",
     "mathValidOperations",
     "mathVerifyVectors",
+    "multiInputGraphCapabilities",
     "numericKernelCapabilities",
     "probabilityCapabilities",
     "programBundleCapabilities",
@@ -655,11 +686,11 @@
     "reductionCapabilities",
     "resolutionRuntimeBridgeCapabilities",
     "runtimeResolutionEvidenceCapabilities",
-    "semanticIngressManifestCapabilities",
-    "semanticIngressManifestStatus",
     "semanticExecutionContext",
     "semanticExecutionContextCapabilities",
     "semanticGraphIdentity",
+    "semanticIngressManifestCapabilities",
+    "semanticIngressManifestStatus",
     "semanticLifecycleCapabilities",
     "semanticLifecycleIdentity",
     "semanticLifecycleProjection",
