@@ -61,7 +61,7 @@
     }
   },
   "identity": {
-    "request_fingerprint": "fnv1a64 over ResponseIntent fingerprint + dispatch fingerprint + requirements fingerprint + selected action + canonical serialized request payload",
+    "request_fingerprint": "fnv1a64 over ResponseIntent fingerprint + dispatch fingerprint + requirements fingerprint + selected action + canonical serialized request payload + ordered bound requirements + ordered explicitly-unbound optional requirements",
     "fingerprint_security": "deterministic correlation only; not cryptographic integrity, authentication, authorization, or a capability token"
   },
   "preflight": {
@@ -70,7 +70,7 @@
       "response intent fingerprint/action/evidence kind still match",
       "dispatch fingerprint/authority/operation/executor contract/payload mode still match current projection",
       "requirements fingerprint still matches current projection",
-      "request fingerprint still matches its payload and current upstream projections"
+      "request fingerprint still matches its payload, requirement-accounting lists, and current upstream projections"
     ],
     "does_not_check": [
       "future executor runtime handle identity",
@@ -94,6 +94,7 @@
     "request creation never treats an opaque string as a runtime graph/program/tensor handle",
     "a closed or stale requirements projection cannot produce a request",
     "every required dispatch requirement must be bound and every optional requirement must be explicitly bound or recorded unbound",
+    "request_fingerprint commits to the bound/unbound requirement accounting exported by the request",
     "direct authority APIs remain independently callable escape hatches",
     "executor-specific state must be revalidated again at the actual execution boundary"
   ],
