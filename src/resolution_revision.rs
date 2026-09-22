@@ -322,7 +322,7 @@ impl ResolutionRevisionChain {
     }
 }
 
-fn validate_revision_key(revision_key: impl Into<String>) -> Result<String, String> {
+pub(crate) fn validate_revision_key(revision_key: impl Into<String>) -> Result<String, String> {
     let revision_key = revision_key.into();
     if revision_key.is_empty() || revision_key.len() > 64 {
         return Err(
