@@ -87,6 +87,7 @@
     "request creation never mutates Resolution state",
     "request creation never treats an opaque string as a runtime graph/program/tensor handle",
     "a closed or stale requirements projection cannot produce a request",
+    "every required dispatch requirement must be bound and every optional requirement must be explicitly bound or recorded unbound",
     "direct authority APIs remain independently callable escape hatches",
     "executor-specific state must be revalidated again at the actual execution boundary"
   ],
