@@ -59,12 +59,14 @@
       "registry_present",
       "registry_fingerprint",
       "layout_lookup",
-      "semantic_input_edge_binding"
+      "semantic_input_edge_binding",
+      "semantic_lifecycle_transition"
     ],
     "configured_output": "AgentGraphBuilder configured output, or null if unset",
     "topology_authority": "AgentGraphBuilder",
     "program_identity": "not claimed before compilation; CompiledGraph.programIdentity remains authoritative after compile",
     "semantic_graph_identity": "separate topology+semantic-binding fingerprint; explicitly does not replace CompiledGraph.programIdentity",
+    "semantic_lifecycle_identity": "separate semantic graph + ordered transition fingerprint; explicitly does not replace semanticGraphIdentity or CompiledGraph.programIdentity",
     "external_input_contract": "the same optional external input contract is surfaced alongside topology",
     "external_input_port": "the same optional semantic role/provenance descriptor for slot 0 is surfaced alongside topology",
     "runtime_subject": "the same bound runtime subject is surfaced alongside graph topology for state-loss recovery and receipt correlation",
@@ -105,7 +107,8 @@
     "subject-program binding is reported only from recorded exact programIdentity state and is never inferred from similar topology",
     "semantic input port metadata is reported only from explicit workspace binding and is never inferred from free-form semantics text",
     "persistent semantic edge bindings are reported only from AgentGraphBuilder binding state and never inferred from layer type",
-    "semantic graph identity and executable program identity remain distinct authority classes"
+    "semantic lifecycle transitions are reported only from explicit AgentGraphBuilder lifecycle state and never inferred from layer type",
+    "semantic lifecycle identity, semantic graph identity, and executable program identity remain distinct authority classes"
   ],
   "deferred": [
     "full raw-protocol semantic decoding",
