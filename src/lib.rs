@@ -34,6 +34,7 @@ pub mod resolution_revision;
 pub mod resolution_runtime_bridge;
 pub mod resolution_subject;
 pub mod runtime_resolution_evidence;
+pub mod runtime_evidence_interpretation;
 pub mod semantic_lifecycle;
 pub mod semantic_execution_context;
 pub mod workspace;

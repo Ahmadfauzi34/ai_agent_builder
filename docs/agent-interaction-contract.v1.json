@@ -17,7 +17,8 @@
     "no interaction object owns hidden mutable execution state",
     "availability never bypasses operation-specific validation",
     "unknown or parameter-specific conditions remain deferred to the authoritative call boundary",
-    "escape hatches remain available and are not removed by the canonical interaction layer"
+    "escape hatches remain available and are not removed by the canonical interaction layer",
+    "runtime evidence interpretation never chooses, ranks, or executes a response candidate"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -215,5 +216,20 @@
       "reference_authority": "burn_math_program",
       "selection_authority": "agent remains responsible for choosing the canonical operation; verifier only checks the chosen call"
     }
+  },
+  "runtime_evidence_interpretation": {
+    "contract": "burn-research.runtime-evidence-interpretation.v1",
+    "native_projection": "interpret_recorded_evidence",
+    "role": "candidate projection over already-recorded exact-subject runtime evidence",
+    "response_candidates": [
+      "ignore",
+      "reverify",
+      "request_information",
+      "propose_revision"
+    ],
+    "selection_authority": "caller/agent",
+    "ranking": "none",
+    "mutation": "none",
+    "escape_hatch": "existing Resolution review/revision APIs remain independently callable"
   }
 }

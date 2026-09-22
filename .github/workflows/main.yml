@@ -36,6 +36,7 @@ jobs:
           python3 -m json.tool docs/math-proof.v1.json >/dev/null
           python3 -m json.tool docs/resolution-runtime-bridge.v1.json >/dev/null
           python3 -m json.tool docs/runtime-resolution-evidence.v1.json >/dev/null
+          python3 -m json.tool docs/runtime-evidence-interpretation.v1.json >/dev/null
           python3 -m json.tool docs/unified-math-interaction.v1.json >/dev/null
           python3 -m json.tool docs/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/host-support.v1.json >/dev/null
@@ -60,6 +61,9 @@ jobs:
 
       - name: Build native runtime resolution evidence adapter probe
         run: cargo build --release --bin runtime_resolution_evidence_adapter_probe
+
+      - name: Build native runtime evidence interpretation probe
+        run: cargo build --release --bin runtime_evidence_interpretation_probe
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
@@ -247,6 +251,12 @@ jobs:
         with:
           name: runtime-resolution-evidence-adapter-probe
           path: target/release/runtime_resolution_evidence_adapter_probe
+
+      - name: Upload native runtime evidence interpretation probe
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-evidence-interpretation-native-probe
+          path: target/release/runtime_evidence_interpretation_probe
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
