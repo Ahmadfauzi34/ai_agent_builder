@@ -85,10 +85,12 @@ pub fn record_revision_dispatch_execution_receipt(
     if receipt.dispatch_fingerprint != request.dispatch_fingerprint() {
         return Err(format!("{CONTEXT}: dispatch fingerprint mismatch"));
     }
-    if receipt.lineage_id != *lineage_id || receipt.lineage_id != chain.lineage_id() {
+    if receipt.lineage_id.as_str() != lineage_id.as_str()
+        || receipt.lineage_id.as_str() != chain.lineage_id()
+    {
         return Err(format!("{CONTEXT}: revision lineage mismatch"));
     }
-    if receipt.revision_key != *revision_key
+    if receipt.revision_key.as_str() != revision_key.as_str()
         || receipt.parent_revision_id.as_deref() != parent_revision_id.as_deref()
     {
         return Err(format!("{CONTEXT}: committed revision payload mismatch"));
@@ -114,8 +116,8 @@ pub fn record_revision_dispatch_execution_receipt(
     let committed = chain_snapshot
         .revision(&receipt.revision_id)
         .ok_or_else(|| format!("{CONTEXT}: committed revision is absent from current chain"))?;
-    if committed.revision_key != receipt.revision_key
-        || committed.parent_revision_id != receipt.parent_revision_id
+    if committed.revision_key.as_str() != receipt.revision_key.as_str()
+        || committed.parent_revision_id.as_deref() != receipt.parent_revision_id.as_deref()
     {
         return Err(format!("{CONTEXT}: current chain revision does not match receipt"));
     }
