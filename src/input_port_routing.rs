@@ -97,19 +97,9 @@ pub fn input_port_consumer_edge_compatibility(
         ));
     };
 
-    let mut positions = Vec::<&str>::new();
-    if arity == 1 {
-        if in_slot == 0 {
-            positions.push("input");
-        }
-    } else {
-        if in_slot == 0 {
-            positions.push("left");
-        }
-        if in_slot2 == 0 {
-            positions.push("right");
-        }
-    }
+    let positions = builder
+        .external_input_positions_for_step(step_index)
+        .map_err(|error| format!("inputPortConsumerEdgeCompatibility: {error}"))?;
 
     if positions.is_empty() {
         return Ok(format!(
