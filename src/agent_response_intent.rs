@@ -241,6 +241,8 @@ pub fn create_agent_response_intent(
         ));
     }
 
+    let target_boundary = candidate.target_boundary.clone();
+    let handoff = candidate.handoff.clone();
     let evidence_fingerprint = evidence_fingerprint(inbox, entry_index)?;
     let response_intent_fingerprint = response_intent_fingerprint_for(
         &selector,
@@ -249,8 +251,8 @@ pub fn create_agent_response_intent(
         &interpretation.evidence_kind,
         &interpretation.outcome,
         action,
-        &candidate.target_boundary,
-        &candidate.handoff,
+        &target_boundary,
+        &handoff,
     );
 
     Ok(AgentResponseIntent {
@@ -260,8 +262,8 @@ pub fn create_agent_response_intent(
         evidence_outcome: interpretation.outcome,
         evidence_fingerprint,
         selected_action: action,
-        target_boundary: candidate.target_boundary.clone(),
-        handoff: candidate.handoff.clone(),
+        target_boundary,
+        handoff,
         response_intent_fingerprint,
     })
 }
