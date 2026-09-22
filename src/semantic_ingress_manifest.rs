@@ -181,6 +181,12 @@ pub struct SemanticIngressManifest {
     ports: Vec<SemanticIngressPort>,
 }
 
+impl Default for SemanticIngressManifest {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SemanticIngressManifest {
     fn add_port(&mut self, port: SemanticIngressPort) -> Result<bool, String> {
         if let Some(existing) = self
@@ -630,8 +636,8 @@ mod tests {
 
     #[test]
     fn capability_contract_is_explicit_about_deferred_runtime_support() {
-        let contract: serde_json::Value =
-            serde_json::from_str(semantic_ingress_manifest_capabilities()).unwrap();
+        let capabilities = semantic_ingress_manifest_capabilities();
+        let contract: serde_json::Value = serde_json::from_str(&capabilities).unwrap();
         assert_eq!(contract["execution"]["runtime_backed_external_ports"], 1);
         assert_eq!(contract["execution"]["runtime_backed_slot"], 0);
         assert_eq!(contract["execution"]["multi_input_execution"], "deferred");
