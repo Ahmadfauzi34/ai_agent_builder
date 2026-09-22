@@ -20,7 +20,8 @@
     "escape hatches remain available and are not removed by the canonical interaction layer",
     "runtime evidence interpretation never chooses, ranks, or executes a response candidate",
     "AgentResponseIntent records an explicit caller/agent selection but never executes or authorizes the selected response",
-    "response intent execution gate may project an authority handoff but never executes or authorizes that handoff"
+    "response intent execution gate may project an authority handoff but never executes or authorizes that handoff",
+    "response dispatch requirements describe machine-readable handoff inputs but bind no values and grant no authority"
   ],
   "availability_semantics": {
     "meaning": "available=true means at least one argument assignment can satisfy the known state predicates at snapshot time",
@@ -264,5 +265,14 @@
       "request_information": "external resolution review",
       "propose_revision": "ResolutionRevisionChain"
     }
+  },
+  "response_dispatch_requirements": {
+    "contract": "burn-research.response-dispatch-requirements.v1",
+    "project": "response_dispatch_requirements",
+    "role": "translate a dispatchable execution-gate route into machine-readable input requirements for the existing destination authority",
+    "value_binding": "none",
+    "execution_authorized": false,
+    "mutation": "none",
+    "identity": "requirements_fingerprint correlates the gate dispatch fingerprint with its ordered requirement profile and is not an authorization token"
   }
 }
