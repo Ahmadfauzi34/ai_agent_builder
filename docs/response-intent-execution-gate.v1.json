@@ -52,6 +52,13 @@
     "dispatch_fingerprint": "fnv1a64 over response_intent_fingerprint + selected action + authority + operation + route mode",
     "fingerprint_security": "deterministic correlation only; not a cryptographic authorization token"
   },
+  "typed_requirements": {
+    "next_contract": "burn-research.response-dispatch-requirements.v1",
+    "project": "response_dispatch_requirements",
+    "rule": "only a dispatchable gate route can produce a ready requirement profile",
+    "value_binding": "none",
+    "execution_authorized": false
+  },
   "invariants": [
     "the gate never invokes a verifier",
     "the gate never opens a revision",
