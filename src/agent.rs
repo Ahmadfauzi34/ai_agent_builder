@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use wasm_bindgen::prelude::*;
 
 use crate::graph::CompiledGraph;
@@ -895,11 +897,28 @@ struct AgentGraphStep {
     out_slot: u8,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct AgentGraphInputPortBinding {
+    pub(crate) binding_identity: String,
+    pub(crate) consumer_id: String,
+    pub(crate) accepted_roles: Vec<String>,
+    pub(crate) allow_extension_roles: bool,
+    pub(crate) require_fingerprint: bool,
+    pub(crate) minimum_revision: u64,
+    pub(crate) input_role: String,
+    pub(crate) input_source: String,
+    pub(crate) input_revision: u64,
+    pub(crate) input_fingerprint: String,
+    pub(crate) compatibility_at_bind: String,
+    pub(crate) external_input_positions: Vec<String>,
+}
+
 #[wasm_bindgen]
 pub struct AgentGraphBuilder {
     num_slots: u32,
     steps: Vec<AgentGraphStep>,
     output_slot: Option<u8>,
+    input_port_bindings: BTreeMap<u32, AgentGraphInputPortBinding>,
 }
 
 impl AgentGraphBuilder {
@@ -981,6 +1000,42 @@ impl AgentGraphBuilder {
             .collect()
     }
 
+    pub(crate) fn input_port_binding(
+        &self,
+        step_index: u32,
+    ) -> Option<&AgentGraphInputPortBinding> {
+        self.input_port_bindings.get(&step_index)
+    }
+
+    pub(crate) fn set_input_port_binding(
+        &mut self,
+        step_index: u32,
+        binding: AgentGraphInputPortBinding,
+    ) -> Result<bool, String> {
+        let index = usize::try_from(step_index)
+            .map_err(|_| "AgentGraphBuilder.inputPortBinding: step index conversion failed".to_string())?;
+        if index >= self.steps.len() {
+            return Err(format!(
+                "AgentGraphBuilder.inputPortBinding: step index {step_index} is outside num_steps {}",
+                self.steps.len()
+            ));
+        }
+        match self.input_port_bindings.get(&step_index) {
+            Some(existing) if existing == &binding => Ok(false),
+            Some(_) => Err(format!(
+                "AgentGraphBuilder.inputPortBinding: step index {step_index} already has an immutable semantic binding"
+            )),
+            None => {
+                self.input_port_bindings.insert(step_index, binding);
+                Ok(true)
+            }
+        }
+    }
+
+    pub(crate) fn input_port_binding_count(&self) -> usize {
+        self.input_port_bindings.len()
+    }
+
     pub(crate) fn introspection_output_slot(&self) -> Option<u8> {
         self.output_slot
     }
@@ -999,6 +1054,7 @@ impl AgentGraphBuilder {
             num_slots,
             steps: Vec::new(),
             output_slot: None,
+            input_port_bindings: BTreeMap::new(),
         })
     }
 
