@@ -130,11 +130,6 @@ pub struct InputPortConsumerSpec {
 }
 
 impl InputPortConsumerSpec {
-    fn role_matches(&self, role: &str) -> bool {
-        self.accepted_roles.iter().any(|value| value == role)
-            || (self.allow_extension_roles && role.starts_with("x-"))
-    }
-
     pub(crate) fn snapshot_consumer_id(&self) -> &str {
         &self.consumer_id
     }
