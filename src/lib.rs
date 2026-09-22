@@ -19,6 +19,7 @@ pub mod interaction_fault;
 pub mod input_contract;
 pub mod input_port;
 pub mod input_port_consumer;
+pub mod input_port_routing;
 pub mod introspection;
 pub mod layers;
 pub mod math;

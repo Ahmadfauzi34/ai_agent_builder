@@ -29,7 +29,7 @@ fn u32_array_json(values: &[u32]) -> String {
     format!("[{body}]")
 }
 
-fn validate_projection_inputs(
+pub(crate) fn validate_projection_inputs(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
 ) -> Result<(), String> {
@@ -79,7 +79,7 @@ fn phase(
     }
 }
 
-fn actions_json(
+pub(crate) fn actions_json(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
     registry: &LayerRegistry,
@@ -139,6 +139,17 @@ fn actions_json(
     )
 }
 
+pub(crate) fn valid_actions_json(
+    workspace: &AgentWorkspace,
+    builder: &AgentGraphBuilder,
+    registry: &LayerRegistry,
+) -> String {
+    format!(
+        "{{\"schema_version\":1,\"schema_id\":\"{INTERACTION_SCHEMA_ID}\",\"projection_only\":true,\"actions\":{}}}",
+        actions_json(workspace, builder, registry)
+    )
+}
+
 /// Describe the projection-only interaction surface layered above existing
 /// workspace, builder, and registry authorities.
 #[wasm_bindgen(js_name = interactionCapabilities)]
@@ -163,6 +174,7 @@ pub fn interaction_capabilities() -> String {
         "\"input_contract\":\"inputContractCapabilities\",",
         "\"input_port\":\"inputPortCapabilities\",",
         "\"input_port_consumer\":\"inputPortConsumerCapabilities\",",
+        "\"input_port_routing\":\"inputPortRoutingCapabilities\",",
         "\"proof_provenance\":\"proofProvenanceCapabilities\",",
         "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
         "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
@@ -186,10 +198,7 @@ pub fn interaction_valid_actions(
     registry: &LayerRegistry,
 ) -> Result<String, String> {
     validate_projection_inputs(workspace, builder)?;
-    Ok(format!(
-        "{{\"schema_version\":1,\"schema_id\":\"{INTERACTION_SCHEMA_ID}\",\"projection_only\":true,\"actions\":{}}}",
-        actions_json(workspace, builder, registry)
-    ))
+    Ok(valid_actions_json(workspace, builder, registry))
 }
 
 /// Produce a compact point-in-time projection for agent planning.

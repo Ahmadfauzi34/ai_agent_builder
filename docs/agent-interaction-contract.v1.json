@@ -139,6 +139,12 @@
       "spec": "InputPortConsumerSpec",
       "compatibility": "inputPortConsumerCompatibility",
       "policy": "read-only advisory preflight; consumer requirements are caller-declared, operation choice remains agent authority, and compatibility never authorizes execution"
+    },
+    "routing_projection": {
+      "capability": "inputPortRoutingCapabilities",
+      "valid_actions_overlay": "interactionValidActionsForInputConsumer",
+      "edge_projection": "inputPortConsumerEdgeCompatibility",
+      "policy": "semantic routing is annotation-only; the full canonical interactionValidActions envelope is preserved, candidates remain visible, and graph-step semantics are never inferred from numerical layer type"
     }
   },
   "proof_provenance": {

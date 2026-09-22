@@ -54,10 +54,15 @@
     "replace structured runtime faults",
     "force low-level escape hatches to obey semantic policy"
   ],
+  "routing_projection": {
+    "contract": "agent-input-port-routing.v1",
+    "valid_actions_overlay": "interactionValidActionsForInputConsumer",
+    "edge_projection": "inputPortConsumerEdgeCompatibility",
+    "policy": "caller-selected consumer semantics are projected onto canonical actions and exact graph steps without persistent binding"
+  },
   "future_extensions": [
-    "bind consumer contracts to graph edges",
+    "persistent consumer bindings on graph edges",
     "enumerate compatible consumers",
-    "role-aware interaction validActions",
     "state and reward lifecycle contracts",
     "multiple external input ports"
   ]
