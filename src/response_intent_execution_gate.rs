@@ -360,11 +360,8 @@ mod tests {
                 RuntimeEvidence::bound_direct_math_verifier_receipt(
                     &projection,
                     2,
-                    "direct",
-                    7,
                     "add",
-                    "burn_direct_math",
-                    "burn_math_program",
+                    "direct",
                     "{\"schema\":\"burn-research.math-program-identity.v1\"}",
                     false,
                     "mismatch",
