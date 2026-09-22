@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.runtime-evidence-interpretation.v1",
+  "role": "candidate_projection_only",
+  "state_ownership": "none",
+  "purpose": "Project recorded runtime evidence into mechanically applicable response candidates without choosing, ranking, executing, or mutating any Resolution state.",
+  "input_boundary": {
+    "source": "ResolutionEvidenceInbox.observations",
+    "admission_requirement": "evidence must already have been recorded in an exact-subject ResolutionEvidenceInbox",
+    "foreign_or_stale_evidence": "must be rejected by the inbox before interpretation"
+  },
+  "response_actions": {
+    "ignore": {
+      "meaning": "keep the evidence recorded and make no Resolution mutation from this evidence",
+      "destructive": false
+    },
+    "reverify": {
+      "meaning": "invoke the appropriate existing runtime verifier again outside this projection",
+      "available_for": "typed verifier receipts"
+    },
+    "request_information": {
+      "meaning": "request external clarification/context; this projection does not create a ResolutionDiagnostic",
+      "available_for": "fault or failed verifier evidence"
+    },
+    "propose_revision": {
+      "meaning": "open a fresh existing Resolution revision workflow outside this projection",
+      "available_for": "fault or failed verifier evidence",
+      "handoff": "ResolutionRevisionChain::open_revision or SubjectBoundRevisionChain::open_revision"
+    }
+  },
+  "selection_policy": {
+    "selected_action": null,
+    "default_action": null,
+    "ranking": "none",
+    "ordering": "stable protocol order only; not preference",
+    "authority": "caller/agent remains responsible for choosing whether any candidate should be used"
+  },
+  "availability_semantics": {
+    "available_true": "the recorded evidence mechanically supports this response class",
+    "available_false": "this evidence does not itself expose this response class through the interpretation projection",
+    "escape_hatch": "available=false does not prohibit callers from using independent review/revision APIs for other reasons"
+  },
+  "mutation_policy": {
+    "interpreter_mutation": "none",
+    "inbox_mutation": "none",
+    "resolution_mutation": "none",
+    "revision_creation": "none",
+    "diagnostic_creation": "none",
+    "verifier_execution": "none",
+    "information_request_execution": "none"
+  },
+  "candidate_matrix": {
+    "agent_fault": {
+      "ignore": true,
+      "reverify": false,
+      "request_information": true,
+      "propose_revision": true
+    },
+    "verifier_failed": {
+      "ignore": true,
+      "reverify": true,
+      "request_information": true,
+      "propose_revision": true
+    },
+    "verifier_passed": {
+      "ignore": true,
+      "reverify": true,
+      "request_information": false,
+      "propose_revision": false
+    }
+  },
+  "invariants": [
+    "interpretation only reads evidence already admitted to an exact-subject inbox",
+    "no candidate is selected automatically",
+    "candidate ordering is not ranking",
+    "ignore never deletes evidence",
+    "request_information never creates ResolutionDiagnostic automatically",
+    "propose_revision never opens a revision automatically",
+    "reverify never invokes a verifier automatically",
+    "passed evidence does not become a prohibition against independent revision APIs",
+    "failed evidence does not automatically imply revision",
+    "transport/source authority labels remain unchanged"
+  ]
+}
