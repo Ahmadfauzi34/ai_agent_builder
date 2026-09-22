@@ -534,6 +534,47 @@ impl RuntimeEvidence {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    fn canonical_graph_program_identity_json(
+        value: &serde_json::Value,
+        context: &str,
+    ) -> Result<String, String> {
+        Self::require_exact_string(
+            value,
+            "schema",
+            "burn-research.program-identity.v1",
+            context,
+        )?;
+        let plan_hex = Self::require_string(value, "plan_hex", context)?;
+        let fingerprints = value
+            .get("layer_init_fingerprints")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                format!("{context}: program_identity.layer_init_fingerprints must be an array")
+            })?;
+        let fingerprints = fingerprints
+            .iter()
+            .enumerate()
+            .map(|(index, fingerprint)| {
+                fingerprint
+                    .as_str()
+                    .map(|fingerprint| format!("\"{}\"", json_escape(fingerprint)))
+                    .ok_or_else(|| {
+                        format!(
+                            "{context}: program_identity.layer_init_fingerprints[{index}] must be a string"
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, String>>()?
+            .join(",");
+
+        Ok(format!(
+            "{{\"schema\":\"burn-research.program-identity.v1\",\"plan_hex\":\"{}\",\"layer_init_fingerprints\":[{}]}}",
+            json_escape(plan_hex),
+            fingerprints,
+        ))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn runtime_subject_from_receipt(
         value: &serde_json::Value,
         context: &str,
@@ -662,6 +703,8 @@ impl RuntimeEvidence {
             "burn-research.program-identity.v1",
             CONTEXT,
         )?;
+        let canonical_program_identity =
+            Self::canonical_graph_program_identity_json(program_identity, CONTEXT)?;
         let result = receipt
             .get("result")
             .filter(|value| value.is_object())
@@ -676,7 +719,7 @@ impl RuntimeEvidence {
                 subject,
                 receipt_id,
                 label,
-                program_identity.to_string(),
+                canonical_program_identity.clone(),
                 passed,
                 result.to_string(),
             ),
@@ -831,7 +874,7 @@ impl RuntimeEvidence {
                     subject,
                     receipt_id,
                     label,
-                    program_identity.to_string(),
+                    canonical_program_identity,
                     semantic_context.to_string(),
                     receipt_fingerprint,
                     passed,
