@@ -47,6 +47,23 @@ fn validate_selector(selector: impl Into<String>) -> Result<String, String> {
     Ok(selector)
 }
 
+fn response_intent_fingerprint_for(
+    selector: &str,
+    entry_index: usize,
+    evidence_fingerprint: &str,
+    evidence_kind: &str,
+    evidence_outcome: &str,
+    action: EvidenceResponseAction,
+    target_boundary: &str,
+    handoff: &str,
+) -> String {
+    let canonical = format!(
+        "v1|selector={selector}|entry={entry_index}|evidence={evidence_fingerprint}|kind={evidence_kind}|outcome={evidence_outcome}|action={}|target={target_boundary}|handoff={handoff}|",
+        action.as_str(),
+    );
+    fnv1a64(canonical.bytes())
+}
+
 fn evidence_fingerprint(inbox: &ResolutionEvidenceInbox, entry_index: usize) -> Result<String, String> {
     let evidence = inbox.observations().get(entry_index).ok_or_else(|| {
         format!(
@@ -161,6 +178,7 @@ pub struct ResponseIntentPreflight {
     pub evidence_matches: bool,
     pub candidate_available: bool,
     pub candidate_snapshot_matches: bool,
+    pub intent_fingerprint_matches: bool,
     pub execution_authorized: bool,
 }
 
@@ -177,7 +195,8 @@ impl ResponseIntentPreflight {
                     "\"entry_exists\":{},",
                     "\"evidence_matches\":{},",
                     "\"candidate_available\":{},",
-                    "\"candidate_snapshot_matches\":{}",
+                    "\"candidate_snapshot_matches\":{},",
+                    "\"intent_fingerprint_matches\":{}",
                 "}},",
                 "\"execution_authorized\":{},",
                 "\"execution_effect\":\"none\",",
@@ -190,6 +209,7 @@ impl ResponseIntentPreflight {
             self.evidence_matches,
             self.candidate_available,
             self.candidate_snapshot_matches,
+            self.intent_fingerprint_matches,
             self.execution_authorized,
         )
     }
@@ -222,15 +242,16 @@ pub fn create_agent_response_intent(
     }
 
     let evidence_fingerprint = evidence_fingerprint(inbox, entry_index)?;
-    let canonical = format!(
-        "v1|selector={selector}|entry={entry_index}|evidence={evidence_fingerprint}|kind={}|outcome={}|action={}|target={}|handoff={}|",
-        interpretation.evidence_kind,
-        interpretation.outcome,
-        action.as_str(),
-        candidate.target_boundary,
-        candidate.handoff,
+    let response_intent_fingerprint = response_intent_fingerprint_for(
+        &selector,
+        entry_index,
+        &evidence_fingerprint,
+        &interpretation.evidence_kind,
+        &interpretation.outcome,
+        action,
+        &candidate.target_boundary,
+        &candidate.handoff,
     );
-    let response_intent_fingerprint = fnv1a64(canonical.bytes());
 
     Ok(AgentResponseIntent {
         selector,
@@ -257,6 +278,7 @@ pub fn preflight_response_intent(
             evidence_matches: false,
             candidate_available: false,
             candidate_snapshot_matches: false,
+            intent_fingerprint_matches: false,
             execution_authorized: false,
         };
     };
@@ -284,6 +306,7 @@ pub fn preflight_response_intent(
             evidence_matches: false,
             candidate_available: false,
             candidate_snapshot_matches: false,
+            intent_fingerprint_matches: false,
             execution_authorized: false,
         };
     }
@@ -310,6 +333,7 @@ pub fn preflight_response_intent(
             evidence_matches: true,
             candidate_available: false,
             candidate_snapshot_matches: false,
+            intent_fingerprint_matches: false,
             execution_authorized: false,
         };
     };
@@ -319,21 +343,36 @@ pub fn preflight_response_intent(
         && candidate.handoff == intent.handoff
         && interpretation.evidence_kind == intent.evidence_kind
         && interpretation.outcome == intent.evidence_outcome;
+    let expected_intent_fingerprint = response_intent_fingerprint_for(
+        &intent.selector,
+        intent.entry_index,
+        &intent.evidence_fingerprint,
+        &intent.evidence_kind,
+        &intent.evidence_outcome,
+        intent.selected_action,
+        &intent.target_boundary,
+        &intent.handoff,
+    );
+    let intent_fingerprint_matches =
+        expected_intent_fingerprint == intent.response_intent_fingerprint;
 
-    let ready = candidate_available && candidate_snapshot_matches;
+    let ready = candidate_available && candidate_snapshot_matches && intent_fingerprint_matches;
     ResponseIntentPreflight {
         ready,
         status: if ready {
             "ready_nonexecuting".to_string()
         } else if !candidate_available {
             "candidate_no_longer_available".to_string()
-        } else {
+        } else if !candidate_snapshot_matches {
             "candidate_snapshot_mismatch".to_string()
+        } else {
+            "response_intent_fingerprint_mismatch".to_string()
         },
         entry_exists: true,
         evidence_matches: true,
         candidate_available,
         candidate_snapshot_matches,
+        intent_fingerprint_matches,
         execution_authorized: false,
     }
 }
@@ -423,6 +462,7 @@ mod tests {
         let preflight = preflight_response_intent(&inbox, &intent);
         assert!(preflight.ready);
         assert_eq!(preflight.status, "ready_nonexecuting");
+        assert!(preflight.intent_fingerprint_matches);
         assert!(!preflight.execution_authorized);
     }
 
@@ -534,6 +574,45 @@ mod tests {
         assert_eq!(preflight.status, "evidence_fingerprint_mismatch");
         assert!(preflight.entry_exists);
         assert!(!preflight.evidence_matches);
+        assert!(!preflight.execution_authorized);
+    }
+
+    #[test]
+    fn preflight_rejects_tampered_response_intent_fingerprint() {
+        let resolution = resolved_snapshot("intent-a");
+        let projection = projection("intent-a", resolution.revision, "spec-a");
+        let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
+
+        let failed = RuntimeEvidence::bound_graph_verifier_receipt(
+            &projection,
+            1,
+            "failed",
+            "{\"schema\":\"burn-research.program-identity.v1\",\"plan\":\"x\"}",
+            false,
+            "mismatch",
+        )
+        .unwrap();
+        inbox.record(failed).unwrap();
+
+        let mut intent = create_agent_response_intent(
+            &inbox,
+            0,
+            EvidenceResponseAction::Reverify,
+            "agent-a",
+        )
+        .unwrap();
+        intent.response_intent_fingerprint = "fnv1a64:tampered".to_string();
+
+        let preflight = preflight_response_intent(&inbox, &intent);
+        assert!(!preflight.ready);
+        assert_eq!(
+            preflight.status,
+            "response_intent_fingerprint_mismatch"
+        );
+        assert!(preflight.evidence_matches);
+        assert!(preflight.candidate_available);
+        assert!(preflight.candidate_snapshot_matches);
+        assert!(!preflight.intent_fingerprint_matches);
         assert!(!preflight.execution_authorized);
     }
 
