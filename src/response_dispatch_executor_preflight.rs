@@ -80,13 +80,34 @@ impl ResponseDispatchExecutorPreflight {
     }
 }
 
-fn closed(
+fn request_closed(
     request: &ResponseDispatchRequest,
     status: impl Into<String>,
     authority_context: impl Into<String>,
 ) -> ResponseDispatchExecutorPreflight {
     ResponseDispatchExecutorPreflight {
         request_ready: false,
+        executor_ready: false,
+        status: status.into(),
+        selected_action: request.selected_action(),
+        authority: request.authority().to_string(),
+        operation: request.operation().to_string(),
+        executor_contract: request.executor_contract().to_string(),
+        request_fingerprint: request.request_fingerprint().to_string(),
+        authority_context: authority_context.into(),
+        simulated_effect: "none".to_string(),
+        execution_authorized: false,
+        mutation: "none".to_string(),
+    }
+}
+
+fn executor_closed(
+    request: &ResponseDispatchRequest,
+    status: impl Into<String>,
+    authority_context: impl Into<String>,
+) -> ResponseDispatchExecutorPreflight {
+    ResponseDispatchExecutorPreflight {
+        request_ready: true,
         executor_ready: false,
         status: status.into(),
         selected_action: request.selected_action(),
@@ -110,7 +131,7 @@ fn request_base_ready(
     if preflight.ready {
         Ok(())
     } else {
-        Err(closed(
+        Err(request_closed(
             request,
             format!("closed:request_preflight:{}", preflight.status),
             "none",
@@ -196,7 +217,7 @@ pub fn preflight_revision_dispatch_executor(
         || request.operation() != "open_revision"
         || request.executor_contract() != "ResolutionRevisionChain"
     {
-        return closed(
+        return executor_closed(
             request,
             "closed:not_revision_dispatch_route",
             "ResolutionRevisionChain",
@@ -209,7 +230,7 @@ pub fn preflight_revision_dispatch_executor(
         parent_revision_id,
     } = request.payload()
     else {
-        return closed(
+        return executor_closed(
             request,
             "closed:revision_route_payload_mismatch",
             "ResolutionRevisionChain",
@@ -217,7 +238,7 @@ pub fn preflight_revision_dispatch_executor(
     };
 
     if lineage_id != chain.lineage_id() {
-        return closed(
+        return executor_closed(
             request,
             "closed:revision_lineage_mismatch",
             "ResolutionRevisionChain",
@@ -244,12 +265,12 @@ pub fn preflight_revision_dispatch_executor(
             execution_authorized: false,
             mutation: "none".to_string(),
         },
-        Ok(_) => closed(
+        Ok(_) => executor_closed(
             request,
             "closed:unexpected_original_chain_mutation",
             "ResolutionRevisionChain",
         ),
-        Err(error) => closed(
+        Err(error) => executor_closed(
             request,
             format!("closed:revision_executor_rejected:{error}"),
             "ResolutionRevisionChain",
