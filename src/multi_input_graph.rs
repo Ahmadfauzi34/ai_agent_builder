@@ -769,6 +769,8 @@ pub(crate) fn multi_input_graph_capabilities() -> String {
         "\"compile\":\"LayerRegistry.compileMultiInputGraph\",",
         "\"input_bundle\":\"MultiInputInputBundle\",",
         "\"preflight\":\"CompiledMultiInputGraph.preflight\",",
+        "\"plan_explain\":\"CompiledMultiInputGraph.explainPlan\",",
+        "\"plan_explain_scope\":\"compiled_topology_and_declared_input_shapes_with_partial_static_shape_inference\",",
         "\"execution\":\"CompiledMultiInputGraph.run\",",
         "\"runtime_inputs\":\"all declared external slots must be bound and contract-valid\",",
         "\"dtype\":\"f32\",",
@@ -852,6 +854,81 @@ mod tests {
                 "sha256:state".into(),
             )
             .unwrap();
+    }
+
+    #[test]
+    fn explain_plan_projects_declared_shapes_without_running_burn() {
+        let (mut registry, _builder, plan) = two_input_add();
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let empty_bundle = MultiInputInputBundle::new(&plan).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+
+        assert_eq!(report["schema_id"], "burn-research.multi-input-plan-explain.v1");
+        assert_eq!(report["program_identity"], serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap());
+        assert_eq!(report["declared_input_ports"][1]["declared_shape"], serde_json::json!([1, 2, 1, 1]));
+        assert_eq!(report["steps"][0]["input_slots"], serde_json::json!([0, 1]));
+        assert_eq!(report["steps"][0]["output_shape"], serde_json::json!([1, 2, 1, 1]));
+        assert_eq!(report["steps"][0]["output_f32_payload_bytes"], 8);
+        assert_eq!(report["static_shape_status"], "complete");
+        assert_eq!(report["registry_binding_current"], true);
+        assert_eq!(report["burn_executed"], false);
+        assert_eq!(report["execution_authorized"], false);
+        assert_eq!(report["estimated_runtime_allocation_bytes"], serde_json::Value::Null);
+        assert!(graph.run(&registry, &empty_bundle).is_err());
+
+        assert!(registry.destroy_layer(21, crate::protocol::LAYER_BINARY));
+        let stale: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        assert_eq!(stale["registry_binding_current"], false);
+        assert_eq!(stale["program_identity"], report["program_identity"]);
+    }
+
+    #[test]
+    fn explain_plan_detects_known_shape_mismatch_that_input_preflight_cannot() {
+        let (registry, builder, _) = two_input_add();
+        let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
+        for (slot, role, features) in [(0, "observation", 2), (1, "state", 3)] {
+            plan.add_input_port(slot, role.into(), 1, features, 1, 1,
+                "feature_axis1_singleton".into(), false, 0).unwrap();
+        }
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        assert_eq!(report["static_shape_status"], "incompatible");
+        assert_eq!(report["steps"][0]["reason"], "elementwise_shape_mismatch");
+        assert!(report["steps"][0]["output_shape"].is_null());
+
+        let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
+        bundle.bind_input(0, &tensor(&[1.0, 2.0]), "observation".into(),
+            "feature_axis1_singleton".into(), "sensor-a".into(), 1, String::new()).unwrap();
+        let right = WasmTensor::new(&[3.0, 4.0, 5.0], &[1, 3, 1, 1]);
+        bundle.bind_input(1, &right, "state".into(),
+            "feature_axis1_singleton".into(), "memory-b".into(), 1, String::new()).unwrap();
+        assert!(graph.preflight(&registry, &bundle).contains("\"ready\":true"));
+        assert!(graph.run(&registry, &bundle).err().unwrap().contains("shape mismatch"));
+    }
+
+    #[test]
+    fn explain_plan_marks_unsupported_operator_as_unknown() {
+        let mut registry = LayerRegistry::new();
+        let add = AgentLayerSpec::add(21);
+        let glu = AgentLayerSpec::glu(22, 1);
+        registry.init_agent_layer(&add).unwrap();
+        registry.init_agent_layer(&glu).unwrap();
+        let mut builder = AgentGraphBuilder::new(4).unwrap();
+        builder.add_binary(&add, 0, 1, 2).unwrap();
+        builder.add_unary(&glu, 2, 3).unwrap();
+        builder.set_output(3).unwrap();
+        let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
+        for (slot, role) in [(0, "observation"), (1, "state")] {
+            plan.add_input_port(slot, role.into(), 1, 2, 1, 1,
+                "feature_axis1_singleton".into(), false, 0).unwrap();
+        }
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        assert_eq!(report["known_steps"], 1);
+        assert_eq!(report["unknown_steps"], 1);
+        assert_eq!(report["static_shape_status"], "partial");
+        assert_eq!(report["steps"][1]["shape_status"], "unknown");
+        assert!(report["output_shape"].is_null());
     }
 
     #[test]

@@ -14,6 +14,7 @@ const requests = [
     ],
     logicalPorts: [{id: 'observation', slot: 0, source: 'sensor-a'}, {id: 'memory', slot: 1, source: 'memory-b'}],
   },
+  {op: 'explain'},
   {op: 'bind', slot: 0, values: [1, 2], shape: [1, 2, 1, 1], role: 'observation', layout: 'feature_axis1_singleton', source: 'sensor-a', revision: 2, fingerprint: 'obs'},
   {op: 'bind', slot: 1, values: [3, 4], shape: [1, 2, 1, 1], role: 'state', layout: 'feature_axis1_singleton', source: 'wrong-source', revision: 3, fingerprint: 'state'},
   {op: 'inspect'},
@@ -42,14 +43,18 @@ function assert(condition, message) {
 assert(responses.length === requests.length, `response cardinality ${responses.length} != ${requests.length}`);
 assert(responses.every((response, index) => response.request_id === index), 'request IDs changed');
 assert(responses[0].result.status.ready === false, 'empty inputs reported ready');
-assert(responses[3].result.status.graph_preflight.ready === true, 'valid graph inputs failed graph preflight');
-assert(responses[3].result.status.ports[1].status === 'source_mismatch', 'source mismatch was not reported');
-assert(responses[4].ok === false && responses[4].error.includes('preflight failed'), 'bridge run accepted a mismatched source');
-assert(responses[7].result.status === 'compatible', 'consumer compatibility was not reported');
-assert(responses[8].ok && JSON.stringify(responses[8].result.values) === '[4,6]', 'reference output mismatch');
-assert(responses[8].result.ingress.ready === true, 'ready ingress report missing');
-assert(responses[9].result.reference.verification.passed === true, 'reference verification failed');
-assert(responses[10].result.closed === true, 'session did not close');
+assert(responses[1].ok && responses[1].result.schema_id === 'burn-research.multi-input-plan-explain.v1', 'plan explanation missing');
+assert(responses[1].result.registry_binding_current && responses[1].result.static_shape_status === 'complete', 'plan explanation was not structurally current');
+assert(JSON.stringify(responses[1].result.output_shape) === '[1,2,1,1]' && responses[1].result.burn_executed === false,
+  'plan explanation did not project the output without execution');
+assert(responses[4].result.status.graph_preflight.ready === true, 'valid graph inputs failed graph preflight');
+assert(responses[4].result.status.ports[1].status === 'source_mismatch', 'source mismatch was not reported');
+assert(responses[5].ok === false && responses[5].error.includes('preflight failed'), 'bridge run accepted a mismatched source');
+assert(responses[8].result.status === 'compatible', 'consumer compatibility was not reported');
+assert(responses[9].ok && JSON.stringify(responses[9].result.values) === '[4,6]', 'reference output mismatch');
+assert(responses[9].result.ingress.ready === true, 'ready ingress report missing');
+assert(responses[10].result.reference.verification.passed === true, 'reference verification failed');
+assert(responses[11].result.closed === true, 'session did not close');
 const closeWithoutEof = await new Promise((resolve, reject) => {
   const child = spawn(process.execPath, [path.join(packageDir, 'interactive_multi_input_ingress.mjs')], {stdio: ['pipe', 'pipe', 'pipe']});
   let stdout = '';
@@ -62,4 +67,4 @@ const closeWithoutEof = await new Promise((resolve, reject) => {
   child.stdin.write('{"op":"close","request_id":"without-eof"}\n');
 });
 assert(closeWithoutEof.code === 0 && JSON.parse(closeWithoutEof.stdout.trim()).result.closed, `close without EOF failed: ${closeWithoutEof.stderr}`);
-console.log(JSON.stringify({verdict:'PASS',protocol:'JSON Lines',rejected_source:responses[3].result.status.ports[1].status,reference:responses[8].result.values,verified:responses[9].result.reference.verification.passed}));
+console.log(JSON.stringify({verdict:'PASS',protocol:'JSON Lines',explain:responses[1].result.static_shape_status,rejected_source:responses[4].result.status.ports[1].status,reference:responses[9].result.values,verified:responses[10].result.reference.verification.passed}));

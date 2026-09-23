@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.multi-input-plan-explain.v1",
+  "status": "implemented_wasm_read_only_projection",
+  "entrypoint": "CompiledMultiInputGraph.explainPlan(registry)",
+  "proof_state": {
+    "program_identity": "exact compiled multi-input plan bytes and layer initialization identities; mutable layer state excluded",
+    "registry_binding_current": "the current registry still matches all compiled layer initialization identities",
+    "declared_input_ports": "shape declarations from the compiled MultiInputGraphPlan, without inspecting or binding a runtime tensor",
+    "steps": "the ordered compiled graph steps, with input slot shapes propagated only by supported static rules",
+    "output_f32_payload_bytes": "checked product of the projected rank-4 shape and four bytes per f32; null when shape is unknown or cannot fit u64",
+    "estimated_runtime_allocation_bytes": null,
+    "burn_executed": false,
+    "execution_authorized": false
+  },
+  "static_rules": {
+    "elementwise_add_sub_mul": "equal rank-4 input shapes; mismatch is incompatible",
+    "batched_matmul": "matching batch and channel axes and contracted dimension; output is [a0,a1,a2,b3]",
+    "concat": "matching non-concat axes and checked extent sum; output is the summed axis",
+    "linear": "input must be [B,in_dim,1,1]; output is [B,out_dim,1,1]",
+    "activation_except_glu_and_swiglu": "output shape equals input shape; this does not validate runtime parameters",
+    "shift_and_norm": "output shape equals input shape; this does not validate runtime parameters",
+    "feature_norm": "input must be [B,F,1,1] with F > 0; output shape equals input shape",
+    "other_operators": "unknown; explanation continues with null output shapes until a later step can establish a shape"
+  },
+  "valid_transitions": [
+    "compile an exact MultiInputGraphPlan against the initialized LayerRegistry",
+    "read explainPlan and inspect registry_binding_current and each step shape_status",
+    "bind the actual input bundle and call preflight for runtime input freshness",
+    "call run for Burn's final numerical and operator verdict"
+  ],
+  "explicit_limits": [
+    "A complete static shape projection proves only the supported shape transformations; it is not a claim that Burn execution succeeds.",
+    "An incompatible projection blocks only the shown static shape contract; no tensor is executed and no receipt is issued.",
+    "An unknown projection is not a rejection of the graph or its operator.",
+    "The projected output payload size excludes intermediate tensors, weights, allocator overhead, and backend storage.",
+    "Program identity excludes mutable state; a fresh runtime bundle and the current registry must be checked separately."
+  ]
+}

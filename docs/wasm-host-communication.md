@@ -190,6 +190,8 @@ The facade is an ergonomics layer. Registry/execution contracts and Burn-backed 
 
 For multiple external tensor inputs, `SemanticIngressManifestV2` maps logical port IDs to the exact `MultiInputGraphPlan.v1` slots. Its read-only `status`, `inputPortStatus`, and `consumerCompatibility` explain the current binding. Its `run` and `verifyFlat` methods recheck bridge coverage, then delegate to `CompiledMultiInputGraph`; they do not introduce another numerical execution engine. The packaged `interactive_multi_input_ingress.mjs` exposes this flow as a persistent JSON Lines session through the verified Node adapter. See `docs/interactive-multi-input-ingress.md` in the repository for a reproducible transcript.
 
+`CompiledMultiInputGraph.explainPlan(registry)` returns `burn-research.multi-input-plan-explain.v1` before a bundle is bound. It reports the exact compiled program identity, declared input shapes, ordered graph steps, current registry binding, and partial static output shape projections. Known shape mismatches are labeled `incompatible`; operators without a sound static rule are labeled `unknown`. The reported `output_f32_payload_bytes` covers only the projected output tensor and is not a runtime allocation estimate. See `docs/multi-input-plan-explain.v1.json` for the proof boundary; call `preflight` with the actual bundle and `run` for Burn's execution verdict.
+
 Raw compatibility surfaces may remain present even when the typed facade is preferred. Their existence is not evidence of duplicated execution engines.
 
 ## State-bound signed input claims
