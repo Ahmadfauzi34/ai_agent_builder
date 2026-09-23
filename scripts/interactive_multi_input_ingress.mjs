@@ -3,6 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {manifestDigest, SignedIngressVerifier} from './ingress_provenance.mjs';
+import {encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
@@ -135,7 +136,9 @@ function handle(command) {
         host_provenance: {mode: provenanceVerifier?.mode ?? 'caller_declared',
           signed_claim: 'burn-research.signed-input-claim.v1', trust_root: 'host_startup_only',
           replay_scope: provenanceVerifier?.replayScope ?? 'none',
-          host_subject: provenanceVerifier?.hostSubject ?? null, wasm_origin_authentication: false},
+          host_subject: provenanceVerifier?.hostSubject ?? null,
+          execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v1' : null,
+          wasm_origin_authentication: false},
       };
     case 'create': return createSession(command);
     case 'map': {
@@ -206,15 +209,35 @@ function handle(command) {
     case 'run': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
-      return withCurrentProvenance(s, () => {
+      const execute = () => {
         const output = s.ingress.run(s.registry, s.graph, s.bundle);
         try {
-          return {shape: Array.from(output.shape()), values: Array.from(output.to_array()),
+          const values = Array.from(output.to_array());
+          return {shape: Array.from(output.shape()), values,
+            output_f32_le_base64: provenanceVerifier?.ledger ? f32ValueBytes(values).toString('base64') : undefined,
             ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
         } finally {
           output.free();
         }
-      });
+      };
+      if (!provenanceVerifier?.ledger) return withCurrentProvenance(s, execute);
+      return provenanceVerifier.executeWithReceipt(s.proofs.values(), {
+        subject: provenanceVerifier.hostSubject,
+        programIdentity: JSON.parse(s.graph.programIdentity()),
+        manifestSha256: manifestDigest(JSON.parse(s.ingress.toJSON())),
+      }, execute);
+    }
+    case 'receipt': {
+      const receipt = provenanceVerifier?.getReceipt(command.receipt_id);
+      if (!receipt) throw new Error('durable host ledger required to retrieve execution receipts');
+      const hasValues = command.values !== undefined;
+      const hasBytes = command.output_f32_le_base64 !== undefined;
+      if (hasValues && hasBytes) throw new Error('compare output using either values or exact f32 bytes');
+      if ((command.shape !== undefined) !== (hasValues || hasBytes)) throw new Error('provide output shape together with values or f32 bytes');
+      const shape = command.shape === undefined ? null : requireArray(command.shape, 'shape');
+      return {receipt, output_matches: shape === null ? null : hasBytes
+        ? encodedF32Matches(receipt, shape, command.output_f32_le_base64)
+        : receiptMatchesOutput(receipt, shape, requireArray(command.values, 'values'))};
     }
     case 'verify': {
       const s = requireSession();

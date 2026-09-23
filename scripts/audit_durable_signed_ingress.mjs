@@ -5,6 +5,8 @@ import readline from 'node:readline';
 import {spawn, spawnSync} from 'node:child_process';
 import {generateKeyPairSync, sign} from 'node:crypto';
 import {canonicalInputClaim, manifestDigest} from './ingress_provenance.mjs';
+import {IngressReplayLedger} from './ingress_replay_ledger.mjs';
+import {encodedF32Matches, executionReceipt, f32ValueBytes, sha256Json, f32ValueDigest} from './ingress_execution_receipt.mjs';
 
 const packageDir = path.resolve(process.argv[2] ?? 'pkg');
 const runner = path.join(packageDir, 'interactive_multi_input_ingress.mjs');
@@ -77,8 +79,13 @@ async function create(client) {
 async function runAndVerify(client) {
   const run = await client.ask({op: 'run'});
   check(run.ok && run.result.host_provenance.ready && JSON.stringify(run.result.values) === '[4,6]', 'durable graph result mismatch');
+  check(run.result.execution_receipt?.authority === 'node_host_observed_wasm_run'
+    && run.result.execution_receipt.output.value_sha256 === f32ValueDigest(run.result.values)
+    && run.result.output_f32_le_base64 === f32ValueBytes(run.result.values).toString('base64'),
+  'durable run did not produce an observed output receipt');
   const verify = await client.ask({op: 'verify', candidate: [4, 6]});
   check(verify.ok && verify.result.reference.verification.passed, 'durable verification failed');
+  return run.result.execution_receipt;
 }
 
 try {
@@ -98,10 +105,28 @@ try {
   const firstLeft = signed(left, manifest, 'left-1');
   const firstRight = signed(right, manifest, 'right-1');
   check((await first.ask(firstLeft)).ok && (await first.ask(firstRight)).ok, 'initial durable bind rejected');
-  await runAndVerify(first);
+  const firstReceipt = await runAndVerify(first);
+  check(firstReceipt.sequence === 1 && firstReceipt.claim_count === 2
+    && firstReceipt.manifest_sha256 === manifestDigest(manifest)
+    && JSON.stringify(firstReceipt.input_claims) === JSON.stringify([
+      {slot: 0, source: 'sensor-a', revision: '2', claim_sha256: sha256Json(firstLeft.proof.claim)},
+      {slot: 1, source: 'memory-b', revision: '3', claim_sha256: sha256Json(firstRight.proof.claim)},
+    ]), 'receipt did not bind both signed input claims');
+  const {receipt_id: firstId, ...firstRecord} = firstReceipt;
+  check(firstId === sha256Json(firstRecord), 'receipt ID is not its canonical content digest');
   await first.close();
 
   const second = start();
+  const recovered = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1], values: [4, 6]});
+  check(recovered.ok && recovered.result.output_matches && recovered.result.receipt.receipt_id === firstId,
+    'execution receipt did not survive restart');
+  const exactRecovered = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1],
+    output_f32_le_base64: f32ValueBytes([4, 6]).toString('base64')});
+  check(exactRecovered.ok && exactRecovered.result.output_matches, 'exact f32 output did not match persisted receipt');
+  const alteredOutput = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1], values: [4, 7]});
+  check(alteredOutput.ok && !alteredOutput.result.output_matches, 'modified output matched the recorded receipt');
+  check(!(await second.ask({op: 'receipt', receipt_id: 'sha256:' + '0'.repeat(64)})).ok,
+    'caller supplied an uncommitted receipt ID');
   const nextManifest = await create(second);
   check(!(await second.ask(firstLeft)).ok, 'nonce replay survived restart');
   check(!(await second.ask(signed({...left, revision: 2}, nextManifest, 'left-new-nonce'))).ok,
@@ -120,7 +145,10 @@ try {
   }
   check((await second.ask(signed({...right, revision: 4}, nextManifest, 'right-2'))).ok,
     'retry after failed commit rejected an unconsumed nonce');
-  await runAndVerify(second);
+  const secondReceipt = await runAndVerify(second);
+  check(secondReceipt.sequence === 2 && secondReceipt.claim_count === 4
+    && JSON.stringify(secondReceipt.program_identity) === JSON.stringify(firstReceipt.program_identity),
+  'execution sequence, claim count, or program identity mismatch');
   const concurrent = start();
   const concurrentManifest = await create(concurrent);
   check((await concurrent.ask(signed({...left, revision: 4}, concurrentManifest, 'left-3'))).ok,
@@ -128,6 +156,8 @@ try {
   check(!(await second.ask({op: 'run'})).ok, 'run accepted a revision superseded in another process');
   check(!(await second.ask({op: 'verify', candidate: [4, 6]})).ok,
     'verify accepted a revision superseded in another process');
+  check((await second.ask({op: 'receipt', receipt_id: firstId})).result.receipt.receipt_id === firstId,
+    'superseding a claim removed a historical execution receipt');
   await concurrent.close();
   await second.close();
 
@@ -138,13 +168,66 @@ try {
   const removed = spawnSync(process.execPath, [runner, packageDir, trustPath, ledger, 'run-1'], {timeout: 5000});
   check(removed.status !== 0, 'removed replay ledger allowed a reset on restart');
   fs.renameSync(missingCopy, ledger);
+  const original = fs.readFileSync(ledger);
+  const changed = JSON.parse(original);
+  changed.executions[0].input_claims[0].claim_sha256 = 'sha256:' + '0'.repeat(64);
+  const {receipt_id: ignored, ...changedRecord} = changed.executions[0];
+  changed.executions[0].receipt_id = sha256Json(changedRecord);
+  fs.writeFileSync(ledger, JSON.stringify(changed) + '\n', {mode: 0o600});
+  const forgedHistory = spawnSync(process.execPath, [runner, packageDir, trustPath, ledger, 'run-1'], {timeout: 5000});
+  check(forgedHistory.status !== 0, 'receipt with a changed input claim survived ledger history validation');
+  fs.writeFileSync(ledger, original, {mode: 0o600});
   fs.writeFileSync(ledger, '{broken', {mode: 0o600});
   const corrupt = spawnSync(process.execPath, [runner, packageDir, trustPath, ledger, 'run-1'], {timeout: 5000});
   check(corrupt.status !== 0, 'corrupt replay ledger allowed startup');
+
+  // Simulate a commit failure after numerical execution. Legacy v1 snapshots
+  // without an executions field must still retain their accepted claims.
+  const legacyFile = path.join(temporary, 'legacy.json');
+  const legacy = new IngressReplayLedger(legacyFile, 'run-1', {initialize: true});
+  const oldState = JSON.parse(fs.readFileSync(legacyFile));
+  delete oldState.executions;
+  fs.writeFileSync(legacyFile, JSON.stringify(oldState) + '\n');
+  const migrated = new IngressReplayLedger(legacyFile, 'run-1');
+  const claims = [0, 1].map(slot => ({source: `source-${slot}`, subject: 'run-1', slot,
+    revision: '1', manifest_sha256: 'sha256:' + 'a'.repeat(64)}));
+  claims.forEach((claim, slot) => migrated.commit({claim,
+    nonceKey: JSON.stringify([claim.source, 'key', `nonce-${slot}`]),
+    revisionKey: JSON.stringify([claim.source, claim.subject, claim.slot])}));
+  const identity = {subject: 'run-1', programIdentity: {schema: 'probe'},
+    manifestSha256: claims[0].manifest_sha256};
+  let numericalExecutionOccurred = false;
+  const write = migrated.write;
+  migrated.write = () => { throw new Error('injected receipt commit failure'); };
+  try {
+    migrated.executeWithReceipt(claims, identity, () => {
+      numericalExecutionOccurred = true;
+      return {shape: [1, 2, 1, 1], values: [4, 6]};
+    });
+    throw new Error('failed receipt commit returned success');
+  } catch (error) {
+    check(error.message === 'injected receipt commit failure', 'receipt failure injection reported the wrong error');
+  } finally {
+    migrated.write = write;
+  }
+  check(numericalExecutionOccurred && new IngressReplayLedger(legacyFile, 'run-1').load().state.executions.length === 0,
+    'failed receipt commit created a durable receipt or bypassed numerical execution');
+  const migratedReceipt = migrated.executeWithReceipt(claims, identity,
+    () => ({shape: [1, 2, 1, 1], values: [4, 6]})).execution_receipt;
+  check(migrated.getReceipt(migratedReceipt.receipt_id).sequence === 1,
+    'pre-receipt ledger did not preserve its claim history during the upgrade');
+  const negativeZero = executionReceipt({...identity, claims, shape: [1, 2, 1, 1], values: [-0, 2],
+    sequence: 2, claimCount: 2});
+  check(f32ValueDigest([-0, 2]) !== f32ValueDigest([0, 2])
+    && encodedF32Matches(negativeZero, [1, 2, 1, 1], f32ValueBytes([-0, 2]).toString('base64'))
+    && !encodedF32Matches(negativeZero, [1, 2, 1, 1], f32ValueBytes([0, 2]).toString('base64')),
+  'f32 wire representation erased the sign of negative zero');
   console.log(JSON.stringify({verdict: 'PASS', mode: 'ed25519_host_durable',
     restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,
-    missing_and_corrupt_ledger_rejected: true, reference: [4, 6]}));
+    missing_and_corrupt_ledger_rejected: true, execution_receipt_persisted: true,
+    modified_output_rejected: true, forged_receipt_history_rejected: true,
+    receipt_commit_failure_closed: true, legacy_ledger_migrated: true, reference: [4, 6]}));
 } finally {
   for (const child of running) child.kill();
   fs.rmSync(temporary, {recursive: true, force: true});
