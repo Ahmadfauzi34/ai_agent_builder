@@ -11,6 +11,7 @@
     "plan_explain_method": "CompiledMultiInputGraph.explainPlan",
     "preflight_method": "CompiledMultiInputGraph.preflight",
     "execution_method": "CompiledMultiInputGraph.run",
+    "trace_method": "CompiledMultiInputGraph.runWithTrace",
     "verification_method": "CompiledMultiInputGraph.verifyFlat"
   },
   "binary_format": {
@@ -81,6 +82,7 @@
     "inputs.ports[].input_value_fingerprint"
   ],
   "plan_explain_contract": "multi-input-plan-explain.v1.json",
+  "execution_trace_contract": "multi-input-execution-trace.v1.json",
   "explicit_limits": [
     "FNV-1a fingerprints do not establish trust or authenticity.",
     "Preflight checks the declared input boundary and registry structural binding; the Burn operator remains the final authority for actual operation compatibility.",

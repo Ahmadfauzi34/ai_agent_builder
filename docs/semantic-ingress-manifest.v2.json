@@ -18,6 +18,7 @@
     "consumerCompatibility": "read-only semantic role, fingerprint-presence and minimum-revision predicates for one candidate consumer",
     "status": "read-only complete logical coverage, exact plan binding, registry binding and graph preflight",
     "run": "requires current bridge status then delegates to CompiledMultiInputGraph.run, which repeats graph preflight",
+    "runWithTrace": "requires current bridge status then delegates to CompiledMultiInputGraph.runWithTrace, which repeats graph preflight and observes the same execution",
     "verifyFlat": "requires current bridge status and delegates numerical verification to CompiledMultiInputGraph.verifyFlat"
   },
   "required_runtime_port_policy": {

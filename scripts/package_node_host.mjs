@@ -20,6 +20,7 @@ const checkpointRestoreContractSource = path.resolve('docs/host-checkpoint-resto
 const legacyExecutionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
 const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
 const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
+const executionTraceContractSource = path.resolve('docs/multi-input-execution-trace.v1.json');
 const runtimeSurfaceContractSource = path.resolve('docs/runtime-surface.v1.json');
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
@@ -38,6 +39,7 @@ const checkpointRestoreContractTarget = path.join(pkgDir, 'host-checkpoint-resto
 const legacyExecutionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
 const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
+const executionTraceContractTarget = path.join(pkgDir, 'multi-input-execution-trace.v1.json');
 const runtimeSurfaceContractTarget = path.join(pkgDir, 'runtime-surface.v1.json');
 
 const generatedPackageFiles = [
@@ -63,6 +65,7 @@ const packagedHostFiles = [
   'host-checkpoint-restore.v1.json',
   'host-state-handoff.v1.json',
   'wasm-surface.v1.json',
+  'multi-input-execution-trace.v1.json',
   'runtime-surface.v1.json',
 ];
 
@@ -100,6 +103,7 @@ fs.copyFileSync(checkpointRestoreContractSource, checkpointRestoreContractTarget
 fs.copyFileSync(legacyExecutionReceiptContractSource, legacyExecutionReceiptContractTarget);
 fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
 fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
+fs.copyFileSync(executionTraceContractSource, executionTraceContractTarget);
 fs.copyFileSync(runtimeSurfaceContractSource, runtimeSurfaceContractTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));

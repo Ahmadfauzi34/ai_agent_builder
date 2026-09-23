@@ -14,6 +14,9 @@ use crate::WasmTensor;
 mod runtime_contract;
 #[path = "graph_plan_explain.rs"]
 mod plan_explain;
+#[path = "graph_execution_trace.rs"]
+mod execution_trace;
+pub use execution_trace::TracedMultiInputRun;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
@@ -209,6 +212,18 @@ impl CompiledGraph {
         registry: &LayerRegistry,
         inputs: &[(u8, WasmTensor)],
     ) -> Result<WasmTensor, String> {
+        self.run_with_external_inputs_observed(registry, inputs, |_, _, _| {})
+    }
+
+    fn run_with_external_inputs_observed<F>(
+        &self,
+        registry: &LayerRegistry,
+        inputs: &[(u8, WasmTensor)],
+        mut observe: F,
+    ) -> Result<WasmTensor, String>
+    where
+        F: FnMut(usize, &GraphPlanStep, &Result<WasmTensor, String>),
+    {
         self.validate_registry_binding_internal(registry, "run")?;
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         for (slot, tensor) in inputs {
@@ -221,32 +236,36 @@ impl CompiledGraph {
             }
             slots[slot_index] = Some(tensor.clone());
         }
-        for s in &self.steps {
-            let out = if s.arity == ARITY_BINARY {
-                let a = slots[s.in_slot as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
-                let b = slots[s.in_slot2 as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot2))?;
-                registry.forward_binary_layer(s.layer_id, a, b)?
-            } else {
-                let inp = slots[s.in_slot as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
-                if matches!(
-                    s.layer_type,
-                    LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
-                ) {
-                    runtime_contract::validate_registry_unary_contract(
-                        registry,
+        for (index, s) in self.steps.iter().enumerate() {
+            let out = (|| -> Result<WasmTensor, String> {
+                Ok(if s.arity == ARITY_BINARY {
+                    let a = slots[s.in_slot as usize]
+                        .as_ref()
+                        .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                    let b = slots[s.in_slot2 as usize]
+                        .as_ref()
+                        .ok_or_else(|| format!("run: empty input slot {}", s.in_slot2))?;
+                    registry.forward_binary_layer(s.layer_id, a, b)?
+                } else {
+                    let inp = slots[s.in_slot as usize]
+                        .as_ref()
+                        .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                    if matches!(
                         s.layer_type,
-                        s.layer_id,
-                        inp.inner.dims(),
-                    )?;
-                }
-                registry.forward_layer(s.layer_id, s.layer_type, inp)?
-            };
+                        LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
+                    ) {
+                        runtime_contract::validate_registry_unary_contract(
+                            registry,
+                            s.layer_type,
+                            s.layer_id,
+                            inp.inner.dims(),
+                        )?;
+                    }
+                    registry.forward_layer(s.layer_id, s.layer_type, inp)?
+                })
+            })();
+            observe(index, s, &out);
+            let out = out?;
             slots[s.out_slot as usize] = Some(out);
         }
         slots[self.out_slot as usize]
@@ -325,6 +344,22 @@ impl CompiledMultiInputGraph {
     #[wasm_bindgen(js_name = explainPlan)]
     pub fn explain_plan(&self, registry: &LayerRegistry) -> String {
         plan_explain::report(self, registry)
+    }
+
+    #[wasm_bindgen(js_name = runWithTrace)]
+    pub fn run_with_trace(
+        &self,
+        registry: &LayerRegistry,
+        bundle: &MultiInputInputBundle,
+        start_step: u32,
+        max_steps: u32,
+        max_tensor_bytes: u32,
+    ) -> Result<TracedMultiInputRun, String> {
+        let (ready, _) = self.preflight_state(registry, bundle);
+        if !ready {
+            return Err("CompiledMultiInputGraph.runWithTrace: input or registry preflight failed; execution was not started".into());
+        }
+        execution_trace::run(self, registry, bundle, start_step, max_steps, max_tensor_bytes)
     }
 
     #[wasm_bindgen(js_name = preflight)]

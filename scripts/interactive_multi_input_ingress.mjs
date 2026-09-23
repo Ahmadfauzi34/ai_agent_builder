@@ -4,7 +4,7 @@ import readline from 'node:readline';
 import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {manifestDigest, SIGNED_INPUT_CLAIM_SCHEMA_V1, SIGNED_INPUT_CLAIM_SCHEMA_V2, SignedIngressVerifier} from './ingress_provenance.mjs';
-import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
+import {decodeF32Base64, encodedF32Matches, f32ValueBytes, f32ValueDigest, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
@@ -344,22 +344,55 @@ function handle(command) {
           host_provenance: hostProvenance};
       });
     }
+    case 'trace':
     case 'run': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
+      const traced = command.op === 'trace';
+      const traceOptions = traced ? {
+        startStep: command.startStep ?? 0,
+        maxSteps: command.maxSteps ?? 64,
+        maxTensorBytes: command.maxTensorBytes ?? 1_048_576,
+      } : null;
+      if (traced && Object.entries(traceOptions).some(([key, value]) =>
+        !Number.isSafeInteger(value) || value < 0 || value > 0xffffffff ||
+        (key === 'maxSteps' && value === 0))) {
+        throw new Error('trace bounds must be unsigned 32-bit integers; maxSteps must be positive');
+      }
       const execute = () => {
-        const output = s.ingress.run(s.registry, s.graph, s.bundle);
+        let output;
+        let traceRun;
         try {
+          let executionTrace;
+          if (traced) {
+            traceRun = s.ingress.runWithTrace(s.registry, s.graph, s.bundle,
+              traceOptions.startStep, traceOptions.maxSteps, traceOptions.maxTensorBytes);
+            executionTrace = JSON.parse(traceRun.report());
+            if (executionTrace.execution_status !== 'completed') {
+              const error = new Error(`trace failed at step ${executionTrace.fault_step_index}: ${executionTrace.error}`);
+              error.execution_trace = executionTrace;
+              throw error;
+            }
+            output = traceRun.output();
+          } else {
+            output = s.ingress.run(s.registry, s.graph, s.bundle);
+          }
           const values = Array.from(output.to_array());
+          if (traced && executionTrace.terminal_output?.finite_values === true
+            && executionTrace.terminal_output.value_sha256 !== f32ValueDigest(values)) {
+            throw new Error('trace terminal digest differs from exact host output bytes');
+          }
           const checkpoint = provenanceVerifier?.ledger ? exportStateCheckpoint(s) : null;
           return {shape: Array.from(output.shape()), values,
+            ...(traced ? {execution_trace: executionTrace} : {}),
             ...(checkpoint ? {state_checkpoint_bytes_sha256: checkpoint.checkpoint_bytes_sha256} : {}),
             ...(checkpoint ? {checkpoint_bytes: Buffer.from(checkpoint.bytes),
               checkpoint_manifest: JSON.parse(s.ingress.toJSON())} : {}),
             output_f32_le_base64: provenanceVerifier?.ledger ? f32ValueBytes(values).toString('base64') : undefined,
             ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
         } finally {
-          output.free();
+          output?.free();
+          traceRun?.free();
         }
       };
       if (!provenanceVerifier?.ledger) return withCurrentProvenance(s, () => {
@@ -433,7 +466,8 @@ for await (const line of input) {
     const result = handle(command);
     process.stdout.write(`${JSON.stringify({request_id: command.request_id ?? null, ok: true, result})}\n`);
   } catch (error) {
-    process.stdout.write(`${JSON.stringify({request_id: command?.request_id ?? null, ok: false, error: String(error?.message ?? error)})}\n`);
+    process.stdout.write(`${JSON.stringify({request_id: command?.request_id ?? null, ok: false,
+      error: String(error?.message ?? error), ...(error?.execution_trace ? {execution_trace: error.execution_trace} : {})})}\n`);
   }
   if (command?.op === 'close') break;
 }

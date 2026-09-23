@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
 
-use crate::graph::CompiledMultiInputGraph;
+use crate::graph::{CompiledMultiInputGraph, TracedMultiInputRun};
 use crate::input_port::role_valid;
 use crate::input_port_consumer::InputPortConsumerSpec;
 use crate::multi_input_graph::{InputPreflight, MultiInputGraphPlan, MultiInputInputBundle, MultiInputPortContract};
@@ -318,6 +318,15 @@ impl SemanticIngressManifestV2 {
             return Err("SemanticIngressManifestV2.run: ingress or graph preflight failed; execution was not started".into());
         }
         graph.run(registry, bundle)
+    }
+
+    #[wasm_bindgen(js_name = runWithTrace)]
+    pub fn run_with_trace(&self, registry: &LayerRegistry, graph: &CompiledMultiInputGraph, bundle: &MultiInputInputBundle,
+        start_step: u32, max_steps: u32, max_tensor_bytes: u32) -> Result<TracedMultiInputRun, String> {
+        if !self.status_internal(registry, graph, bundle).ready {
+            return Err("SemanticIngressManifestV2.runWithTrace: ingress or graph preflight failed; execution was not started".into());
+        }
+        graph.run_with_trace(registry, bundle, start_step, max_steps, max_tensor_bytes)
     }
 
     #[wasm_bindgen(js_name = verifyFlat)]

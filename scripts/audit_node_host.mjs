@@ -48,6 +48,7 @@ assert(fs.existsSync(checkpointRestoreContractPath), 'packaged host-checkpoint-r
 assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
+assert(fs.existsSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
 assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
@@ -64,6 +65,7 @@ const requiredPackageFiles = [
   'wasm-surface.actual.json',
   'wasm-surface.bindings.actual.json',
   'wasm-surface.v1.json',
+  'multi-input-execution-trace.v1.json',
   'runtime-surface.v1.json',
   'node.mjs',
   'node.d.mts',

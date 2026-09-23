@@ -1,5 +1,6 @@
 import path from 'node:path';
 import {spawn, spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 
 const packageDir = path.resolve(process.argv[2] ?? 'pkg');
 const requests = [
@@ -24,6 +25,7 @@ const requests = [
   {op: 'consumer', slot: 1, id: 'state-reader', acceptedRoles: ['state'], requireFingerprint: true, minimumRevision: 3},
   {op: 'run'},
   {op: 'verify', candidate: [4, 6]},
+  {op: 'trace', startStep: 0, maxSteps: 1, maxTensorBytes: 64},
   {op: 'close'},
 ];
 
@@ -54,7 +56,20 @@ assert(responses[8].result.status === 'compatible', 'consumer compatibility was 
 assert(responses[9].ok && JSON.stringify(responses[9].result.values) === '[4,6]', 'reference output mismatch');
 assert(responses[9].result.ingress.ready === true, 'ready ingress report missing');
 assert(responses[10].result.reference.verification.passed === true, 'reference verification failed');
-assert(responses[11].result.closed === true, 'session did not close');
+const trace = responses[11].result?.execution_trace;
+const expectedBytes = Buffer.allocUnsafe(8);
+expectedBytes.writeFloatLE(4, 0);
+expectedBytes.writeFloatLE(6, 4);
+const expectedDigest = `sha256:${createHash('sha256').update(expectedBytes).digest('hex')}`;
+assert(responses[11].ok && JSON.stringify(responses[11].result.values) === '[4,6]', 'trace output mismatch');
+assert(trace?.schema_id === 'burn-research.multi-input-execution-trace.v1' && trace?.trace_complete === true,
+  'complete bounded trace missing');
+assert(trace.program_identity.input_plan_hex === responses[0].result.program_identity.input_plan_hex,
+  'trace program identity mismatch');
+assert(trace.steps[0].observation.value_sha256 === expectedDigest
+  && trace.terminal_output.value_sha256 === expectedDigest, 'trace f32 digest mismatch');
+assert(trace.execution_authorized === false && trace.fault_step_index === null, 'trace authority or fault mismatch');
+assert(responses[12].result.closed === true, 'session did not close');
 const closeWithoutEof = await new Promise((resolve, reject) => {
   const child = spawn(process.execPath, [path.join(packageDir, 'interactive_multi_input_ingress.mjs')], {stdio: ['pipe', 'pipe', 'pipe']});
   let stdout = '';

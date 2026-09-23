@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.multi-input-execution-trace.v1",
+  "status": "implemented_runtime_observation",
+  "entrypoints": {
+    "graph": "CompiledMultiInputGraph.runWithTrace(registry, bundle, startStep, maxSteps, maxTensorBytes)",
+    "ingress": "SemanticIngressManifestV2.runWithTrace(registry, graph, bundle, startStep, maxSteps, maxTensorBytes)",
+    "host": "JSON Lines op=trace with optional startStep, maxSteps and maxTensorBytes"
+  },
+  "bounds": {
+    "start_step": "zero-based index within the compiled steps",
+    "max_steps": "1..=256; the window is truncated at the last step",
+    "max_tensor_bytes": "0..=16777216 for each tensor; host default 1048576",
+    "total_hashed_bytes": 67108864,
+    "input_and_terminal_observations_count_toward_total": true,
+    "skipped_observation_does_not_skip_graph_step": true
+  },
+  "digest": {
+    "algorithm": "SHA-256",
+    "bytes": "flat f32 values in tensor order, each IEEE-754 bit pattern encoded little endian",
+    "format": "sha256:<lowercase hex>",
+    "scope": "exact observed tensor values, not tensor shape, graph identity or authorization",
+    "skipped_digest": "null with explicit capture_status and byte_length when available"
+  },
+  "report_fields": [
+    "program_identity",
+    "execution_status",
+    "execution_authorized:false",
+    "input_observations",
+    "start_step",
+    "end_step_exclusive",
+    "total_steps",
+    "completed_steps",
+    "observed_steps",
+    "trace_complete",
+    "max_tensor_bytes",
+    "max_total_hashed_bytes",
+    "hashed_bytes",
+    "steps[].index",
+    "steps[].layer_type",
+    "steps[].layer_id",
+    "steps[].arity",
+    "steps[].input_slots",
+    "steps[].output_slot",
+    "steps[].observation",
+    "terminal_output",
+    "fault_step_index",
+    "error"
+  ],
+  "observation_fields": ["shape", "byte_length", "capture_status", "finite_values", "value_sha256"],
+  "capture_statuses": ["captured", "tensor_budget_exceeded", "total_budget_exceeded", "size_overflow", "step_failed"],
+  "trace_complete_meaning": "all compiled step indices were observed and the graph completed; some tensor digests may still be null due to capture bounds",
+  "failure": {
+    "preflight_or_invalid_bounds": "error before graph execution; no trace object or receipt",
+    "numerical_step": "report execution_status=failed, fault_step_index, error and completed prefix; output() fails",
+    "host_numerical_step": "ok=false and execution_trace in JSON Lines response; no execution receipt",
+    "durable_host": "a failed numerical run discards the active session, and a successful traced run commits an execution receipt under the same ledger lock"
+  },
+  "limits": [
+    "Observations materialize tensors for hashing and can add CPU time and memory use; they do not replace the Burn operator result.",
+    "A window observes its selected indices while all preceding and subsequent graph steps still execute.",
+    "A trace is one execution; calling run separately executes the graph again and may change mutable state.",
+    "A digest identifies exact f32 bytes only; it is not a signature or action permission.",
+    "For a completed durable host trace, compare terminal_output.value_sha256 with execution_receipt output digest when captured."
+  ]
+}
