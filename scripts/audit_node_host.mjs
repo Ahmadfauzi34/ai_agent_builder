@@ -16,6 +16,7 @@ const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs')
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v2.json');
+const checkpointRestoreContractPath = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
 const wasmSurfaceContractPath = path.join(pkgDir, 'wasm-surface.v1.json');
@@ -41,6 +42,7 @@ assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
 assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v2.json is missing');
+assert(fs.existsSync(checkpointRestoreContractPath), 'packaged host-checkpoint-restore.v1.json is missing');
 assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
@@ -74,6 +76,7 @@ const requiredPackageFiles = [
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
   'host-execution-receipt.v2.json',
+  'host-checkpoint-restore.v1.json',
   'host-state-handoff.v1.json',
 ];
 for (const file of requiredPackageFiles) {
@@ -94,6 +97,7 @@ assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-pr
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
 assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v2.json', 'Node execution receipt contract discovery mismatch');
+assert(support.verified_hosts?.node?.host_checkpoint_restore_contract === 'host-checkpoint-restore.v1.json', 'Node checkpoint restore contract discovery mismatch');
 assert(support.verified_hosts?.node?.legacy_host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node legacy receipt contract discovery mismatch');
 assert(support.verified_hosts?.node?.host_state_handoff_contract === 'host-state-handoff.v1.json', 'Node state handoff contract discovery mismatch');
 assert(support.verified_hosts?.node?.wasm_surface_contract === 'wasm-surface.v1.json', 'Node WASM surface contract discovery mismatch');
@@ -132,6 +136,8 @@ assert(verifiedSurface.math_version_channels?.math_program_surface_version?.sche
 'MathProgram semantic generation and interaction protocol version channels are conflated or missing');
 assert(verifiedSurface.host_capabilities?.contracts?.state_handoff?.schema === 'burn-research.host-state-handoff.v1',
   'runtime surface omits Node host state-handoff contract');
+assert(verifiedSurface.host_capabilities?.contracts?.checkpoint_restore?.schema === 'burn-research.host-checkpoint-restore.v1',
+  'runtime surface omits Node host checkpoint restore contract');
 
 const programCaps = JSON.parse(runtime.programCapabilities());
 const bundleCaps = JSON.parse(runtime.programBundleCapabilities());

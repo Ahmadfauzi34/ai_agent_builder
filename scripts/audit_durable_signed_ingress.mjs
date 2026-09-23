@@ -26,9 +26,10 @@ let sequence = 0;
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
-function start(allowCheckpointExport = true, ledgerPath = ledger) {
+function start(allowCheckpointExport = true, ledgerPath = ledger, allowCheckpointRestore = allowCheckpointExport) {
   const args = [runner, packageDir, trustPath, ledgerPath, 'run-1'];
   if (allowCheckpointExport) args.push('--allow-state-checkpoint-export');
+  if (allowCheckpointRestore) args.push('--allow-checkpoint-restore');
   const child = spawn(process.execPath, args, {stdio: ['pipe', 'pipe', 'pipe']});
   running.add(child);
   let stderr = '';
@@ -84,7 +85,10 @@ async function create(client, graphSpec = graph) {
 }
 async function runAndVerify(client, candidate = [4, 6]) {
   const run = await client.ask({op: 'run'});
-  check(run.ok && run.result.host_provenance.ready && JSON.stringify(run.result.values) === JSON.stringify(candidate), 'durable graph result mismatch');
+  const expected = candidate ?? run.result?.values;
+  check(run.ok && run.result.host_provenance.ready && Array.isArray(expected)
+    && expected.every(Number.isFinite) && JSON.stringify(run.result.values) === JSON.stringify(expected),
+  'durable graph result mismatch');
   check(run.result.execution_receipt?.authority === 'node_host_observed_wasm_run'
     && run.result.execution_receipt.schema === 'burn-research.host-execution-receipt.v2'
     && run.result.execution_receipt.output.value_sha256 === f32ValueDigest(run.result.values)
@@ -98,7 +102,7 @@ async function runAndVerify(client, candidate = [4, 6]) {
       === checkpoint.result.checkpoint_bytes_sha256
     && checkpoint.result.checkpoint_bytes_sha256 === run.result.state_checkpoint_bytes_sha256,
   'checkpoint operation did not reproduce the receipt-bound state checkpoint');
-  const verify = await client.ask({op: 'verify', candidate});
+  const verify = await client.ask({op: 'verify', candidate: expected});
   check(verify.ok && verify.result.reference.verification.passed, 'durable verification failed');
   return {receipt: run.result.execution_receipt, result: run.result};
 }
@@ -114,7 +118,8 @@ try {
   const capabilities = await first.ask({op: 'capabilities'});
   check(capabilities.result.host_provenance.mode === 'ed25519_host_durable'
     && capabilities.result.host_provenance.host_subject === 'run-1'
-    && capabilities.result.host_provenance.state_checkpoint_export_enabled === true,
+    && capabilities.result.host_provenance.state_checkpoint_export_enabled === true
+    && capabilities.result.host_provenance.receipt_bound_checkpoint_restore_enabled === true,
   'durable host gate or checkpoint export opt-in did not activate');
   const withoutCheckpoint = start(false);
   check(!(await withoutCheckpoint.ask({op: 'checkpoint'})).ok,
@@ -142,17 +147,35 @@ try {
   check(firstId === sha256Json(firstRecord), 'receipt ID is not its canonical content digest');
   await first.close();
 
+  const exportOnly = start(true, ledger, false);
+  check((await exportOnly.ask({op: 'capabilities'})).result.host_provenance.receipt_bound_checkpoint_restore_enabled === false
+    && !(await exportOnly.ask({op: 'restore', receipt_id: firstId})).ok,
+  'checkpoint export flag implicitly enabled restore');
+  await exportOnly.close();
+  const restoreOnly = start(false, ledger, true);
+  check((await restoreOnly.ask({op: 'capabilities'})).result.host_provenance.state_checkpoint_export_enabled === false
+    && !(await restoreOnly.ask({op: 'checkpoint'})).ok
+    && (await restoreOnly.ask({op: 'restore', receipt_id: firstId})).ok,
+  'restore-only host flag did not permit receipt restore while denying raw byte export');
+  await restoreOnly.close();
+
   const second = start();
   const recovered = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1], values: [4, 6]});
   check(recovered.ok && recovered.result.output_matches && recovered.result.receipt.receipt_id === firstId,
     'execution receipt did not survive restart');
   const restored = await second.ask({op: 'restore', receipt_id: firstId});
   check(restored.ok && restored.result.restored_from_receipt_id === firstId
+    && /^sha256:[0-9a-f]{64}$/.test(restored.result.restore_event_id)
     && restored.result.checkpoint_bytes_sha256 === firstReceipt.state_checkpoint_bytes_sha256
     && JSON.stringify(restored.result.program_identity) === JSON.stringify(firstReceipt.program_identity)
     && !restored.result.host_provenance.ready
     && restored.result.status.graph_preflight.inputs.bound_port_count === 0,
   'receipt-bound restore failed to resume the exact graph without promoting old inputs');
+  const committedRestore = JSON.parse(fs.readFileSync(ledger, 'utf8')).restores.at(-1);
+  check(committedRestore.restore_id === restored.result.restore_event_id
+    && committedRestore.parent_receipt_id === firstId
+    && committedRestore.after_execution_sequence === 1,
+  'host did not durably anchor checkpoint restore to its exact parent receipt');
   check(!(await second.ask({op: 'run'})).ok && !(await second.ask(firstLeft)).ok,
     'restored session executed without fresh signed input or replayed a claim');
   check(!(await second.ask({op: 'restore', receipt_id: 'sha256:' + '0'.repeat(64)})).ok
@@ -332,6 +355,7 @@ try {
     () => ({shape: [1, 2, 1, 1], values: [4, 6], state_checkpoint_bytes_sha256: 'sha256:' + '1'.repeat(64)})).execution_receipt;
   const previousState = JSON.parse(fs.readFileSync(preHandoffFile, 'utf8'));
   delete previousState.handoffs;
+  delete previousState.restores;
   for (const input of previousState.executions[0].input_claims) {
     delete input.role;
     delete input.shape;
@@ -389,15 +413,51 @@ try {
     && stateA.state_checkpoint_bytes_sha256 !== stateB.state_checkpoint_bytes_sha256
     && stateA.receipt_id !== stateB.receipt_id,
   'same observed output with different mutable state checkpoint bytes was not distinguished');
+  const restoreEvent = checkpointLedger.recordRestore(stateA.receipt_id, identity.programIdentity,
+    identity.manifestSha256, stateA.state_checkpoint_bytes_sha256);
+  let forgedRun = false;
+  try {
+    checkpointLedger.executeWithReceipt(claims,
+      {...identity, stateParentReceiptId: stateB.receipt_id, restoreEventId: restoreEvent.restore_id},
+      () => { forgedRun = true; return sameObservedOutput(); });
+    throw new Error('unrelated state parent was accepted after restore');
+  } catch (error) {
+    check(/runtime-state parent/.test(error.message) && !forgedRun,
+      'restore lineage mismatch was not rejected before numerical execution');
+  }
+  const stateC = checkpointLedger.executeWithReceipt(claims,
+    {...identity, stateParentReceiptId: stateA.receipt_id, restoreEventId: restoreEvent.restore_id},
+    sameObservedOutput).execution_receipt;
+  const stateD = checkpointLedger.executeWithReceipt(claims,
+    {...identity, stateParentReceiptId: stateC.receipt_id, restoreEventId: restoreEvent.restore_id},
+    sameObservedOutput).execution_receipt;
+  check(stateC.sequence === 3 && stateC.state_parent_receipt_id === stateA.receipt_id
+    && stateC.restore_event_id === restoreEvent.restore_id
+    && stateD.state_parent_receipt_id === stateC.receipt_id
+    && checkpointLedger.load().state.restores.length === 1,
+  'restored A → C → D runtime-state ancestry was not durable');
   const resumeLedger = path.join(temporary, 'resume-ledger.json');
   check(spawnSync(process.execPath, [initializer, resumeLedger, 'run-1']).status === 0,
     'resume ledger initialization failed');
   const prior = start(true, resumeLedger);
-  const priorManifest = await create(prior);
+  const mutableGraph = {...graph, numSlots: 4, outputSlot: 3,
+    layers: [{constructor: 'add', args: [31]}, {constructor: 'linear', args: [32, 2, 2, true]}],
+    steps: [{kind: 'binary', layer: 0, slots: [0, 1, 2]},
+      {kind: 'unary', layer: 1, slots: [2, 3]}]};
+  const priorManifest = await create(prior, mutableGraph);
   check((await prior.ask(signed(left, priorManifest, 'resume-left-1'))).ok
     && (await prior.ask(signed(right, priorManifest, 'resume-right-1'))).ok,
   'pre-restart signed input bind failed');
-  const priorRun = await runAndVerify(prior);
+  const priorRun = await runAndVerify(prior, null);
+  const alternateManifest = await create(prior, mutableGraph);
+  check((await prior.ask(signed({...left, revision: 3}, alternateManifest, 'alternate-left'))).ok
+    && (await prior.ask(signed({...right, revision: 4}, alternateManifest, 'alternate-right'))).ok,
+  'distinct state graph did not accept new signed inputs');
+  const alternateRun = await runAndVerify(prior, null);
+  check(JSON.stringify(alternateRun.receipt.program_identity) === JSON.stringify(priorRun.receipt.program_identity)
+    && alternateRun.receipt.state_checkpoint_bytes_sha256 !== priorRun.receipt.state_checkpoint_bytes_sha256
+    && JSON.stringify(alternateRun.result.values) !== JSON.stringify(priorRun.result.values),
+  'fresh graph with same structure did not produce distinct mutable state and output');
   await prior.close();
   const storeFile = path.join(`${resumeLedger}.checkpoints`, `${priorRun.receipt.receipt_id.slice(7)}.json`);
   const retained = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
@@ -406,16 +466,41 @@ try {
     === priorRun.receipt.state_checkpoint_bytes_sha256, 'host failed to retain exact checkpoint bytes');
   const resumed = start(true, resumeLedger);
   const resumedResult = await resumed.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id});
-  check(resumedResult.ok && manifestDigest(resumedResult.result.manifest) === priorRun.receipt.manifest_sha256
+  check(resumedResult.ok && /^sha256:[0-9a-f]{64}$/.test(resumedResult.result.restore_event_id)
+    && manifestDigest(resumedResult.result.manifest) === priorRun.receipt.manifest_sha256
     && !(await resumed.ask({op: 'run'})).ok, 'restart restored a runnable old input');
-  check((await resumed.ask(signed({...left, revision: 3}, resumedResult.result.manifest, 'resume-left-2'))).ok
-    && (await resumed.ask(signed({...right, revision: 4}, resumedResult.result.manifest, 'resume-right-2'))).ok,
+  check((await resumed.ask(signed({...left, revision: 4}, resumedResult.result.manifest, 'resume-left-2'))).ok
+    && (await resumed.ask(signed({...right, revision: 5}, resumedResult.result.manifest, 'resume-right-2'))).ok,
   'restored graph did not accept fresh signed inputs');
-  const afterResume = await runAndVerify(resumed);
-  check(afterResume.receipt.sequence === 2
-    && afterResume.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256,
+  const afterResume = await runAndVerify(resumed, priorRun.result.values);
+  check(afterResume.receipt.sequence === 3
+    && afterResume.receipt.state_parent_receipt_id === priorRun.receipt.receipt_id
+    && afterResume.receipt.restore_event_id === resumedResult.result.restore_event_id
+    && afterResume.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256
+    && JSON.stringify(afterResume.result.values) !== JSON.stringify(alternateRun.result.values),
   'restart did not run the same exact reference state');
+  const continued = await runAndVerify(resumed, priorRun.result.values);
+  check(continued.receipt.sequence === 4
+    && continued.receipt.state_parent_receipt_id === afterResume.receipt.receipt_id
+    && continued.receipt.restore_event_id === resumedResult.result.restore_event_id,
+  'second resumed execution did not name its immediate committed state parent');
   await resumed.close();
+  const failing = start(true, resumeLedger);
+  const failingRestore = await failing.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id});
+  check(failingRestore.ok
+    && (await failing.ask(signed({...left, revision: 5}, failingRestore.result.manifest, 'failed-run-left'))).ok
+    && (await failing.ask(signed({...right, revision: 6}, failingRestore.result.manifest, 'failed-run-right'))).ok,
+  'failure injection setup did not create a runnable restored session');
+  const unsafeEntry = path.join(`${resumeLedger}.checkpoints`, '.unsafe-for-run');
+  fs.symlinkSync(storeFile, unsafeEntry);
+  try {
+    check(!(await failing.ask({op: 'run'})).ok
+      && !(await failing.ask({op: 'inspect'})).ok,
+    'post-execution storage failure left an uncommitted state available for later runs');
+  } finally { fs.unlinkSync(unsafeEntry); }
+  await failing.close();
+  check(JSON.parse(fs.readFileSync(resumeLedger, 'utf8')).executions.length === 4,
+    'failed numerical run claimed an execution receipt');
   const manifestTamper = {...retained, manifest: {...retained.manifest, execution_authorized: true}};
   fs.writeFileSync(storeFile, JSON.stringify(manifestTamper) + '\n', {mode: 0o600});
   const manifestClient = start(true, resumeLedger);
@@ -433,6 +518,15 @@ try {
   check(!(await missingClient.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id})).ok,
     'missing retained checkpoint passed restore');
   await missingClient.close();
+  const originalLineage = fs.readFileSync(resumeLedger);
+  const changedLineage = JSON.parse(originalLineage);
+  changedLineage.restores[0].parent_receipt_id = alternateRun.receipt.receipt_id;
+  const {restore_id: ignoredRestoreId, ...forgedRestoreRecord} = changedLineage.restores[0];
+  changedLineage.restores[0].restore_id = sha256Json(forgedRestoreRecord);
+  fs.writeFileSync(resumeLedger, JSON.stringify(changedLineage) + '\n', {mode: 0o600});
+  const forgedLineage = spawnSync(process.execPath, [runner, packageDir, trustPath, resumeLedger, 'run-1'], {timeout: 5000});
+  check(forgedLineage.status !== 0, 'changed restore ancestor with recomputed event ID survived ledger validation');
+  fs.writeFileSync(resumeLedger, originalLineage, {mode: 0o600});
   const rollbackFile = path.join(temporary, 'checkpoint-rollback-ledger.json');
   const rollbackLedger = new IngressReplayLedger(rollbackFile, 'run-1', {initialize: true});
   const rollbackManifest = {schema: 'test-manifest'};
@@ -456,6 +550,17 @@ try {
   check(rollbackLedger.load().state.executions.length === 0
     && fs.readdirSync(`${rollbackFile}.checkpoints`).length === 0,
   'failed receipt commit left an authorized receipt or retained checkpoint');
+  const originalRestoreWrite = checkpointLedger.write;
+  checkpointLedger.write = () => { throw new Error('injected restore event commit failure'); };
+  try {
+    checkpointLedger.recordRestore(stateA.receipt_id, identity.programIdentity,
+      identity.manifestSha256, stateA.state_checkpoint_bytes_sha256);
+    throw new Error('failed restore event commit returned success');
+  } catch (error) {
+    check(error.message === 'injected restore event commit failure', 'restore event failure injection reported the wrong error');
+  } finally { checkpointLedger.write = originalRestoreWrite; }
+  check(checkpointLedger.load().state.restores.length === 1,
+    'failed restore event commit created durable ancestry');
   const audit = {restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,
     missing_and_corrupt_ledger_rejected: true, execution_receipt_persisted: true,
@@ -468,6 +573,11 @@ try {
     checkpoint_bytes_retained: true, receipt_bound_restore: true,
     exact_restart_resume_requires_new_signed_inputs: true, tampered_or_missing_checkpoint_rejected: true,
     modified_manifest_rejected: true, failed_receipt_commit_cleans_checkpoint: true,
+    checkpoint_restore_policy_separate: true, restore_event_persisted: true,
+    causal_state_parent_chain: true, unrelated_restore_parent_rejected_before_execution: true,
+    restore_event_commit_failure_closed: true,
+    distinct_mutable_state_rollback_lineage: true, post_execution_failure_discards_session: true,
+    forged_restore_ancestor_rejected: true,
     reference: [4, 6]};
   console.log(JSON.stringify({verdict: 'PASS', mode: 'ed25519_host_durable', ...audit}));
 } finally {

@@ -7,6 +7,7 @@ const SCHEMA = 'burn-research.ingress-replay-ledger.v1';
 const MAX_CLAIMS = 50000;
 const MAX_EXECUTIONS = 50000;
 const MAX_HANDOFFS = 50000;
+const MAX_RESTORES = 50000;
 const MAX_BYTES = 32 * 1024 * 1024;
 const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
 const MAX_CHECKPOINT_STORE_BYTES = 512 * 1024 * 1024;
@@ -34,7 +35,7 @@ export class IngressReplayLedger {
     this.withLock(() => {
       if (initialize) {
         if (fs.existsSync(this.file)) throw new Error('refusing to reset an existing durable replay ledger');
-        this.write({schema: SCHEMA, subject: this.subject, claims: [], executions: [], handoffs: []});
+        this.write({schema: SCHEMA, subject: this.subject, claims: [], executions: [], handoffs: [], restores: []});
       } else this.load();
     });
   }
@@ -57,13 +58,15 @@ export class IngressReplayLedger {
     const state = JSON.parse(fs.readFileSync(this.file, 'utf8'));
     if (state.schema !== SCHEMA || state.subject !== this.subject || !Array.isArray(state.claims) || state.claims.length > MAX_CLAIMS
       || (state.executions !== undefined && (!Array.isArray(state.executions) || state.executions.length > MAX_EXECUTIONS))
-      || (state.handoffs !== undefined && (!Array.isArray(state.handoffs) || state.handoffs.length > MAX_HANDOFFS))) {
+      || (state.handoffs !== undefined && (!Array.isArray(state.handoffs) || state.handoffs.length > MAX_HANDOFFS))
+      || (state.restores !== undefined && (!Array.isArray(state.restores) || state.restores.length > MAX_RESTORES))) {
       throw new Error('ledger schema, host subject, or claim limit mismatch');
     }
     // Existing v1 ledger snapshots did not contain executions. The first
     // successful receipt write extends them without resetting claim history.
     state.executions ??= [];
     state.handoffs ??= [];
+    state.restores ??= [];
     const nonces = new Set();
     const revisions = new Map();
     const hashes = new Set();
@@ -131,6 +134,46 @@ export class IngressReplayLedger {
       }
       receiptsById.set(receiptId, entry);
     }
+    const restoresById = new Map();
+    let previousRestoreExecutions = 0;
+    let previousRestoreClaims = 0;
+    for (let index = 0; index < state.restores.length; index++) {
+      const event = state.restores[index];
+      if (!event || typeof event !== 'object' || Array.isArray(event)) throw new Error('malformed checkpoint restore event');
+      const {restore_id: restoreId, ...record} = event;
+      const parent = receiptsById.get(event.parent_receipt_id);
+      if (event.schema !== 'burn-research.host-checkpoint-restore.v1'
+        || event.subject !== this.subject || event.sequence !== index + 1
+        || !Number.isSafeInteger(event.after_execution_sequence)
+        || event.after_execution_sequence < previousRestoreExecutions
+        || event.after_execution_sequence > state.executions.length
+        || !Number.isSafeInteger(event.claim_count) || event.claim_count < previousRestoreClaims
+        || event.claim_count > state.claims.length || restoreId !== sha256Json(record)
+        || !parent || parent.schema !== EXECUTION_RECEIPT_SCHEMA
+        || parent.sequence > event.after_execution_sequence
+        || parent.claim_count > event.claim_count
+        || parent.state_checkpoint_bytes_sha256 !== event.checkpoint_bytes_sha256
+        || parent.manifest_sha256 !== event.manifest_sha256
+        || JSON.stringify(parent.program_identity) !== JSON.stringify(event.program_identity)) {
+        throw new Error('checkpoint restore event differs from its committed parent receipt');
+      }
+      previousRestoreExecutions = event.after_execution_sequence;
+      previousRestoreClaims = event.claim_count;
+      restoresById.set(restoreId, event);
+    }
+    for (const receipt of state.executions) {
+      const parentId = receipt.state_parent_receipt_id;
+      const restoreId = receipt.restore_event_id;
+      if (parentId === undefined && restoreId === undefined) continue; // historical receipts and fresh graph sessions
+      const parent = receiptsById.get(parentId);
+      const restore = restoreId === undefined ? null : restoresById.get(restoreId);
+      if (!parent || parent.schema !== EXECUTION_RECEIPT_SCHEMA || parent.sequence >= receipt.sequence
+        || JSON.stringify(parent.program_identity) !== JSON.stringify(receipt.program_identity)
+        || (restoreId !== undefined && (!restore || receipt.sequence <= restore.after_execution_sequence
+          || (parentId !== restore.parent_receipt_id && parent.restore_event_id !== restoreId)))) {
+        throw new Error('execution receipt does not preserve its runtime-state ancestry');
+      }
+    }
     let handoffClaims = 0;
     const latestAtHandoff = new Map();
     const handoffsById = new Map();
@@ -186,7 +229,7 @@ export class IngressReplayLedger {
         }
       }
     }
-    return {state, nonces, revisions, hashes, receiptsById, handoffsById, latestParentByLane};
+    return {state, nonces, revisions, hashes, receiptsById, restoresById, handoffsById, latestParentByLane};
   }
 
   check(ticket, snapshot = this.load()) {
@@ -296,6 +339,30 @@ export class IngressReplayLedger {
     });
   }
 
+  recordRestore(receiptId, identity, manifestSha256, checkpointBytesSha256) {
+    return this.withLock(() => {
+      const snapshot = this.load();
+      if (snapshot.state.restores.length >= MAX_RESTORES) throw new Error('durable checkpoint restore history is full');
+      const parent = snapshot.receiptsById.get(receiptId);
+      if (!parent || parent.schema !== EXECUTION_RECEIPT_SCHEMA
+        || parent.state_checkpoint_bytes_sha256 !== checkpointBytesSha256
+        || parent.manifest_sha256 !== manifestSha256
+        || JSON.stringify(parent.program_identity) !== JSON.stringify(identity)) {
+        throw new Error('checkpoint restore ancestry differs from its receipt');
+      }
+      const record = {schema: 'burn-research.host-checkpoint-restore.v1', subject: this.subject,
+        sequence: snapshot.state.restores.length + 1,
+        after_execution_sequence: snapshot.state.executions.length,
+        claim_count: snapshot.state.claims.length, parent_receipt_id: receiptId,
+        checkpoint_bytes_sha256: checkpointBytesSha256,
+        manifest_sha256: manifestSha256, program_identity: identity};
+      const event = {...record, restore_id: sha256Json(record)};
+      snapshot.state.restores.push(event);
+      this.write(snapshot.state);
+      return event;
+    });
+  }
+
   commit(ticket, {parentReceiptId, branchId = 'main'} = {}) {
     return this.withLock(() => {
       const snapshot = this.load();
@@ -360,6 +427,18 @@ export class IngressReplayLedger {
       const currentClaims = [...claims];
       this.assertCurrent(snapshot, currentClaims);
       if (snapshot.state.executions.length >= MAX_EXECUTIONS) throw new Error('durable execution receipt ledger is full');
+      const parentId = identity.stateParentReceiptId;
+      const restoreId = identity.restoreEventId;
+      if (parentId !== undefined) {
+        const parent = snapshot.receiptsById.get(parentId);
+        const restore = restoreId !== undefined ? snapshot.restoresById.get(restoreId) : null;
+        if (!parent || parent.schema !== EXECUTION_RECEIPT_SCHEMA
+          || JSON.stringify(parent.program_identity) !== JSON.stringify(identity.programIdentity)
+          || (restoreId !== undefined && (!restore
+            || (parentId !== restore.parent_receipt_id && parent.restore_event_id !== restoreId)))) {
+          throw new Error('runtime-state parent is absent or differs from this session');
+        }
+      } else if (restoreId !== undefined) throw new Error('restore event requires a runtime-state parent');
       const result = execute();
       const receipt = executionReceipt({...identity, claims: currentClaims, handoffs,
         shape: result.shape, values: result.values,

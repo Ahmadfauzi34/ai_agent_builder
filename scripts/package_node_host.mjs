@@ -15,6 +15,7 @@ const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.
 const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
 const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
 const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v2.json');
+const checkpointRestoreContractSource = path.resolve('docs/host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
 const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
 const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
@@ -31,6 +32,7 @@ const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs
 const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v2.json');
+const checkpointRestoreContractTarget = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
 const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
@@ -55,6 +57,7 @@ const packagedHostFiles = [
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
   'host-execution-receipt.v2.json',
+  'host-checkpoint-restore.v1.json',
   'host-state-handoff.v1.json',
   'wasm-surface.v1.json',
   'runtime-surface.v1.json',
@@ -89,6 +92,7 @@ fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
 fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
+fs.copyFileSync(checkpointRestoreContractSource, checkpointRestoreContractTarget);
 fs.copyFileSync(legacyExecutionReceiptContractSource, legacyExecutionReceiptContractTarget);
 fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
 fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
