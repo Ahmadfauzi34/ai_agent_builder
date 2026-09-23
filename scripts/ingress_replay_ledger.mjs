@@ -1,7 +1,7 @@
 import {createHash, randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import {executionReceipt, EXECUTION_RECEIPT_SCHEMA, sha256Json} from './ingress_execution_receipt.mjs';
+import {executionReceipt, EXECUTION_RECEIPT_SCHEMA, LEGACY_EXECUTION_RECEIPT_SCHEMA, sha256Json} from './ingress_execution_receipt.mjs';
 
 const SCHEMA = 'burn-research.ingress-replay-ledger.v1';
 const MAX_CLAIMS = 50000;
@@ -90,7 +90,10 @@ export class IngressReplayLedger {
       const entry = state.executions[index];
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('malformed execution receipt');
       const {receipt_id: receiptId, ...record} = entry;
-      if (entry.schema !== EXECUTION_RECEIPT_SCHEMA || entry.authority !== 'node_host_observed_wasm_run'
+      if (![LEGACY_EXECUTION_RECEIPT_SCHEMA, EXECUTION_RECEIPT_SCHEMA].includes(entry.schema)
+        || (entry.schema === EXECUTION_RECEIPT_SCHEMA
+          && !/^sha256:[0-9a-f]{64}$/.test(entry.state_checkpoint_bytes_sha256 ?? ''))
+        || entry.authority !== 'node_host_observed_wasm_run'
         || entry.subject !== this.subject || entry.sequence !== index + 1
         || !Number.isSafeInteger(entry.claim_count) || entry.claim_count < committedClaims
         || entry.claim_count > state.claims.length || receiptId !== sha256Json(record)
@@ -276,6 +279,7 @@ export class IngressReplayLedger {
       const result = execute();
       const receipt = executionReceipt({...identity, claims: currentClaims, handoffs,
         shape: result.shape, values: result.values,
+        checkpointBytesSha256: result.state_checkpoint_bytes_sha256,
         sequence: snapshot.state.executions.length + 1, claimCount: snapshot.state.claims.length});
       snapshot.state.executions.push(receipt);
       this.write(snapshot.state);

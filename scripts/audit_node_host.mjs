@@ -15,7 +15,8 @@ const executionReceiptPath = path.join(pkgDir, 'ingress_execution_receipt.mjs');
 const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
-const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
+const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v2.json');
+const legacyExecutionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
 const wasmSurfaceContractPath = path.join(pkgDir, 'wasm-surface.v1.json');
 const runtimeSurfaceContractPath = path.join(pkgDir, 'runtime-surface.v1.json');
@@ -39,7 +40,8 @@ assert(fs.existsSync(executionReceiptPath), 'packaged ingress_execution_receipt.
 assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger.mjs is missing');
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
-assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v1.json is missing');
+assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v2.json is missing');
+assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
 assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
@@ -71,6 +73,7 @@ const requiredPackageFiles = [
   'ingress-provenance.v1.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
+  'host-execution-receipt.v2.json',
   'host-state-handoff.v1.json',
 ];
 for (const file of requiredPackageFiles) {
@@ -90,7 +93,8 @@ assert(support.verified_hosts?.node?.interactive_runner === 'interactive_multi_i
 assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-provenance.v1.json', 'Node signed ingress contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
-assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node execution receipt contract discovery mismatch');
+assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v2.json', 'Node execution receipt contract discovery mismatch');
+assert(support.verified_hosts?.node?.legacy_host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node legacy receipt contract discovery mismatch');
 assert(support.verified_hosts?.node?.host_state_handoff_contract === 'host-state-handoff.v1.json', 'Node state handoff contract discovery mismatch');
 assert(support.verified_hosts?.node?.wasm_surface_contract === 'wasm-surface.v1.json', 'Node WASM surface contract discovery mismatch');
 assert(support.verified_hosts?.node?.runtime_surface_contract === 'runtime-surface.v1.json', 'Node runtime surface contract discovery mismatch');
@@ -121,6 +125,8 @@ assert(verifiedSurface.wasm_binary_surface?.imports?.length > 0
   && verifiedSurface.wasm_binary_surface?.exports?.length > 0, 'runtime surface omits raw WebAssembly module inventory');
 assert(verifiedSurface.capability_groups?.input_contract_and_provenance?.capabilities?.proof_provenance?.schema
   === 'burn-research.proof-provenance.v1', 'runtime surface omits input provenance capability');
+assert(verifiedSurface.capability_groups?.program_bundle_checkpoint?.capabilities?.multi_input_program_bundle?.schema
+  === 'burn-research.multi-input-program-bundle.v1', 'runtime surface omits multi-input checkpoint capability');
 assert(verifiedSurface.math_version_channels?.math_program_surface_version?.schema === 'burn-research.math-program.v9'
   && verifiedSurface.math_version_channels?.math_interaction_protocol_version?.schema === 'burn-research.math-interaction.v1',
 'MathProgram semantic generation and interaction protocol version channels are conflated or missing');
@@ -129,8 +135,12 @@ assert(verifiedSurface.host_capabilities?.contracts?.state_handoff?.schema === '
 
 const programCaps = JSON.parse(runtime.programCapabilities());
 const bundleCaps = JSON.parse(runtime.programBundleCapabilities());
+const multiInputBundleCaps = JSON.parse(runtime.multiInputProgramBundleCapabilities());
 assert(programCaps.execution_binding === 'required', 'program execution binding capability mismatch');
 assert(bundleCaps.schema === 'burn-research.program-bundle.v1', 'program bundle capability mismatch');
+assert(multiInputBundleCaps.schema === 'burn-research.multi-input-program-bundle.v1'
+  && multiInputBundleCaps.state_integrity === 'no_signature_or_authentication'
+  && multiInputBundleCaps.authorization === false, 'multi-input state bundle authority boundary mismatch');
 
 const reg = new runtime.LayerRegistry();
 const spec = runtime.AgentLayerSpec.relu(1);

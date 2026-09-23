@@ -63,7 +63,7 @@
     "compiled_program_identity_includes_layer_init_identity": true,
     "mutable_layer_state_in_program_identity": false,
     "burn_execution_is_final_tensor_and_operator_authority": true,
-    "program_bundle_support": "deferred"
+    "program_bundle_support": "burn-research.multi-input-program-bundle.v1"
   },
   "preflight_fields": [
     "required_input_slots",

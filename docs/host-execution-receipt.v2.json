@@ -1,0 +1,69 @@
+{
+  "schema_version": 2,
+  "schema_id": "burn-research.host-execution-receipt.v2",
+  "status": "implemented_node_host_durable_mode",
+  "compatibility": {
+    "accepted_history": [
+      "burn-research.host-execution-receipt.v1",
+      "burn-research.host-execution-receipt.v2"
+    ],
+    "new_receipts": "v2"
+  },
+  "authority": {
+    "receipt": "node_host_observed_wasm_run",
+    "numerical_reference": "SemanticIngressManifestV2.run delegates to Burn CompiledMultiInputGraph",
+    "issuer_authenticity": "signed ingress claims verified at bind by the configured Ed25519 host policy",
+    "receipt_authenticity": "host-owned durable ledger; receipt_id is a content digest, not a digital signature",
+    "decision_authority": "none"
+  },
+  "scope": {
+    "runner": "interactive_multi_input_ingress.mjs",
+    "mode": "ed25519_host_durable",
+    "run_response": "execution_receipt is returned only after its ledger write succeeds",
+    "receipt_lookup": "op=receipt retrieves a validated record by receipt_id from the host ledger; optional shape and values compare with the recorded output",
+    "exact_output_transport": "durable run also returns output_f32_le_base64; receipt lookup accepts that encoding with shape to preserve f32 bits across JSON",
+    "checkpoint_export": "op=checkpoint exports exact stateful multi-input ProgramBundle bytes as base64 only when enabled by a trusted runner startup option and current signed inputs",
+    "unsigned_and_process_only_modes": "run and verify behavior unchanged; no durable host execution receipt",
+    "verify_operation": "existing numerical verification remains separate; it does not issue an execution receipt"
+  },
+  "proof_state": {
+    "identity": "SHA-256 over canonical ordered JSON receipt fields excluding receipt_id",
+    "fields": [
+      "schema",
+      "authority",
+      "sequence",
+      "claim_count",
+      "subject",
+      "program_identity",
+      "manifest_sha256",
+      "input_claims",
+      "output",
+      "state_checkpoint_bytes_sha256",
+      "receipt_id"
+    ],
+    "input_claims": "sorted slot, source, role, shape, f32 value digest, revision and SHA-256 of each verified canonical signed claim; state inputs may also identify a durable host handoff record",
+    "output": "exact f32 little-endian SHA-256 and four-dimensional output shape observed from WASM",
+    "program_identity": "exact graph.programIdentity JSON, which excludes mutable layer state",
+    "state_checkpoint_bytes_sha256": "SHA-256 of the exact exported multi-input ProgramBundle bytes, including plan, structural identity, layer initialization records, and mutable layer state",
+    "checkpoint_digest_scope": "byte-level correlation only; not semantic state identity, state authentication, or authorization",
+    "history_validation": "ledger reopening validates receipt ID, schema, checkpoint digest format, monotonic sequence and the referenced claims as latest at the recorded claim_count"
+  },
+  "valid_transitions": [
+    "all required signed input claims are current while the exclusive ledger lock is held",
+    "Burn executes the graph and the host observes output shape and f32 values",
+    "the host exports a stateful multi-input ProgramBundle and hashes its exact bytes",
+    "the host atomically commits the v2 receipt to the same private ledger before replying",
+    "a failed receipt commit returns an error; no success response or durable receipt is asserted",
+    "later input revisions cannot rewrite an earlier valid historical receipt"
+  ],
+  "limits": [
+    "A failed receipt commit can occur after numerical execution; the runner does not claim numerical rollback or exactly-once side effects.",
+    "JSON numeric values cannot distinguish negative zero from positive zero; use output_f32_le_base64 for exact output comparison.",
+    "A content hash detects changed bytes but a privileged writer of the host ledger can rewrite its history.",
+    "The bundle has no signature or authentication; valid mutable-state byte changes can be accepted by import.",
+    "A checkpoint digest does not say that two different Burn state byte streams have different semantic meaning, and does not identify equivalent states.",
+    "Program identity remains structural and excludes mutable layer state; the separate checkpoint digest binds the serialized state bytes observed for this run.",
+    "A receipt can supply exact output bytes to the Node durable state-handoff path; the handoff record does not authorize actions or state promotion.",
+    "A 50,000-receipt or 32 MiB ledger limit fails closed for new durable run receipts."
+  ]
+}

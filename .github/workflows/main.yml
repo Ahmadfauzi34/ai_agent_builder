@@ -35,6 +35,7 @@ jobs:
           python3 -m json.tool docs/ingress-provenance.v1.json >/dev/null
           python3 -m json.tool docs/ingress-replay-ledger.v1.json >/dev/null
           python3 -m json.tool docs/host-execution-receipt.v1.json >/dev/null
+          python3 -m json.tool docs/host-execution-receipt.v2.json >/dev/null
           python3 -m json.tool docs/host-state-handoff.v1.json >/dev/null
           python3 -m json.tool docs/agent-semantic-lifecycle.v1.json >/dev/null
           python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null

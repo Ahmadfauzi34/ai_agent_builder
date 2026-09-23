@@ -14,7 +14,8 @@ const executionReceiptSource = path.resolve('scripts/ingress_execution_receipt.m
 const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.mjs');
 const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
 const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
-const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
+const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v2.json');
+const legacyExecutionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
 const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
 const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
 const runtimeSurfaceContractSource = path.resolve('docs/runtime-surface.v1.json');
@@ -29,7 +30,8 @@ const executionReceiptTarget = path.join(pkgDir, 'ingress_execution_receipt.mjs'
 const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
-const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
+const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v2.json');
+const legacyExecutionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
 const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
 const runtimeSurfaceContractTarget = path.join(pkgDir, 'runtime-surface.v1.json');
@@ -52,6 +54,7 @@ const packagedHostFiles = [
   'ingress-provenance.v1.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
+  'host-execution-receipt.v2.json',
   'host-state-handoff.v1.json',
   'wasm-surface.v1.json',
   'runtime-surface.v1.json',
@@ -86,6 +89,7 @@ fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
 fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
+fs.copyFileSync(legacyExecutionReceiptContractSource, legacyExecutionReceiptContractTarget);
 fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
 fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
 fs.copyFileSync(runtimeSurfaceContractSource, runtimeSurfaceContractTarget);
