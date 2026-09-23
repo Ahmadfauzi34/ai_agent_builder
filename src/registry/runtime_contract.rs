@@ -97,7 +97,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
+pub(super) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
     let mut variant = None;
     let mut payload = None;
     for field in fingerprint.split(';') {

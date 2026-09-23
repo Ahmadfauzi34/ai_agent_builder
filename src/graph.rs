@@ -12,6 +12,8 @@ use crate::WasmTensor;
 
 #[path = "registry/runtime_contract.rs"]
 mod runtime_contract;
+#[path = "graph_plan_explain.rs"]
+mod plan_explain;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
@@ -320,6 +322,11 @@ impl CompiledMultiInputGraph {
 
 #[wasm_bindgen]
 impl CompiledMultiInputGraph {
+    #[wasm_bindgen(js_name = explainPlan)]
+    pub fn explain_plan(&self, registry: &LayerRegistry) -> String {
+        plan_explain::report(self, registry)
+    }
+
     #[wasm_bindgen(js_name = preflight)]
     pub fn preflight(
         &self,

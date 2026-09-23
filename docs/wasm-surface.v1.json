@@ -590,6 +590,7 @@
     ],
     "CompiledMultiInputGraph": [
       "constructor",
+      "explainPlan",
       "inputPlanV1",
       "preflight",
       "programIdentity",

@@ -233,6 +233,10 @@ function handle(command) {
       };
     case 'create': return createSession(command);
     case 'restore': return restoreSession(command.receipt_id);
+    case 'explain': {
+      const s = requireSession();
+      return JSON.parse(s.graph.explainPlan(s.registry));
+    }
     case 'map': {
       const s = requireSession();
       return {changed: s.ingress.addRuntimePort(command.id, command.slot, command.source),

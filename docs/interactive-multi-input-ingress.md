@@ -12,16 +12,17 @@ From a repository checkout with `pkg/` built, run `node scripts/interactive_mult
 
 ```jsonl
 {"request_id":1,"op":"create","numSlots":3,"layers":[{"constructor":"add","args":[31]}],"steps":[{"kind":"binary","layer":0,"slots":[0,1,2]}],"outputSlot":2,"ports":[{"slot":0,"role":"observation","shape":[1,2,1,1],"layout":"feature_axis1_singleton","requireFingerprint":true,"minimumRevision":2},{"slot":1,"role":"state","shape":[1,2,1,1],"layout":"feature_axis1_singleton","requireFingerprint":true,"minimumRevision":3}],"logicalPorts":[{"id":"observation","slot":0,"source":"sensor-a"},{"id":"memory","slot":1,"source":"memory-b"}]}
-{"request_id":2,"op":"bind","slot":0,"values":[1,2],"shape":[1,2,1,1],"role":"observation","layout":"feature_axis1_singleton","source":"sensor-a","revision":2,"fingerprint":"obs"}
-{"request_id":3,"op":"bind","slot":1,"values":[3,4],"shape":[1,2,1,1],"role":"state","layout":"feature_axis1_singleton","source":"memory-b","revision":3,"fingerprint":"state"}
-{"request_id":4,"op":"inspect"}
-{"request_id":5,"op":"consumer","slot":1,"id":"state-reader","acceptedRoles":["state"],"requireFingerprint":true,"minimumRevision":3}
-{"request_id":6,"op":"run"}
-{"request_id":7,"op":"verify","candidate":[4,6]}
-{"request_id":8,"op":"close"}
+{"request_id":2,"op":"explain"}
+{"request_id":3,"op":"bind","slot":0,"values":[1,2],"shape":[1,2,1,1],"role":"observation","layout":"feature_axis1_singleton","source":"sensor-a","revision":2,"fingerprint":"obs"}
+{"request_id":4,"op":"bind","slot":1,"values":[3,4],"shape":[1,2,1,1],"role":"state","layout":"feature_axis1_singleton","source":"memory-b","revision":3,"fingerprint":"state"}
+{"request_id":5,"op":"inspect"}
+{"request_id":6,"op":"consumer","slot":1,"id":"state-reader","acceptedRoles":["state"],"requireFingerprint":true,"minimumRevision":3}
+{"request_id":7,"op":"run"}
+{"request_id":8,"op":"verify","candidate":[4,6]}
+{"request_id":9,"op":"close"}
 ```
 
-`run` returns `values: [4, 6]`; `verify` returns the ingress status and the numerical verification report. To inspect the contract before binding, send `{"op":"capabilities"}` or `{"op":"port","slot":1}`. `map`, `defer`, and `clear` let the caller revise logical mappings and bindings within the session. The `create` command accepts typed layer constructors listed by `agentCapabilities()`, unary/binary graph steps, and all input ports admitted by `MultiInputGraphPlan.v1`.
+`run` returns `values: [4, 6]`; `verify` returns the ingress status and the numerical verification report. `explain` reports the compiled plan's ordered steps and partial static shapes before any input binding; it does not execute Burn or authorize a run. To inspect the contract before binding, send `{"op":"capabilities"}` or `{"op":"port","slot":1}`. `map`, `defer`, and `clear` let the caller revise logical mappings and bindings within the session. The `create` command accepts typed layer constructors listed by `agentCapabilities()`, unary/binary graph steps, and all input ports admitted by `MultiInputGraphPlan.v1`.
 
 The bridge status checks exact graph and bundle plan bytes, source equality, input contracts, deferred required ports, and registry structural binding. `status.ready` describes current coverage; `execution_authorized` stays false. The bridge's `run` method checks status again and delegates execution to `CompiledMultiInputGraph.run`, which repeats graph preflight. `source` and `fingerprint` are caller-declared metadata; this version does not authenticate their origin. Burn remains the final authority for tensor and operator compatibility.
 
