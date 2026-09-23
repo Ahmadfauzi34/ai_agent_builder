@@ -94,7 +94,8 @@
       "burn_research.js",
       "burn_research.d.ts",
       "burn_research_bg.wasm.d.ts",
-      "wasm-surface.bindings.actual.json"
+      "wasm-surface.bindings.actual.json",
+      "multi-input-execution-trace.v1.json"
     ]
   },
   "fingerprint": {
