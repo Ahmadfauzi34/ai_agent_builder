@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
+import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {manifestDigest, SignedIngressVerifier} from './ingress_provenance.mjs';
 import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
@@ -8,12 +9,16 @@ import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput}
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
 const packageDir = path.resolve(process.argv[2] ?? defaultPackageDir);
+const allowStateCheckpointExport = process.argv[6] === '--allow-state-checkpoint-export';
+if (process.argv[6] !== undefined && !allowStateCheckpointExport) throw new Error('unknown trusted runner startup option');
+if (process.argv.length > 7) throw new Error('too many trusted runner startup arguments');
 // A trusted host owns this startup argument; JSON Lines commands cannot replace keys.
 if (!process.argv[3] && (process.argv[4] || process.argv[5])) throw new Error('durable ingress requires a host trust policy');
 const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3]), {
   ledgerPath: process.argv[4] ? path.resolve(process.argv[4]) : undefined,
   subject: process.argv[5],
 }) : null;
+if (allowStateCheckpointExport && !provenanceVerifier?.ledger) throw new Error('state checkpoint export requires durable signed ingress');
 const {loadBurnRuntime} = await import(pathToFileURL(path.join(packageDir, 'node.mjs')).href);
 const wasm = await loadBurnRuntime(packageDir);
 const supportedConstructors = new Set(JSON.parse(wasm.agentCapabilities()).agent_facade.constructors);
@@ -33,6 +38,12 @@ function releaseSession(value) {
   for (const resource of [value.ingress, value.bundle, value.graph, value.plan, value.builder, ...value.layers.slice().reverse(), value.registry]) {
     release(resource);
   }
+}
+
+function exportStateCheckpoint(value) {
+  const bytes = wasm.exportMultiInputProgramBundle(value.graph, value.registry, true);
+  const checkpointBytesSha256 = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+  return {bytes, checkpoint_bytes_sha256: checkpointBytesSha256};
 }
 
 function requireArray(value, name) {
@@ -133,11 +144,14 @@ function handle(command) {
         agent: JSON.parse(wasm.agentCapabilities()),
         ingress: JSON.parse(wasm.semanticIngressManifestV2Capabilities()),
         multi_input: JSON.parse(wasm.multiInputGraphCapabilities()),
+        program_bundle: JSON.parse(wasm.multiInputProgramBundleCapabilities()),
         host_provenance: {mode: provenanceVerifier?.mode ?? 'caller_declared',
           signed_claim: 'burn-research.signed-input-claim.v1', trust_root: 'host_startup_only',
           replay_scope: provenanceVerifier?.replayScope ?? 'none',
           host_subject: provenanceVerifier?.hostSubject ?? null,
-          execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v1' : null,
+          execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v2' : null,
+          state_checkpoint: 'burn-research.multi-input-program-bundle.v1',
+          state_checkpoint_export_enabled: allowStateCheckpointExport,
           state_handoff: provenanceVerifier?.ledger ? 'burn-research.host-state-handoff.v1' : null,
           wasm_origin_authentication: false},
       };
@@ -230,6 +244,19 @@ function handle(command) {
         host_provenance: provenanceStatus(s),
       };
     }
+    case 'checkpoint': {
+      if (!allowStateCheckpointExport) throw new Error('state checkpoint export is disabled by host startup policy');
+      const s = requireSession();
+      const hostProvenance = requireProvenance(s);
+      return withCurrentProvenance(s, () => {
+        const checkpoint = exportStateCheckpoint(s);
+        return {schema: 'burn-research.multi-input-program-bundle.v1',
+          program_identity: JSON.parse(s.graph.programIdentity()), state_included: true,
+          checkpoint_bytes_sha256: checkpoint.checkpoint_bytes_sha256,
+          bundle_f32le_base64: Buffer.from(checkpoint.bytes).toString('base64'),
+          host_provenance: hostProvenance};
+      });
+    }
     case 'run': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
@@ -237,7 +264,9 @@ function handle(command) {
         const output = s.ingress.run(s.registry, s.graph, s.bundle);
         try {
           const values = Array.from(output.to_array());
+          const checkpoint = provenanceVerifier?.ledger ? exportStateCheckpoint(s) : null;
           return {shape: Array.from(output.shape()), values,
+            ...(checkpoint ? {state_checkpoint_bytes_sha256: checkpoint.checkpoint_bytes_sha256} : {}),
             output_f32_le_base64: provenanceVerifier?.ledger ? f32ValueBytes(values).toString('base64') : undefined,
             ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
         } finally {

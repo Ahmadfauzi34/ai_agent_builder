@@ -27,7 +27,7 @@ This README is a navigation hub. Detailed semantics and support claims live in t
 - [Interactive WASM ingress](docs/interactive-multi-input-ingress.md) — packaged Node JSON Lines session for binding, inspecting, running, and verifying input ports.
 - [Signed ingress provenance](docs/ingress-provenance.v1.json) — optional Node host gate binding trusted issuer signatures to exact manifest, subject, port and f32 input values.
 - [Durable signed ingress ledger](docs/ingress-replay-ledger.v1.json) — optional private Node host replay state, pinned to a subject and checked across runner restarts.
-- [Host execution receipt](docs/host-execution-receipt.v1.json) — durable multi-input `run` record binding the exact program and signed input claims to the observed WASM output.
+- [Host execution receipt v2](docs/host-execution-receipt.v2.json) — durable multi-input `run` record binding the structural program, signed input claims, observed output, and exact serialized state-checkpoint bytes. [v1](docs/host-execution-receipt.v1.json) remains accepted as historical ledger data.
 - [Host state handoff](docs/host-state-handoff.v1.json) — exact receipt-output continuity into a signed `state` input, with replay-safe branches across graph ticks.
 
 ## Runtime proof and evidence

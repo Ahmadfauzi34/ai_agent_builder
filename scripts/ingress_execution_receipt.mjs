@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 
-export const EXECUTION_RECEIPT_SCHEMA = 'burn-research.host-execution-receipt.v1';
+export const LEGACY_EXECUTION_RECEIPT_SCHEMA = 'burn-research.host-execution-receipt.v1';
+export const EXECUTION_RECEIPT_SCHEMA = 'burn-research.host-execution-receipt.v2';
 
 export function sha256Json(value) {
   return `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
@@ -47,7 +48,7 @@ export function encodedF32Matches(receipt, shape, base64) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}` === receipt.output.value_sha256;
 }
 
-export function executionReceipt({subject, programIdentity, manifestSha256, claims, handoffs = new Map(), shape, values, sequence, claimCount}) {
+export function executionReceipt({subject, programIdentity, manifestSha256, claims, handoffs = new Map(), shape, values, sequence, claimCount, checkpointBytesSha256}) {
   if (!Number.isSafeInteger(sequence) || sequence < 1 || !Number.isSafeInteger(claimCount) || claimCount < 1) {
     throw new Error('execution receipt requires a durable sequence and claim count');
   }
@@ -61,6 +62,9 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
   if (!Array.isArray(shape) || shape.length !== 4 || shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)) {
     throw new Error('execution output shape must have four positive u32 dimensions');
   }
+  if (!/^sha256:[0-9a-f]{64}$/.test(checkpointBytesSha256 ?? '')) {
+    throw new Error('execution receipt requires the multi-input state checkpoint byte digest');
+  }
   const record = {
     schema: EXECUTION_RECEIPT_SCHEMA,
     authority: 'node_host_observed_wasm_run',
@@ -73,6 +77,7 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
       shape: [...claim.shape], value_sha256: claim.value_sha256, revision: claim.revision,
       claim_sha256: sha256Json(claim), ...(handoffs.get(claim.slot) ? {handoff_id: handoffs.get(claim.slot).handoff_id} : {})})),
     output: {shape: [...shape], value_sha256: f32ValueDigest(values)},
+    state_checkpoint_bytes_sha256: checkpointBytesSha256,
   };
   return {...record, receipt_id: sha256Json(record)};
 }

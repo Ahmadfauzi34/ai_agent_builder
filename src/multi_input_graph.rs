@@ -773,7 +773,7 @@ pub(crate) fn multi_input_graph_capabilities() -> String {
         "\"runtime_inputs\":\"all declared external slots must be bound and contract-valid\",",
         "\"dtype\":\"f32\",",
         "\"maximum_external_slots\":64,",
-        "\"program_bundle_support\":\"deferred\",",
+        "\"program_bundle_support\":\"burn-research.multi-input-program-bundle.v1\",",
         "\"execution_authorized_by_preflight\":false",
         "}"
     )

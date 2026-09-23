@@ -274,6 +274,48 @@ test('program bundle state round-trip preserves identity and output',()=>{
  after.free();imported.free();old.free();before.free();input.free();graph.free();builder.free();spec.free();source.free();target.free();return detail;
 });
 
+test('multi-input ProgramBundle restores mutable layer state and exact plan',()=>{
+ const source=new m.LayerRegistry(), add=m.AgentLayerSpec.add(81), linear=m.AgentLayerSpec.linear(82,2,2,true);
+ source.initAgentLayer(add); source.initAgentLayer(linear);
+ const builder=new m.AgentGraphBuilder(4); builder.addBinary(add,0,1,2); builder.addUnary(linear,2,3); builder.setOutput(3);
+ const plan=builder.multiInputPlanV1();
+ plan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',true,1n);
+ plan.addInputPort(1,'state',1,2,1,1,'feature_axis1_singleton',true,1n);
+ const graph=source.compileMultiInputGraph(plan), identity=graph.programIdentity();
+ const weights=source.getWeightsFlat(82,linear.layerType()); for(let i=0;i<weights.length;i++)weights[i]=(i+1)*0.125;
+ source.setWeightsFlat(82,linear.layerType(),weights);
+ assert(graph.programIdentity()===identity,'mutable layer state changed structural identity');
+ const left=new m.WasmTensor(new Float32Array([1,2]),new Uint32Array([1,2,1,1]));
+ const right=new m.WasmTensor(new Float32Array([3,4]),new Uint32Array([1,2,1,1]));
+ const inputBundle=new m.MultiInputInputBundle(plan);
+ inputBundle.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',1n,'obs');
+ inputBundle.bindInput(1,right,'state','feature_axis1_singleton','memory-b',1n,'state');
+ const output=graph.run(source,inputBundle), expected=arr(output.to_array());
+ const bytes=m.exportMultiInputProgramBundle(graph,source,true);
+ assert(String.fromCharCode(...bytes.slice(0,8))==='BRMIBNDL','multi-input bundle magic');
+ const target=new m.LayerRegistry(), previous=m.AgentLayerSpec.relu(99); target.initAgentLayer(previous);
+ const imported=m.importMultiInputProgramBundle(target,bytes);
+ const restoredPlan=m.MultiInputGraphPlan.fromBytes(imported.inputPlanV1());
+ const restoredBundle=new m.MultiInputInputBundle(restoredPlan);
+ restoredBundle.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',1n,'obs');
+ restoredBundle.bindInput(1,right,'state','feature_axis1_singleton','memory-b',1n,'state');
+ const restoredOutput=imported.run(target,restoredBundle), got=arr(restoredOutput.to_array());
+ assert(imported.programIdentity()===identity,'multi-input bundle identity changed');
+ assert(JSON.stringify(arr(imported.inputPlanV1()))===JSON.stringify(arr(graph.inputPlanV1())),'multi-input contract bytes changed');
+ assert(JSON.stringify(got)===JSON.stringify(expected),`multi-input state output mismatch: ${expected} -> ${got}`);
+ assert(!target.layerExists(previous.layerType(),previous.layerId()),'successful multi-input import did not replace target registry');
+ const changed=new Float32Array(weights); changed[0]+=1; source.setWeightsFlat(82,linear.layerType(),changed);
+ const changedBytes=m.exportMultiInputProgramBundle(graph,source,true);
+ assert(graph.programIdentity()===identity,'changed weights changed structural identity');
+ assert(JSON.stringify(arr(changedBytes))!==JSON.stringify(arr(bytes)),'changed mutable state did not change checkpoint bytes');
+ const caps=JSON.parse(m.multiInputProgramBundleCapabilities());
+ assert(caps.structural_identity==='burn-research.multi-input-program-identity.v1'
+   && caps.state_integrity==='no_signature_or_authentication' && caps.authorization===false,'multi-input checkpoint authority contract');
+ const detail={bundle_bytes:bytes.length,identity,output:got,mutable_state_changed_checkpoint:true,identity_stable:true};
+ restoredOutput.free();restoredBundle.free();restoredPlan.free();imported.free();previous.free();target.free();
+ output.free();inputBundle.free();left.free();right.free();graph.free();plan.free();builder.free();add.free();linear.free();source.free();return detail;
+});
+
 test('corrupt program bundle fails atomically',()=>{
  const source=new m.LayerRegistry(); const spec=m.AgentLayerSpec.linear(77,2,2,true); source.initAgentLayer(spec);
  const builder=new m.AgentGraphBuilder(2); builder.addUnary(spec,0,1); builder.setOutput(1); const graph=builder.compile(source); const bundle=m.exportProgramBundle(graph,source,true); const corrupt=bundle.slice(0,bundle.length-1);

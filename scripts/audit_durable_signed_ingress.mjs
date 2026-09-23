@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import {spawn, spawnSync} from 'node:child_process';
-import {generateKeyPairSync, sign} from 'node:crypto';
+import {createHash, generateKeyPairSync, sign} from 'node:crypto';
 import {canonicalInputClaim, manifestDigest} from './ingress_provenance.mjs';
 import {IngressReplayLedger} from './ingress_replay_ledger.mjs';
 import {decodeF32Base64, encodedF32Matches, executionReceipt, f32ValueBytes, sha256Json, f32ValueDigest} from './ingress_execution_receipt.mjs';
@@ -26,8 +26,10 @@ let sequence = 0;
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
-function start() {
-  const child = spawn(process.execPath, [runner, packageDir, trustPath, ledger, 'run-1'], {stdio: ['pipe', 'pipe', 'pipe']});
+function start(allowCheckpointExport = true) {
+  const args = [runner, packageDir, trustPath, ledger, 'run-1'];
+  if (allowCheckpointExport) args.push('--allow-state-checkpoint-export');
+  const child = spawn(process.execPath, args, {stdio: ['pipe', 'pipe', 'pipe']});
   running.add(child);
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += chunk; });
@@ -84,9 +86,18 @@ async function runAndVerify(client, candidate = [4, 6]) {
   const run = await client.ask({op: 'run'});
   check(run.ok && run.result.host_provenance.ready && JSON.stringify(run.result.values) === JSON.stringify(candidate), 'durable graph result mismatch');
   check(run.result.execution_receipt?.authority === 'node_host_observed_wasm_run'
+    && run.result.execution_receipt.schema === 'burn-research.host-execution-receipt.v2'
     && run.result.execution_receipt.output.value_sha256 === f32ValueDigest(run.result.values)
+    && run.result.execution_receipt.state_checkpoint_bytes_sha256 === run.result.state_checkpoint_bytes_sha256
     && run.result.output_f32_le_base64 === f32ValueBytes(run.result.values).toString('base64'),
   'durable run did not produce an observed output receipt');
+  const checkpoint = await client.ask({op: 'checkpoint'});
+  const checkpointBytes = Buffer.from(checkpoint.result.bundle_f32le_base64, 'base64');
+  check(checkpoint.ok && checkpoint.result.schema === 'burn-research.multi-input-program-bundle.v1'
+    && `sha256:${createHash('sha256').update(checkpointBytes).digest('hex')}`
+      === checkpoint.result.checkpoint_bytes_sha256
+    && checkpoint.result.checkpoint_bytes_sha256 === run.result.state_checkpoint_bytes_sha256,
+  'checkpoint operation did not reproduce the receipt-bound state checkpoint');
   const verify = await client.ask({op: 'verify', candidate});
   check(verify.ok && verify.result.reference.verification.passed, 'durable verification failed');
   return {receipt: run.result.execution_receipt, result: run.result};
@@ -102,7 +113,13 @@ try {
   const first = start();
   const capabilities = await first.ask({op: 'capabilities'});
   check(capabilities.result.host_provenance.mode === 'ed25519_host_durable'
-    && capabilities.result.host_provenance.host_subject === 'run-1', 'durable host gate did not activate');
+    && capabilities.result.host_provenance.host_subject === 'run-1'
+    && capabilities.result.host_provenance.state_checkpoint_export_enabled === true,
+  'durable host gate or checkpoint export opt-in did not activate');
+  const withoutCheckpoint = start(false);
+  check(!(await withoutCheckpoint.ask({op: 'checkpoint'})).ok,
+    'state checkpoint export ignored the trusted startup opt-in');
+  await withoutCheckpoint.close();
   const manifest = await create(first);
   check(!(await first.ask(left)).ok, 'unsigned input accepted');
   check(!(await first.ask(signed(left, manifest, 'wrong-subject', 'run-2'))).ok, 'signed claim bypassed host subject');
@@ -298,7 +315,7 @@ try {
     nonceKey: JSON.stringify([claim.source, 'key', `pre-handoff-${slot}`]),
     revisionKey: JSON.stringify([claim.source, claim.subject, claim.slot])}));
   const previousReceipt = preHandoff.executeWithReceipt(claims, identity,
-    () => ({shape: [1, 2, 1, 1], values: [4, 6]})).execution_receipt;
+    () => ({shape: [1, 2, 1, 1], values: [4, 6], state_checkpoint_bytes_sha256: 'sha256:' + '1'.repeat(64)})).execution_receipt;
   const previousState = JSON.parse(fs.readFileSync(preHandoffFile, 'utf8'));
   delete previousState.handoffs;
   for (const input of previousState.executions[0].input_claims) {
@@ -306,6 +323,8 @@ try {
     delete input.shape;
     delete input.value_sha256;
   }
+  previousState.executions[0].schema = 'burn-research.host-execution-receipt.v1';
+  delete previousState.executions[0].state_checkpoint_bytes_sha256;
   const {receipt_id: previousId, ...previousRecord} = previousState.executions[0];
   previousState.executions[0].receipt_id = sha256Json(previousRecord);
   fs.writeFileSync(preHandoffFile, JSON.stringify(previousState) + '\n', {mode: 0o600});
@@ -319,7 +338,7 @@ try {
   try {
     migrated.executeWithReceipt(claims, identity, () => {
       numericalExecutionOccurred = true;
-      return {shape: [1, 2, 1, 1], values: [4, 6]};
+      return {shape: [1, 2, 1, 1], values: [4, 6], state_checkpoint_bytes_sha256: 'sha256:' + '2'.repeat(64)};
     });
     throw new Error('failed receipt commit returned success');
   } catch (error) {
@@ -330,17 +349,32 @@ try {
   check(numericalExecutionOccurred && new IngressReplayLedger(legacyFile, 'run-1').load().state.executions.length === 0,
     'failed receipt commit created a durable receipt or bypassed numerical execution');
   const migratedReceipt = migrated.executeWithReceipt(claims, identity,
-    () => ({shape: [1, 2, 1, 1], values: [4, 6]})).execution_receipt;
+    () => ({shape: [1, 2, 1, 1], values: [4, 6], state_checkpoint_bytes_sha256: 'sha256:' + '3'.repeat(64)})).execution_receipt;
   check(migrated.getReceipt(migratedReceipt.receipt_id).sequence === 1,
     'pre-receipt ledger did not preserve its claim history during the upgrade');
   const negativeZero = executionReceipt({...identity, claims, shape: [1, 2, 1, 1], values: [-0, 2],
-    sequence: 2, claimCount: 2});
+    sequence: 2, claimCount: 2, checkpointBytesSha256: 'sha256:' + '4'.repeat(64)});
   const negativeZeroBytes = f32ValueBytes([-0, 2]).toString('base64');
   check(f32ValueDigest([-0, 2]) !== f32ValueDigest([0, 2])
     && Object.is(decodeF32Base64(negativeZeroBytes, [1, 2, 1, 1])[0], -0)
     && encodedF32Matches(negativeZero, [1, 2, 1, 1], negativeZeroBytes)
     && !encodedF32Matches(negativeZero, [1, 2, 1, 1], f32ValueBytes([0, 2]).toString('base64')),
   'f32 wire representation erased the sign of negative zero');
+
+  const checkpointFile = path.join(temporary, 'checkpoint-bound-receipts.json');
+  const checkpointLedger = new IngressReplayLedger(checkpointFile, 'run-1', {initialize: true});
+  claims.forEach((claim, slot) => checkpointLedger.commit({claim,
+    nonceKey: JSON.stringify([claim.source, 'key', `checkpoint-${slot}`]),
+    revisionKey: JSON.stringify([claim.source, claim.subject, claim.slot])}));
+  const sameObservedOutput = () => ({shape: [1, 2, 1, 1], values: [4, 6],
+    state_checkpoint_bytes_sha256: 'sha256:' + 'a'.repeat(64)});
+  const stateA = checkpointLedger.executeWithReceipt(claims, identity, sameObservedOutput).execution_receipt;
+  const stateB = checkpointLedger.executeWithReceipt(claims, identity, () => ({...sameObservedOutput(),
+    state_checkpoint_bytes_sha256: 'sha256:' + 'b'.repeat(64)})).execution_receipt;
+  check(stateA.output.value_sha256 === stateB.output.value_sha256
+    && stateA.state_checkpoint_bytes_sha256 !== stateB.state_checkpoint_bytes_sha256
+    && stateA.receipt_id !== stateB.receipt_id,
+  'same observed output with different mutable state checkpoint bytes was not distinguished');
   const audit = {restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,
     missing_and_corrupt_ledger_rejected: true, execution_receipt_persisted: true,
@@ -348,7 +382,9 @@ try {
     state_handoff_bytes_bound: true, state_handoff_restart_chain: true,
     state_handoff_replay_rejected: true, state_handoff_branching: true,
     forged_handoff_history_rejected: true, pre_handoff_receipts_compatible: true,
-    receipt_commit_failure_closed: true, legacy_ledger_migrated: true, reference: [4, 6]};
+    receipt_commit_failure_closed: true, legacy_ledger_migrated: true,
+    state_checkpoint_bytes_bound_to_receipt: true, checkpoint_export_matches_run_receipt: true,
+    reference: [4, 6]};
   console.log(JSON.stringify({verdict: 'PASS', mode: 'ed25519_host_durable', ...audit}));
 } finally {
   for (const child of running) child.kill();

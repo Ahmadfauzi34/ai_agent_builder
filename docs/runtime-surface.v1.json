@@ -47,6 +47,13 @@
         "proof_provenance": "proofProvenanceCapabilities"
       }
     },
+    "program_bundle_checkpoint": {
+      "owner": "wasm_reference_machine",
+      "capabilities": {
+        "single_input_program_bundle": "programBundleCapabilities",
+        "multi_input_program_bundle": "multiInputProgramBundleCapabilities"
+      }
+    },
     "math_interaction": {
       "owner": "wasm_reference_machine",
       "capabilities": {
@@ -73,7 +80,8 @@
       "host_support": "host-support.v1.json",
       "signed_ingress_provenance": "ingress-provenance.v1.json",
       "durable_replay_ledger": "ingress-replay-ledger.v1.json",
-      "execution_receipt": "host-execution-receipt.v1.json",
+      "execution_receipt": "host-execution-receipt.v2.json",
+      "legacy_execution_receipt": "host-execution-receipt.v1.json",
       "state_handoff": "host-state-handoff.v1.json"
     }
   },
