@@ -44,6 +44,58 @@ test('compiled ReLU + verifyFlat',()=>{
  input.free();out.free();g.free();b.free();spec.free();reg.free(); return {got,proof};
 });
 
+test('multi-input graph plan preflights all external slots before execution',()=>{
+ const reg=new m.LayerRegistry(), add=m.AgentLayerSpec.add(21); reg.initAgentLayer(add);
+ const b=new m.AgentGraphBuilder(3); b.addBinary(add,0,1,2); b.setOutput(2);
+ const plan=b.multiInputPlanV1();
+ plan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',true,2n);
+ plan.addInputPort(1,'state',1,2,1,1,'feature_axis1_singleton',true,3n);
+ assert(JSON.parse(plan.toJSON()).schema_id==='burn-research.multi-input-graph-plan.v1','multi-input plan schema');
+ const encoded=plan.toBytes(), replay=m.MultiInputGraphPlan.fromBytes(encoded);
+ assert(JSON.stringify(arr(replay.toBytes()))===JSON.stringify(arr(encoded)),'multi-input plan round-trip');
+ const graph=reg.compileMultiInputGraph(replay), incomplete=new m.MultiInputInputBundle(replay);
+ const missing=JSON.parse(graph.preflight(reg,incomplete)); assert(missing.ready===false,'missing input passed preflight');
+ let missingErr=''; try{graph.run(reg,incomplete)}catch(e){missingErr=String(e)}
+ assert(missingErr.includes('preflight failed'),'execution started with an unbound port');
+ const left=new m.WasmTensor(new Float32Array([1,2]),new Uint32Array([1,2,1,1]));
+ const right=new m.WasmTensor(new Float32Array([3,4]),new Uint32Array([1,2,1,1]));
+ incomplete.bindInput(0,left,'state','feature_axis1_singleton','sensor-a',2n,'sha256:obs');
+ incomplete.bindInput(1,right,'state','feature_axis1_singleton','memory-b',3n,'sha256:state');
+ const mismatch=JSON.parse(graph.preflight(reg,incomplete)); assert(mismatch.ready===false,'role mismatch passed preflight');
+ let mismatchErr=''; try{graph.run(reg,incomplete)}catch(e){mismatchErr=String(e)}
+ assert(mismatchErr.includes('preflight failed'),'mismatched input was executed');
+ incomplete.clearInput(0);
+ incomplete.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',2n,'sha256:obs');
+ const ready=JSON.parse(graph.preflight(reg,incomplete)); assert(ready.ready===true,'valid bundle failed preflight');
+ const out=graph.run(reg,incomplete), got=arr(out.to_array()); assert(JSON.stringify(got)==='[4,6]',`output=${got}`);
+ const verification=JSON.parse(graph.verifyFlat(reg,incomplete,new Float32Array([4,6]),1e-6,1e-6));
+ assert(verification.verification.passed===true,'multi-input verifyFlat failed');
+ incomplete.clearInput(0);
+ const wrongShape=new m.WasmTensor(new Float32Array([1,2,3]),new Uint32Array([1,3,1,1]));
+ incomplete.bindInput(0,wrongShape,'observation','feature_axis1_singleton','sensor-a',2n,'sha256:obs');
+ const shapeMismatch=JSON.parse(graph.preflight(reg,incomplete));
+ assert(shapeMismatch.ready===false && shapeMismatch.inputs.ports[0].shape_matches===false,'shape mismatch passed preflight');
+ let shapeErr=''; try{graph.run(reg,incomplete)}catch(e){shapeErr=String(e)}
+ assert(shapeErr.includes('preflight failed'),'wrong-shaped input was executed');
+ incomplete.clearInput(0); incomplete.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',2n,'sha256:obs');
+ const otherAdd=m.AgentLayerSpec.add(22); reg.initAgentLayer(otherAdd);
+ const otherBuilder=new m.AgentGraphBuilder(3); otherBuilder.addBinary(otherAdd,0,1,2); otherBuilder.setOutput(2);
+ const otherPlan=otherBuilder.multiInputPlanV1();
+ otherPlan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',true,2n);
+ otherPlan.addInputPort(1,'state',1,2,1,1,'feature_axis1_singleton',true,3n);
+ const otherBundle=new m.MultiInputInputBundle(otherPlan);
+ otherBundle.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',2n,'sha256:obs');
+ otherBundle.bindInput(1,right,'state','feature_axis1_singleton','memory-b',3n,'sha256:state');
+ const planMismatch=JSON.parse(graph.preflight(reg,otherBundle));
+ assert(planMismatch.bundle_plan_matches===false,'bundle from another exact plan was accepted');
+ const replacement=m.AgentLayerSpec.sub(21); reg.initAgentLayer(replacement);
+ const drift=JSON.parse(graph.preflight(reg,incomplete));
+ assert(drift.registry_binding_current===false && drift.ready===false,'registry drift passed preflight');
+ const caps=JSON.parse(m.multiInputGraphCapabilities()); assert(caps.execution_authorized_by_preflight===false,'preflight must not claim authorization');
+ const detail={missing:missing.ready,mismatch:mismatch.ready,shape_mismatch:shapeMismatch.ready,ready:ready.ready,plan_mismatch:planMismatch.bundle_plan_matches,registry_current:drift.registry_binding_current,required_slots:arr(graph.requiredInputSlots()),got,verification:verification.verification};
+ replacement.free();otherBundle.free();otherPlan.free();otherBuilder.free();otherAdd.free();wrongShape.free();out.free();left.free();right.free();incomplete.free();graph.free();replay.free();plan.free();b.free();add.free();reg.free(); return detail;
+});
+
 test('workspace slot lifecycle',()=>{
  const ws=new m.AgentWorkspace(3); let inputRelease=false,doubleRelease=false;
  try{ws.releaseSlot(0)}catch{inputRelease=true}

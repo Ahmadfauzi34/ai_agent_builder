@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.multi-input-graph-plan.v1",
+  "status": "implemented_runtime_contract",
+  "scope": {
+    "plan_class": "MultiInputGraphPlan",
+    "bundle_class": "MultiInputInputBundle",
+    "compiled_class": "CompiledMultiInputGraph",
+    "builder_method": "AgentGraphBuilder.multiInputPlanV1",
+    "compile_method": "LayerRegistry.compileMultiInputGraph",
+    "preflight_method": "CompiledMultiInputGraph.preflight",
+    "execution_method": "CompiledMultiInputGraph.run",
+    "verification_method": "CompiledMultiInputGraph.verifyFlat"
+  },
+  "binary_format": {
+    "magic_ascii": "BRMIP001",
+    "schema_version_u32": 1,
+    "integer_encoding": "little_endian",
+    "header_fields": [
+      "magic:u8[8]",
+      "schema_version:u32",
+      "topology_plan_length:u32",
+      "input_port_count:u8",
+      "legacy_graph_plan:u8[topology_plan_length]"
+    ],
+    "sorted_port_fields": [
+      "slot:u8",
+      "role_length:u8",
+      "role:utf8[role_length]",
+      "shape:u32[4]",
+      "layout_length:u16",
+      "layout:utf8[layout_length]",
+      "require_fingerprint:u8",
+      "minimum_revision:u64"
+    ],
+    "port_order": "strictly_increasing_slot",
+    "plan_fingerprint": "fnv1a64 over the complete encoded plan; correlation only, not cryptographic authentication"
+  },
+  "invariants": {
+    "legacy_compiled_graph_abi_unchanged": true,
+    "legacy_external_input_slot": 0,
+    "graph_slots_max": 64,
+    "minimum_external_ports": 2,
+    "slot_0_required": true,
+    "every_read_before_write_slot_must_be_declared": true,
+    "every_declared_port_must_be_consumed_or_selected_as_unwritten_output": true,
+    "one_tensor_per_declared_slot": true,
+    "all_declared_inputs_required_before_run": true,
+    "tensor_dtype": "f32",
+    "tensor_rank": 4,
+    "shape_must_match_exactly": true,
+    "allowed_roles": "canonical input-port role or x- extension role",
+    "allowed_external_layouts": "layout-contract external declarations",
+    "source_bytes": { "minimum": 1, "maximum": 256 },
+    "fingerprint_bytes": { "minimum": 0, "maximum": 256 },
+    "minimum_revision_applies": true,
+    "finite_tensor_values_required": true,
+    "bundle_to_compiled_plan_binding": "exact canonical plan bytes plus full port contract equality",
+    "rebinding_policy": "clearInput before replacing an occupied slot",
+    "preflight_mutation": "none",
+    "preflight_authorizes_execution": false,
+    "compiled_program_identity_includes_exact_input_plan_bytes": true,
+    "compiled_program_identity_includes_layer_init_identity": true,
+    "mutable_layer_state_in_program_identity": false,
+    "burn_execution_is_final_tensor_and_operator_authority": true,
+    "program_bundle_support": "deferred"
+  },
+  "preflight_fields": [
+    "required_input_slots",
+    "bundle_plan_matches",
+    "registry_binding_current",
+    "ready",
+    "execution_authorized:false",
+    "inputs.ports[].role_matches",
+    "inputs.ports[].shape_matches",
+    "inputs.ports[].layout_matches",
+    "inputs.ports[].revision_satisfies",
+    "inputs.ports[].fingerprint_satisfies",
+    "inputs.ports[].finite_values",
+    "inputs.ports[].input_value_fingerprint"
+  ],
+  "explicit_limits": [
+    "FNV-1a fingerprints do not establish trust or authenticity.",
+    "Preflight checks the declared input boundary and registry structural binding; the Burn operator remains the final authority for actual operation compatibility.",
+    "Execution requires the caller to invoke run after inspecting or accepting preflight readiness.",
+    "The frozen single-input graph plan and CompiledGraph.run behavior remain available unchanged."
+  ]
+}

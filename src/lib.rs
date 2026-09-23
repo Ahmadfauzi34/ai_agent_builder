@@ -33,6 +33,7 @@ pub mod input_port_routing;
 pub mod introspection;
 pub mod layers;
 pub mod math;
+pub mod multi_input_graph;
 pub mod proof_provenance;
 pub mod program_bundle;
 pub mod protocol;

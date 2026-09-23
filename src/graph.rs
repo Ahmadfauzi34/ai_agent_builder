@@ -2,6 +2,10 @@ use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_report;
 use crate::graph_plan::{decode_graph_plan, decode_graph_plan_header, GraphPlanStep};
+use crate::multi_input_graph::{
+    multi_input_graph_capabilities as multi_input_graph_capabilities_json,
+    MultiInputGraphPlan, MultiInputInputBundle,
+};
 use crate::protocol::{LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
@@ -30,6 +34,13 @@ pub struct CompiledGraph {
     out_slot: u8,
     canonical_plan: Vec<u8>,
     init_fingerprints: Vec<String>,
+}
+
+#[wasm_bindgen]
+pub struct CompiledMultiInputGraph {
+    graph: CompiledGraph,
+    plan: MultiInputGraphPlan,
+    input_plan_bytes: Vec<u8>,
 }
 
 impl CompiledGraph {
@@ -77,6 +88,14 @@ impl CompiledGraph {
     }
 
     pub(crate) fn build(reg: &LayerRegistry, plan: &[u8]) -> Result<CompiledGraph, String> {
+        Self::build_with_external_slots(reg, plan, &[0])
+    }
+
+    pub(crate) fn build_with_external_slots(
+        reg: &LayerRegistry,
+        plan: &[u8],
+        external_slots: &[u8],
+    ) -> Result<CompiledGraph, String> {
         // Preserve the historical validation order: header readability and the
         // execution-profile checks happen before exact-envelope decoding.
         let header = decode_graph_plan_header(plan)?;
@@ -102,7 +121,16 @@ impl CompiledGraph {
         let out_slot = u32::from(decoded.output_slot);
         let steps = decoded.steps;
         let mut init_fingerprints: Vec<String> = Vec::with_capacity(num_steps as usize);
-        let mut filled: u64 = 1;
+        let mut filled: u64 = 0;
+        for slot in external_slots {
+            let slot = u32::from(*slot);
+            if slot >= num_slots {
+                return Err(format!(
+                    "compile_graph: external input slot {slot} out of range (num_slots={num_slots})"
+                ));
+            }
+            filled |= 1u64 << slot;
+        }
         for s in &steps {
             let in_slot = s.in_slot as u32;
             let in_slot2 = s.in_slot2 as u32;
@@ -173,6 +201,202 @@ impl CompiledGraph {
             init_fingerprints,
         })
     }
+
+    fn run_with_external_inputs_internal(
+        &self,
+        registry: &LayerRegistry,
+        inputs: &[(u8, WasmTensor)],
+    ) -> Result<WasmTensor, String> {
+        self.validate_registry_binding_internal(registry, "run")?;
+        let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
+        for (slot, tensor) in inputs {
+            let slot_index = usize::from(*slot);
+            if slot_index >= slots.len() {
+                return Err(format!("run: external input slot {slot} out of range"));
+            }
+            if slots[slot_index].is_some() {
+                return Err(format!("run: external input slot {slot} is bound more than once"));
+            }
+            slots[slot_index] = Some(tensor.clone());
+        }
+        for s in &self.steps {
+            let out = if s.arity == ARITY_BINARY {
+                let a = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                let b = slots[s.in_slot2 as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot2))?;
+                registry.forward_binary_layer(s.layer_id, a, b)?
+            } else {
+                let inp = slots[s.in_slot as usize]
+                    .as_ref()
+                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
+                if matches!(
+                    s.layer_type,
+                    LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
+                ) {
+                    runtime_contract::validate_registry_unary_contract(
+                        registry,
+                        s.layer_type,
+                        s.layer_id,
+                        inp.inner.dims(),
+                    )?;
+                }
+                registry.forward_layer(s.layer_id, s.layer_type, inp)?
+            };
+            slots[s.out_slot as usize] = Some(out);
+        }
+        slots[self.out_slot as usize]
+            .take()
+            .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
+    }
+}
+
+impl CompiledMultiInputGraph {
+    pub(crate) fn build(
+        registry: &LayerRegistry,
+        plan: &MultiInputGraphPlan,
+    ) -> Result<Self, String> {
+        let input_plan_bytes = plan.validate_for_compile()?;
+        let required_slots = plan.ports().iter().map(|port| port.slot).collect::<Vec<_>>();
+        let graph = CompiledGraph::build_with_external_slots(
+            registry,
+            plan.graph_plan(),
+            &required_slots,
+        )?;
+        Ok(Self {
+            graph,
+            plan: plan.clone(),
+            input_plan_bytes,
+        })
+    }
+
+    fn preflight_state(
+        &self,
+        registry: &LayerRegistry,
+        bundle: &MultiInputInputBundle,
+    ) -> (bool, String) {
+        let inputs = bundle.input_preflight(&self.plan);
+        let registry_ok = self
+            .graph
+            .validate_registry_binding_internal(registry, "preflight")
+            .is_ok();
+        let slots = self
+            .plan
+            .ports()
+            .iter()
+            .map(|port| port.slot.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let bundle_plan_matches = bundle.matches_plan_internal(&self.plan);
+        let ready = inputs.ready && registry_ok && bundle_plan_matches;
+        let report = format!(
+            "{{\"schema_version\":1,\"schema_id\":\"burn-research.multi-input-preflight-report.v1\",\"required_input_slots\":[{}],\"bundle_plan_matches\":{},\"registry_binding_current\":{},\"ready\":{},\"execution_authorized\":false,\"inputs\":{}}}",
+            slots,
+            if bundle_plan_matches { "true" } else { "false" },
+            if registry_ok { "true" } else { "false" },
+            if ready { "true" } else { "false" },
+            inputs.json,
+        );
+        (ready, report)
+    }
+
+    fn program_identity_json(&self) -> String {
+        let layer_identities = self
+            .graph
+            .init_fingerprints
+            .iter()
+            .map(|fingerprint| format!("\"{fingerprint}\""))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            "{{\"schema\":\"burn-research.multi-input-program-identity.v1\",\"input_plan_hex\":\"{}\",\"layer_init_fingerprints\":[{}]}}",
+            bytes_hex(&self.input_plan_bytes),
+            layer_identities,
+        )
+    }
+}
+
+#[wasm_bindgen]
+impl CompiledMultiInputGraph {
+    #[wasm_bindgen(js_name = preflight)]
+    pub fn preflight(
+        &self,
+        registry: &LayerRegistry,
+        bundle: &MultiInputInputBundle,
+    ) -> String {
+        self.preflight_state(registry, bundle).1
+    }
+
+    #[wasm_bindgen(js_name = run)]
+    pub fn run(
+        &self,
+        registry: &LayerRegistry,
+        bundle: &MultiInputInputBundle,
+    ) -> Result<WasmTensor, String> {
+        let (ready, _) = self.preflight_state(registry, bundle);
+        if !ready {
+            return Err(
+                "CompiledMultiInputGraph.run: input or registry preflight failed; execution was not started".into(),
+            );
+        }
+        self.graph
+            .run_with_external_inputs_internal(registry, &bundle.bound_inputs())
+    }
+
+    #[wasm_bindgen(js_name = verifyFlat)]
+    pub fn verify_flat(
+        &self,
+        registry: &LayerRegistry,
+        bundle: &MultiInputInputBundle,
+        candidate: &[f32],
+        abs_tol: f64,
+        rel_tol: f64,
+    ) -> Result<String, String> {
+        let (ready, preflight) = self.preflight_state(registry, bundle);
+        if !ready {
+            return Err(
+                "CompiledMultiInputGraph.verifyFlat: input or registry preflight failed; execution was not started".into(),
+            );
+        }
+        let reference = self
+            .graph
+            .run_with_external_inputs_internal(registry, &bundle.bound_inputs())?
+            .to_array();
+        let verification = verify_vectors_report(&reference, candidate, abs_tol, rel_tol)?;
+        Ok(format!(
+            "{{\"schema_version\":1,\"schema_id\":\"burn-research.multi-input-verification.v1\",\"preflight\":{},\"verification\":{}}}",
+            preflight,
+            verification,
+        ))
+    }
+
+    #[wasm_bindgen(js_name = inputPlanV1)]
+    pub fn input_plan_v1(&self) -> Vec<u8> {
+        self.input_plan_bytes.clone()
+    }
+
+    #[wasm_bindgen(js_name = programPlan)]
+    pub fn program_plan(&self) -> Vec<u8> {
+        self.graph.canonical_plan.clone()
+    }
+
+    #[wasm_bindgen(js_name = programIdentity)]
+    pub fn program_identity(&self) -> String {
+        self.program_identity_json()
+    }
+
+    #[wasm_bindgen(js_name = requiredInputSlots)]
+    pub fn required_input_slots(&self) -> Vec<u8> {
+        self.plan.ports().iter().map(|port| port.slot).collect()
+    }
+
+    #[wasm_bindgen(js_name = validateRegistryBinding)]
+    pub fn validate_registry_binding(&self, registry: &LayerRegistry) -> Result<(), String> {
+        self.graph
+            .validate_registry_binding_internal(registry, "validateRegistryBinding")
+    }
 }
 
 #[wasm_bindgen(js_name = programCapabilities)]
@@ -191,6 +415,11 @@ pub fn program_capabilities() -> String {
         "}"
     )
     .to_string()
+}
+
+#[wasm_bindgen(js_name = multiInputGraphCapabilities)]
+pub fn multi_input_graph_capabilities() -> String {
+    multi_input_graph_capabilities_json()
 }
 
 #[wasm_bindgen]

@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 
 use crate::graph::CompiledGraph;
+use crate::multi_input_graph::MultiInputGraphPlan;
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
@@ -992,7 +993,7 @@ impl AgentGraphBuilder {
         Ok(plan)
     }
 
-    fn plan_bytes(&self) -> Result<Vec<u8>, String> {
+    pub(crate) fn plan_bytes(&self) -> Result<Vec<u8>, String> {
         let output_slot = self
             .output_slot
             .ok_or_else(|| "AgentGraphBuilder.compile: output slot is not set".to_string())?;
@@ -1277,6 +1278,11 @@ impl AgentGraphBuilder {
         Ok(())
     }
 
+    #[wasm_bindgen(js_name = multiInputPlanV1)]
+    pub fn multi_input_plan_v1(&self) -> Result<MultiInputGraphPlan, String> {
+        MultiInputGraphPlan::new(self)
+    }
+
     #[wasm_bindgen(js_name = numSteps)]
     pub fn num_steps(&self) -> u32 {
         self.steps.len() as u32
@@ -1323,11 +1329,12 @@ pub(crate) fn capability_manifest() -> String {
             "\"proof\":{{\"vector\":\"mathVerifyVectors\",\"graph_output\":\"CompiledGraph.verifyFlat\",\"provenance\":\"proofProvenanceCapabilities\",\"semantic_execution_context\":\"semanticExecutionContextCapabilities\",\"semantic_graph_receipt\":\"workspaceVerifySemanticGraphReceipt\"}},",
             "\"introspection\":\"introspectionCapabilities\",",
             "\"input_contract\":\"inputContractCapabilities\",",
+            "\"multi_input_graph\":\"multiInputGraphCapabilities\",",
             "\"semantic_ingress_manifest\":\"semanticIngressManifestCapabilities\",",
             "\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\",",
             "\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\",",
             "\"math_interaction\":\"mathInteractionCapabilities\",",
-            "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"max_slots\":64}},",
+            "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"multi_input_compile\":\"LayerRegistry.compileMultiInputGraph\",\"multi_input_run\":\"CompiledMultiInputGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
             "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\"],",
@@ -1343,7 +1350,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"ghost\":\"ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)\",",
             "\"seBlock\":\"seBlock(id,channels,reduction)\",",
             "\"swiGlu\":\"swiGlu(id,d_input,d_output,bias)\"}},",
-            "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\",\"compileWithOutput\"]}},",
+            "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\",\"compileWithOutput\",\"multiInputPlanV1\"]}},",
             "\"optimizer\":{{\"entry\":\"EsOptimizer\",\"strategies\":{{\"openes\":0,\"mu_lambda\":1}},\"lifecycle\":\"ask->tell\"}},",
             "\"recommended_flow\":[\"discover\",\"construct_reference\",\"run_external_candidate\",\"verify\",\"revise_or_accept\"],",
             "\"layers\":{{",
@@ -1441,6 +1448,8 @@ mod tests {
         assert!(manifest.contains("\"registry_init\":\"LayerRegistry.initAgentLayer\""));
         assert!(manifest.contains("\"introspection\":\"introspectionCapabilities\""));
         assert!(manifest.contains("\"input_contract\":\"inputContractCapabilities\""));
+        assert!(manifest.contains("\"multi_input_graph\":\"multiInputGraphCapabilities\""));
+        assert!(manifest.contains("\"multi_input_compile\":\"LayerRegistry.compileMultiInputGraph\""));
         assert!(manifest.contains("\"resolution_runtime_bridge\":\"resolutionRuntimeBridgeCapabilities\""));
         assert!(manifest.contains("\"runtime_resolution_evidence\":\"runtimeResolutionEvidenceCapabilities\""));
         assert!(manifest.contains("\"math_interaction\":\"mathInteractionCapabilities\""));
@@ -1451,6 +1460,7 @@ mod tests {
         assert!(manifest.contains("\"ghost\":\"ghost(id,in_ch,out_ch"));
         assert!(manifest.contains("\"lifecycle\":\"ask->tell\""));
         assert!(manifest.contains("compileWithOutput"));
+        assert!(manifest.contains("multiInputPlanV1"));
     }
 
     #[test]
