@@ -7,6 +7,7 @@
     "ingress": "SemanticIngressManifestV2.runWithTrace(registry, graph, bundle, startStep, maxSteps, maxTensorBytes)",
     "host": "JSON Lines op=trace with optional startStep, maxSteps and maxTensorBytes"
   },
+  "result_class": "TracedMultiInputRun has a generated private constructor in the TypeScript surface; callers receive it from runWithTrace and read report() or output()",
   "bounds": {
     "start_step": "zero-based index within the compiled steps",
     "max_steps": "1..=256; the window is truncated at the last step",

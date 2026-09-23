@@ -633,6 +633,7 @@
       "verifyFlat"
     ],
     "TracedMultiInputRun": [
+      "constructor",
       "output",
       "report"
     ]
