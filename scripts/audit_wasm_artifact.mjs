@@ -96,6 +96,48 @@ test('multi-input graph plan preflights all external slots before execution',()=
  replacement.free();otherBundle.free();otherPlan.free();otherBuilder.free();otherAdd.free();wrongShape.free();out.free();left.free();right.free();incomplete.free();graph.free();replay.free();plan.free();b.free();add.free();reg.free(); return detail;
 });
 
+test('semantic ingress v2 maps logical ports and gates source before run',()=>{
+ const reg=new m.LayerRegistry(), add=m.AgentLayerSpec.add(31); reg.initAgentLayer(add);
+ const b=new m.AgentGraphBuilder(3); b.addBinary(add,0,1,2); b.setOutput(2);
+ const plan=b.multiInputPlanV1();
+ plan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',true,2n);
+ plan.addInputPort(1,'state',1,2,1,1,'feature_axis1_singleton',true,3n);
+ const graph=reg.compileMultiInputGraph(plan), bundle=new m.MultiInputInputBundle(plan);
+ const ingress=new m.SemanticIngressManifestV2(plan);
+ assert(JSON.parse(m.semanticIngressManifestV2Capabilities()).scope.manifest_class==='SemanticIngressManifestV2','v2 capability');
+ assert(JSON.parse(ingress.status(reg,graph,bundle)).ports[0].status==='runtime_backing_missing','unmapped port invisible');
+ ingress.addRuntimePort('observation',0,'sensor-a'); ingress.addRuntimePort('memory',1,'memory-b');
+ ingress.addDeferredPort('objective','x-objective',false);
+ const spec=new m.InputPortConsumerSpec('state-reader','["state"]',false,true,3n);
+ const unknown=JSON.parse(ingress.consumerCompatibility(1,bundle,spec));
+ assert(unknown.status==='unknown'&&unknown.compatible===null,'unbound consumer did not report unknown');
+ const left=new m.WasmTensor(new Float32Array([1,2]),new Uint32Array([1,2,1,1]));
+ const right=new m.WasmTensor(new Float32Array([3,4]),new Uint32Array([1,2,1,1]));
+ bundle.bindInput(0,left,'observation','feature_axis1_singleton','sensor-a',2n,'obs');
+ bundle.bindInput(1,right,'state','feature_axis1_singleton','wrong-source',3n,'state');
+ assert(JSON.parse(graph.preflight(reg,bundle)).ready===true,'graph preflight failed for valid tensor contracts');
+ const wrongSource=JSON.parse(ingress.status(reg,graph,bundle));
+ assert(wrongSource.ready===false&&wrongSource.ports[1].status==='source_mismatch','bridge accepted wrong source');
+ let gated=false; try{ingress.run(reg,graph,bundle)}catch{gated=true}
+ assert(gated,'source mismatch reached execution');
+ bundle.clearInput(1);
+ bundle.bindInput(1,right,'state','feature_axis1_singleton','memory-b',3n,'state');
+ const ready=JSON.parse(ingress.status(reg,graph,bundle));
+ assert(ready.ready===true&&ready.execution_authorized===false,'valid v2 bridge readiness incorrect');
+ assert(JSON.parse(ingress.inputPortStatus(1,bundle)).port.logical_port_id==='memory','slot discovery');
+ assert(JSON.parse(ingress.consumerCompatibility(1,bundle,spec)).compatible===true,'state consumer compatibility');
+ const out=ingress.run(reg,graph,bundle),got=arr(out.to_array());
+ assert(JSON.stringify(got)==='[4,6]',`ingress output=${got}`);
+ const proof=JSON.parse(ingress.verifyFlat(reg,graph,bundle,new Float32Array([4,6]),1e-6,1e-6));
+ assert(proof.ingress.ready===true&&proof.reference.verification.passed===true,'bridge verification failed');
+ const required=new m.SemanticIngressManifestV2(plan);
+ required.addRuntimePort('observation',0,'sensor-a');required.addRuntimePort('memory',1,'memory-b');
+ required.addDeferredPort('objective','x-objective',true);
+ assert(JSON.parse(required.status(reg,graph,bundle)).runtime_coverage_complete===false,'required deferred port was treated as executable');
+ const detail={wrong_source:wrongSource.ports[1].status,ready:ready.ready,consumer:'compatible',got,proof:proof.reference.verification};
+ required.free();out.free();right.free();left.free();spec.free();ingress.free();bundle.free();graph.free();plan.free();b.free();add.free();reg.free();return detail;
+});
+
 test('workspace slot lifecycle',()=>{
  const ws=new m.AgentWorkspace(3); let inputRelease=false,doubleRelease=false;
  try{ws.releaseSlot(0)}catch{inputRelease=true}

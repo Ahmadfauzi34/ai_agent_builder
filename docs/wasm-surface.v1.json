@@ -616,6 +616,18 @@
       "clearInput",
       "constructor",
       "planFingerprint"
+    ],
+    "SemanticIngressManifestV2": [
+      "addDeferredPort",
+      "addRuntimePort",
+      "consumerCompatibility",
+      "constructor",
+      "inputPortStatus",
+      "manifestFingerprint",
+      "run",
+      "status",
+      "toJSON",
+      "verifyFlat"
     ]
   },
   "default_init": "__wbg_init",
@@ -692,6 +704,7 @@
     "semanticGraphIdentity",
     "semanticIngressManifestCapabilities",
     "semanticIngressManifestStatus",
+    "semanticIngressManifestV2Capabilities",
     "semanticLifecycleCapabilities",
     "semanticLifecycleIdentity",
     "semanticLifecycleProjection",
