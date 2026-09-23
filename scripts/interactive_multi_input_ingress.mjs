@@ -9,16 +9,22 @@ import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput}
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
 const packageDir = path.resolve(process.argv[2] ?? defaultPackageDir);
-const allowStateCheckpointExport = process.argv[6] === '--allow-state-checkpoint-export';
-if (process.argv[6] !== undefined && !allowStateCheckpointExport) throw new Error('unknown trusted runner startup option');
-if (process.argv.length > 7) throw new Error('too many trusted runner startup arguments');
+const startupOptions = process.argv.slice(6);
+if (startupOptions.length > 2 || new Set(startupOptions).size !== startupOptions.length
+  || startupOptions.some(option => !['--allow-state-checkpoint-export', '--allow-checkpoint-restore'].includes(option))) {
+  throw new Error('unknown or duplicate trusted runner startup option');
+}
+const allowStateCheckpointExport = startupOptions.includes('--allow-state-checkpoint-export');
+const allowCheckpointRestore = startupOptions.includes('--allow-checkpoint-restore');
 // A trusted host owns this startup argument; JSON Lines commands cannot replace keys.
 if (!process.argv[3] && (process.argv[4] || process.argv[5])) throw new Error('durable ingress requires a host trust policy');
 const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3]), {
   ledgerPath: process.argv[4] ? path.resolve(process.argv[4]) : undefined,
   subject: process.argv[5],
 }) : null;
-if (allowStateCheckpointExport && !provenanceVerifier?.ledger) throw new Error('state checkpoint export requires durable signed ingress');
+if ((allowStateCheckpointExport || allowCheckpointRestore) && !provenanceVerifier?.ledger) {
+  throw new Error('checkpoint export and restore require durable signed ingress');
+}
 const {loadBurnRuntime} = await import(pathToFileURL(path.join(packageDir, 'node.mjs')).href);
 const wasm = await loadBurnRuntime(packageDir);
 const supportedConstructors = new Set(JSON.parse(wasm.agentCapabilities()).agent_facade.constructors);
@@ -138,7 +144,7 @@ function createSession(command) {
 }
 
 function restoreSession(receiptId) {
-  if (!allowStateCheckpointExport) throw new Error('checkpoint restore is disabled by host startup policy');
+  if (!allowCheckpointRestore) throw new Error('checkpoint restore is disabled by host startup policy');
   const {receipt, bytes, manifest} = provenanceVerifier.getCheckpoint(receiptId);
   const next = {registry: new wasm.LayerRegistry(), layers: [], proofs: new Map(), handoffs: new Map()};
   try {
@@ -158,6 +164,9 @@ function restoreSession(receiptId) {
       || manifestDigest(manifest) !== receipt.manifest_sha256) {
       throw new Error('restored manifest differs from receipt');
     }
+    next.restoreEvent = provenanceVerifier.recordRestore(receiptId, JSON.parse(next.graph.programIdentity()),
+      manifestDigest(manifest), receipt.state_checkpoint_bytes_sha256);
+    next.stateParentReceiptId = receiptId;
   } catch (error) {
     releaseSession(next);
     throw error;
@@ -165,7 +174,8 @@ function restoreSession(receiptId) {
   const old = session;
   session = next;
   releaseSession(old);
-  return {restored_from_receipt_id: receipt.receipt_id, checkpoint_bytes_sha256: receipt.state_checkpoint_bytes_sha256,
+  return {restored_from_receipt_id: receipt.receipt_id, restore_event_id: next.restoreEvent.restore_id,
+    checkpoint_bytes_sha256: receipt.state_checkpoint_bytes_sha256,
     manifest, program_identity: JSON.parse(next.graph.programIdentity()),
     status: JSON.parse(next.ingress.status(next.registry, next.graph, next.bundle)),
     host_provenance: provenanceStatus(next)};
@@ -186,7 +196,8 @@ function handle(command) {
           execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v2' : null,
           state_checkpoint: 'burn-research.multi-input-program-bundle.v1',
           state_checkpoint_export_enabled: allowStateCheckpointExport,
-          receipt_bound_checkpoint_restore_enabled: allowStateCheckpointExport,
+          receipt_bound_checkpoint_restore_enabled: allowCheckpointRestore,
+          checkpoint_restore_event: provenanceVerifier?.ledger ? 'burn-research.host-checkpoint-restore.v1' : null,
           state_handoff: provenanceVerifier?.ledger ? 'burn-research.host-state-handoff.v1' : null,
           wasm_origin_authentication: false},
       };
@@ -312,11 +323,26 @@ function handle(command) {
         }
       };
       if (!provenanceVerifier?.ledger) return withCurrentProvenance(s, execute);
-      return provenanceVerifier.executeWithReceipt(s.proofs.values(), {
-        subject: provenanceVerifier.hostSubject,
-        programIdentity: JSON.parse(s.graph.programIdentity()),
-        manifestSha256: manifestDigest(JSON.parse(s.ingress.toJSON())),
-      }, execute, s.handoffs);
+      let executionStarted = false;
+      try {
+        const result = provenanceVerifier.executeWithReceipt(s.proofs.values(), {
+          subject: provenanceVerifier.hostSubject,
+          programIdentity: JSON.parse(s.graph.programIdentity()),
+          manifestSha256: manifestDigest(JSON.parse(s.ingress.toJSON())),
+          stateParentReceiptId: s.stateParentReceiptId,
+          restoreEventId: s.restoreEvent?.restore_id,
+        }, () => { executionStarted = true; return execute(); }, s.handoffs);
+        s.stateParentReceiptId = result.execution_receipt.receipt_id;
+        return result;
+      } catch (error) {
+        // A numerical call may mutate state before a failed disk commit.
+        // Discard that state so no future receipt asserts an unproven parent.
+        if (executionStarted) {
+          session = undefined;
+          releaseSession(s);
+        }
+        throw error;
+      }
     }
     case 'receipt': {
       const receipt = provenanceVerifier?.getReceipt(command.receipt_id);

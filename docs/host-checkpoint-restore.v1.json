@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.host-checkpoint-restore.v1",
+  "status": "implemented_node_host_durable_mode",
+  "proof_state": {
+    "event_fields": ["schema", "subject", "sequence", "after_execution_sequence", "claim_count", "parent_receipt_id", "checkpoint_bytes_sha256", "manifest_sha256", "program_identity", "restore_id"],
+    "restore_id": "SHA-256 of ordered JSON event fields excluding restore_id",
+    "parent_receipt_id": "same-subject committed receipt whose exact checkpoint bytes and manifest were revalidated before staged WASM import",
+    "receipt_lineage_fields": ["state_parent_receipt_id", "restore_event_id"],
+    "state_parent_receipt_id": "immediate prior committed state: the restored parent for the first run, then the preceding successful run of this session",
+    "restore_event_id": "the host-committed event that selected this session's checkpoint; present on all descendant receipts until create or another restore replaces the session",
+    "other_ancestry": "state handoff binds external output to a later signed state input independently of internal ProgramBundle ancestry"
+  },
+  "valid_transitions": [
+    "trusted startup --allow-checkpoint-restore enables op=restore independently of --allow-state-checkpoint-export",
+    "host loads a same-subject committed receipt and private retained bytes, checks byte and manifest digests, stages WASM import, and validates structural identity and logical ports",
+    "host commits the restore event under the ledger lock before replacing the live session; a failed event commit leaves the old session intact",
+    "the new session starts without input tensors or signed proofs; a successful run records the restored parent receipt and restore event ID",
+    "subsequent successful runs advance the immediate state parent while retaining the same restore event ID",
+    "if numerical execution began and a later operation fails, the host discards that session because its mutable state may have changed without a committed receipt",
+    "ledger reopening validates restore ID, parent receipt, execution-order anchor, subject, program identity, manifest and byte digest; descendant receipt parent and event must agree"
+  ],
+  "limits": [
+    "This proves recorded causal ancestry within the host ledger; it does not assert that a newer receipt contains newer semantic model state.",
+    "Input signatures v1 authenticate input and structural manifest, not the active mutable checkpoint. A restore event is not a per-call producer signature.",
+    "Restore authorization is a coarse trusted host startup capability. Agents with access to that operation can select an older committed checkpoint.",
+    "The ledger and private checkpoint store remain host trust roots; their digests are not signatures or action authority.",
+    "Historical receipts without state ancestry remain readable; no ancestry is inferred for them.",
+    "At most 50000 restore events share the ledger's 32 MiB size cap. A crash before event commit may leave only an unreferenced checkpoint."
+  ]
+}

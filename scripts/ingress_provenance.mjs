@@ -136,4 +136,9 @@ export class SignedIngressVerifier {
     if (!this.ledger) throw new Error('durable host ledger required for checkpoint restore');
     return this.ledger.getCheckpoint(receiptId);
   }
+
+  recordRestore(receiptId, identity, manifestSha256, checkpointBytesSha256) {
+    if (!this.ledger) throw new Error('durable host ledger required for checkpoint restore');
+    return this.ledger.recordRestore(receiptId, identity, manifestSha256, checkpointBytesSha256);
+  }
 }

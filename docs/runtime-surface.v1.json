@@ -81,6 +81,7 @@
       "signed_ingress_provenance": "ingress-provenance.v1.json",
       "durable_replay_ledger": "ingress-replay-ledger.v1.json",
       "execution_receipt": "host-execution-receipt.v2.json",
+      "checkpoint_restore": "host-checkpoint-restore.v1.json",
       "legacy_execution_receipt": "host-execution-receipt.v1.json",
       "state_handoff": "host-state-handoff.v1.json"
     }

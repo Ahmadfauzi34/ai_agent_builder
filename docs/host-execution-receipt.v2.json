@@ -39,12 +39,16 @@
       "input_claims",
       "output",
       "state_checkpoint_bytes_sha256",
+      "state_parent_receipt_id (optional)",
+      "restore_event_id (optional when a restore is active)",
       "receipt_id"
     ],
     "input_claims": "sorted slot, source, role, shape, f32 value digest, revision and SHA-256 of each verified canonical signed claim; state inputs may also identify a durable host handoff record",
     "output": "exact f32 little-endian SHA-256 and four-dimensional output shape observed from WASM",
     "program_identity": "exact graph.programIdentity JSON, which excludes mutable layer state",
     "state_checkpoint_bytes_sha256": "SHA-256 of the exact exported multi-input ProgramBundle bytes, including plan, structural identity, layer initialization records, and mutable layer state",
+    "state_parent_receipt_id": "when present, the immediately preceding committed internal runtime state; it is the restored receipt for the first run after restore",
+    "restore_event_id": "when present, the committed host restore event identifying the selected checkpoint and its execution-order anchor; see host-checkpoint-restore.v1.json",
     "checkpoint_digest_scope": "byte-level correlation only; not semantic state identity, state authentication, or authorization",
     "history_validation": "ledger reopening validates receipt ID, schema, checkpoint digest format, monotonic sequence and the referenced claims as latest at the recorded claim_count"
   },
@@ -54,7 +58,8 @@
     "the host exports a stateful multi-input ProgramBundle and hashes its exact bytes",
     "the host atomically commits the v2 receipt to the same private ledger before replying",
     "a failed receipt commit returns an error; no success response or durable receipt is asserted",
-    "later input revisions cannot rewrite an earlier valid historical receipt"
+    "later input revisions cannot rewrite an earlier valid historical receipt",
+    "successful subsequent runs in one session advance the immediate state parent to the previous successful receipt"
   ],
   "limits": [
     "A failed receipt commit can occur after numerical execution; the runner does not claim numerical rollback or exactly-once side effects.",

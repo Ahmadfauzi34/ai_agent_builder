@@ -27,6 +27,7 @@
       "ingress_replay_ledger_contract": "ingress-replay-ledger.v1.json",
       "ingress_replay_ledger_initializer": "init_ingress_replay_ledger.mjs",
       "host_execution_receipt_contract": "host-execution-receipt.v2.json",
+      "host_checkpoint_restore_contract": "host-checkpoint-restore.v1.json",
       "legacy_host_execution_receipt_contract": "host-execution-receipt.v1.json",
       "state_checkpoint_export": "explicit_durable_runner_startup_opt_in_and_current_signed_inputs",
       "host_state_handoff_contract": "host-state-handoff.v1.json",

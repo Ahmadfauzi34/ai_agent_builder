@@ -48,7 +48,7 @@ export function encodedF32Matches(receipt, shape, base64) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}` === receipt.output.value_sha256;
 }
 
-export function executionReceipt({subject, programIdentity, manifestSha256, claims, handoffs = new Map(), shape, values, sequence, claimCount, checkpointBytesSha256}) {
+export function executionReceipt({subject, programIdentity, manifestSha256, claims, handoffs = new Map(), shape, values, sequence, claimCount, checkpointBytesSha256, stateParentReceiptId, restoreEventId}) {
   if (!Number.isSafeInteger(sequence) || sequence < 1 || !Number.isSafeInteger(claimCount) || claimCount < 1) {
     throw new Error('execution receipt requires a durable sequence and claim count');
   }
@@ -65,6 +65,10 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
   if (!/^sha256:[0-9a-f]{64}$/.test(checkpointBytesSha256 ?? '')) {
     throw new Error('execution receipt requires the multi-input state checkpoint byte digest');
   }
+  if ((stateParentReceiptId !== undefined && !/^sha256:[0-9a-f]{64}$/.test(stateParentReceiptId))
+    || (restoreEventId !== undefined && (!stateParentReceiptId || !/^sha256:[0-9a-f]{64}$/.test(restoreEventId)))) {
+    throw new Error('execution receipt has invalid state ancestry');
+  }
   const record = {
     schema: EXECUTION_RECEIPT_SCHEMA,
     authority: 'node_host_observed_wasm_run',
@@ -78,6 +82,8 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
       claim_sha256: sha256Json(claim), ...(handoffs.get(claim.slot) ? {handoff_id: handoffs.get(claim.slot).handoff_id} : {})})),
     output: {shape: [...shape], value_sha256: f32ValueDigest(values)},
     state_checkpoint_bytes_sha256: checkpointBytesSha256,
+    ...(stateParentReceiptId ? {state_parent_receipt_id: stateParentReceiptId} : {}),
+    ...(restoreEventId ? {restore_event_id: restoreEventId} : {}),
   };
   return {...record, receipt_id: sha256Json(record)};
 }
