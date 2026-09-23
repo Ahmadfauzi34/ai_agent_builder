@@ -137,6 +137,40 @@ function createSession(command) {
   };
 }
 
+function restoreSession(receiptId) {
+  if (!allowStateCheckpointExport) throw new Error('checkpoint restore is disabled by host startup policy');
+  const {receipt, bytes, manifest} = provenanceVerifier.getCheckpoint(receiptId);
+  const next = {registry: new wasm.LayerRegistry(), layers: [], proofs: new Map(), handoffs: new Map()};
+  try {
+    next.graph = wasm.importMultiInputProgramBundle(next.registry, bytes);
+    if (JSON.stringify(JSON.parse(next.graph.programIdentity())) !== JSON.stringify(receipt.program_identity)) {
+      throw new Error('restored graph structural identity differs from receipt');
+    }
+    next.plan = wasm.MultiInputGraphPlan.fromBytes(next.graph.inputPlanV1());
+    next.bundle = new wasm.MultiInputInputBundle(next.plan);
+    next.ingress = new wasm.SemanticIngressManifestV2(next.plan);
+    for (const port of requireArray(manifest.ports, 'checkpoint manifest ports')) {
+      if (port.backing === 'graph_input_slot') next.ingress.addRuntimePort(port.logical_port_id, port.slot, port.expected_source);
+      else if (port.backing === 'deferred') next.ingress.addDeferredPort(port.logical_port_id, port.role, port.required);
+      else throw new Error('unknown checkpoint manifest port backing');
+    }
+    if (JSON.stringify(JSON.parse(next.ingress.toJSON())) !== JSON.stringify(manifest)
+      || manifestDigest(manifest) !== receipt.manifest_sha256) {
+      throw new Error('restored manifest differs from receipt');
+    }
+  } catch (error) {
+    releaseSession(next);
+    throw error;
+  }
+  const old = session;
+  session = next;
+  releaseSession(old);
+  return {restored_from_receipt_id: receipt.receipt_id, checkpoint_bytes_sha256: receipt.state_checkpoint_bytes_sha256,
+    manifest, program_identity: JSON.parse(next.graph.programIdentity()),
+    status: JSON.parse(next.ingress.status(next.registry, next.graph, next.bundle)),
+    host_provenance: provenanceStatus(next)};
+}
+
 function handle(command) {
   switch (command.op) {
     case 'capabilities':
@@ -152,10 +186,12 @@ function handle(command) {
           execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v2' : null,
           state_checkpoint: 'burn-research.multi-input-program-bundle.v1',
           state_checkpoint_export_enabled: allowStateCheckpointExport,
+          receipt_bound_checkpoint_restore_enabled: allowStateCheckpointExport,
           state_handoff: provenanceVerifier?.ledger ? 'burn-research.host-state-handoff.v1' : null,
           wasm_origin_authentication: false},
       };
     case 'create': return createSession(command);
+    case 'restore': return restoreSession(command.receipt_id);
     case 'map': {
       const s = requireSession();
       return {changed: s.ingress.addRuntimePort(command.id, command.slot, command.source),
@@ -267,6 +303,8 @@ function handle(command) {
           const checkpoint = provenanceVerifier?.ledger ? exportStateCheckpoint(s) : null;
           return {shape: Array.from(output.shape()), values,
             ...(checkpoint ? {state_checkpoint_bytes_sha256: checkpoint.checkpoint_bytes_sha256} : {}),
+            ...(checkpoint ? {checkpoint_bytes: Buffer.from(checkpoint.bytes),
+              checkpoint_manifest: JSON.parse(s.ingress.toJSON())} : {}),
             output_f32_le_base64: provenanceVerifier?.ledger ? f32ValueBytes(values).toString('base64') : undefined,
             ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
         } finally {

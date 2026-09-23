@@ -8,6 +8,8 @@ const MAX_CLAIMS = 50000;
 const MAX_EXECUTIONS = 50000;
 const MAX_HANDOFFS = 50000;
 const MAX_BYTES = 32 * 1024 * 1024;
+const MAX_CHECKPOINT_BYTES = 8 * 1024 * 1024;
+const MAX_CHECKPOINT_STORE_BYTES = 512 * 1024 * 1024;
 const U64_MAX = (1n << 64n) - 1n;
 
 function digest(claim) {
@@ -25,6 +27,7 @@ export class IngressReplayLedger {
     this.file = path.resolve(ledgerPath);
     this.directory = path.dirname(this.file);
     this.lockPath = `${this.file}.lock`;
+    this.checkpointDirectory = `${this.file}.checkpoints`;
     const directory = fs.lstatSync(this.directory);
     if (!directory.isDirectory() || directory.isSymbolicLink() || directory.mode & 0o022) throw new Error('ledger parent must be a private host-owned directory');
     validateOwner(directory, 'ledger parent');
@@ -212,6 +215,87 @@ export class IngressReplayLedger {
     }
   }
 
+  checkpointPath(receiptId) {
+    if (!/^sha256:[0-9a-f]{64}$/.test(receiptId)) throw new Error('invalid checkpoint receipt ID');
+    return path.join(this.checkpointDirectory, `${receiptId.slice(7)}.json`);
+  }
+
+  checkCheckpointDirectory({create = false} = {}) {
+    if (create && !fs.existsSync(this.checkpointDirectory)) {
+      fs.mkdirSync(this.checkpointDirectory, {mode: 0o700});
+      const fd = fs.openSync(this.directory, 'r');
+      try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    }
+    const stat = fs.lstatSync(this.checkpointDirectory);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || stat.mode & 0o077) throw new Error('checkpoint directory must be private');
+    validateOwner(stat, 'checkpoint directory');
+  }
+
+  retainCheckpoint(receipt, bytes, manifest) {
+    if (!Buffer.isBuffer(bytes) || bytes.length === 0 || bytes.length > MAX_CHECKPOINT_BYTES) throw new Error('checkpoint bytes exceed the host retention limit');
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('checkpoint manifest is missing');
+    const expected = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+    if (receipt.state_checkpoint_bytes_sha256 !== expected
+      || receipt.manifest_sha256 !== sha256Json(manifest)) throw new Error('checkpoint differs from committed receipt');
+    this.checkCheckpointDirectory({create: true});
+    const contents = JSON.stringify({schema: 'burn-research.host-retained-checkpoint.v1',
+      subject: this.subject, receipt_id: receipt.receipt_id, manifest,
+      bundle_f32le_base64: bytes.toString('base64')}) + '\n';
+    const size = Buffer.byteLength(contents);
+    const used = fs.readdirSync(this.checkpointDirectory).reduce((total, name) => {
+      const stat = fs.lstatSync(path.join(this.checkpointDirectory, name));
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.mode & 0o077) throw new Error('checkpoint store contains an unsafe entry');
+      validateOwner(stat, 'checkpoint entry');
+      return total + stat.size;
+    }, 0);
+    if (used + size > MAX_CHECKPOINT_STORE_BYTES) throw new Error('checkpoint store exceeds its size limit');
+    const target = this.checkpointPath(receipt.receipt_id);
+    const temporary = path.join(this.checkpointDirectory, `.${randomUUID()}.tmp`);
+    let fd;
+    try {
+      fd = fs.openSync(temporary, 'wx', 0o600);
+      fs.writeFileSync(fd, contents);
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      fd = undefined;
+      fs.linkSync(temporary, target); // exclusive: never overwrite another committed checkpoint
+      const dirFd = fs.openSync(this.checkpointDirectory, 'r');
+      try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+      return target;
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+      if (fs.existsSync(temporary)) fs.unlinkSync(temporary);
+    }
+  }
+
+  getCheckpoint(receiptId) {
+    return this.withLock(() => {
+      const receipt = this.load().receiptsById.get(receiptId);
+      if (!receipt || receipt.schema !== EXECUTION_RECEIPT_SCHEMA) throw new Error('checkpoint receipt is absent from the durable ledger');
+      this.checkCheckpointDirectory();
+      const file = this.checkpointPath(receiptId);
+      const stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.mode & 0o077
+        || stat.size > MAX_CHECKPOINT_BYTES * 2) throw new Error('retained checkpoint is not a private bounded file');
+      validateOwner(stat, 'retained checkpoint');
+      const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (record.schema !== 'burn-research.host-retained-checkpoint.v1'
+        || record.subject !== this.subject || record.receipt_id !== receiptId
+        || !record.manifest || typeof record.bundle_f32le_base64 !== 'string'
+        || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(record.bundle_f32le_base64)) {
+        throw new Error('retained checkpoint envelope is invalid');
+      }
+      const bytes = Buffer.from(record.bundle_f32le_base64, 'base64');
+      if (bytes.length === 0 || bytes.length > MAX_CHECKPOINT_BYTES
+        || bytes.toString('base64') !== record.bundle_f32le_base64
+        || `sha256:${createHash('sha256').update(bytes).digest('hex')}` !== receipt.state_checkpoint_bytes_sha256
+        || sha256Json(record.manifest) !== receipt.manifest_sha256) {
+        throw new Error('retained checkpoint bytes or manifest differ from receipt');
+      }
+      return {receipt, bytes, manifest: record.manifest};
+    });
+  }
+
   commit(ticket, {parentReceiptId, branchId = 'main'} = {}) {
     return this.withLock(() => {
       const snapshot = this.load();
@@ -282,8 +366,16 @@ export class IngressReplayLedger {
         checkpointBytesSha256: result.state_checkpoint_bytes_sha256,
         sequence: snapshot.state.executions.length + 1, claimCount: snapshot.state.claims.length});
       snapshot.state.executions.push(receipt);
-      this.write(snapshot.state);
-      return {...result, execution_receipt: receipt};
+      let retained;
+      try {
+        if (result.checkpoint_bytes !== undefined) retained = this.retainCheckpoint(receipt, result.checkpoint_bytes, result.checkpoint_manifest);
+        this.write(snapshot.state);
+      } catch (error) {
+        if (retained) fs.unlinkSync(retained);
+        throw error;
+      }
+      const {checkpoint_bytes: ignoredBytes, checkpoint_manifest: ignoredManifest, ...publicResult} = result;
+      return {...publicResult, execution_receipt: receipt};
     });
   }
 
