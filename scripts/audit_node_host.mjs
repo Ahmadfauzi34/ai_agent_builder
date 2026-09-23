@@ -15,6 +15,7 @@ const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs')
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
+const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
 const backgroundTypesPath = path.join(pkgDir, 'burn_research_bg.wasm.d.ts');
@@ -35,6 +36,7 @@ assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
 assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v1.json is missing');
+assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
 assert(fs.existsSync(backgroundTypesPath), 'packaged burn_research_bg.wasm.d.ts is missing');
@@ -59,6 +61,7 @@ const requiredPackageFiles = [
   'ingress-provenance.v1.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
+  'host-state-handoff.v1.json',
 ];
 for (const file of requiredPackageFiles) {
   assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
@@ -79,6 +82,7 @@ assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-pr
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
 assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node execution receipt contract discovery mismatch');
+assert(support.verified_hosts?.node?.host_state_handoff_contract === 'host-state-handoff.v1.json', 'Node state handoff contract discovery mismatch');
 assert(support.verified_hosts?.node?.types === 'node.d.mts', 'Node type discovery mismatch');
 assert(
   support.support_semantics?.packaged_communication_contract === 'wasm-host-communication.md',

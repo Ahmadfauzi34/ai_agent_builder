@@ -21,7 +21,7 @@
   "proof_state": {
     "identity": "SHA-256 over canonical ordered JSON receipt fields excluding receipt_id",
     "fields": ["schema", "authority", "sequence", "claim_count", "subject", "program_identity", "manifest_sha256", "input_claims", "output", "receipt_id"],
-    "input_claims": "sorted slot, source, revision and SHA-256 of each verified canonical signed claim",
+    "input_claims": "sorted slot, source, role, shape, f32 value digest, revision and SHA-256 of each verified canonical signed claim; state inputs may also identify a durable host handoff record",
     "output": "exact f32 little-endian SHA-256 and four-dimensional output shape observed from WASM",
     "program_identity": "exact graph.programIdentity JSON, which excludes mutable layer state",
     "history_validation": "ledger reopening validates receipt ID, monotonic sequence and the referenced claims as latest at the recorded claim_count"
@@ -38,7 +38,7 @@
     "JSON numeric values cannot distinguish negative zero from positive zero; use output_f32_le_base64 for exact output comparison.",
     "A content hash detects accidental modification but a privileged writer of the host ledger can rewrite its history.",
     "Program identity excludes mutable layer state; this receipt commits the observed output and does not claim independent numerical implementation.",
-    "Receipt records do not yet authorize cross-graph handoff, actions, or state promotion.",
+    "A receipt can supply exact output bytes to the Node durable state-handoff path; the handoff record does not authorize actions or state promotion.",
     "A 50,000-receipt or 32 MiB ledger limit fails closed for new durable run receipts."
   ]
 }
