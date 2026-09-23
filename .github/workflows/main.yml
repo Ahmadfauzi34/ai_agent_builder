@@ -200,6 +200,9 @@ jobs:
       - name: Run durable signed ingress audit
         run: node scripts/audit_durable_signed_ingress.mjs pkg
 
+      - name: Run state-bound signed ingress audit
+        run: node scripts/audit_state_bound_signed_ingress.mjs pkg
+
       - name: Run Node host adapter audit
         run: node scripts/audit_node_host.mjs pkg
 

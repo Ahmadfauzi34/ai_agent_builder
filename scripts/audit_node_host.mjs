@@ -14,6 +14,7 @@ const replayLedgerPath = path.join(pkgDir, 'ingress_replay_ledger.mjs');
 const executionReceiptPath = path.join(pkgDir, 'ingress_execution_receipt.mjs');
 const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
+const stateBoundProvenanceContractPath = path.join(pkgDir, 'ingress-provenance.v2.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v2.json');
 const checkpointRestoreContractPath = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
@@ -40,6 +41,7 @@ assert(fs.existsSync(replayLedgerPath), 'packaged ingress_replay_ledger.mjs is m
 assert(fs.existsSync(executionReceiptPath), 'packaged ingress_execution_receipt.mjs is missing');
 assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger.mjs is missing');
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
+assert(fs.existsSync(stateBoundProvenanceContractPath), 'packaged ingress-provenance.v2.json is missing');
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
 assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v2.json is missing');
 assert(fs.existsSync(checkpointRestoreContractPath), 'packaged host-checkpoint-restore.v1.json is missing');
@@ -73,6 +75,7 @@ const requiredPackageFiles = [
   'ingress_execution_receipt.mjs',
   'init_ingress_replay_ledger.mjs',
   'ingress-provenance.v1.json',
+  'ingress-provenance.v2.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
   'host-execution-receipt.v2.json',
@@ -138,6 +141,8 @@ assert(verifiedSurface.host_capabilities?.contracts?.state_handoff?.schema === '
   'runtime surface omits Node host state-handoff contract');
 assert(verifiedSurface.host_capabilities?.contracts?.checkpoint_restore?.schema === 'burn-research.host-checkpoint-restore.v1',
   'runtime surface omits Node host checkpoint restore contract');
+assert(verifiedSurface.host_capabilities?.contracts?.state_bound_signed_ingress_provenance?.schema === 'burn-research.ingress-provenance.v2',
+  'runtime surface omits the state-bound signed ingress contract');
 
 const programCaps = JSON.parse(runtime.programCapabilities());
 const bundleCaps = JSON.parse(runtime.programBundleCapabilities());

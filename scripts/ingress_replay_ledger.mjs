@@ -74,6 +74,16 @@ export class IngressReplayLedger {
       if (typeof entry.nonce_key !== 'string' || typeof entry.revision_key !== 'string'
         || typeof entry.claim_sha256 !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(entry.claim_sha256)
         || typeof entry.revision !== 'string' || !/^(0|[1-9][0-9]*)$/.test(entry.revision)) throw new Error('malformed replay ledger entry');
+      if (entry.claim_schema !== undefined
+        && !['burn-research.signed-input-claim.v1', 'burn-research.signed-input-claim.v2'].includes(entry.claim_schema)) {
+        throw new Error('replay ledger contains an unsupported signed claim schema');
+      }
+      if ((entry.claim_schema === 'burn-research.signed-input-claim.v2'
+          && !/^sha256:[0-9a-f]{64}$/.test(entry.active_state_checkpoint_bytes_sha256 ?? ''))
+        || (entry.claim_schema !== 'burn-research.signed-input-claim.v2'
+          && entry.active_state_checkpoint_bytes_sha256 !== undefined)) {
+        throw new Error('replay ledger state-bound claim digest is malformed');
+      }
       const nonceParts = JSON.parse(entry.nonce_key);
       const revisionParts = JSON.parse(entry.revision_key);
       if (!Array.isArray(nonceParts) || nonceParts.length !== 3 || nonceParts.some(part => typeof part !== 'string')
@@ -125,12 +135,33 @@ export class IngressReplayLedger {
         if (input.role !== undefined && (typeof input.role !== 'string' || !Array.isArray(input.shape)
           || input.shape.length !== 4 || input.shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)
           || !/^sha256:[0-9a-f]{64}$/.test(input.value_sha256))) throw new Error('malformed execution receipt input contract');
+        if (input.claim_schema !== undefined
+          && !['burn-research.signed-input-claim.v1', 'burn-research.signed-input-claim.v2'].includes(input.claim_schema)) {
+          throw new Error('execution receipt input has an unsupported signed claim schema');
+        }
+        if ((input.claim_schema === 'burn-research.signed-input-claim.v2'
+            && !/^sha256:[0-9a-f]{64}$/.test(input.active_state_checkpoint_bytes_sha256 ?? ''))
+          || (input.claim_schema !== 'burn-research.signed-input-claim.v2'
+            && input.active_state_checkpoint_bytes_sha256 !== undefined)) {
+          throw new Error('execution receipt state-bound input digest is malformed');
+        }
         const key = JSON.stringify([input.source, this.subject, input.slot]);
         const current = latestAtReceipt.get(key);
-        if (!current || current.claim_sha256 !== input.claim_sha256 || current.revision !== input.revision) {
+        if (!current || current.claim_sha256 !== input.claim_sha256 || current.revision !== input.revision
+          || (input.claim_schema !== undefined && current.claim_schema !== input.claim_schema)
+          || input.active_state_checkpoint_bytes_sha256 !== current.active_state_checkpoint_bytes_sha256) {
           throw new Error('execution receipt input does not match its committed claim history');
         }
         usedSlots.add(input.slot);
+      }
+      const allStateBoundInputs = entry.input_claims.every(input => input.claim_schema === 'burn-research.signed-input-claim.v2');
+      const inputCheckpointDigests = new Set(entry.input_claims.map(input => input.active_state_checkpoint_bytes_sha256));
+      if ((entry.input_state_checkpoint_bytes_sha256 !== undefined
+          && !/^sha256:[0-9a-f]{64}$/.test(entry.input_state_checkpoint_bytes_sha256))
+        || (allStateBoundInputs && (inputCheckpointDigests.size !== 1
+          || entry.input_state_checkpoint_bytes_sha256 !== [...inputCheckpointDigests][0]))
+        || (!allStateBoundInputs && entry.input_state_checkpoint_bytes_sha256 !== undefined)) {
+        throw new Error('execution receipt common input checkpoint digest is inconsistent');
       }
       receiptsById.set(receiptId, entry);
     }
@@ -384,6 +415,9 @@ export class IngressReplayLedger {
         nonce_key: ticket.nonceKey,
         revision_key: ticket.revisionKey,
         revision: ticket.claim.revision,
+        claim_schema: ticket.claim.schema,
+        ...(ticket.claim.schema === 'burn-research.signed-input-claim.v2'
+          ? {active_state_checkpoint_bytes_sha256: ticket.claim.active_state_checkpoint_bytes_sha256} : {}),
         claim_sha256: digest(ticket.claim),
       });
       if (parentReceiptId !== undefined) {

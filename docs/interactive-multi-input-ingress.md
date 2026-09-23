@@ -44,22 +44,36 @@ The policy file uses `burn-research.ingress-trust-policy.v1` and pins issuer pub
 }
 ```
 
-The producer constructs a claim with `canonicalInputClaim(binding, context, keyId, subject, nonce)` from `ingress_provenance.mjs`. `context` contains `plan_hex`, `manifest_fingerprint`, `manifest_sha256: manifestDigest(manifest)`, and the mapped `logical_port_id` returned by `create`. The issuer signs `Buffer.from(JSON.stringify(claim))` with its Ed25519 private key and sends `proof: {claim, signature: base64}` in the existing `bind` command. See `scripts/audit_signed_ingress_provenance.mjs` for a complete executable producer and host session.
+The producer constructs a v1 claim with `canonicalInputClaim(binding, context, keyId, subject, nonce)` from `ingress_provenance.mjs`. `context` contains `plan_hex`, `manifest_fingerprint`, `manifest_sha256: manifestDigest(manifest)`, and the mapped `logical_port_id` returned by `create`. The issuer signs `Buffer.from(JSON.stringify(claim))` with its Ed25519 private key and sends `proof: {claim, signature: base64}` in the existing `bind` command. See `scripts/audit_signed_ingress_provenance.mjs` for a complete executable producer and host session.
 
 In this mode every `bind` requires a signature from a configured issuer for its source and subject. The signed claim covers the exact plan bytes, full manifest SHA-256, port, metadata, nonce, and SHA-256 of the little-endian f32 values passed to WASM. The runner checks nonces and increasing revisions for its process lifetime, with a 50,000-claim fail-closed cap. `run` and `verify` require signed coverage for every runtime input, and a manifest change makes previous claims stale. `inspect.host_provenance` shows these checks separately from the WASM ingress status.
 
-The trust policy and producer private keys must be controlled outside the JSON Lines caller. This gate applies to this Node runner; a direct caller of the WASM API can still bind caller-declared metadata. A signature proves that the configured issuer made the claim, not that the observed world state is true. Durable replay protection across process restarts requires an external store. The complete machine-readable scope is in `ingress-provenance.v1.json`.
+The trust policy and producer private keys must be controlled outside the JSON Lines caller. This gate applies to this Node runner; a direct caller of the WASM API can still bind caller-declared metadata. A signature proves that the configured issuer made the claim, not that the observed world state is true. Durable replay protection across process restarts requires an external store. The v1 machine-readable scope is in `ingress-provenance.v1.json`.
+
+### State-bound claim v2
+
+An issuer opts into v2 with an explicit `claim_schemas` allowlist:
+
+```json
+{"source":"sensor-a","key_id":"sensor-key-1","subjects":["run-42"],"claim_schemas":["burn-research.signed-input-claim.v1","burn-research.signed-input-claim.v2"],"public_key_pem":"..."}
+```
+
+When any configured issuer allows v2, graph creation, `inspect`, and `restore` include `host_provenance.active_state_checkpoint_bytes_sha256`. It is the exact checkpoint-byte digest for the active graph state; the host does not return raw checkpoint bytes through this field. The producer passes that value in the claim context and constructs a v2 claim with `canonicalStateBoundInputClaim(binding, context, keyId, subject, nonce)`. The signature covers the digest as well as the existing v1 fields. A trust policy without `claim_schemas` remains v1-only.
+
+The host rejects a v2 claim whose digest does not match the active checkpoint at `bind`. It checks the digest again under the durable ledger lock before `run`, `verify`, or `checkpoint`. A restored or otherwise changed state needs freshly signed inputs for its new digest. To make v2 mandatory, start the runner with `--require-state-bound-inputs`; every configured issuer must allow v2 and every runtime input must use a current v2 claim. This option is trusted host configuration, not a JSON Lines command.
+
+Durable receipt v2 records `claim_schema` and each v2 input's `active_state_checkpoint_bytes_sha256`. When every input binds the same checkpoint, the receipt also has `input_state_checkpoint_bytes_sha256`; `state_checkpoint_bytes_sha256` continues to report the post-run state. If execution leaves that checkpoint unchanged, the still-current claim set can be run again: a signed input nonce prevents rebinding, but does not authorize exactly one execution. These hashes bind exact bytes and freshness, not checkpoint origin, semantic equivalence, or action authority. See `ingress-provenance.v2.json`.
 
 ### Host subject and replay across restarts
 
-Provide a private ledger file and a subject fixed by the trusted host as additional startup arguments:
+Provide a private ledger file and a subject fixed by the trusted host as additional startup arguments. Optional startup flags may include state-bound input enforcement:
 
 ```bash
 node init_ingress_replay_ledger.mjs /private/ingress-ledger.json run-42
 node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json /private/ingress-ledger.json run-42 --allow-state-checkpoint-export --allow-checkpoint-restore
 ```
 
-The two optional trusted startup flags grant independent capabilities: `--allow-state-checkpoint-export` allows `op=checkpoint` to return raw mutable state, while `--allow-checkpoint-restore` permits `op=restore` by a committed receipt ID. A host may grant either flag alone or both. Durable runs retain their checkpoint and bind its byte digest to the receipt regardless of those client-facing flags.
+The checkpoint flags grant independent capabilities: `--allow-state-checkpoint-export` allows `op=checkpoint` to return raw mutable state, while `--allow-checkpoint-restore` permits `op=restore` by a committed receipt ID. `--require-state-bound-inputs` requires v2 for every runtime input and does not grant raw checkpoint export. A host may combine these flags according to its policy. Durable runs retain their checkpoint and bind its byte digest to the receipt regardless of those client-facing flags.
 
 Run initialization once under the trusted host deployment before accepting any input. It refuses to overwrite an existing ledger. The ledger parent must exist, be owned by the runner user, and not be writable by other users. Every runner startup requires that existing private file; a missing or deleted ledger fails closed. A later process must present the exact same host subject to use that ledger. Each signed claim must also use that subject and a public key allowed for it by the host trust policy. JSON Lines requests cannot change the host subject or ledger path.
 
