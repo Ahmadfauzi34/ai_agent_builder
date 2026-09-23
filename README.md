@@ -21,6 +21,7 @@ This README is a navigation hub. Detailed semantics and support claims live in t
 - [Python facade v1](docs/python-facade-v1.md) — typed Python facade over ABI v1.
 - [Python wheel support](docs/python-wheel-support.md) — installed-wheel consumer proof and supported matrix.
 - [WASM surface v1](docs/wasm-surface.v1.json) — machine-readable pinned WASM export contract.
+- [Runtime surface v1](docs/runtime-surface.v1.json) — capability inventory and ownership map used to generate the packaged runtime description.
 - [WASM host communication](docs/wasm-host-communication.md) — how Node, native Rust, Python, and generated browser artifacts reach the reference machine and how to classify failures.
 - [Multi-input semantic ingress v2](docs/semantic-ingress-manifest.v2.json) — logical port mapping, exact plan checks, and execution gating.
 - [Interactive WASM ingress](docs/interactive-multi-input-ingress.md) — packaged Node JSON Lines session for binding, inspecting, running, and verifying input ports.

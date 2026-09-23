@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -7,8 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SURFACE_PATH = ROOT / "docs" / "wasm-surface.v1.json"
 AGENT_CONTRACT_PATH = ROOT / "docs" / "agent-contracts.v1.json"
 LAYOUT_CONTRACT_PATH = ROOT / "docs" / "agent-layout-contracts.v1.json"
-DTS_PATH = ROOT / "pkg" / "burn_research.d.ts"
-ACTUAL_SURFACE_PATH = ROOT / "pkg" / "wasm-surface.actual.json"
+DEFAULT_PKG_PATH = ROOT / "pkg"
 
 
 def load_json(path: Path):
@@ -57,16 +58,31 @@ def require_equal(label, actual, expected):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pkg",
+        type=Path,
+        default=DEFAULT_PKG_PATH,
+        help="wasm-pack output directory (default: repository pkg/)",
+    )
+    args = parser.parse_args()
+    pkg_path = args.pkg.resolve()
+    dts_path = pkg_path / "burn_research.d.ts"
+    bindings_surface_path = pkg_path / "wasm-surface.bindings.actual.json"
+
     surface = load_json(SURFACE_PATH)
     agent_contract = load_json(AGENT_CONTRACT_PATH)
     layout_contract = load_json(LAYOUT_CONTRACT_PATH)
-    dts_text = DTS_PATH.read_text(encoding="utf-8")
+    dts_text = dts_path.read_text(encoding="utf-8")
     actual_classes, actual_functions, actual_default = parse_dts(dts_text)
 
-    ACTUAL_SURFACE_PATH.write_text(
+    dts_bytes = dts_path.read_bytes()
+    bindings_surface_path.write_text(
         json.dumps(
             {
-                "artifact": str(DTS_PATH.relative_to(ROOT)),
+                "schema": "burn-research.wasm-bindgen-surface.actual.v1",
+                "artifact": dts_path.name,
+                "artifact_sha256": f"sha256:{hashlib.sha256(dts_bytes).hexdigest()}",
                 "default_init": actual_default,
                 "functions": sorted(actual_functions),
                 "classes": {
@@ -141,7 +157,8 @@ def main():
     print(
         "WASM surface conformance PASS: "
         f"{len(actual_classes)} classes, {len(actual_functions)} free functions, "
-        f"{len(actual_classes['AgentWorkspace'])} AgentWorkspace members"
+        f"{len(actual_classes['AgentWorkspace'])} AgentWorkspace members; "
+        f"declaration projection: {bindings_surface_path}"
     )
 
 

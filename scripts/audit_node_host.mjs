@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {verifyWasmSurfaceActual} from './generate_wasm_surface_actual.mjs';
 
 const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
 const adapterPath = path.join(pkgDir, 'node.mjs');
@@ -16,8 +17,11 @@ const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
+const wasmSurfaceContractPath = path.join(pkgDir, 'wasm-surface.v1.json');
+const runtimeSurfaceContractPath = path.join(pkgDir, 'runtime-surface.v1.json');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
+const bindingSurfaceActualPath = path.join(pkgDir, 'wasm-surface.bindings.actual.json');
 const backgroundTypesPath = path.join(pkgDir, 'burn_research_bg.wasm.d.ts');
 
 function assert(condition, message) {
@@ -37,8 +41,11 @@ assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.js
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
 assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
+assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
+assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
+assert(fs.existsSync(bindingSurfaceActualPath), 'packaged wasm-surface.bindings.actual.json is missing');
 assert(fs.existsSync(backgroundTypesPath), 'packaged burn_research_bg.wasm.d.ts is missing');
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
@@ -49,6 +56,9 @@ const requiredPackageFiles = [
   'burn_research.d.ts',
   'burn_research_bg.wasm.d.ts',
   'wasm-surface.actual.json',
+  'wasm-surface.bindings.actual.json',
+  'wasm-surface.v1.json',
+  'runtime-surface.v1.json',
   'node.mjs',
   'node.d.mts',
   'host-support.v1.json',
@@ -68,10 +78,9 @@ for (const file of requiredPackageFiles) {
 }
 
 const actualSurface = JSON.parse(fs.readFileSync(surfaceActualPath, 'utf8'));
-assert(
-  actualSurface.artifact === 'pkg/burn_research.d.ts',
-  `surface diagnostic artifact mismatch: ${actualSurface.artifact}`,
-);
+assert(actualSurface.schema === 'burn-research.wasm-surface.actual.v1', 'runtime surface schema mismatch');
+assert(actualSurface.fingerprint?.algorithm === 'sha256', 'runtime surface fingerprint algorithm mismatch');
+assert(/^sha256:[0-9a-f]{64}$/.test(actualSurface.fingerprint?.value ?? ''), 'runtime surface fingerprint is malformed');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
 assert(support.schema === 'burn-research.host-support.v1', 'host support schema mismatch');
@@ -83,6 +92,10 @@ assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
 assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node execution receipt contract discovery mismatch');
 assert(support.verified_hosts?.node?.host_state_handoff_contract === 'host-state-handoff.v1.json', 'Node state handoff contract discovery mismatch');
+assert(support.verified_hosts?.node?.wasm_surface_contract === 'wasm-surface.v1.json', 'Node WASM surface contract discovery mismatch');
+assert(support.verified_hosts?.node?.runtime_surface_contract === 'runtime-surface.v1.json', 'Node runtime surface contract discovery mismatch');
+assert(support.verified_hosts?.node?.wasm_binding_projection === 'wasm-surface.bindings.actual.json', 'Node binding projection discovery mismatch');
+assert(support.verified_hosts?.node?.runtime_surface_actual === 'wasm-surface.actual.json', 'Node runtime surface discovery mismatch');
 assert(support.verified_hosts?.node?.types === 'node.d.mts', 'Node type discovery mismatch');
 assert(
   support.support_semantics?.packaged_communication_contract === 'wasm-host-communication.md',
@@ -101,6 +114,18 @@ assert(
 
 const adapter = await import(pathToFileURL(adapterPath).href);
 const runtime = await adapter.loadBurnRuntime();
+const verifiedSurface = await verifyWasmSurfaceActual(pkgDir, runtime);
+assert(verifiedSurface.capability_groups?.multi_input_semantic_ingress?.capabilities?.semantic_ingress_v2?.schema
+  === 'burn-research.semantic-ingress-manifest.v2', 'runtime surface omits multi-input semantic ingress v2');
+assert(verifiedSurface.wasm_binary_surface?.imports?.length > 0
+  && verifiedSurface.wasm_binary_surface?.exports?.length > 0, 'runtime surface omits raw WebAssembly module inventory');
+assert(verifiedSurface.capability_groups?.input_contract_and_provenance?.capabilities?.proof_provenance?.schema
+  === 'burn-research.proof-provenance.v1', 'runtime surface omits input provenance capability');
+assert(verifiedSurface.math_version_channels?.math_program_surface_version?.schema === 'burn-research.math-program.v9'
+  && verifiedSurface.math_version_channels?.math_interaction_protocol_version?.schema === 'burn-research.math-interaction.v1',
+'MathProgram semantic generation and interaction protocol version channels are conflated or missing');
+assert(verifiedSurface.host_capabilities?.contracts?.state_handoff?.schema === 'burn-research.host-state-handoff.v1',
+  'runtime surface omits Node host state-handoff contract');
 
 const programCaps = JSON.parse(runtime.programCapabilities());
 const bundleCaps = JSON.parse(runtime.programBundleCapabilities());
@@ -140,6 +165,7 @@ console.log(JSON.stringify({
   programBundleSchema: bundleCaps.schema,
   packageFiles: requiredPackageFiles,
   surfaceDiagnostic: path.basename(surfaceActualPath),
+  surfaceFingerprint: verifiedSurface.fingerprint.value,
   backgroundTypes: path.basename(backgroundTypesPath),
   communicationContract: path.basename(communicationPath),
 }, null, 2));

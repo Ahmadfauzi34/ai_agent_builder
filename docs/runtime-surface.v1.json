@@ -1,0 +1,106 @@
+{
+  "schema": "burn-research.runtime-surface.v1",
+  "version": 1,
+  "generated_artifact": "wasm-surface.actual.json",
+  "wasm_export_contract": "wasm-surface.v1.json",
+  "wasm_declaration_projection": {
+    "generator": "scripts/check_wasm_surface.py",
+    "source": "burn_research.d.ts",
+    "generated_projection": "wasm-surface.bindings.actual.json",
+    "covers": [
+      "wasm-bindgen declared class names and member names",
+      "wasm-bindgen declared free function names",
+      "default initializer name"
+    ],
+    "does_not_cover": [
+      "raw WebAssembly import/export signatures",
+      "runtime capability payloads",
+      "Node host behavior"
+    ]
+  },
+  "raw_module_projection": {
+    "source": "burn_research_bg.wasm",
+    "generator": "WebAssembly.Module.imports and WebAssembly.Module.exports",
+    "covers": [
+      "raw WebAssembly import names and kinds",
+      "raw WebAssembly export names and kinds"
+    ],
+    "does_not_cover": [
+      "raw WebAssembly function signatures",
+      "semantic execution behavior"
+    ]
+  },
+  "wasm_capability_groups": {
+    "multi_input_semantic_ingress": {
+      "owner": "wasm_reference_machine",
+      "capabilities": {
+        "multi_input_graph": "multiInputGraphCapabilities",
+        "semantic_ingress_v2": "semanticIngressManifestV2Capabilities"
+      }
+    },
+    "input_contract_and_provenance": {
+      "owner": "wasm_reference_machine",
+      "capabilities": {
+        "input_ports": "inputPortCapabilities",
+        "input_port_consumers": "inputPortConsumerCapabilities",
+        "input_contract": "inputContractCapabilities",
+        "proof_provenance": "proofProvenanceCapabilities"
+      }
+    },
+    "math_interaction": {
+      "owner": "wasm_reference_machine",
+      "capabilities": {
+        "math_program": "mathProgramCapabilities",
+        "math_program_v9": "mathProgramV9Capabilities",
+        "interaction_protocol": "mathInteractionCapabilities",
+        "proof": "mathProofCapabilities"
+      },
+      "version_channels": {
+        "math_program_surface_version": {
+          "capability": "math_program_v9",
+          "field": "schema"
+        },
+        "math_interaction_protocol_version": {
+          "capability": "interaction_protocol",
+          "field": "schema_id"
+        }
+      }
+    }
+  },
+  "host_capability_contracts": {
+    "owner": "node_host",
+    "contracts": {
+      "host_support": "host-support.v1.json",
+      "signed_ingress_provenance": "ingress-provenance.v1.json",
+      "durable_replay_ledger": "ingress-replay-ledger.v1.json",
+      "execution_receipt": "host-execution-receipt.v1.json",
+      "state_handoff": "host-state-handoff.v1.json"
+    }
+  },
+  "artifact_identity": {
+    "algorithm": "sha256",
+    "files": [
+      "burn_research_bg.wasm",
+      "burn_research.js",
+      "burn_research.d.ts",
+      "burn_research_bg.wasm.d.ts",
+      "wasm-surface.bindings.actual.json"
+    ]
+  },
+  "fingerprint": {
+    "algorithm": "sha256",
+    "canonicalization": "UTF-8 compact JSON with recursively sorted object keys and preserved array order; fingerprint field omitted",
+    "scope": "artifact digests, generated binding and raw module projections, runtime capability JSON, plus Node host contract definitions and their digests",
+    "authority": "artifact consistency and correlation only; not a signature, provenance proof, or action authorization"
+  },
+  "authority_boundaries": {
+    "wasm": "Rust/Burn reference machine owns numerical execution and WASM capability descriptions",
+    "node_host": "Node contracts describe optional trust, replay, receipt, and state handoff behavior outside the WASM export surface",
+    "preflight": "readiness and compatibility do not grant external action authority"
+  },
+  "evolution": {
+    "policy": "evidence-backed reference contract, not a ceiling on future capabilities",
+    "additive_change": "add capability sources or host contracts with their owner and authority boundary, then regenerate the actual surface",
+    "meaning_change": "version a contract when an existing field or authority meaning changes"
+  }
+}

@@ -46,15 +46,11 @@ The declared generated surface is:
 
 `docs/wasm-surface.v1.json`
 
-The build produces:
+`wasm-pack` produces `pkg/burn_research.d.ts`. The export checker parses the generated TypeScript declaration into:
 
-`pkg/burn_research.d.ts`
+`pkg/wasm-surface.bindings.actual.json`
 
-and `scripts/check_wasm_surface.py` parses that generated declaration into:
-
-`pkg/wasm-surface.actual.json`
-
-CI requires exact equality for:
+CI requires exact equality between the pinned contract and this declaration projection for:
 
 - exported class names;
 - members of every exported class;
@@ -65,11 +61,21 @@ Therefore:
 
 ```text
 declared wasm-surface.v1
-        ==
-generated actual surface
+        == generated declaration projection
 ```
 
-is a real conformance gate, not an informational snapshot.
+is a real conformance gate. This projection describes declared names and members; it does not claim to recover raw WebAssembly import/export signatures or runtime behavior.
+
+After packaging the Node adapter, `scripts/generate_wasm_surface_actual.mjs` loads that exact package and creates `pkg/wasm-surface.actual.json`. The generated runtime surface includes:
+
+- SHA-256 and byte length for the exact WASM, generated JS, TypeScript declarations, and export projection;
+- raw WebAssembly import/export names and kinds read from the packaged binary (the WebAssembly reflection API does not expose function signatures);
+- capability JSON queried from the loaded WASM for multi-input ingress, input contracts/provenance, and Math interaction;
+- separate `math_program_surface_version` and `math_interaction_protocol_version` values;
+- Node host contract definitions and hashes for provenance, durable replay, execution receipts, and state handoff;
+- a canonical SHA-256 fingerprint over the complete generated description.
+
+CI rebuilds this description from the packaged runtime and checks it again before artifact upload. Host definitions are embedded from their packaged contract files so an agent can inspect the full authority boundary from this snapshot; the file hashes bind those definitions to the sibling artifacts. The fingerprint proves consistency between the packaged bytes, queried capabilities, and included contracts; it is not a signature, provenance proof, or authorization token. `docs/runtime-surface.v1.json` declares the capability inventory and keeps host-owned features distinct from WASM exports.
 
 Adding or removing an exported member without intentionally updating the v1 contract is a WASM surface drift failure.
 
@@ -192,7 +198,9 @@ Use this order when an agent investigates a failure:
 
 | Observed failure | Primary boundary to inspect |
 | --- | --- |
-| `wasm-surface.actual.json` differs from `wasm-surface.v1.json` | WASM public-surface contract drift |
+| `wasm-surface.bindings.actual.json` differs from `wasm-surface.v1.json` | WASM declared export-surface drift |
+| `wasm-surface.actual.json` fingerprint or artifact digest differs from the loaded package | stale or mismatched runtime-surface artifact |
+| runtime-surface capability entrypoint is absent | runtime capability-contract drift |
 | generated surface conforms, but `node.mjs` cannot initialize/load/run | Node adapter or packaged WASM distribution |
 | external Cargo package consumer fails | native Rust package/public API |
 | Python installed-wheel/CFFI proof fails | C ABI / CFFI / Python host |
@@ -230,13 +238,13 @@ support_semantics.packaged_communication_contract
 
 This is intentional so an agent that receives only the packaged artifact can still recover the communication and failure-classification contract without access to the repository checkout.
 
-The Node package audit fails if the file, package allowlist entry, manifest pointer, or core communication statements are missing.
+The package also carries `wasm-surface.v1.json`, `runtime-surface.v1.json`, `wasm-surface.bindings.actual.json`, and the generated `wasm-surface.actual.json`. The Node package audit fails if these descriptions, their package allowlist entries, the manifest pointer, or the core communication statements are missing or inconsistent.
 
 ## Authority
 
 For support status and verified matrices, use `docs/host-support.v1.json`.
 
-For exact generated WASM exports, use `docs/wasm-surface.v1.json` together with the CI-produced `pkg/wasm-surface.actual.json`.
+For the pinned WASM export contract, use `docs/wasm-surface.v1.json` and its generated declaration projection `pkg/wasm-surface.bindings.actual.json`. For the self-describing snapshot of the exact packaged runtime, use `pkg/wasm-surface.actual.json` with `docs/runtime-surface.v1.json`.
 
 For execution/identity semantics, follow the underlying graph, binding, Math Program, ProgramBundle, and Burn contracts rather than inferring semantics from host adapter names.
 
