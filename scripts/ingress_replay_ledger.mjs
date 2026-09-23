@@ -6,6 +6,7 @@ import {executionReceipt, EXECUTION_RECEIPT_SCHEMA, sha256Json} from './ingress_
 const SCHEMA = 'burn-research.ingress-replay-ledger.v1';
 const MAX_CLAIMS = 50000;
 const MAX_EXECUTIONS = 50000;
+const MAX_HANDOFFS = 50000;
 const MAX_BYTES = 32 * 1024 * 1024;
 const U64_MAX = (1n << 64n) - 1n;
 
@@ -30,7 +31,7 @@ export class IngressReplayLedger {
     this.withLock(() => {
       if (initialize) {
         if (fs.existsSync(this.file)) throw new Error('refusing to reset an existing durable replay ledger');
-        this.write({schema: SCHEMA, subject: this.subject, claims: [], executions: []});
+        this.write({schema: SCHEMA, subject: this.subject, claims: [], executions: [], handoffs: []});
       } else this.load();
     });
   }
@@ -52,12 +53,14 @@ export class IngressReplayLedger {
     validateOwner(stat, 'ledger file');
     const state = JSON.parse(fs.readFileSync(this.file, 'utf8'));
     if (state.schema !== SCHEMA || state.subject !== this.subject || !Array.isArray(state.claims) || state.claims.length > MAX_CLAIMS
-      || (state.executions !== undefined && (!Array.isArray(state.executions) || state.executions.length > MAX_EXECUTIONS))) {
+      || (state.executions !== undefined && (!Array.isArray(state.executions) || state.executions.length > MAX_EXECUTIONS))
+      || (state.handoffs !== undefined && (!Array.isArray(state.handoffs) || state.handoffs.length > MAX_HANDOFFS))) {
       throw new Error('ledger schema, host subject, or claim limit mismatch');
     }
     // Existing v1 ledger snapshots did not contain executions. The first
     // successful receipt write extends them without resetting claim history.
     state.executions ??= [];
+    state.handoffs ??= [];
     const nonces = new Set();
     const revisions = new Map();
     const hashes = new Set();
@@ -82,6 +85,7 @@ export class IngressReplayLedger {
     }
     let committedClaims = 0;
     const latestAtReceipt = new Map();
+    const receiptsById = new Map();
     for (let index = 0; index < state.executions.length; index++) {
       const entry = state.executions[index];
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('malformed execution receipt');
@@ -109,6 +113,9 @@ export class IngressReplayLedger {
           || typeof input.revision !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(input.claim_sha256)) {
           throw new Error('malformed execution receipt input');
         }
+        if (input.role !== undefined && (typeof input.role !== 'string' || !Array.isArray(input.shape)
+          || input.shape.length !== 4 || input.shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)
+          || !/^sha256:[0-9a-f]{64}$/.test(input.value_sha256))) throw new Error('malformed execution receipt input contract');
         const key = JSON.stringify([input.source, this.subject, input.slot]);
         const current = latestAtReceipt.get(key);
         if (!current || current.claim_sha256 !== input.claim_sha256 || current.revision !== input.revision) {
@@ -116,8 +123,64 @@ export class IngressReplayLedger {
         }
         usedSlots.add(input.slot);
       }
+      receiptsById.set(receiptId, entry);
     }
-    return {state, nonces, revisions, hashes};
+    let handoffClaims = 0;
+    const latestAtHandoff = new Map();
+    const handoffsById = new Map();
+    const latestParentByLane = new Map();
+    for (const handoff of state.handoffs) {
+      if (!handoff || typeof handoff !== 'object' || Array.isArray(handoff)) throw new Error('malformed durable state handoff');
+      const {handoff_id: handoffId, ...record} = handoff;
+      const target = handoff.input;
+      if (handoff.schema !== 'burn-research.host-state-handoff.v1' || handoff.subject !== this.subject
+        || typeof handoff.parent_receipt_id !== 'string' || !receiptsById.has(handoff.parent_receipt_id)
+        || !Number.isSafeInteger(handoff.claim_count) || handoff.claim_count < handoffClaims
+        || handoff.claim_count > state.claims.length || handoffId !== sha256Json(record)
+        || typeof handoff.branch_id !== 'string' || handoff.branch_id.length === 0 || Buffer.byteLength(handoff.branch_id) > 256
+        || !target || target.role !== 'state' || !Number.isInteger(target.slot) || target.slot < 0 || target.slot > 63
+        || typeof target.source !== 'string' || target.source.length === 0 || Buffer.byteLength(target.source) > 256
+        || typeof target.logical_port_id !== 'string' || target.logical_port_id.length === 0 || Buffer.byteLength(target.logical_port_id) > 256
+        || typeof target.revision !== 'string' || !Array.isArray(target.shape) || target.shape.length !== 4
+        || target.shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)
+        || !/^sha256:[0-9a-f]{64}$/.test(target.value_sha256) || !/^sha256:[0-9a-f]{64}$/.test(target.claim_sha256)) {
+        throw new Error('state handoff identity or content mismatch');
+      }
+      while (handoffClaims < handoff.claim_count) {
+        const claim = state.claims[handoffClaims++];
+        latestAtHandoff.set(claim.revision_key, claim);
+      }
+      const claimKey = JSON.stringify([target.source, this.subject, target.slot]);
+      const current = latestAtHandoff.get(claimKey);
+      if (!current || current.claim_sha256 !== target.claim_sha256 || current.revision !== target.revision) {
+        throw new Error('state handoff does not match its committed input claim');
+      }
+      const parent = receiptsById.get(handoff.parent_receipt_id);
+      if (parent.subject !== this.subject || parent.claim_count >= handoff.claim_count
+        || JSON.stringify(parent.output.shape) !== JSON.stringify(target.shape)
+        || parent.output.value_sha256 !== target.value_sha256) throw new Error('state handoff parent output differs from the bound state');
+      const lane = JSON.stringify([this.subject, target.source, target.logical_port_id, handoff.branch_id]);
+      const previousParent = latestParentByLane.get(lane) ?? 0;
+      if (parent.sequence <= previousParent) throw new Error('state handoff replays or rewinds its parent receipt');
+      latestParentByLane.set(lane, parent.sequence);
+      handoffsById.set(handoffId, handoff);
+    }
+    for (const receipt of state.executions) {
+      for (const input of receipt.input_claims) {
+        if (input.handoff_id === undefined) continue;
+        const handoff = handoffsById.get(input.handoff_id);
+        const parent = handoff && receiptsById.get(handoff.parent_receipt_id);
+        const target = handoff?.input;
+        if (!handoff || !parent || !target || receipt.sequence <= parent.sequence
+          || receipt.claim_count < handoff.claim_count
+          || input.role !== 'state' || input.claim_sha256 !== target.claim_sha256
+          || input.slot !== target.slot || input.source !== target.source || input.revision !== target.revision
+          || input.value_sha256 !== target.value_sha256 || JSON.stringify(input.shape) !== JSON.stringify(target.shape)) {
+          throw new Error('execution receipt does not preserve its state handoff lineage');
+        }
+      }
+    }
+    return {state, nonces, revisions, hashes, receiptsById, handoffsById, latestParentByLane};
   }
 
   check(ticket, snapshot = this.load()) {
@@ -146,17 +209,44 @@ export class IngressReplayLedger {
     }
   }
 
-  commit(ticket) {
-    this.withLock(() => {
+  commit(ticket, {parentReceiptId, branchId = 'main'} = {}) {
+    return this.withLock(() => {
       const snapshot = this.load();
       this.check(ticket, snapshot);
+      let handoff;
+      if (parentReceiptId !== undefined) {
+        if (ticket.claim.role !== 'state') throw new Error('receipt handoff is only valid for a state input');
+        if (snapshot.state.handoffs.length >= MAX_HANDOFFS) throw new Error('durable state handoff ledger is full');
+        if (typeof branchId !== 'string' || branchId.length === 0 || Buffer.byteLength(branchId) > 256) throw new Error('handoff branch ID must be a nonempty string of at most 256 bytes');
+        const parent = snapshot.receiptsById.get(parentReceiptId);
+        if (!parent) throw new Error('state handoff parent receipt is absent from the durable ledger');
+        if (JSON.stringify(parent.output.shape) !== JSON.stringify(ticket.claim.shape)
+          || parent.output.value_sha256 !== ticket.claim.value_sha256) throw new Error('state input bytes or shape differ from its parent receipt output');
+        const lane = JSON.stringify([this.subject, ticket.claim.source, ticket.claim.logical_port_id, branchId]);
+        const lastParentSequence = snapshot.latestParentByLane.get(lane) ?? 0;
+        if (parent.sequence <= lastParentSequence) throw new Error('state handoff replays or rewinds its parent receipt');
+      }
       snapshot.state.claims.push({
         nonce_key: ticket.nonceKey,
         revision_key: ticket.revisionKey,
         revision: ticket.claim.revision,
         claim_sha256: digest(ticket.claim),
       });
+      if (parentReceiptId !== undefined) {
+        const input = {slot: ticket.claim.slot, source: ticket.claim.source,
+          logical_port_id: ticket.claim.logical_port_id, role: ticket.claim.role,
+          revision: ticket.claim.revision, shape: [...ticket.claim.shape],
+          value_sha256: ticket.claim.value_sha256, claim_sha256: digest(ticket.claim)};
+        const record = {schema: 'burn-research.host-state-handoff.v1', subject: this.subject,
+          parent_receipt_id: parentReceiptId, branch_id: branchId,
+          claim_count: snapshot.state.claims.length, input};
+        handoff = {...record, handoff_id: sha256Json(record)};
+        snapshot.state.handoffs.push(handoff);
+        const lane = JSON.stringify([this.subject, ticket.claim.source, ticket.claim.logical_port_id, branchId]);
+        snapshot.latestParentByLane.set(lane, snapshot.receiptsById.get(parentReceiptId).sequence);
+      }
       this.write(snapshot.state);
+      return handoff;
     });
   }
 
@@ -177,14 +267,14 @@ export class IngressReplayLedger {
     }
   }
 
-  executeWithReceipt(claims, identity, execute) {
+  executeWithReceipt(claims, identity, execute, handoffs = new Map()) {
     return this.withLock(() => {
       const snapshot = this.load();
       const currentClaims = [...claims];
       this.assertCurrent(snapshot, currentClaims);
       if (snapshot.state.executions.length >= MAX_EXECUTIONS) throw new Error('durable execution receipt ledger is full');
       const result = execute();
-      const receipt = executionReceipt({...identity, claims: currentClaims,
+      const receipt = executionReceipt({...identity, claims: currentClaims, handoffs,
         shape: result.shape, values: result.values,
         sequence: snapshot.state.executions.length + 1, claimCount: snapshot.state.claims.length});
       snapshot.state.executions.push(receipt);

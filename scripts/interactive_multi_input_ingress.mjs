@@ -3,7 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {manifestDigest, SignedIngressVerifier} from './ingress_provenance.mjs';
-import {encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
+import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
@@ -82,7 +82,7 @@ function withCurrentProvenance(value, execute) {
 }
 
 function createSession(command) {
-  const next = {registry: new wasm.LayerRegistry(), layers: [], proofs: new Map()};
+  const next = {registry: new wasm.LayerRegistry(), layers: [], proofs: new Map(), handoffs: new Map()};
   try {
     for (const layer of requireArray(command.layers, 'layers')) {
       if (!supportedConstructors.has(layer.constructor)) throw new Error(`unknown typed layer constructor: ${layer.constructor}`);
@@ -138,6 +138,7 @@ function handle(command) {
           replay_scope: provenanceVerifier?.replayScope ?? 'none',
           host_subject: provenanceVerifier?.hostSubject ?? null,
           execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v1' : null,
+          state_handoff: provenanceVerifier?.ledger ? 'burn-research.host-state-handoff.v1' : null,
           wasm_origin_authentication: false},
       };
     case 'create': return createSession(command);
@@ -153,21 +154,43 @@ function handle(command) {
     }
     case 'bind': {
       const s = requireSession();
+      const hasValues = command.values !== undefined;
+      const hasBytes = command.values_f32_le_base64 !== undefined;
+      if (hasValues === hasBytes) throw new Error('bind must provide exactly one of values or values_f32_le_base64');
+      const shape = requireArray(command.shape, 'shape');
+      const values = hasBytes ? decodeF32Base64(command.values_f32_le_base64, shape) : requireArray(command.values, 'values');
+      const binding = {...command, values};
       const context = provenanceVerifier ? manifestContext(s, command.slot) : null;
       if (context && command.source !== context.expected_source) throw new Error('signed input source differs from the current logical port');
-      const ticket = provenanceVerifier?.verify(command, context, command.proof);
-      const tensor = new wasm.WasmTensor(new Float32Array(requireArray(command.values, 'values')), new Uint32Array(requireArray(command.shape, 'shape')));
+      const hasHandoff = command.handoff_receipt_id !== undefined;
+      if (hasHandoff) {
+        if (!provenanceVerifier?.ledger) throw new Error('state handoff requires durable signed ingress');
+        if (command.role !== 'state') throw new Error('receipt handoff is only valid for a state input');
+        if (!hasBytes) throw new Error('state handoff requires the parent receipt output_f32_le_base64 bytes');
+        const parent = provenanceVerifier.getReceipt(command.handoff_receipt_id);
+        if (!encodedF32Matches(parent, shape, command.values_f32_le_base64)) {
+          throw new Error('state handoff payload does not match the parent receipt output');
+        }
+      }
+      const ticket = provenanceVerifier?.verify(binding, context, command.proof);
+      const tensor = new wasm.WasmTensor(new Float32Array(values), new Uint32Array(shape));
       try {
         const changed = s.bundle.bindInput(command.slot, tensor, command.role, command.layout, command.source, BigInt(command.revision), command.fingerprint ?? '');
         if (ticket && !changed) throw new Error('signed claim cannot rebind an unchanged input');
         if (ticket) {
           try {
-            provenanceVerifier.commit(ticket);
+            const handoff = provenanceVerifier.commit(ticket, hasHandoff ? {
+              parentReceiptId: command.handoff_receipt_id,
+              branchId: command.handoff_branch_id ?? 'main',
+            } : undefined);
             s.proofs.set(command.slot, ticket.claim);
+            if (handoff) s.handoffs.set(command.slot, handoff);
+            else s.handoffs.delete(command.slot);
           } catch (error) {
             // A failed durable commit cannot leave a runnable tensor behind.
             s.bundle.clearInput(command.slot);
             s.proofs.delete(command.slot);
+            s.handoffs.delete(command.slot);
             throw error;
           }
         }
@@ -181,6 +204,7 @@ function handle(command) {
       const s = requireSession();
       const cleared = s.bundle.clearInput(command.slot);
       s.proofs.delete(command.slot);
+      s.handoffs.delete(command.slot);
       return {cleared, status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: provenanceStatus(s)};
     }
     case 'port': {
@@ -225,7 +249,7 @@ function handle(command) {
         subject: provenanceVerifier.hostSubject,
         programIdentity: JSON.parse(s.graph.programIdentity()),
         manifestSha256: manifestDigest(JSON.parse(s.ingress.toJSON())),
-      }, execute);
+      }, execute, s.handoffs);
     }
     case 'receipt': {
       const receipt = provenanceVerifier?.getReceipt(command.receipt_id);

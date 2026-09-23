@@ -15,6 +15,7 @@ const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.
 const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
 const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
 const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
+const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
 const hostSupportTarget = path.join(pkgDir, 'host-support.v1.json');
@@ -27,6 +28,7 @@ const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs
 const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
+const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
 
 const generatedPackageFiles = [
   'burn_research_bg.wasm.d.ts',
@@ -46,6 +48,7 @@ const packagedHostFiles = [
   'ingress-provenance.v1.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
+  'host-state-handoff.v1.json',
 ];
 
 const requiredManifestFiles = [
@@ -76,6 +79,7 @@ fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
 fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
+fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const files = Array.isArray(manifest.files) ? [...manifest.files] : [];

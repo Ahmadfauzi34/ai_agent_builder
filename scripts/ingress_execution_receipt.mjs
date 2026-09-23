@@ -7,7 +7,7 @@ export function sha256Json(value) {
 }
 
 export function f32ValueBytes(values) {
-  if (!Array.isArray(values)) throw new Error('values must be an array');
+  if (!Array.isArray(values) && !(values instanceof Float32Array)) throw new Error('values must be an array of f32 values');
   const bytes = Buffer.alloc(values.length * 4);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   for (let i = 0; i < values.length; i++) {
@@ -17,6 +17,22 @@ export function f32ValueBytes(values) {
     view.setFloat32(i * 4, f32, true);
   }
   return bytes;
+}
+
+export function decodeF32Base64(base64, shape) {
+  if (!Array.isArray(shape) || shape.length !== 4
+    || shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)
+    || typeof base64 !== 'string' || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)) {
+    throw new Error('f32 input requires a canonical base64 payload and rank-4 u32 shape');
+  }
+  const count = shape.reduce((size, dim) => size * dim, 1);
+  if (!Number.isSafeInteger(count) || count > 64 * 1024 * 1024 / 4) throw new Error('f32 input shape exceeds the host transport limit');
+  const bytes = Buffer.from(base64, 'base64');
+  if (bytes.toString('base64') !== base64 || bytes.length !== count * 4) throw new Error('f32 input payload length differs from its shape');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const values = new Float32Array(count);
+  for (let index = 0; index < count; index++) values[index] = view.getFloat32(index * 4, true);
+  return values;
 }
 
 export function f32ValueDigest(values) {
@@ -31,7 +47,7 @@ export function encodedF32Matches(receipt, shape, base64) {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}` === receipt.output.value_sha256;
 }
 
-export function executionReceipt({subject, programIdentity, manifestSha256, claims, shape, values, sequence, claimCount}) {
+export function executionReceipt({subject, programIdentity, manifestSha256, claims, handoffs = new Map(), shape, values, sequence, claimCount}) {
   if (!Number.isSafeInteger(sequence) || sequence < 1 || !Number.isSafeInteger(claimCount) || claimCount < 1) {
     throw new Error('execution receipt requires a durable sequence and claim count');
   }
@@ -53,8 +69,9 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
     subject,
     program_identity: programIdentity,
     manifest_sha256: manifestSha256,
-    input_claims: sorted.map(claim => ({slot: claim.slot, source: claim.source,
-      revision: claim.revision, claim_sha256: sha256Json(claim)})),
+    input_claims: sorted.map(claim => ({slot: claim.slot, source: claim.source, role: claim.role,
+      shape: [...claim.shape], value_sha256: claim.value_sha256, revision: claim.revision,
+      claim_sha256: sha256Json(claim), ...(handoffs.get(claim.slot) ? {handoff_id: handoffs.get(claim.slot).handoff_id} : {})})),
     output: {shape: [...shape], value_sha256: f32ValueDigest(values)},
   };
   return {...record, receipt_id: sha256Json(record)};

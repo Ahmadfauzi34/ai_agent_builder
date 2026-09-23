@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.host-state-handoff.v1",
+  "status": "implemented_node_host_durable_mode",
+  "authority": {
+    "parent_receipt": "durable host ledger record of an observed Burn-backed run",
+    "payload": "exact little-endian f32 bytes from that receipt output",
+    "child_input": "configured issuer signature over the target state input and its values",
+    "handoff_record": "host ledger transition; it does not authorize an agent action"
+  },
+  "valid_transition": [
+    "runner retrieves parent receipt by receipt_id from the same subject-bound ledger",
+    "caller supplies the receipt output_f32_le_base64 as a state input payload",
+    "host checks exact shape and f32 digest equality before binding",
+    "issuer signature verifies the child state claim for the target program manifest",
+    "host atomically commits the child input claim and parent-to-child handoff record",
+    "later execution receipt references the handoff record and its child input claim",
+    "the same subject/source/logical state port/branch must advance to a strictly newer parent receipt sequence"
+  ],
+  "branching": {
+    "default_branch_id": "main",
+    "forking": "caller chooses another bounded handoff_branch_id to start an independent state lineage",
+    "replay_policy": "a receipt cannot rewind or repeat within the same subject/source/logical port/branch"
+  },
+  "transport": {
+    "bind_field": "handoff_receipt_id",
+    "exact_payload_field": "values_f32_le_base64",
+    "branch_field": "handoff_branch_id",
+    "payload_limit_bytes": 67108864,
+    "shape": "the exact parent output shape; rank 4 with positive u32 dimensions"
+  },
+  "limits": [
+    "Only role=state can consume a parent execution receipt.",
+    "The child claim must satisfy the target manifest and configured issuer policy.",
+    "The host checks value continuity; the original receipt ID is a host ledger reference, not an issuer signature over causal meaning.",
+    "Cross-subject handoffs are rejected; direct WASM APIs bypass this Node host transition."
+  ]
+}

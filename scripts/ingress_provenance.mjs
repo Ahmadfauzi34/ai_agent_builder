@@ -111,19 +111,20 @@ export class SignedIngressVerifier {
     return ticket;
   }
 
-  commit(ticket) {
-    if (this.ledger) this.ledger.commit(ticket);
+  commit(ticket, handoff) {
+    const durableHandoff = this.ledger ? this.ledger.commit(ticket, handoff) : null;
     this.usedNonces.add(ticket.nonceKey);
     this.lastRevision.set(ticket.revisionKey, BigInt(ticket.claim.revision));
+    return durableHandoff;
   }
 
   withCurrent(claims, execute) {
     return this.ledger ? this.ledger.withCurrent(claims, execute) : execute();
   }
 
-  executeWithReceipt(claims, identity, execute) {
+  executeWithReceipt(claims, identity, execute, handoffs) {
     if (!this.ledger) throw new Error('durable host ledger required for execution receipts');
-    return this.ledger.executeWithReceipt(claims, identity, execute);
+    return this.ledger.executeWithReceipt(claims, identity, execute, handoffs);
   }
 
   getReceipt(receiptId) {

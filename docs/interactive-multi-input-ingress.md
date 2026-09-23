@@ -65,6 +65,8 @@ A successful `bind` records its nonce and revision atomically on disk before rep
 
 This mode reports `host_provenance.mode = "ed25519_host_durable"` and `replay_scope = "host_file_across_restarts"`. At 50,000 accepted claims or a 32 MiB file, new binds stop instead of evicting evidence. A privileged writer of the ledger can rewrite its history; protecting the host file is part of the trust boundary. See `ingress-replay-ledger.v1.json` and `scripts/audit_durable_signed_ingress.mjs` for the executable proof.
 
+Durable runs return an execution receipt and `output_f32_le_base64`. To feed that exact output into a later graph tick, bind it to a `role: "state"` port using `values_f32_le_base64`, the receipt's output shape, and `handoff_receipt_id`. The child state claim still needs a valid issuer signature for the child manifest and its configured source. The host records the claim and handoff together; later receipts include the resulting `handoff_id`. The default `handoff_branch_id` is `main`; choose another branch ID to fork an independent lineage. Within each subject/source/logical-port/branch lane, parent receipt sequence must move forward. See `host-state-handoff.v1.json` for the complete boundary and limits.
+
 ### Receipt for a durable multi-input run
 
 In durable mode, a successful `run` returns `execution_receipt` and `output_f32_le_base64` alongside `values`. The host records the exact graph `programIdentity`, manifest SHA-256, subject, signed claim SHA-256 per input slot, and the observed output shape and SHA-256 of little-endian f32 values. It assigns a monotonic receipt sequence and stores the receipt in the same ledger while the input freshness lock is held. A failed disk commit returns an error, even if the numerical run already occurred.
