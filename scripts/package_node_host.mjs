@@ -16,6 +16,8 @@ const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json')
 const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
 const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
 const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
+const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
+const runtimeSurfaceContractSource = path.resolve('docs/runtime-surface.v1.json');
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
 const hostSupportTarget = path.join(pkgDir, 'host-support.v1.json');
@@ -29,10 +31,12 @@ const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json')
 const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
+const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
+const runtimeSurfaceContractTarget = path.join(pkgDir, 'runtime-surface.v1.json');
 
 const generatedPackageFiles = [
   'burn_research_bg.wasm.d.ts',
-  'wasm-surface.actual.json',
+  'wasm-surface.bindings.actual.json',
 ];
 
 const packagedHostFiles = [
@@ -49,11 +53,14 @@ const packagedHostFiles = [
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
   'host-state-handoff.v1.json',
+  'wasm-surface.v1.json',
+  'runtime-surface.v1.json',
 ];
 
 const requiredManifestFiles = [
   ...generatedPackageFiles,
   ...packagedHostFiles,
+  'wasm-surface.actual.json',
 ];
 
 if (!fs.existsSync(packageJsonPath)) {
@@ -80,6 +87,8 @@ fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
 fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
 fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
+fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
+fs.copyFileSync(runtimeSurfaceContractSource, runtimeSurfaceContractTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const files = Array.isArray(manifest.files) ? [...manifest.files] : [];
