@@ -18,6 +18,7 @@
     "replay_window": "at most 50000 accepted claims, retained across process restarts without eviction",
     "execution_receipts": "optional durable host-observed WASM run records with monotonic sequence and claim-count anchors; v1 history is readable and new v2 records bind an exact multi-input ProgramBundle byte digest",
     "state_handoffs": "optional content-addressed links from a parent receipt output to a later signed state claim, recorded atomically with that claim",
+    "retained_checkpoints": "private host-owned files named by committed receipt ID, containing the exact ProgramBundle bytes and manifest; restore verifies both digests against the same-subject receipt",
     "failure": "corrupt, missing, mismatched-subject or untrusted ledger closes execution; no automatic reset"
   },
   "valid_transitions": [
@@ -29,6 +30,8 @@
     "commit writes a complete private snapshot to a new file, fsyncs, atomically renames and fsyncs the parent directory",
     "run and verify hold the ledger lock while checking all bound claims and executing the WASM reference",
     "durable run appends an execution receipt under the same lock before returning success",
+    "durable run fsyncs its bounded checkpoint into the private store before committing the receipt; receipt commit failure removes its new checkpoint",
+    "receipt-bound restore stages a fresh graph and manifest only after checking the retained bytes and receipt; input tensors and signed proofs must be bound again",
     "state bind checks exact parent receipt output bytes and atomically appends its signed claim plus a handoff record",
     "later execution receipt input records reference the handoff ID; each subject/source/logical-port/branch lane must advance parent receipt sequence",
     "clear removes session coverage but never erases durable nonce or revision history"
@@ -39,6 +42,8 @@
     "A process crash may leave a lock directory; only an operator who has verified no runner owns it may recover it.",
     "50,000 accepted claims or a 32 MiB ledger file fails closed rather than silently discarding replay history.",
     "50,000 execution receipts or 50,000 state handoffs fail closed; pre-receipt ledger snapshots remain readable without resetting claim history.",
+    "Retained ProgramBundle bytes are limited to 8 MiB per receipt and 512 MiB per store; a crash can leave an unreferenced checkpoint requiring host cleanup.",
+    "Older v2 receipts without retained checkpoint files remain readable but cannot be restored.",
     "The JSON snapshot is rewritten for each commit; this is a reference-machine persistence contract, not a high-throughput database.",
     "Signing verifies the configured issuer's claim, not the truth of an external observation; direct WASM callers bypass the Node host gate."
   ]

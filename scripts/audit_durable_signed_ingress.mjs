@@ -26,8 +26,8 @@ let sequence = 0;
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
-function start(allowCheckpointExport = true) {
-  const args = [runner, packageDir, trustPath, ledger, 'run-1'];
+function start(allowCheckpointExport = true, ledgerPath = ledger) {
+  const args = [runner, packageDir, trustPath, ledgerPath, 'run-1'];
   if (allowCheckpointExport) args.push('--allow-state-checkpoint-export');
   const child = spawn(process.execPath, args, {stdio: ['pipe', 'pipe', 'pipe']});
   running.add(child);
@@ -119,6 +119,8 @@ try {
   const withoutCheckpoint = start(false);
   check(!(await withoutCheckpoint.ask({op: 'checkpoint'})).ok,
     'state checkpoint export ignored the trusted startup opt-in');
+  check(!(await withoutCheckpoint.ask({op: 'restore', receipt_id: 'sha256:' + '0'.repeat(64)})).ok,
+    'checkpoint restore ignored the trusted startup opt-in');
   await withoutCheckpoint.close();
   const manifest = await create(first);
   check(!(await first.ask(left)).ok, 'unsigned input accepted');
@@ -144,6 +146,18 @@ try {
   const recovered = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1], values: [4, 6]});
   check(recovered.ok && recovered.result.output_matches && recovered.result.receipt.receipt_id === firstId,
     'execution receipt did not survive restart');
+  const restored = await second.ask({op: 'restore', receipt_id: firstId});
+  check(restored.ok && restored.result.restored_from_receipt_id === firstId
+    && restored.result.checkpoint_bytes_sha256 === firstReceipt.state_checkpoint_bytes_sha256
+    && JSON.stringify(restored.result.program_identity) === JSON.stringify(firstReceipt.program_identity)
+    && !restored.result.host_provenance.ready
+    && restored.result.status.graph_preflight.inputs.bound_port_count === 0,
+  'receipt-bound restore failed to resume the exact graph without promoting old inputs');
+  check(!(await second.ask({op: 'run'})).ok && !(await second.ask(firstLeft)).ok,
+    'restored session executed without fresh signed input or replayed a claim');
+  check(!(await second.ask({op: 'restore', receipt_id: 'sha256:' + '0'.repeat(64)})).ok
+    && (await second.ask({op: 'inspect'})).result.host_provenance.ready === false,
+  'unknown receipt altered the live session');
   const exactRecovered = await second.ask({op: 'receipt', receipt_id: firstId, shape: [1, 2, 1, 1],
     output_f32_le_base64: f32ValueBytes([4, 6]).toString('base64')});
   check(exactRecovered.ok && exactRecovered.result.output_matches, 'exact f32 output did not match persisted receipt');
@@ -375,6 +389,73 @@ try {
     && stateA.state_checkpoint_bytes_sha256 !== stateB.state_checkpoint_bytes_sha256
     && stateA.receipt_id !== stateB.receipt_id,
   'same observed output with different mutable state checkpoint bytes was not distinguished');
+  const resumeLedger = path.join(temporary, 'resume-ledger.json');
+  check(spawnSync(process.execPath, [initializer, resumeLedger, 'run-1']).status === 0,
+    'resume ledger initialization failed');
+  const prior = start(true, resumeLedger);
+  const priorManifest = await create(prior);
+  check((await prior.ask(signed(left, priorManifest, 'resume-left-1'))).ok
+    && (await prior.ask(signed(right, priorManifest, 'resume-right-1'))).ok,
+  'pre-restart signed input bind failed');
+  const priorRun = await runAndVerify(prior);
+  await prior.close();
+  const storeFile = path.join(`${resumeLedger}.checkpoints`, `${priorRun.receipt.receipt_id.slice(7)}.json`);
+  const retained = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
+  const retainedBytes = Buffer.from(retained.bundle_f32le_base64, 'base64');
+  check(`sha256:${createHash('sha256').update(retainedBytes).digest('hex')}`
+    === priorRun.receipt.state_checkpoint_bytes_sha256, 'host failed to retain exact checkpoint bytes');
+  const resumed = start(true, resumeLedger);
+  const resumedResult = await resumed.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id});
+  check(resumedResult.ok && manifestDigest(resumedResult.result.manifest) === priorRun.receipt.manifest_sha256
+    && !(await resumed.ask({op: 'run'})).ok, 'restart restored a runnable old input');
+  check((await resumed.ask(signed({...left, revision: 3}, resumedResult.result.manifest, 'resume-left-2'))).ok
+    && (await resumed.ask(signed({...right, revision: 4}, resumedResult.result.manifest, 'resume-right-2'))).ok,
+  'restored graph did not accept fresh signed inputs');
+  const afterResume = await runAndVerify(resumed);
+  check(afterResume.receipt.sequence === 2
+    && afterResume.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256,
+  'restart did not run the same exact reference state');
+  await resumed.close();
+  const manifestTamper = {...retained, manifest: {...retained.manifest, execution_authorized: true}};
+  fs.writeFileSync(storeFile, JSON.stringify(manifestTamper) + '\n', {mode: 0o600});
+  const manifestClient = start(true, resumeLedger);
+  check(!(await manifestClient.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id})).ok,
+    'modified retained manifest passed receipt-bound restore');
+  await manifestClient.close();
+  const tampered = {...retained, bundle_f32le_base64: Buffer.from('forged-state').toString('base64')};
+  fs.writeFileSync(storeFile, JSON.stringify(tampered) + '\n', {mode: 0o600});
+  const tamperClient = start(true, resumeLedger);
+  check(!(await tamperClient.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id})).ok,
+    'modified retained bytes passed receipt-bound restore');
+  await tamperClient.close();
+  fs.unlinkSync(storeFile);
+  const missingClient = start(true, resumeLedger);
+  check(!(await missingClient.ask({op: 'restore', receipt_id: priorRun.receipt.receipt_id})).ok,
+    'missing retained checkpoint passed restore');
+  await missingClient.close();
+  const rollbackFile = path.join(temporary, 'checkpoint-rollback-ledger.json');
+  const rollbackLedger = new IngressReplayLedger(rollbackFile, 'run-1', {initialize: true});
+  const rollbackManifest = {schema: 'test-manifest'};
+  const rollbackClaims = claims.map(claim => ({...claim, manifest_sha256: sha256Json(rollbackManifest)}));
+  rollbackClaims.forEach((claim, slot) => rollbackLedger.commit({claim,
+    nonceKey: JSON.stringify([claim.source, 'key', `rollback-${slot}`]),
+    revisionKey: JSON.stringify([claim.source, claim.subject, claim.slot])}));
+  const rollbackBytes = Buffer.from('checkpoint-bytes');
+  const originalWrite = rollbackLedger.write;
+  rollbackLedger.write = () => { throw new Error('injected checkpoint receipt commit failure'); };
+  try {
+    rollbackLedger.executeWithReceipt(rollbackClaims,
+      {...identity, manifestSha256: sha256Json(rollbackManifest)},
+      () => ({shape: [1, 2, 1, 1], values: [4, 6],
+        state_checkpoint_bytes_sha256: `sha256:${createHash('sha256').update(rollbackBytes).digest('hex')}`,
+        checkpoint_bytes: rollbackBytes, checkpoint_manifest: rollbackManifest}));
+    throw new Error('failed checkpoint receipt commit returned success');
+  } catch (error) {
+    check(error.message === 'injected checkpoint receipt commit failure', 'checkpoint commit failure reported wrong error');
+  } finally { rollbackLedger.write = originalWrite; }
+  check(rollbackLedger.load().state.executions.length === 0
+    && fs.readdirSync(`${rollbackFile}.checkpoints`).length === 0,
+  'failed receipt commit left an authorized receipt or retained checkpoint');
   const audit = {restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,
     missing_and_corrupt_ledger_rejected: true, execution_receipt_persisted: true,
@@ -384,6 +465,9 @@ try {
     forged_handoff_history_rejected: true, pre_handoff_receipts_compatible: true,
     receipt_commit_failure_closed: true, legacy_ledger_migrated: true,
     state_checkpoint_bytes_bound_to_receipt: true, checkpoint_export_matches_run_receipt: true,
+    checkpoint_bytes_retained: true, receipt_bound_restore: true,
+    exact_restart_resume_requires_new_signed_inputs: true, tampered_or_missing_checkpoint_rejected: true,
+    modified_manifest_rejected: true, failed_receipt_commit_cleans_checkpoint: true,
     reference: [4, 6]};
   console.log(JSON.stringify({verdict: 'PASS', mode: 'ed25519_host_durable', ...audit}));
 } finally {

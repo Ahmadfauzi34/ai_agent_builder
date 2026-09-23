@@ -131,4 +131,9 @@ export class SignedIngressVerifier {
     if (!this.ledger) throw new Error('durable host ledger required for execution receipts');
     return this.ledger.getReceipt(receiptId);
   }
+
+  getCheckpoint(receiptId) {
+    if (!this.ledger) throw new Error('durable host ledger required for checkpoint restore');
+    return this.ledger.getCheckpoint(receiptId);
+  }
 }
