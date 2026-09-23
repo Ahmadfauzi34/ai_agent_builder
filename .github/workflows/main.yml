@@ -33,6 +33,7 @@ jobs:
           python3 -m json.tool docs/semantic-ingress-manifest.v1.json >/dev/null
           python3 -m json.tool docs/semantic-ingress-manifest.v2.json >/dev/null
           python3 -m json.tool docs/ingress-provenance.v1.json >/dev/null
+          python3 -m json.tool docs/ingress-replay-ledger.v1.json >/dev/null
           python3 -m json.tool docs/agent-semantic-lifecycle.v1.json >/dev/null
           python3 -m json.tool docs/agent-introspection-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-layer-catalog.v1.json >/dev/null
@@ -182,6 +183,9 @@ jobs:
 
       - name: Run signed ingress provenance audit
         run: node scripts/audit_signed_ingress_provenance.mjs pkg
+
+      - name: Run durable signed ingress audit
+        run: node scripts/audit_durable_signed_ingress.mjs pkg
 
       - name: Run Node host adapter audit
         run: node scripts/audit_node_host.mjs pkg

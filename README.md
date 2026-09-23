@@ -25,6 +25,7 @@ This README is a navigation hub. Detailed semantics and support claims live in t
 - [Multi-input semantic ingress v2](docs/semantic-ingress-manifest.v2.json) — logical port mapping, exact plan checks, and execution gating.
 - [Interactive WASM ingress](docs/interactive-multi-input-ingress.md) — packaged Node JSON Lines session for binding, inspecting, running, and verifying input ports.
 - [Signed ingress provenance](docs/ingress-provenance.v1.json) — optional Node host gate binding trusted issuer signatures to exact manifest, subject, port and f32 input values.
+- [Durable signed ingress ledger](docs/ingress-replay-ledger.v1.json) — optional private Node host replay state, pinned to a subject and checked across runner restarts.
 
 ## Runtime proof and evidence
 

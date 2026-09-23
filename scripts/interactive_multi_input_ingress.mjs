@@ -8,7 +8,11 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
 const packageDir = path.resolve(process.argv[2] ?? defaultPackageDir);
 // A trusted host owns this startup argument; JSON Lines commands cannot replace keys.
-const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3])) : null;
+if (!process.argv[3] && (process.argv[4] || process.argv[5])) throw new Error('durable ingress requires a host trust policy');
+const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3]), {
+  ledgerPath: process.argv[4] ? path.resolve(process.argv[4]) : undefined,
+  subject: process.argv[5],
+}) : null;
 const {loadBurnRuntime} = await import(pathToFileURL(path.join(packageDir, 'node.mjs')).href);
 const wasm = await loadBurnRuntime(packageDir);
 const supportedConstructors = new Set(JSON.parse(wasm.agentCapabilities()).agent_facade.constructors);
@@ -54,20 +58,26 @@ function provenanceStatus(value) {
   const currentManifestSha = manifestDigest(JSON.parse(value.ingress.toJSON()));
   const ports = ingress.ports.filter(port => Number.isInteger(port.slot)).map(port => {
     const claim = value.proofs.get(port.slot);
-    const current = Boolean(claim && claim.manifest_sha256 === currentManifestSha
+    const current = Boolean(claim && (!provenanceVerifier.hostSubject || claim.subject === provenanceVerifier.hostSubject)
+      && claim.manifest_sha256 === currentManifestSha
       && claim.slot === port.slot && claim.source === port.actual_source
       && claim.revision === String(port.revision) && port.status === 'runtime_backing_current');
     return {slot: port.slot, status: current ? 'host_signature_verified' : claim ? 'stale_or_unbound' : 'missing_signed_claim',
       source: claim?.source ?? null, subject: claim?.subject ?? null, key_id: claim?.key_id ?? null};
   });
-  return {mode: 'ed25519_host_enforced', ready: ingress.ready && ports.every(port => port.status === 'host_signature_verified'),
-    execution_authorized: false, replay_scope: 'process_lifetime', ports};
+  return {mode: provenanceVerifier.mode, ready: ingress.ready && ports.every(port => port.status === 'host_signature_verified'),
+    execution_authorized: false, replay_scope: provenanceVerifier.replayScope,
+    host_subject: provenanceVerifier.hostSubject, ports};
 }
 
 function requireProvenance(value) {
   const status = provenanceStatus(value);
   if (provenanceVerifier && !status.ready) throw new Error('host provenance preflight failed; execution was not started');
   return status;
+}
+
+function withCurrentProvenance(value, execute) {
+  return provenanceVerifier ? provenanceVerifier.withCurrent(value.proofs.values(), execute) : execute();
 }
 
 function createSession(command) {
@@ -122,9 +132,10 @@ function handle(command) {
         agent: JSON.parse(wasm.agentCapabilities()),
         ingress: JSON.parse(wasm.semanticIngressManifestV2Capabilities()),
         multi_input: JSON.parse(wasm.multiInputGraphCapabilities()),
-        host_provenance: {mode: provenanceVerifier ? 'ed25519_host_enforced' : 'caller_declared',
+        host_provenance: {mode: provenanceVerifier?.mode ?? 'caller_declared',
           signed_claim: 'burn-research.signed-input-claim.v1', trust_root: 'host_startup_only',
-          replay_scope: 'process_lifetime', wasm_origin_authentication: false},
+          replay_scope: provenanceVerifier?.replayScope ?? 'none',
+          host_subject: provenanceVerifier?.hostSubject ?? null, wasm_origin_authentication: false},
       };
     case 'create': return createSession(command);
     case 'map': {
@@ -147,8 +158,15 @@ function handle(command) {
         const changed = s.bundle.bindInput(command.slot, tensor, command.role, command.layout, command.source, BigInt(command.revision), command.fingerprint ?? '');
         if (ticket && !changed) throw new Error('signed claim cannot rebind an unchanged input');
         if (ticket) {
-          provenanceVerifier.commit(ticket);
-          s.proofs.set(command.slot, ticket.claim);
+          try {
+            provenanceVerifier.commit(ticket);
+            s.proofs.set(command.slot, ticket.claim);
+          } catch (error) {
+            // A failed durable commit cannot leave a runnable tensor behind.
+            s.bundle.clearInput(command.slot);
+            s.proofs.delete(command.slot);
+            throw error;
+          }
         }
         return {changed, status: JSON.parse(s.ingress.inputPortStatus(command.slot, s.bundle)),
           host_provenance: provenanceStatus(s)};
@@ -188,18 +206,23 @@ function handle(command) {
     case 'run': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
-      const output = s.ingress.run(s.registry, s.graph, s.bundle);
-      try {
-        return {shape: Array.from(output.shape()), values: Array.from(output.to_array()),
-          ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
-      } finally {
-        output.free();
-      }
+      return withCurrentProvenance(s, () => {
+        const output = s.ingress.run(s.registry, s.graph, s.bundle);
+        try {
+          return {shape: Array.from(output.shape()), values: Array.from(output.to_array()),
+            ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
+        } finally {
+          output.free();
+        }
+      });
     }
     case 'verify': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
-      return {...JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle, new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6)), host_provenance: hostProvenance};
+      return withCurrentProvenance(s, () => ({
+        ...JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle, new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6)),
+        host_provenance: hostProvenance,
+      }));
     }
     case 'close': {
       releaseSession(session);

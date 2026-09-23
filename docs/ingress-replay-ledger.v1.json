@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.ingress-replay-ledger.v1",
+  "status": "implemented_node_host_durable_mode",
+  "scope": {
+    "runner": "interactive_multi_input_ingress.mjs",
+    "mode": "ed25519_host_durable",
+    "startup_arguments": ["wasm_package_dir", "host_trust_policy", "host_ledger_file", "host_subject"],
+    "host_subject_source": "trusted_runner_startup_only",
+    "initialization": "host explicitly runs init_ingress_replay_ledger.mjs once; existing files cannot be reset",
+    "json_lines_cannot_replace_subject_or_ledger": true,
+    "wasm_direct_api": "unchanged_caller_declared"
+  },
+  "proof_state": {
+    "accepted_claims": "append-only logical sequence of nonce, revision and signed-claim SHA-256 records",
+    "current_revision": "highest committed revision for exact source, host subject and slot",
+    "readiness": "WASM ingress ready plus in-session signed coverage; run and verify reread the durable record",
+    "replay_window": "at most 50000 accepted claims, retained across process restarts without eviction",
+    "failure": "corrupt, missing, mismatched-subject or untrusted ledger closes execution; no automatic reset"
+  },
+  "valid_transitions": [
+    "host explicitly initializes the ledger before runner startup; missing or deleted ledger fails closed",
+    "host loads policy and ledger, validates owner, file mode, schema and exact subject",
+    "verified signed claim checks nonce and monotonic revision against the ledger",
+    "native bind succeeds before a new claim is committed; if commit fails, the bound tensor is cleared",
+    "commit obtains an exclusive filesystem lock and rechecks replay state across processes",
+    "commit writes a complete private snapshot to a new file, fsyncs, atomically renames and fsyncs the parent directory",
+    "run and verify hold the ledger lock while checking all bound claims and executing the WASM reference",
+    "clear removes session coverage but never erases durable nonce or revision history"
+  ],
+  "limits": [
+    "Ledger storage is a host trust root; a privileged writer can rewrite its history because the file is not independently authenticated.",
+    "The ledger parent must be host-owned and not group/world writable, and the ledger file must be private to the runner user.",
+    "A process crash may leave a lock directory; only an operator who has verified no runner owns it may recover it.",
+    "50,000 accepted claims or a 32 MiB ledger file fails closed rather than silently discarding replay history.",
+    "The JSON snapshot is rewritten for each commit; this is a reference-machine persistence contract, not a high-throughput database.",
+    "Signing verifies the configured issuer's claim, not the truth of an external observation; direct WASM callers bypass the Node host gate."
+  ]
+}
