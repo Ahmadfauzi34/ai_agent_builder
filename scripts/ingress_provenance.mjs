@@ -1,5 +1,6 @@
 import {createHash, createPublicKey, verify as verifySignature} from 'node:crypto';
 import fs from 'node:fs';
+import {IngressReplayLedger} from './ingress_replay_ledger.mjs';
 
 const SCHEMA = 'burn-research.signed-input-claim.v1';
 const U64_MAX = (1n << 64n) - 1n;
@@ -64,7 +65,8 @@ export function canonicalInputClaim(binding, context, keyId, subject, nonce) {
 }
 
 export class SignedIngressVerifier {
-  constructor(configPath) {
+  constructor(configPath, {ledgerPath, subject} = {}) {
+    if (Boolean(ledgerPath) !== Boolean(subject)) throw new Error('durable replay requires both a host-owned ledger path and a host subject');
     const policy = JSON.parse(fs.readFileSync(configPath, 'utf8'));
     if (policy.schema !== 'burn-research.ingress-trust-policy.v1' || !Array.isArray(policy.issuers) || !policy.issuers.length) {
       throw new Error('invalid ingress trust policy');
@@ -84,11 +86,22 @@ export class SignedIngressVerifier {
       if (this.issuers.has(id)) throw new Error('duplicate issuer');
       this.issuers.set(id, {key, subjects});
     }
+    this.hostSubject = subject ?? null;
+    this.ledger = ledgerPath ? new IngressReplayLedger(ledgerPath, subject) : null;
+  }
+
+  get mode() {
+    return this.ledger ? 'ed25519_host_durable' : 'ed25519_host_enforced';
+  }
+
+  get replayScope() {
+    return this.ledger ? 'host_file_across_restarts' : 'process_lifetime';
   }
 
   verify(binding, context, proof) {
     if (!proof || typeof proof !== 'object' || !proof.claim || typeof proof.signature !== 'string') throw new Error('signed input claim required before bind');
     const {claim, signature} = proof;
+    if (this.hostSubject && claim.subject !== this.hostSubject) throw new Error('signed claim subject differs from the host runtime subject');
     const expected = canonicalInputClaim(binding, context, claim.key_id, claim.subject, claim.nonce);
     if (JSON.stringify(claim) !== JSON.stringify(expected)) throw new Error('signed claim differs from the current input or manifest');
     const issuer = this.issuers.get(JSON.stringify([claim.source, claim.key_id]));
@@ -99,15 +112,24 @@ export class SignedIngressVerifier {
       throw new Error('invalid Ed25519 signature');
     }
     const nonceKey = JSON.stringify([claim.source, claim.key_id, claim.nonce]);
-    if (this.usedNonces.has(nonceKey)) throw new Error('signed claim nonce replay');
-    if (this.usedNonces.size >= MAX_ACCEPTED_CLAIMS) throw new Error('process replay window is full; external durable replay policy required');
     const revisionKey = JSON.stringify([claim.source, claim.subject, claim.slot]);
-    if (BigInt(claim.revision) <= (this.lastRevision.get(revisionKey) ?? -1n)) throw new Error('stale signed input revision');
-    return {claim, nonceKey, revisionKey};
+    const ticket = {claim, nonceKey, revisionKey};
+    if (this.ledger) this.ledger.check(ticket);
+    else {
+      if (this.usedNonces.has(nonceKey)) throw new Error('signed claim nonce replay');
+      if (this.usedNonces.size >= MAX_ACCEPTED_CLAIMS) throw new Error('process replay window is full; external durable replay policy required');
+      if (BigInt(claim.revision) <= (this.lastRevision.get(revisionKey) ?? -1n)) throw new Error('stale signed input revision');
+    }
+    return ticket;
   }
 
   commit(ticket) {
+    if (this.ledger) this.ledger.commit(ticket);
     this.usedNonces.add(ticket.nonceKey);
     this.lastRevision.set(ticket.revisionKey, BigInt(ticket.claim.revision));
+  }
+
+  withCurrent(claims, execute) {
+    return this.ledger ? this.ledger.withCurrent(claims, execute) : execute();
   }
 }

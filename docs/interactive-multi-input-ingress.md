@@ -49,3 +49,18 @@ The producer constructs a claim with `canonicalInputClaim(binding, context, keyI
 In this mode every `bind` requires a signature from a configured issuer for its source and subject. The signed claim covers the exact plan bytes, full manifest SHA-256, port, metadata, nonce, and SHA-256 of the little-endian f32 values passed to WASM. The runner checks nonces and increasing revisions for its process lifetime, with a 50,000-claim fail-closed cap. `run` and `verify` require signed coverage for every runtime input, and a manifest change makes previous claims stale. `inspect.host_provenance` shows these checks separately from the WASM ingress status.
 
 The trust policy and producer private keys must be controlled outside the JSON Lines caller. This gate applies to this Node runner; a direct caller of the WASM API can still bind caller-declared metadata. A signature proves that the configured issuer made the claim, not that the observed world state is true. Durable replay protection across process restarts requires an external store. The complete machine-readable scope is in `ingress-provenance.v1.json`.
+
+### Host subject and replay across restarts
+
+Provide a private ledger file and a subject fixed by the trusted host as additional startup arguments:
+
+```bash
+node init_ingress_replay_ledger.mjs /private/ingress-ledger.json run-42
+node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json /private/ingress-ledger.json run-42
+```
+
+Run initialization once under the trusted host deployment before accepting any input. It refuses to overwrite an existing ledger. The ledger parent must exist, be owned by the runner user, and not be writable by other users. Every runner startup requires that existing private file; a missing or deleted ledger fails closed. A later process must present the exact same host subject to use that ledger. Each signed claim must also use that subject and a public key allowed for it by the host trust policy. JSON Lines requests cannot change the host subject or ledger path.
+
+A successful `bind` records its nonce and revision atomically on disk before replying. If the disk commit fails, the runner clears the newly bound tensor. On every `run` and `verify`, it checks that each in-session claim is recorded and remains the latest revision, while holding a filesystem lock. Reusing a nonce or lowering a revision after restarting is rejected. Two runner processes sharing the ledger serialize commits through that lock; a busy or abandoned lock fails closed. After a crash, an operator must confirm no process holds the lock before removing it.
+
+This mode reports `host_provenance.mode = "ed25519_host_durable"` and `replay_scope = "host_file_across_restarts"`. At 50,000 accepted claims or a 32 MiB file, new binds stop instead of evicting evidence. A privileged writer of the ledger can rewrite its history; protecting the host file is part of the trust boundary. See `ingress-replay-ledger.v1.json` and `scripts/audit_durable_signed_ingress.mjs` for the executable proof.

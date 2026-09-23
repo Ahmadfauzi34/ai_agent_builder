@@ -10,13 +10,15 @@
     "activation": "optional host-owned startup argument after package directory",
     "default_mode": "caller_declared",
     "enforced_mode": "ed25519_host_enforced",
+    "durable_enforced_mode": "ed25519_host_durable",
+    "durable_replay_contract": "burn-research.ingress-replay-ledger.v1",
     "wasm_direct_api": "caller_declared_unchanged"
   },
   "proof_state": {
     "unbound": "no signed claim and no tensor",
     "host_signature_verified": "trusted issuer signature binds current plan, full manifest SHA-256, logical port, source, subject, metadata, nonce and exact f32 bytes",
     "stale_or_unbound": "signed claim no longer describes the current manifest or bound port",
-    "replay": "duplicate issuer nonce or non-increasing revision is rejected before bind; 50000 accepted claims maximum per process and then fail closed",
+    "replay": "duplicate issuer nonce or non-increasing revision is rejected before bind; 50000 accepted claims maximum per process or durable ledger and then fail closed",
     "authority": "Node host transport gate only; Burn remains numerical reference authority"
   },
   "canonical_claim": {
@@ -53,7 +55,7 @@
   ],
   "limits": [
     "The trust policy file and producer private keys must be controlled outside the JSON Lines caller.",
-    "Replay history lasts for the runner process; durable replay protection requires an external store.",
+    "Without a host ledger, replay history lasts for the runner process; the optional host-owned file ledger preserves it across restarts.",
     "When the 50000-claim process replay window is full, new binds fail closed rather than evicting nonce history.",
     "A direct caller of the exported WASM API can bypass this Node host gate.",
     "An issuer signature authenticates that issuer's claim; it does not establish the truth of observations or authorize agent decisions.",
