@@ -26,6 +26,7 @@
       "ingress_provenance_contract": "ingress-provenance.v1.json",
       "ingress_replay_ledger_contract": "ingress-replay-ledger.v1.json",
       "ingress_replay_ledger_initializer": "init_ingress_replay_ledger.mjs",
+      "host_execution_receipt_contract": "host-execution-receipt.v1.json",
       "ingress_replay_ledger": "optional_host_subject_bound_file_across_restarts",
       "ingress_provenance_scope": "optional_host_enforced_ed25519_policy;direct_wasm_unverified",
       "interactive_protocol": "JSON Lines with one response per request",

@@ -16,6 +16,7 @@
     "current_revision": "highest committed revision for exact source, host subject and slot",
     "readiness": "WASM ingress ready plus in-session signed coverage; run and verify reread the durable record",
     "replay_window": "at most 50000 accepted claims, retained across process restarts without eviction",
+    "execution_receipts": "optional durable host-observed WASM run records with monotonic sequence and claim-count anchors",
     "failure": "corrupt, missing, mismatched-subject or untrusted ledger closes execution; no automatic reset"
   },
   "valid_transitions": [
@@ -26,6 +27,7 @@
     "commit obtains an exclusive filesystem lock and rechecks replay state across processes",
     "commit writes a complete private snapshot to a new file, fsyncs, atomically renames and fsyncs the parent directory",
     "run and verify hold the ledger lock while checking all bound claims and executing the WASM reference",
+    "durable run appends an execution receipt under the same lock before returning success",
     "clear removes session coverage but never erases durable nonce or revision history"
   ],
   "limits": [
@@ -33,6 +35,7 @@
     "The ledger parent must be host-owned and not group/world writable, and the ledger file must be private to the runner user.",
     "A process crash may leave a lock directory; only an operator who has verified no runner owns it may recover it.",
     "50,000 accepted claims or a 32 MiB ledger file fails closed rather than silently discarding replay history.",
+    "50,000 execution receipts also fail closed; pre-receipt ledger snapshots remain readable without resetting claim history.",
     "The JSON snapshot is rewritten for each commit; this is a reference-machine persistence contract, not a high-throughput database.",
     "Signing verifies the configured issuer's claim, not the truth of an external observation; direct WASM callers bypass the Node host gate."
   ]

@@ -10,9 +10,11 @@ const communicationPath = path.join(pkgDir, 'wasm-host-communication.md');
 const interactivePath = path.join(pkgDir, 'interactive_multi_input_ingress.mjs');
 const provenancePath = path.join(pkgDir, 'ingress_provenance.mjs');
 const replayLedgerPath = path.join(pkgDir, 'ingress_replay_ledger.mjs');
+const executionReceiptPath = path.join(pkgDir, 'ingress_execution_receipt.mjs');
 const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
+const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
 const backgroundTypesPath = path.join(pkgDir, 'burn_research_bg.wasm.d.ts');
@@ -28,9 +30,11 @@ assert(fs.existsSync(communicationPath), 'packaged wasm-host-communication.md is
 assert(fs.existsSync(interactivePath), 'packaged interactive_multi_input_ingress.mjs is missing');
 assert(fs.existsSync(provenancePath), 'packaged ingress_provenance.mjs is missing');
 assert(fs.existsSync(replayLedgerPath), 'packaged ingress_replay_ledger.mjs is missing');
+assert(fs.existsSync(executionReceiptPath), 'packaged ingress_execution_receipt.mjs is missing');
 assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger.mjs is missing');
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
 assert(fs.existsSync(replayLedgerContractPath), 'packaged ingress-replay-ledger.v1.json is missing');
+assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
 assert(fs.existsSync(backgroundTypesPath), 'packaged burn_research_bg.wasm.d.ts is missing');
@@ -50,9 +54,11 @@ const requiredPackageFiles = [
   'interactive_multi_input_ingress.mjs',
   'ingress_provenance.mjs',
   'ingress_replay_ledger.mjs',
+  'ingress_execution_receipt.mjs',
   'init_ingress_replay_ledger.mjs',
   'ingress-provenance.v1.json',
   'ingress-replay-ledger.v1.json',
+  'host-execution-receipt.v1.json',
 ];
 for (const file of requiredPackageFiles) {
   assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
@@ -72,6 +78,7 @@ assert(support.verified_hosts?.node?.interactive_runner === 'interactive_multi_i
 assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-provenance.v1.json', 'Node signed ingress contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
+assert(support.verified_hosts?.node?.host_execution_receipt_contract === 'host-execution-receipt.v1.json', 'Node execution receipt contract discovery mismatch');
 assert(support.verified_hosts?.node?.types === 'node.d.mts', 'Node type discovery mismatch');
 assert(
   support.support_semantics?.packaged_communication_contract === 'wasm-host-communication.md',

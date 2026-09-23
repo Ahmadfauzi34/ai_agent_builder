@@ -1,6 +1,7 @@
 import {createHash, createPublicKey, verify as verifySignature} from 'node:crypto';
 import fs from 'node:fs';
 import {IngressReplayLedger} from './ingress_replay_ledger.mjs';
+import {f32ValueDigest} from './ingress_execution_receipt.mjs';
 
 const SCHEMA = 'burn-research.signed-input-claim.v1';
 const U64_MAX = (1n << 64n) - 1n;
@@ -21,19 +22,6 @@ function revisionString(value) {
   const revision = BigInt(value);
   if (revision > U64_MAX) throw new Error('revision exceeds u64');
   return revision.toString();
-}
-
-function valueDigest(values) {
-  if (!Array.isArray(values)) throw new Error('values must be an array');
-  const bytes = Buffer.alloc(values.length * 4);
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  for (let i = 0; i < values.length; i++) {
-    if (typeof values[i] !== 'number' || !Number.isFinite(values[i])) throw new Error('values must be finite numbers');
-    const f32 = Math.fround(values[i]);
-    if (!Number.isFinite(f32)) throw new Error('values exceed the finite f32 range');
-    view.setFloat32(i * 4, f32, true);
-  }
-  return `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 }
 
 // Signed bytes use JSON.stringify on this exact insertion order and the SHA-256
@@ -60,7 +48,7 @@ export function canonicalInputClaim(binding, context, keyId, subject, nonce) {
     revision: revisionString(binding.revision),
     fingerprint: requiredString(binding.fingerprint, 'fingerprint'),
     nonce: requiredString(nonce, 'nonce'),
-    value_sha256: valueDigest(binding.values),
+    value_sha256: f32ValueDigest(binding.values),
   };
 }
 
@@ -131,5 +119,15 @@ export class SignedIngressVerifier {
 
   withCurrent(claims, execute) {
     return this.ledger ? this.ledger.withCurrent(claims, execute) : execute();
+  }
+
+  executeWithReceipt(claims, identity, execute) {
+    if (!this.ledger) throw new Error('durable host ledger required for execution receipts');
+    return this.ledger.executeWithReceipt(claims, identity, execute);
+  }
+
+  getReceipt(receiptId) {
+    if (!this.ledger) throw new Error('durable host ledger required for execution receipts');
+    return this.ledger.getReceipt(receiptId);
   }
 }

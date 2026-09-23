@@ -12,6 +12,7 @@
     "enforced_mode": "ed25519_host_enforced",
     "durable_enforced_mode": "ed25519_host_durable",
     "durable_replay_contract": "burn-research.ingress-replay-ledger.v1",
+    "durable_execution_receipt_contract": "burn-research.host-execution-receipt.v1",
     "wasm_direct_api": "caller_declared_unchanged"
   },
   "proof_state": {
