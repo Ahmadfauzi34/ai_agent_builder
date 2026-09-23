@@ -192,6 +192,16 @@ For multiple external tensor inputs, `SemanticIngressManifestV2` maps logical po
 
 Raw compatibility surfaces may remain present even when the typed facade is preferred. Their existence is not evidence of duplicated execution engines.
 
+## State-bound signed input claims
+
+The Node host supports the additive `burn-research.signed-input-claim.v2` schema when an issuer explicitly lists it in `claim_schemas`. A trust policy that omits `claim_schemas` remains v1-only. Claim v2 signs `active_state_checkpoint_bytes_sha256`, the SHA-256 of the current stateful multi-input ProgramBundle bytes.
+
+When a configured issuer allows v2, the host returns the active digest in `host_provenance` after graph creation, inspection, and restore. This exposes only the digest, not raw checkpoint bytes. The host checks the signed digest at bind, then recomputes it before run, verify, and checkpoint operations. A restore or other state change therefore requires a new v2 claim for the resulting state.
+
+`--require-state-bound-inputs` is a trusted runner startup option. It requires every configured issuer to allow v2 and every runtime input to carry a current v2 claim. Without it, v1 remains accepted according to issuer policy. The v2 execution receipt records each input's signed state digest and, when all inputs share one digest, `input_state_checkpoint_bytes_sha256`; `state_checkpoint_bytes_sha256` continues to identify the post-execution checkpoint.
+
+These hashes establish byte-level state binding and freshness. They do not authenticate who created a checkpoint, prove semantic equivalence, or grant action authority. Direct WASM callers remain outside this Node host gate. See `docs/ingress-provenance.v2.json` for the machine-readable contract.
+
 ## Failure classification
 
 Use this order when an agent investigates a failure:
@@ -208,6 +218,7 @@ Use this order when an agent investigates a failure:
 | objective/reward/schedule behavior differs | host policy/orchestration |
 | graph/math execution disagrees across proven consumers | reference-machine semantic investigation |
 | signed ingress proof fails before `bind` | Node host trust policy, issuer signature, subject, nonce, revision, or current manifest |
+| state-bound signed claim fails before `bind` or `run` | Node host issuer schema allowlist or active checkpoint digest mismatch |
 
 Do not jump across these boundaries without evidence.
 

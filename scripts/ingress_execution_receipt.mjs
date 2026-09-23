@@ -59,6 +59,20 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
     || (index > 0 && sorted[index - 1].slot === claim.slot))) {
     throw new Error('receipt input claims are incomplete, duplicated, or inconsistent');
   }
+  for (const claim of sorted) {
+    if (claim.schema === 'burn-research.signed-input-claim.v2') {
+      if (!/^sha256:[0-9a-f]{64}$/.test(claim.active_state_checkpoint_bytes_sha256 ?? '')) {
+        throw new Error('state-bound receipt input is missing its active checkpoint digest');
+      }
+    } else if (claim.active_state_checkpoint_bytes_sha256 !== undefined) {
+      throw new Error('non-state-bound receipt input contains an active checkpoint digest');
+    }
+  }
+  const allStateBound = sorted.every(claim => claim.schema === 'burn-research.signed-input-claim.v2');
+  const inputCheckpointDigests = new Set(sorted.map(claim => claim.active_state_checkpoint_bytes_sha256));
+  if (allStateBound && inputCheckpointDigests.size !== 1) {
+    throw new Error('state-bound receipt inputs refer to different active checkpoints');
+  }
   if (!Array.isArray(shape) || shape.length !== 4 || shape.some(dim => !Number.isSafeInteger(dim) || dim < 1 || dim > 0xffffffff)) {
     throw new Error('execution output shape must have four positive u32 dimensions');
   }
@@ -77,10 +91,15 @@ export function executionReceipt({subject, programIdentity, manifestSha256, clai
     subject,
     program_identity: programIdentity,
     manifest_sha256: manifestSha256,
-    input_claims: sorted.map(claim => ({slot: claim.slot, source: claim.source, role: claim.role,
+    input_claims: sorted.map(claim => ({...(claim.schema === 'burn-research.signed-input-claim.v2' ? {claim_schema: claim.schema} : {}),
+      slot: claim.slot, source: claim.source, role: claim.role,
       shape: [...claim.shape], value_sha256: claim.value_sha256, revision: claim.revision,
-      claim_sha256: sha256Json(claim), ...(handoffs.get(claim.slot) ? {handoff_id: handoffs.get(claim.slot).handoff_id} : {})})),
+      claim_sha256: sha256Json(claim),
+      ...(claim.schema === 'burn-research.signed-input-claim.v2'
+        ? {active_state_checkpoint_bytes_sha256: claim.active_state_checkpoint_bytes_sha256} : {}),
+      ...(handoffs.get(claim.slot) ? {handoff_id: handoffs.get(claim.slot).handoff_id} : {})})),
     output: {shape: [...shape], value_sha256: f32ValueDigest(values)},
+    ...(allStateBound ? {input_state_checkpoint_bytes_sha256: [...inputCheckpointDigests][0]} : {}),
     state_checkpoint_bytes_sha256: checkpointBytesSha256,
     ...(stateParentReceiptId ? {state_parent_receipt_id: stateParentReceiptId} : {}),
     ...(restoreEventId ? {restore_event_id: restoreEventId} : {}),

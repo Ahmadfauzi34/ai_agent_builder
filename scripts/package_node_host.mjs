@@ -13,6 +13,7 @@ const replayLedgerSource = path.resolve('scripts/ingress_replay_ledger.mjs');
 const executionReceiptSource = path.resolve('scripts/ingress_execution_receipt.mjs');
 const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.mjs');
 const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
+const stateBoundProvenanceContractSource = path.resolve('docs/ingress-provenance.v2.json');
 const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
 const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v2.json');
 const checkpointRestoreContractSource = path.resolve('docs/host-checkpoint-restore.v1.json');
@@ -30,6 +31,7 @@ const replayLedgerTarget = path.join(pkgDir, 'ingress_replay_ledger.mjs');
 const executionReceiptTarget = path.join(pkgDir, 'ingress_execution_receipt.mjs');
 const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
+const stateBoundProvenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v2.json');
 const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
 const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v2.json');
 const checkpointRestoreContractTarget = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
@@ -54,6 +56,7 @@ const packagedHostFiles = [
   'ingress_execution_receipt.mjs',
   'init_ingress_replay_ledger.mjs',
   'ingress-provenance.v1.json',
+  'ingress-provenance.v2.json',
   'ingress-replay-ledger.v1.json',
   'host-execution-receipt.v1.json',
   'host-execution-receipt.v2.json',
@@ -90,6 +93,7 @@ fs.copyFileSync(replayLedgerSource, replayLedgerTarget);
 fs.copyFileSync(executionReceiptSource, executionReceiptTarget);
 fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
+fs.copyFileSync(stateBoundProvenanceContractSource, stateBoundProvenanceContractTarget);
 fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
 fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
 fs.copyFileSync(checkpointRestoreContractSource, checkpointRestoreContractTarget);

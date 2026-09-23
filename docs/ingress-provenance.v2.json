@@ -1,0 +1,63 @@
+{
+  "schema_version": 2,
+  "schema_id": "burn-research.ingress-provenance.v2",
+  "status": "implemented_optional_node_host_gate",
+  "compatibility": {
+    "accepted_claim_schemas": [
+      "burn-research.signed-input-claim.v1",
+      "burn-research.signed-input-claim.v2"
+    ],
+    "legacy_policy_without_claim_schemas": "v1_only",
+    "wasm_direct_api": "caller_declared_unchanged"
+  },
+  "scope": {
+    "runner": "interactive_multi_input_ingress.mjs",
+    "verifier": "ingress_provenance.mjs",
+    "trust_policy": "burn-research.ingress-trust-policy.v1",
+    "claim_v1": "burn-research.signed-input-claim.v1",
+    "claim_v2": "burn-research.signed-input-claim.v2",
+    "activation": "issuer allowlist claim_schemas and optional trusted runner startup argument",
+    "required_startup_argument": "--require-state-bound-inputs",
+    "receipt_contract": "burn-research.host-execution-receipt.v2"
+  },
+  "proof_state": {
+    "v1": "trusted issuer signature binds the current input and structural manifest; it does not bind mutable layer state",
+    "v2": "trusted issuer signature also binds active_state_checkpoint_bytes_sha256 for the exact stateful multi-input ProgramBundle bytes",
+    "active_state_checkpoint_bytes_sha256": "the Node host computes SHA-256 from the current graph and registry; its digest is surfaced in host_provenance when an issuer allows v2",
+    "state_freshness": "v2 digest is checked at bind and rechecked before run, verify, and checkpoint operations",
+    "execution_replay": "the same current claims may be used for repeated execution while the active checkpoint bytes remain unchanged; v2 is state freshness binding, not one-shot execution authorization",
+    "receipt": "v2 execution receipts preserve the claim schema and state digest for each v2 input while retaining the existing v1 input projection; a receipt-level common digest is present when every input uses the same state-bound digest",
+    "authority": "Node host transport gate only; Burn remains numerical reference authority"
+  },
+  "canonical_claim_v2": {
+    "encoding": "UTF-8 bytes of JSON.stringify in canonicalInputClaim insertion order, followed by active_state_checkpoint_bytes_sha256",
+    "signature": "Ed25519 detached signature encoded as canonical base64",
+    "additional_field": "active_state_checkpoint_bytes_sha256",
+    "digest_format": "sha256: followed by 64 lowercase hexadecimal characters",
+    "digest_scope": "exact exported multi-input ProgramBundle bytes including structural identity and mutable layer state"
+  },
+  "issuer_policy": {
+    "field": "claim_schemas",
+    "values": [
+      "burn-research.signed-input-claim.v1",
+      "burn-research.signed-input-claim.v2"
+    ],
+    "missing_field_default": ["burn-research.signed-input-claim.v1"],
+    "state_bound_required_mode": "every configured issuer must allow v2 and every runtime input must carry a current v2 claim"
+  },
+  "valid_transitions": [
+    "a host with an issuer that allows v2 exposes the active checkpoint digest without exporting raw state bytes",
+    "bind verifies the issuer allowlist, exact canonical claim, current checkpoint digest, subject, nonce, and increasing revision before mutating the input bundle",
+    "run, verify, and checkpoint re-hash the active state before operating on v2-bound inputs",
+    "durable receipts carry per-input state digests and distinguish them from the post-execution state_checkpoint_bytes_sha256",
+    "legacy v1 issuers and hosts retain the existing v1 behavior unless state-bound mode is required"
+  ],
+  "limits": [
+    "A checkpoint digest binds bytes and state freshness; it does not authenticate checkpoint origin, establish semantic state equivalence, or authorize actions.",
+    "A claim nonce prevents rebinding the same claim, but does not limit repeated runs over the same still-current claim set.",
+    "The trust policy and issuer private keys remain controlled outside the JSON Lines caller.",
+    "A privileged writer of the host ledger can rewrite its history; receipt IDs remain content digests rather than digital signatures.",
+    "Direct callers of exported WASM APIs can bypass the Node host gate.",
+    "The active state digest can reveal equality or correlation between serialized states; the host never returns raw checkpoint bytes through this field."
+  ]
+}

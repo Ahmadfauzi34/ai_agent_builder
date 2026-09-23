@@ -79,6 +79,7 @@
     "contracts": {
       "host_support": "host-support.v1.json",
       "signed_ingress_provenance": "ingress-provenance.v1.json",
+      "state_bound_signed_ingress_provenance": "ingress-provenance.v2.json",
       "durable_replay_ledger": "ingress-replay-ledger.v1.json",
       "execution_receipt": "host-execution-receipt.v2.json",
       "checkpoint_restore": "host-checkpoint-restore.v1.json",

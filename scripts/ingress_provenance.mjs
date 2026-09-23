@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import {IngressReplayLedger} from './ingress_replay_ledger.mjs';
 import {f32ValueDigest} from './ingress_execution_receipt.mjs';
 
-const SCHEMA = 'burn-research.signed-input-claim.v1';
+export const SIGNED_INPUT_CLAIM_SCHEMA_V1 = 'burn-research.signed-input-claim.v1';
+export const SIGNED_INPUT_CLAIM_SCHEMA_V2 = 'burn-research.signed-input-claim.v2';
 const U64_MAX = (1n << 64n) - 1n;
 const MAX_ACCEPTED_CLAIMS = 50000;
+const SIGNED_INPUT_CLAIM_SCHEMAS = new Set([SIGNED_INPUT_CLAIM_SCHEMA_V1, SIGNED_INPUT_CLAIM_SCHEMA_V2]);
 
 export function manifestDigest(manifest) {
   return `sha256:${createHash('sha256').update(JSON.stringify(manifest)).digest('hex')}`;
@@ -33,7 +35,7 @@ export function canonicalInputClaim(binding, context, keyId, subject, nonce) {
   }
   if (!Number.isInteger(binding.slot) || binding.slot < 0 || binding.slot > 63) throw new Error('slot must be 0..63');
   return {
-    schema: SCHEMA,
+    schema: SIGNED_INPUT_CLAIM_SCHEMA_V1,
     key_id: requiredString(keyId, 'key_id'),
     plan_hex: requiredString(context.plan_hex, 'plan_hex', 131072),
     manifest_fingerprint: requiredString(context.manifest_fingerprint, 'manifest_fingerprint'),
@@ -49,6 +51,22 @@ export function canonicalInputClaim(binding, context, keyId, subject, nonce) {
     fingerprint: requiredString(binding.fingerprint, 'fingerprint'),
     nonce: requiredString(nonce, 'nonce'),
     value_sha256: f32ValueDigest(binding.values),
+  };
+}
+
+function checkpointDigest(value) {
+  if (typeof value !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(value)) {
+    throw new Error('active state checkpoint digest must be a lowercase SHA-256 value');
+  }
+  return value;
+}
+
+export function canonicalStateBoundInputClaim(binding, context, keyId, subject, nonce) {
+  const claim = canonicalInputClaim(binding, context, keyId, subject, nonce);
+  return {
+    ...claim,
+    schema: SIGNED_INPUT_CLAIM_SCHEMA_V2,
+    active_state_checkpoint_bytes_sha256: checkpointDigest(context.active_state_checkpoint_bytes_sha256),
   };
 }
 
@@ -70,12 +88,24 @@ export class SignedIngressVerifier {
       if (key.asymmetricKeyType !== 'ed25519') throw new Error('issuer key must be Ed25519');
       if (!Array.isArray(issuer.subjects) || !issuer.subjects.length || issuer.subjects.length > 1024) throw new Error('issuer subjects must be explicit and bounded');
       const subjects = new Set(issuer.subjects.map(subject => requiredString(subject, 'issuer.subject')));
+      if (issuer.claim_schemas !== undefined && !Array.isArray(issuer.claim_schemas)) throw new Error('issuer claim_schemas must be an array');
+      const claimSchemaList = issuer.claim_schemas ?? [SIGNED_INPUT_CLAIM_SCHEMA_V1];
+      const claimSchemas = new Set(claimSchemaList);
+      if (claimSchemaList.length === 0 || claimSchemaList.length > SIGNED_INPUT_CLAIM_SCHEMAS.size
+        || claimSchemas.size !== claimSchemaList.length
+        || [...claimSchemas].some(schema => !SIGNED_INPUT_CLAIM_SCHEMAS.has(schema))) {
+        throw new Error('issuer claim_schemas must contain unique supported signed input claim schemas');
+      }
       const id = JSON.stringify([source, keyId]);
       if (this.issuers.has(id)) throw new Error('duplicate issuer');
-      this.issuers.set(id, {key, subjects});
+      this.issuers.set(id, {key, subjects, claimSchemas});
     }
     this.hostSubject = subject ?? null;
     this.ledger = ledgerPath ? new IngressReplayLedger(ledgerPath, subject) : null;
+    this.acceptedClaimSchemas = [...new Set([...this.issuers.values()].flatMap(issuer => [...issuer.claimSchemas]))];
+    this.stateBoundInputClaimsSupported = this.acceptedClaimSchemas.includes(SIGNED_INPUT_CLAIM_SCHEMA_V2);
+    this.allIssuersSupportStateBoundInputClaims = [...this.issuers.values()].every(
+      issuer => issuer.claimSchemas.has(SIGNED_INPUT_CLAIM_SCHEMA_V2));
   }
 
   get mode() {
@@ -90,10 +120,19 @@ export class SignedIngressVerifier {
     if (!proof || typeof proof !== 'object' || !proof.claim || typeof proof.signature !== 'string') throw new Error('signed input claim required before bind');
     const {claim, signature} = proof;
     if (this.hostSubject && claim.subject !== this.hostSubject) throw new Error('signed claim subject differs from the host runtime subject');
-    const expected = canonicalInputClaim(binding, context, claim.key_id, claim.subject, claim.nonce);
-    if (JSON.stringify(claim) !== JSON.stringify(expected)) throw new Error('signed claim differs from the current input or manifest');
     const issuer = this.issuers.get(JSON.stringify([claim.source, claim.key_id]));
     if (!issuer || !issuer.subjects.has(claim.subject)) throw new Error('untrusted source, key, or subject');
+    if (!issuer.claimSchemas.has(claim.schema)) throw new Error('issuer policy does not allow this signed input claim schema');
+    let expected;
+    if (claim.schema === SIGNED_INPUT_CLAIM_SCHEMA_V1) {
+      expected = canonicalInputClaim(binding, context, claim.key_id, claim.subject, claim.nonce);
+    } else if (claim.schema === SIGNED_INPUT_CLAIM_SCHEMA_V2) {
+      expected = canonicalStateBoundInputClaim(binding, context, claim.key_id, claim.subject, claim.nonce);
+      if (claim.active_state_checkpoint_bytes_sha256 !== context.active_state_checkpoint_bytes_sha256) {
+        throw new Error('signed claim checkpoint digest differs from the active program state');
+      }
+    } else throw new Error('unsupported signed input claim schema');
+    if (JSON.stringify(claim) !== JSON.stringify(expected)) throw new Error('signed claim differs from the current input or manifest');
     if (!/^[A-Za-z0-9+/]{86}==$/.test(signature)) throw new Error('invalid Ed25519 signature encoding');
     const bytes = Buffer.from(signature, 'base64');
     if (bytes.length !== 64 || bytes.toString('base64') !== signature || !verifySignature(null, Buffer.from(JSON.stringify(expected)), issuer.key, bytes)) {

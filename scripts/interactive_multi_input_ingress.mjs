@@ -3,19 +3,20 @@ import path from 'node:path';
 import readline from 'node:readline';
 import {createHash} from 'node:crypto';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {manifestDigest, SignedIngressVerifier} from './ingress_provenance.mjs';
+import {manifestDigest, SIGNED_INPUT_CLAIM_SCHEMA_V1, SIGNED_INPUT_CLAIM_SCHEMA_V2, SignedIngressVerifier} from './ingress_provenance.mjs';
 import {decodeF32Base64, encodedF32Matches, f32ValueBytes, receiptMatchesOutput} from './ingress_execution_receipt.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
 const packageDir = path.resolve(process.argv[2] ?? defaultPackageDir);
 const startupOptions = process.argv.slice(6);
-if (startupOptions.length > 2 || new Set(startupOptions).size !== startupOptions.length
-  || startupOptions.some(option => !['--allow-state-checkpoint-export', '--allow-checkpoint-restore'].includes(option))) {
+if (startupOptions.length > 3 || new Set(startupOptions).size !== startupOptions.length
+  || startupOptions.some(option => !['--allow-state-checkpoint-export', '--allow-checkpoint-restore', '--require-state-bound-inputs'].includes(option))) {
   throw new Error('unknown or duplicate trusted runner startup option');
 }
 const allowStateCheckpointExport = startupOptions.includes('--allow-state-checkpoint-export');
 const allowCheckpointRestore = startupOptions.includes('--allow-checkpoint-restore');
+const requireStateBoundInputs = startupOptions.includes('--require-state-bound-inputs');
 // A trusted host owns this startup argument; JSON Lines commands cannot replace keys.
 if (!process.argv[3] && (process.argv[4] || process.argv[5])) throw new Error('durable ingress requires a host trust policy');
 const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3]), {
@@ -24,6 +25,9 @@ const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.reso
 }) : null;
 if ((allowStateCheckpointExport || allowCheckpointRestore) && !provenanceVerifier?.ledger) {
   throw new Error('checkpoint export and restore require durable signed ingress');
+}
+if (requireStateBoundInputs && !provenanceVerifier?.allIssuersSupportStateBoundInputClaims) {
+  throw new Error('state-bound input requirement needs every configured issuer to explicitly allow signed claim v2');
 }
 const {loadBurnRuntime} = await import(pathToFileURL(path.join(packageDir, 'node.mjs')).href);
 const wasm = await loadBurnRuntime(packageDir);
@@ -57,7 +61,7 @@ function requireArray(value, name) {
   return value;
 }
 
-function manifestContext(value, slot) {
+function manifestContext(value, slot, stateBound = false) {
   const manifest = JSON.parse(value.ingress.toJSON());
   const port = manifest.ports.find(port => port.backing === 'graph_input_slot' && port.slot === slot);
   if (!port) throw new Error(`slot ${slot} has no logical port mapping`);
@@ -67,6 +71,7 @@ function manifestContext(value, slot) {
     manifest_sha256: manifestDigest(manifest),
     logical_port_id: port.logical_port_id,
     expected_source: port.expected_source,
+    ...(stateBound ? {active_state_checkpoint_bytes_sha256: exportStateCheckpoint(value).checkpoint_bytes_sha256} : {}),
   };
 }
 
@@ -74,10 +79,16 @@ function provenanceStatus(value) {
   if (!provenanceVerifier) return {mode: 'caller_declared', ready: null, execution_authorized: false};
   const ingress = JSON.parse(value.ingress.status(value.registry, value.graph, value.bundle));
   const currentManifestSha = manifestDigest(JSON.parse(value.ingress.toJSON()));
+  const stateBoundInputClaimsSupported = provenanceVerifier.stateBoundInputClaimsSupported;
+  const activeStateCheckpointBytesSha256 = stateBoundInputClaimsSupported || requireStateBoundInputs
+    ? exportStateCheckpoint(value).checkpoint_bytes_sha256 : null;
   const ports = ingress.ports.filter(port => Number.isInteger(port.slot)).map(port => {
     const claim = value.proofs.get(port.slot);
     const current = Boolean(claim && (!provenanceVerifier.hostSubject || claim.subject === provenanceVerifier.hostSubject)
       && claim.manifest_sha256 === currentManifestSha
+      && (!requireStateBoundInputs || claim.schema === SIGNED_INPUT_CLAIM_SCHEMA_V2)
+      && (claim.schema !== SIGNED_INPUT_CLAIM_SCHEMA_V2
+        || claim.active_state_checkpoint_bytes_sha256 === activeStateCheckpointBytesSha256)
       && claim.slot === port.slot && claim.source === port.actual_source
       && claim.revision === String(port.revision) && port.status === 'runtime_backing_current');
     return {slot: port.slot, status: current ? 'host_signature_verified' : claim ? 'stale_or_unbound' : 'missing_signed_claim',
@@ -85,7 +96,11 @@ function provenanceStatus(value) {
   });
   return {mode: provenanceVerifier.mode, ready: ingress.ready && ports.every(port => port.status === 'host_signature_verified'),
     execution_authorized: false, replay_scope: provenanceVerifier.replayScope,
-    host_subject: provenanceVerifier.hostSubject, ports};
+    host_subject: provenanceVerifier.hostSubject,
+    state_bound_input_claims_supported: stateBoundInputClaimsSupported,
+    state_bound_input_claims_required: requireStateBoundInputs,
+    ...(activeStateCheckpointBytesSha256 ? {active_state_checkpoint_bytes_sha256: activeStateCheckpointBytesSha256} : {}),
+    ports};
 }
 
 function requireProvenance(value) {
@@ -96,6 +111,18 @@ function requireProvenance(value) {
 
 function withCurrentProvenance(value, execute) {
   return provenanceVerifier ? provenanceVerifier.withCurrent(value.proofs.values(), execute) : execute();
+}
+
+function assertCurrentStateBoundClaims(value) {
+  const claims = [...value.proofs.values()].filter(claim => claim.schema === SIGNED_INPUT_CLAIM_SCHEMA_V2);
+  if (requireStateBoundInputs && claims.length !== value.proofs.size) {
+    throw new Error('host policy requires every signed input to use state-bound claim v2');
+  }
+  if (!claims.length) return;
+  const active = exportStateCheckpoint(value).checkpoint_bytes_sha256;
+  if (claims.some(claim => claim.active_state_checkpoint_bytes_sha256 !== active)) {
+    throw new Error('signed claim checkpoint digest differs from the active program state');
+  }
 }
 
 function createSession(command) {
@@ -190,9 +217,12 @@ function handle(command) {
         multi_input: JSON.parse(wasm.multiInputGraphCapabilities()),
         program_bundle: JSON.parse(wasm.multiInputProgramBundleCapabilities()),
         host_provenance: {mode: provenanceVerifier?.mode ?? 'caller_declared',
-          signed_claim: 'burn-research.signed-input-claim.v1', trust_root: 'host_startup_only',
+          signed_claim: SIGNED_INPUT_CLAIM_SCHEMA_V1,
+          signed_claim_schemas: provenanceVerifier?.acceptedClaimSchemas ?? [], trust_root: 'host_startup_only',
           replay_scope: provenanceVerifier?.replayScope ?? 'none',
           host_subject: provenanceVerifier?.hostSubject ?? null,
+          state_bound_input_claims_supported: provenanceVerifier?.stateBoundInputClaimsSupported ?? false,
+          state_bound_input_claims_required: requireStateBoundInputs,
           execution_receipt: provenanceVerifier?.ledger ? 'burn-research.host-execution-receipt.v2' : null,
           state_checkpoint: 'burn-research.multi-input-program-bundle.v1',
           state_checkpoint_export_enabled: allowStateCheckpointExport,
@@ -221,7 +251,12 @@ function handle(command) {
       const shape = requireArray(command.shape, 'shape');
       const values = hasBytes ? decodeF32Base64(command.values_f32_le_base64, shape) : requireArray(command.values, 'values');
       const binding = {...command, values};
-      const context = provenanceVerifier ? manifestContext(s, command.slot) : null;
+      const claimSchema = command.proof?.claim?.schema;
+      if (requireStateBoundInputs && claimSchema !== SIGNED_INPUT_CLAIM_SCHEMA_V2) {
+        throw new Error('host policy requires every signed input to use state-bound claim v2');
+      }
+      const context = provenanceVerifier
+        ? manifestContext(s, command.slot, claimSchema === SIGNED_INPUT_CLAIM_SCHEMA_V2) : null;
       if (context && command.source !== context.expected_source) throw new Error('signed input source differs from the current logical port');
       const hasHandoff = command.handoff_receipt_id !== undefined;
       if (hasHandoff) {
@@ -296,6 +331,7 @@ function handle(command) {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
       return withCurrentProvenance(s, () => {
+        assertCurrentStateBoundClaims(s);
         const checkpoint = exportStateCheckpoint(s);
         return {schema: 'burn-research.multi-input-program-bundle.v1',
           program_identity: JSON.parse(s.graph.programIdentity()), state_included: true,
@@ -322,7 +358,10 @@ function handle(command) {
           output.free();
         }
       };
-      if (!provenanceVerifier?.ledger) return withCurrentProvenance(s, execute);
+      if (!provenanceVerifier?.ledger) return withCurrentProvenance(s, () => {
+        assertCurrentStateBoundClaims(s);
+        return execute();
+      });
       let executionStarted = false;
       try {
         const result = provenanceVerifier.executeWithReceipt(s.proofs.values(), {
@@ -331,7 +370,11 @@ function handle(command) {
           manifestSha256: manifestDigest(JSON.parse(s.ingress.toJSON())),
           stateParentReceiptId: s.stateParentReceiptId,
           restoreEventId: s.restoreEvent?.restore_id,
-        }, () => { executionStarted = true; return execute(); }, s.handoffs);
+        }, () => {
+          assertCurrentStateBoundClaims(s);
+          executionStarted = true;
+          return execute();
+        }, s.handoffs);
         s.stateParentReceiptId = result.execution_receipt.receipt_id;
         return result;
       } catch (error) {
@@ -359,10 +402,14 @@ function handle(command) {
     case 'verify': {
       const s = requireSession();
       const hostProvenance = requireProvenance(s);
-      return withCurrentProvenance(s, () => ({
-        ...JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle, new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6)),
-        host_provenance: hostProvenance,
-      }));
+      return withCurrentProvenance(s, () => {
+        assertCurrentStateBoundClaims(s);
+        return {
+          ...JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle,
+            new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6)),
+          host_provenance: hostProvenance,
+        };
+      });
     }
     case 'close': {
       releaseSession(session);
