@@ -24,3 +24,28 @@ From a repository checkout with `pkg/` built, run `node scripts/interactive_mult
 `run` returns `values: [4, 6]`; `verify` returns the ingress status and the numerical verification report. To inspect the contract before binding, send `{"op":"capabilities"}` or `{"op":"port","slot":1}`. `map`, `defer`, and `clear` let the caller revise logical mappings and bindings within the session. The `create` command accepts typed layer constructors listed by `agentCapabilities()`, unary/binary graph steps, and all input ports admitted by `MultiInputGraphPlan.v1`.
 
 The bridge status checks exact graph and bundle plan bytes, source equality, input contracts, deferred required ports, and registry structural binding. `status.ready` describes current coverage; `execution_authorized` stays false. The bridge's `run` method checks status again and delegates execution to `CompiledMultiInputGraph.run`, which repeats graph preflight. `source` and `fingerprint` are caller-declared metadata; this version does not authenticate their origin. Burn remains the final authority for tensor and operator compatibility.
+
+## Signed host provenance
+
+For a host that controls trusted issuer keys, launch the same packaged runner with a second argument:
+
+```bash
+node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json
+```
+
+The policy file uses `burn-research.ingress-trust-policy.v1` and pins issuer public keys and allowed subjects. Example structure:
+
+```json
+{
+  "schema": "burn-research.ingress-trust-policy.v1",
+  "issuers": [
+    {"source": "sensor-a", "key_id": "sensor-key-1", "subjects": ["run-42"], "public_key_pem": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"}
+  ]
+}
+```
+
+The producer constructs a claim with `canonicalInputClaim(binding, context, keyId, subject, nonce)` from `ingress_provenance.mjs`. `context` contains `plan_hex`, `manifest_fingerprint`, `manifest_sha256: manifestDigest(manifest)`, and the mapped `logical_port_id` returned by `create`. The issuer signs `Buffer.from(JSON.stringify(claim))` with its Ed25519 private key and sends `proof: {claim, signature: base64}` in the existing `bind` command. See `scripts/audit_signed_ingress_provenance.mjs` for a complete executable producer and host session.
+
+In this mode every `bind` requires a signature from a configured issuer for its source and subject. The signed claim covers the exact plan bytes, full manifest SHA-256, port, metadata, nonce, and SHA-256 of the little-endian f32 values passed to WASM. The runner checks nonces and increasing revisions for its process lifetime, with a 50,000-claim fail-closed cap. `run` and `verify` require signed coverage for every runtime input, and a manifest change makes previous claims stale. `inspect.host_provenance` shows these checks separately from the WASM ingress status.
+
+The trust policy and producer private keys must be controlled outside the JSON Lines caller. This gate applies to this Node runner; a direct caller of the WASM API can still bind caller-declared metadata. A signature proves that the configured issuer made the claim, not that the observed world state is true. Durable replay protection across process restarts requires an external store. The complete machine-readable scope is in `ingress-provenance.v1.json`.

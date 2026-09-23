@@ -8,11 +8,15 @@ const nodeTypesSource = path.resolve('hosts/node/node.d.mts');
 const hostSupportSource = path.resolve('docs/host-support.v1.json');
 const communicationSource = path.resolve('docs/wasm-host-communication.md');
 const interactiveSource = path.resolve('scripts/interactive_multi_input_ingress.mjs');
+const provenanceSource = path.resolve('scripts/ingress_provenance.mjs');
+const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
 const hostSupportTarget = path.join(pkgDir, 'host-support.v1.json');
 const communicationTarget = path.join(pkgDir, 'wasm-host-communication.md');
 const interactiveTarget = path.join(pkgDir, 'interactive_multi_input_ingress.mjs');
+const provenanceTarget = path.join(pkgDir, 'ingress_provenance.mjs');
+const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
 
 const generatedPackageFiles = [
   'burn_research_bg.wasm.d.ts',
@@ -25,6 +29,8 @@ const packagedHostFiles = [
   'host-support.v1.json',
   'wasm-host-communication.md',
   'interactive_multi_input_ingress.mjs',
+  'ingress_provenance.mjs',
+  'ingress-provenance.v1.json',
 ];
 
 const requiredManifestFiles = [
@@ -48,6 +54,8 @@ fs.copyFileSync(nodeTypesSource, nodeTypesTarget);
 fs.copyFileSync(hostSupportSource, hostSupportTarget);
 fs.copyFileSync(communicationSource, communicationTarget);
 fs.copyFileSync(interactiveSource, interactiveTarget);
+fs.copyFileSync(provenanceSource, provenanceTarget);
+fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const files = Array.isArray(manifest.files) ? [...manifest.files] : [];

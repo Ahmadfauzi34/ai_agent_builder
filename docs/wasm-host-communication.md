@@ -199,6 +199,7 @@ Use this order when an agent investigates a failure:
 | browser-generated entry exists but browser scenario is unproven | no support claim; browser verification is missing |
 | objective/reward/schedule behavior differs | host policy/orchestration |
 | graph/math execution disagrees across proven consumers | reference-machine semantic investigation |
+| signed ingress proof fails before `bind` | Node host trust policy, issuer signature, subject, nonce, revision, or current manifest |
 
 Do not jump across these boundaries without evidence.
 
@@ -238,3 +239,5 @@ For support status and verified matrices, use `docs/host-support.v1.json`.
 For exact generated WASM exports, use `docs/wasm-surface.v1.json` together with the CI-produced `pkg/wasm-surface.actual.json`.
 
 For execution/identity semantics, follow the underlying graph, binding, Math Program, ProgramBundle, and Burn contracts rather than inferring semantics from host adapter names.
+
+The optional signed ingress policy is enforced by the Node JSON Lines runner before it calls `MultiInputInputBundle.bindInput`. Its `host_provenance` state identifies issuer verification; the WASM ingress `status` continues to report tensor and metadata contract readiness. A direct WASM caller does not pass through this host gate. The packaged `ingress-provenance.v1.json` records the exact signed-claim and trust-policy boundary.

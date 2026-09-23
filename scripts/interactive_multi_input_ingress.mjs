@@ -2,10 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {manifestDigest, SignedIngressVerifier} from './ingress_provenance.mjs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultPackageDir = fs.existsSync(path.join(scriptDir, 'node.mjs')) ? scriptDir : 'pkg';
 const packageDir = path.resolve(process.argv[2] ?? defaultPackageDir);
+// A trusted host owns this startup argument; JSON Lines commands cannot replace keys.
+const provenanceVerifier = process.argv[3] ? new SignedIngressVerifier(path.resolve(process.argv[3])) : null;
 const {loadBurnRuntime} = await import(pathToFileURL(path.join(packageDir, 'node.mjs')).href);
 const wasm = await loadBurnRuntime(packageDir);
 const supportedConstructors = new Set(JSON.parse(wasm.agentCapabilities()).agent_facade.constructors);
@@ -32,8 +35,43 @@ function requireArray(value, name) {
   return value;
 }
 
+function manifestContext(value, slot) {
+  const manifest = JSON.parse(value.ingress.toJSON());
+  const port = manifest.ports.find(port => port.backing === 'graph_input_slot' && port.slot === slot);
+  if (!port) throw new Error(`slot ${slot} has no logical port mapping`);
+  return {
+    plan_hex: manifest.plan_hex,
+    manifest_fingerprint: manifest.manifest_fingerprint,
+    manifest_sha256: manifestDigest(manifest),
+    logical_port_id: port.logical_port_id,
+    expected_source: port.expected_source,
+  };
+}
+
+function provenanceStatus(value) {
+  if (!provenanceVerifier) return {mode: 'caller_declared', ready: null, execution_authorized: false};
+  const ingress = JSON.parse(value.ingress.status(value.registry, value.graph, value.bundle));
+  const currentManifestSha = manifestDigest(JSON.parse(value.ingress.toJSON()));
+  const ports = ingress.ports.filter(port => Number.isInteger(port.slot)).map(port => {
+    const claim = value.proofs.get(port.slot);
+    const current = Boolean(claim && claim.manifest_sha256 === currentManifestSha
+      && claim.slot === port.slot && claim.source === port.actual_source
+      && claim.revision === String(port.revision) && port.status === 'runtime_backing_current');
+    return {slot: port.slot, status: current ? 'host_signature_verified' : claim ? 'stale_or_unbound' : 'missing_signed_claim',
+      source: claim?.source ?? null, subject: claim?.subject ?? null, key_id: claim?.key_id ?? null};
+  });
+  return {mode: 'ed25519_host_enforced', ready: ingress.ready && ports.every(port => port.status === 'host_signature_verified'),
+    execution_authorized: false, replay_scope: 'process_lifetime', ports};
+}
+
+function requireProvenance(value) {
+  const status = provenanceStatus(value);
+  if (provenanceVerifier && !status.ready) throw new Error('host provenance preflight failed; execution was not started');
+  return status;
+}
+
 function createSession(command) {
-  const next = {registry: new wasm.LayerRegistry(), layers: []};
+  const next = {registry: new wasm.LayerRegistry(), layers: [], proofs: new Map()};
   try {
     for (const layer of requireArray(command.layers, 'layers')) {
       if (!supportedConstructors.has(layer.constructor)) throw new Error(`unknown typed layer constructor: ${layer.constructor}`);
@@ -73,6 +111,7 @@ function createSession(command) {
     manifest: JSON.parse(next.ingress.toJSON()),
     program_identity: JSON.parse(next.graph.programIdentity()),
     status: JSON.parse(next.ingress.status(next.registry, next.graph, next.bundle)),
+    host_provenance: provenanceStatus(next),
   };
 }
 
@@ -83,29 +122,45 @@ function handle(command) {
         agent: JSON.parse(wasm.agentCapabilities()),
         ingress: JSON.parse(wasm.semanticIngressManifestV2Capabilities()),
         multi_input: JSON.parse(wasm.multiInputGraphCapabilities()),
+        host_provenance: {mode: provenanceVerifier ? 'ed25519_host_enforced' : 'caller_declared',
+          signed_claim: 'burn-research.signed-input-claim.v1', trust_root: 'host_startup_only',
+          replay_scope: 'process_lifetime', wasm_origin_authentication: false},
       };
     case 'create': return createSession(command);
     case 'map': {
       const s = requireSession();
-      return {changed: s.ingress.addRuntimePort(command.id, command.slot, command.source), status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle))};
+      return {changed: s.ingress.addRuntimePort(command.id, command.slot, command.source),
+        status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: provenanceStatus(s)};
     }
     case 'defer': {
       const s = requireSession();
-      return {changed: s.ingress.addDeferredPort(command.id, command.role, command.required ?? false), status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle))};
+      return {changed: s.ingress.addDeferredPort(command.id, command.role, command.required ?? false),
+        status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: provenanceStatus(s)};
     }
     case 'bind': {
       const s = requireSession();
+      const context = provenanceVerifier ? manifestContext(s, command.slot) : null;
+      if (context && command.source !== context.expected_source) throw new Error('signed input source differs from the current logical port');
+      const ticket = provenanceVerifier?.verify(command, context, command.proof);
       const tensor = new wasm.WasmTensor(new Float32Array(requireArray(command.values, 'values')), new Uint32Array(requireArray(command.shape, 'shape')));
       try {
         const changed = s.bundle.bindInput(command.slot, tensor, command.role, command.layout, command.source, BigInt(command.revision), command.fingerprint ?? '');
-        return {changed, status: JSON.parse(s.ingress.inputPortStatus(command.slot, s.bundle))};
+        if (ticket && !changed) throw new Error('signed claim cannot rebind an unchanged input');
+        if (ticket) {
+          provenanceVerifier.commit(ticket);
+          s.proofs.set(command.slot, ticket.claim);
+        }
+        return {changed, status: JSON.parse(s.ingress.inputPortStatus(command.slot, s.bundle)),
+          host_provenance: provenanceStatus(s)};
       } finally {
         tensor.free();
       }
     }
     case 'clear': {
       const s = requireSession();
-      return {cleared: s.bundle.clearInput(command.slot), status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle))};
+      const cleared = s.bundle.clearInput(command.slot);
+      s.proofs.delete(command.slot);
+      return {cleared, status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: provenanceStatus(s)};
     }
     case 'port': {
       const s = requireSession();
@@ -127,20 +182,24 @@ function handle(command) {
         plan: JSON.parse(s.plan.toJSON()),
         program_identity: JSON.parse(s.graph.programIdentity()),
         status: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)),
+        host_provenance: provenanceStatus(s),
       };
     }
     case 'run': {
       const s = requireSession();
+      const hostProvenance = requireProvenance(s);
       const output = s.ingress.run(s.registry, s.graph, s.bundle);
       try {
-        return {shape: Array.from(output.shape()), values: Array.from(output.to_array()), ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle))};
+        return {shape: Array.from(output.shape()), values: Array.from(output.to_array()),
+          ingress: JSON.parse(s.ingress.status(s.registry, s.graph, s.bundle)), host_provenance: hostProvenance};
       } finally {
         output.free();
       }
     }
     case 'verify': {
       const s = requireSession();
-      return JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle, new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6));
+      const hostProvenance = requireProvenance(s);
+      return {...JSON.parse(s.ingress.verifyFlat(s.registry, s.graph, s.bundle, new Float32Array(requireArray(command.candidate, 'candidate')), command.absTol ?? 1e-6, command.relTol ?? 1e-6)), host_provenance: hostProvenance};
     }
     case 'close': {
       releaseSession(session);
