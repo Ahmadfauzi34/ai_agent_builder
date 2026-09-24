@@ -335,6 +335,18 @@ export function queryOperationPool(registry, query = {}) {
   if (!registry || registry.schema !== REGISTRY_SCHEMA || !Array.isArray(registry.operations)) {
     throw new Error('queryOperationPool requires burn-research.operation-contract-registry.v1');
   }
+  if (!query || typeof query !== 'object' || Array.isArray(query)) {
+    return {
+      schema: POOL_SCHEMA,
+      status: 'REJECTED',
+      execution_authorized: false,
+      mutation: 'none',
+      registry_fingerprint: registry.registry_fingerprint,
+      candidate_count: 0,
+      candidates: [],
+      diagnostics: [{code: 'INVALID_PARAMETER', class: 'query', message: 'operation pool query must be an object'}],
+    };
+  }
   if (Object.hasOwn(query, 'semantic_role') && !roleValid(query.semantic_role)) {
     return {
       schema: POOL_SCHEMA,

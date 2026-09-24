@@ -95,6 +95,21 @@ assert(
 );
 assert(exactPool.execution_authorized === false, 'pool query must not authorize execution');
 
+const inheritedSelector = Object.create({constructor: 'relu'});
+inheritedSelector.operation_id = 'graph.layer.linear';
+inheritedSelector.arity = 1;
+const inheritedPool = queryOperationPool(registry, inheritedSelector);
+assert(inheritedPool.status === 'RESOLVED' && inheritedPool.candidate_count === 1, 'inherited selector properties must not become caller intent');
+assert(inheritedPool.candidates[0]?.operation_id === 'graph.layer.linear', 'inherited constructor must not override exact own operation_id');
+
+for (const malformedQuery of [null, [], 'graph.layer.linear', 1, true]) {
+  const malformedPool = queryOperationPool(registry, malformedQuery);
+  assert(malformedPool.status === 'REJECTED', 'malformed pool query must reject instead of throwing');
+  assert(malformedPool.candidate_count === 0, 'malformed pool query must expose no candidates');
+  assert(malformedPool.execution_authorized === false && malformedPool.mutation === 'none', 'malformed pool query must remain nonexecuting');
+  assert(malformedPool.diagnostics?.some(item => item.code === 'INVALID_PARAMETER'), 'malformed pool query must expose INVALID_PARAMETER');
+}
+
 const canonicalSubsetPool = queryOperationPool(registry, {
   operation_id: 'graph.layer.batchNorm',
   input_layout: 'feature_axis1_singleton',
