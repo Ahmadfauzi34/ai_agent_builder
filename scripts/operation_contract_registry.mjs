@@ -335,7 +335,7 @@ export function queryOperationPool(registry, query = {}) {
   if (!registry || registry.schema !== REGISTRY_SCHEMA || !Array.isArray(registry.operations)) {
     throw new Error('queryOperationPool requires burn-research.operation-contract-registry.v1');
   }
-  if (query.semantic_role !== undefined && !roleValid(query.semantic_role)) {
+  if (Object.hasOwn(query, 'semantic_role') && !roleValid(query.semantic_role)) {
     return {
       schema: POOL_SCHEMA,
       status: 'REJECTED',
@@ -349,22 +349,24 @@ export function queryOperationPool(registry, query = {}) {
 
   const candidates = [];
   for (const operation of registry.operations) {
-    if (query.operation_id !== undefined && operation.operation_id !== query.operation_id) continue;
-    if (query.constructor !== undefined && operation.constructor !== query.constructor) continue;
-    if (query.family !== undefined && operation.family !== query.family) continue;
-    if (query.arity !== undefined && operation.arity !== query.arity) continue;
+    if (Object.hasOwn(query, 'operation_id') && operation.operation_id !== query.operation_id) continue;
+    if (Object.hasOwn(query, 'constructor') && operation.constructor !== query.constructor) continue;
+    if (Object.hasOwn(query, 'family') && operation.family !== query.family) continue;
+    if (Object.hasOwn(query, 'arity') && operation.arity !== query.arity) continue;
 
     let compatibility = 'compatible';
-    if (query.input_layout !== undefined) {
+    if (Object.hasOwn(query, 'input_layout')) {
       compatibility = layoutCompatibility(
         query.input_layout,
         operation.inputs[0].layout,
         registry.layout_compatibility,
       );
     }
-    if (query.output_layout !== undefined) {
+    if (Object.hasOwn(query, 'output_layout')) {
       let actualOutput = operation.output.layout;
-      if (actualOutput === 'preserve_input') actualOutput = query.input_layout ?? 'unknown';
+      if (actualOutput === 'preserve_input') {
+        actualOutput = Object.hasOwn(query, 'input_layout') ? query.input_layout : 'unknown';
+      }
       if (actualOutput === 'dynamic' || actualOutput === 'unknown') {
         compatibility = compatibility === 'incompatible' ? compatibility : 'deferred';
       } else if (actualOutput !== query.output_layout) {
