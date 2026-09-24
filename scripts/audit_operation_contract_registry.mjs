@@ -76,7 +76,23 @@ assert(concat?.axis_contract?.mode === 'parameter', 'concat axis contract must b
 assert(concat.axis_contract.domain.minimum === 0 && concat.axis_contract.domain.maximum === 3, 'concat rank-4 axis domain mismatch');
 
 const exactPool = queryOperationPool(registry, {operation_id: 'graph.layer.linear', arity: 1});
-assert(exactPool.status === 'RESOLVED' && exactPool.candidate_count === 1, 'exact operation pool query should resolve');
+assert(
+  exactPool.status === 'RESOLVED' && exactPool.candidate_count === 1,
+  `exact operation pool query should resolve: ${JSON.stringify({
+    status: exactPool.status,
+    candidate_count: exactPool.candidate_count,
+    candidates: exactPool.candidates,
+    registry_fingerprint: exactPool.registry_fingerprint,
+    linear: {
+      operation_id: linear.operation_id,
+      constructor: linear.constructor,
+      family: linear.family,
+      arity: linear.arity,
+      input_layout: linear.inputs[0].layout,
+      output_layout: linear.output.layout,
+    },
+  })}`,
+);
 assert(exactPool.execution_authorized === false, 'pool query must not authorize execution');
 
 const canonicalSubsetPool = queryOperationPool(registry, {
