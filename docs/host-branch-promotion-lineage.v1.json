@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "schema": "burn-research.host-branch-promotion-lineage.v1",
   "schema_id": "burn-research.host-branch-promotion-lineage.v1",
   "status": "implemented_node_host_sidecar_ledger",
   "purpose": "Persist the causal relation baseline execution receipt -> verified branch receipt -> promoted candidate checkpoint without giving the host or reference machine authority to select a branch automatically.",
