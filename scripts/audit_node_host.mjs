@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {verifyWasmSurfaceActual} from './generate_wasm_surface_actual.mjs';
@@ -13,6 +14,7 @@ const interactivePath = path.join(pkgDir, 'interactive_multi_input_ingress.mjs')
 const provenancePath = path.join(pkgDir, 'ingress_provenance.mjs');
 const replayLedgerPath = path.join(pkgDir, 'ingress_replay_ledger.mjs');
 const executionReceiptPath = path.join(pkgDir, 'ingress_execution_receipt.mjs');
+const branchPromotionLineagePath = path.join(pkgDir, 'branch_promotion_lineage.mjs');
 const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
 const stateBoundProvenanceContractPath = path.join(pkgDir, 'ingress-provenance.v2.json');
@@ -21,6 +23,7 @@ const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v
 const checkpointRestoreContractPath = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
+const branchPromotionLineageContractPath = path.join(pkgDir, 'host-branch-promotion-lineage.v1.json');
 const wasmSurfaceContractPath = path.join(pkgDir, 'wasm-surface.v1.json');
 const runtimeSurfaceContractPath = path.join(pkgDir, 'runtime-surface.v1.json');
 const packageJsonPath = path.join(pkgDir, 'package.json');
@@ -40,6 +43,7 @@ assert(fs.existsSync(interactivePath), 'packaged interactive_multi_input_ingress
 assert(fs.existsSync(provenancePath), 'packaged ingress_provenance.mjs is missing');
 assert(fs.existsSync(replayLedgerPath), 'packaged ingress_replay_ledger.mjs is missing');
 assert(fs.existsSync(executionReceiptPath), 'packaged ingress_execution_receipt.mjs is missing');
+assert(fs.existsSync(branchPromotionLineagePath), 'packaged branch_promotion_lineage.mjs is missing');
 assert(fs.existsSync(replayLedgerInitPath), 'packaged init_ingress_replay_ledger.mjs is missing');
 assert(fs.existsSync(provenanceContractPath), 'packaged ingress-provenance.v1.json is missing');
 assert(fs.existsSync(stateBoundProvenanceContractPath), 'packaged ingress-provenance.v2.json is missing');
@@ -48,6 +52,7 @@ assert(fs.existsSync(executionReceiptContractPath), 'packaged host-execution-rec
 assert(fs.existsSync(checkpointRestoreContractPath), 'packaged host-checkpoint-restore.v1.json is missing');
 assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
+assert(fs.existsSync(branchPromotionLineageContractPath), 'packaged host-branch-promotion-lineage.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
 assert(fs.existsSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
 assert(fs.existsSync(path.join(pkgDir, 'baseline-candidate-verification.v1.json')), 'packaged verifier contract is missing');
@@ -82,6 +87,7 @@ const requiredPackageFiles = [
   'ingress_provenance.mjs',
   'ingress_replay_ledger.mjs',
   'ingress_execution_receipt.mjs',
+  'branch_promotion_lineage.mjs',
   'init_ingress_replay_ledger.mjs',
   'ingress-provenance.v1.json',
   'ingress-provenance.v2.json',
@@ -90,6 +96,7 @@ const requiredPackageFiles = [
   'host-execution-receipt.v2.json',
   'host-checkpoint-restore.v1.json',
   'host-state-handoff.v1.json',
+  'host-branch-promotion-lineage.v1.json',
 ];
 for (const file of requiredPackageFiles) {
   assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
@@ -121,6 +128,8 @@ assert(support.verified_hosts?.node?.execution_trace_contract === 'multi-input-e
 assert(support.verified_hosts?.node?.baseline_candidate_verification_contract === 'baseline-candidate-verification.v1.json', 'Node verifier contract discovery mismatch');
 assert(support.verified_hosts?.node?.transactional_graph_mutation_contract === 'transactional-graph-mutation.v1.json', 'Node mutation contract discovery mismatch');
 assert(support.verified_hosts?.node?.checkpoint_branch_state_diff_contract === 'transactional-graph-checkpoint-branch.v1.json', 'Node checkpoint branch contract discovery mismatch');
+assert(support.verified_hosts?.node?.branch_promotion_lineage_module === 'branch_promotion_lineage.mjs', 'Node branch promotion lineage module discovery mismatch');
+assert(support.verified_hosts?.node?.branch_promotion_lineage_contract === 'host-branch-promotion-lineage.v1.json', 'Node branch promotion lineage contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-provenance.v1.json', 'Node signed ingress contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
@@ -168,6 +177,16 @@ assert(verifiedSurface.host_capabilities?.contracts?.checkpoint_restore?.schema 
   'runtime surface omits Node host checkpoint restore contract');
 assert(verifiedSurface.host_capabilities?.contracts?.state_bound_signed_ingress_provenance?.schema === 'burn-research.ingress-provenance.v2',
   'runtime surface omits the state-bound signed ingress contract');
+assert(verifiedSurface.host_capabilities?.contracts?.branch_promotion_lineage?.schema === 'burn-research.host-branch-promotion-lineage.v1',
+  'runtime surface omits durable branch promotion lineage contract');
+
+const branchAudit = spawnSync(process.execPath,
+  [path.resolve('scripts/audit_branch_promotion_lineage.mjs'), pkgDir], {encoding: 'utf8'});
+assert(branchAudit.status === 0,
+  `durable branch promotion lineage audit failed: ${branchAudit.stderr || branchAudit.stdout}`);
+const branchAuditOutput = JSON.parse(branchAudit.stdout.trim().split('\n').at(-1));
+assert(branchAuditOutput.verdict === 'PASS' && branchAuditOutput.automatic_promotion === false,
+  'durable branch promotion lineage audit did not preserve caller selection authority');
 
 const programCaps = JSON.parse(runtime.programCapabilities());
 const bundleCaps = JSON.parse(runtime.programBundleCapabilities());
@@ -209,6 +228,7 @@ console.log(JSON.stringify({
   execution: got,
   programIdentitySchema: programCaps.identity_schema,
   programBundleSchema: bundleCaps.schema,
+  branchPromotionLineageAudit: branchAuditOutput,
   packageFiles: requiredPackageFiles,
   surfaceDiagnostic: path.basename(surfaceActualPath),
   surfaceFingerprint: verifiedSurface.fingerprint.value,
