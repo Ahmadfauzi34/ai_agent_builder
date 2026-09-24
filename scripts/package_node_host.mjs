@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {spawnSync} from 'node:child_process';
 
 const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
 const packageJsonPath = path.join(pkgDir, 'package.json');
@@ -166,8 +167,18 @@ for (const file of requiredManifestFiles) {
 manifest.files = files;
 fs.writeFileSync(packageJsonPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
+const registryAudit = spawnSync(
+  process.execPath,
+  [path.resolve('scripts/audit_operation_contract_registry.mjs'), pkgDir],
+  {encoding: 'utf8'},
+);
+if (registryAudit.status !== 0) {
+  throw new Error(`operation registry package audit failed: ${registryAudit.stderr || registryAudit.stdout}`);
+}
+
 console.log(JSON.stringify({
   packaged: true,
   pkgDir,
   files: requiredManifestFiles,
+  operation_registry_audit: JSON.parse(registryAudit.stdout.trim().split('\n').at(-1)),
 }, null, 2));
