@@ -79,12 +79,15 @@ function validateBranchReceipt(raw, baselineReceipt, candidateBundle) {
     || receipt.state_diff.candidate_bundle_sha256 !== receipt.candidate_state_checkpoint_bytes_sha256) {
     throw new Error('branch promotion receipt baseline differs from its committed host execution receipt');
   }
-  if (!Buffer.isBuffer(candidateBundle) || candidateBundle.length === 0 || candidateBundle.length > MAX_CANDIDATE_BYTES) {
-    throw new Error('branch promotion candidate bundle must be 1..=16 MiB');
-  }
-  const candidateDigest = sha256Bytes(candidateBundle);
-  if (candidateDigest !== receipt.candidate_state_checkpoint_bytes_sha256) {
-    throw new Error('branch promotion candidate bytes differ from the branch receipt');
+  let candidateDigest = receipt.candidate_state_checkpoint_bytes_sha256;
+  if (candidateBundle !== undefined) {
+    if (!Buffer.isBuffer(candidateBundle) || candidateBundle.length === 0 || candidateBundle.length > MAX_CANDIDATE_BYTES) {
+      throw new Error('branch promotion candidate bundle must be 1..=16 MiB');
+    }
+    candidateDigest = sha256Bytes(candidateBundle);
+    if (candidateDigest !== receipt.candidate_state_checkpoint_bytes_sha256) {
+      throw new Error('branch promotion candidate bytes differ from the branch receipt');
+    }
   }
   return {receipt, candidateDigest};
 }
@@ -176,7 +179,7 @@ export class BranchPromotionLineage {
         || sha256Bytes(Buffer.from(intent.branch_receipt_json)) !== intent.branch_receipt_sha256) {
         throw new Error('branch promotion intent differs from durable baseline or receipt identity');
       }
-      const validated = validateBranchReceipt(intent.branch_receipt_json, baseline, Buffer.from(intent.candidate_bundle_base64, 'base64'));
+      const validated = validateBranchReceipt(intent.branch_receipt_json, baseline);
       if (validated.receipt.receipt_digest !== intent.branch_receipt_digest
         || validated.candidateDigest !== intent.candidate_checkpoint_bytes_sha256
         || sha256Json(validated.receipt.state_diff) !== intent.state_diff_sha256
@@ -227,7 +230,6 @@ export class BranchPromotionLineage {
         branch_receipt_digest: receipt.receipt_digest,
         branch_receipt_sha256: branchReceiptSha256,
         branch_receipt_json: branchReceiptJson,
-        candidate_bundle_base64: candidateBundle.toString('base64'),
         candidate_checkpoint_bytes_sha256: candidateDigest,
         candidate_program_identity: receipt.candidate_program_identity,
         state_diff_sha256: sha256Json(receipt.state_diff),
