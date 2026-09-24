@@ -26,6 +26,8 @@
       "baseline_candidate_verification_contract": "baseline-candidate-verification.v1.json",
       "transactional_graph_mutation_contract": "transactional-graph-mutation.v1.json",
       "checkpoint_branch_state_diff_contract": "transactional-graph-checkpoint-branch.v1.json",
+      "branch_promotion_lineage_module": "branch_promotion_lineage.mjs",
+      "branch_promotion_lineage_contract": "host-branch-promotion-lineage.v1.json",
       "ingress_provenance_verifier": "ingress_provenance.mjs",
       "ingress_provenance_contract": "ingress-provenance.v1.json",
       "state_bound_ingress_provenance_contract": "ingress-provenance.v2.json",

@@ -6,7 +6,8 @@
     "engine": "WASM Burn reference machine",
     "receipt": "content digest over branch ID, baseline/candidate identities, checkpoint byte digests, exact state diff, and nested Burn verification receipt",
     "promotion": "explicit call to commitBranchByReceipt; the branch-set permits one promotion",
-    "origin": "no input-origin signature or durable host ledger is added by this API"
+    "origin": "no input-origin signature or durable host ledger is added by this API",
+    "optional_durable_lineage": "host-branch-promotion-lineage.v1.json records a separate two-phase host observation around explicit caller promotion; it does not select or authorize a branch"
   },
   "checkpoint": {
     "format": "burn-research.multi-input-program-bundle.v1",

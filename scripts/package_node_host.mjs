@@ -11,6 +11,7 @@ const interactiveSource = path.resolve('scripts/interactive_multi_input_ingress.
 const provenanceSource = path.resolve('scripts/ingress_provenance.mjs');
 const replayLedgerSource = path.resolve('scripts/ingress_replay_ledger.mjs');
 const executionReceiptSource = path.resolve('scripts/ingress_execution_receipt.mjs');
+const branchPromotionLineageSource = path.resolve('scripts/branch_promotion_lineage.mjs');
 const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.mjs');
 const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
 const stateBoundProvenanceContractSource = path.resolve('docs/ingress-provenance.v2.json');
@@ -19,6 +20,7 @@ const executionReceiptContractSource = path.resolve('docs/host-execution-receipt
 const checkpointRestoreContractSource = path.resolve('docs/host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
 const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
+const branchPromotionLineageContractSource = path.resolve('docs/host-branch-promotion-lineage.v1.json');
 const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
 const executionTraceContractSource = path.resolve('docs/multi-input-execution-trace.v1.json');
 const verificationContractSource = path.resolve('docs/baseline-candidate-verification.v1.json');
@@ -33,6 +35,7 @@ const interactiveTarget = path.join(pkgDir, 'interactive_multi_input_ingress.mjs
 const provenanceTarget = path.join(pkgDir, 'ingress_provenance.mjs');
 const replayLedgerTarget = path.join(pkgDir, 'ingress_replay_ledger.mjs');
 const executionReceiptTarget = path.join(pkgDir, 'ingress_execution_receipt.mjs');
+const branchPromotionLineageTarget = path.join(pkgDir, 'branch_promotion_lineage.mjs');
 const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
 const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
 const stateBoundProvenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v2.json');
@@ -41,6 +44,7 @@ const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt
 const checkpointRestoreContractTarget = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
 const legacyExecutionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
 const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
+const branchPromotionLineageContractTarget = path.join(pkgDir, 'host-branch-promotion-lineage.v1.json');
 const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
 const executionTraceContractTarget = path.join(pkgDir, 'multi-input-execution-trace.v1.json');
 const verificationContractTarget = path.join(pkgDir, 'baseline-candidate-verification.v1.json');
@@ -62,6 +66,7 @@ const packagedHostFiles = [
   'ingress_provenance.mjs',
   'ingress_replay_ledger.mjs',
   'ingress_execution_receipt.mjs',
+  'branch_promotion_lineage.mjs',
   'init_ingress_replay_ledger.mjs',
   'ingress-provenance.v1.json',
   'ingress-provenance.v2.json',
@@ -70,6 +75,7 @@ const packagedHostFiles = [
   'host-execution-receipt.v2.json',
   'host-checkpoint-restore.v1.json',
   'host-state-handoff.v1.json',
+  'host-branch-promotion-lineage.v1.json',
   'wasm-surface.v1.json',
   'multi-input-execution-trace.v1.json',
   'baseline-candidate-verification.v1.json',
@@ -103,6 +109,7 @@ fs.copyFileSync(interactiveSource, interactiveTarget);
 fs.copyFileSync(provenanceSource, provenanceTarget);
 fs.copyFileSync(replayLedgerSource, replayLedgerTarget);
 fs.copyFileSync(executionReceiptSource, executionReceiptTarget);
+fs.copyFileSync(branchPromotionLineageSource, branchPromotionLineageTarget);
 fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
 fs.copyFileSync(stateBoundProvenanceContractSource, stateBoundProvenanceContractTarget);
@@ -111,6 +118,7 @@ fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
 fs.copyFileSync(checkpointRestoreContractSource, checkpointRestoreContractTarget);
 fs.copyFileSync(legacyExecutionReceiptContractSource, legacyExecutionReceiptContractTarget);
 fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
+fs.copyFileSync(branchPromotionLineageContractSource, branchPromotionLineageContractTarget);
 fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
 fs.copyFileSync(executionTraceContractSource, executionTraceContractTarget);
 fs.copyFileSync(verificationContractSource, verificationContractTarget);

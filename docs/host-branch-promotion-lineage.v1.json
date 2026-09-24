@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "schema": "burn-research.host-branch-promotion-lineage.v1",
+  "schema_id": "burn-research.host-branch-promotion-lineage.v1",
+  "status": "implemented_node_host_sidecar_ledger",
+  "purpose": "Persist the causal relation baseline execution receipt -> verified branch receipt -> promoted candidate checkpoint without giving the host or reference machine authority to select a branch automatically.",
+  "authority": {
+    "branch_selection": "external caller/agent",
+    "numerical_verification": "WASM Burn reference machine branch receipt",
+    "promotion_mutation": "CheckpointBranchSet.commitBranchByReceipt under explicit caller authorization",
+    "durable_lineage": "Node host sidecar ledger",
+    "automatic_promotion": false
+  },
+  "protocol": {
+    "phase_1_begin": "before mutation, beginPromotion validates the committed baseline host receipt, exact compact WASM branch receipt bytes, equivalent=true, state diff, candidate ProgramBundle digest and candidate program identity, then commits a pending intent",
+    "phase_2_commit": "caller explicitly invokes CheckpointBranchSet.commitBranchByReceipt; this contract does not perform or authorize that selection",
+    "phase_3_complete": "after mutation, completePromotion accepts only exact promoted ProgramBundle bytes and program identity matching the pending candidate and appends a completion event",
+    "crash_semantics": "a crash or failure after begin but before complete leaves a durable pending intent and never implies that promotion succeeded"
+  },
+  "intent_fields": [
+    "subject",
+    "sequence",
+    "baseline_receipt_id",
+    "baseline_execution_sequence",
+    "baseline_checkpoint_bytes_sha256",
+    "branch_id",
+    "branch_receipt_digest",
+    "branch_receipt_sha256",
+    "branch_receipt_json",
+    "candidate_checkpoint_bytes_sha256",
+    "candidate_program_identity",
+    "state_diff_sha256",
+    "intent_id"
+  ],
+  "completion_fields": [
+    "subject",
+    "sequence",
+    "intent_id",
+    "baseline_receipt_id",
+    "branch_id",
+    "candidate_checkpoint_bytes_sha256",
+    "candidate_program_identity",
+    "completion_id"
+  ],
+  "validation": {
+    "baseline": "must be a committed burn-research.host-execution-receipt.v2 for the same host subject and its exact state checkpoint/program identity must match the branch receipt baseline",
+    "branch_receipt": "must be exact compact burn-research.checkpoint-branch-verification.v1 bytes whose outer SHA-256 receipt digest reproduces, equivalent=true, promotion_authorized=false, and whose nested Burn verifier receipt is passing",
+    "candidate": "begin and complete both hash exact ProgramBundle bytes; the digest must equal candidate_state_checkpoint_bytes_sha256",
+    "state_diff": "baseline/candidate bundle digests must agree with the branch receipt and semantic_equivalence_asserted must remain false",
+    "restart": "all intent and completion IDs plus branch receipt bytes are revalidated on every ledger load"
+  },
+  "storage": {
+    "file": "private host-owned sidecar JSON ledger",
+    "max_events": 4096,
+    "max_file_bytes": 33554432,
+    "max_branch_receipt_bytes": 1048576,
+    "max_candidate_bundle_bytes_verified_per_call": 16777216,
+    "candidate_bundle_retention": "digest only; checkpoint bytes are not duplicated in the lineage ledger"
+  },
+  "limits": [
+    "A completed lineage event proves that the host observed exact candidate bytes and identity after a pending promotion intent; it does not prove external input truth or general model equivalence.",
+    "The WASM branch receipt covers only the test vectors supplied to MultiInputVerificationCases.",
+    "The sidecar ledger is a host trust root; hashes are tamper-evident correlation values, not signatures or action authorization.",
+    "This checkpoint does not expose a JSON Lines branch-selection API and does not let the host choose among branches.",
+    "Pending events are intentionally preserved as indeterminate after crashes; they must never be interpreted as successful promotions."
+  ]
+}
