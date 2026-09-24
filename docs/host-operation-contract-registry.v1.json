@@ -1,0 +1,125 @@
+{
+  "schema": "burn-research.host-operation-contract-registry.v1",
+  "version": 1,
+  "role": "read_only_machine_discovery_and_plan_resolution_projection",
+  "authority": {
+    "selection": "agent_or_caller",
+    "graph_construction": "AgentLayerSpec_and_AgentGraphBuilder",
+    "registry_binding": "LayerRegistry",
+    "numerics": "Burn",
+    "execution_authorized": false
+  },
+  "purpose": "Unify existing graph-operation contracts into a discoverable constructible-operation pool and resolve declarative graph plans before any executor is invoked.",
+  "source_contracts": [
+    "agent-layer-catalog.v1.json",
+    "agent-layout-contracts.v1.json",
+    "agent-input-port.v1.json",
+    "agent-fault-contract.v1.json",
+    "multi-input-graph-plan.v1.json",
+    "multi-input-plan-explain.v1.json"
+  ],
+  "operation_descriptor": {
+    "required_fields": [
+      "operation_id",
+      "constructor",
+      "family",
+      "arity",
+      "parameters",
+      "inputs",
+      "output",
+      "axis_contract",
+      "shape_rule",
+      "capacity",
+      "failure_classes",
+      "remaining_preflight"
+    ],
+    "tensor_boundary": {
+      "dtype": "f32",
+      "rank": 4,
+      "semantic_role_policy": "caller_declared_canonical_or_x_extension",
+      "implicit_relayout": "forbidden"
+    }
+  },
+  "pool": {
+    "kind": "constructible_operation_types",
+    "query_fields": [
+      "operation_id",
+      "constructor",
+      "family",
+      "arity",
+      "input_layout",
+      "output_layout",
+      "semantic_role"
+    ],
+    "selection": "query returns all compatible or deferred candidates; no ranking or recommendation",
+    "live_registry_instance_inventory": "deferred; this v1 does not enumerate initialized LayerRegistry identities"
+  },
+  "declarative_plan": {
+    "schema": "burn-research.declarative-graph-plan.v1",
+    "input_fields": [
+      "id",
+      "role",
+      "shape",
+      "layout"
+    ],
+    "step_fields": [
+      "id",
+      "operation_or_selector",
+      "inputs",
+      "parameters",
+      "output",
+      "output_role"
+    ],
+    "dependency_policy": "steps may reference declared inputs or outputs from earlier steps only",
+    "slot_capacity_source": "multi-input-graph-plan.v1 graph_slots_max",
+    "mutation": "none"
+  },
+  "resolution_status": {
+    "RESOLVED": "one exact operation identity is selected for every step and all modeled static contracts are satisfied",
+    "AMBIGUOUS": "more than one operation candidate remains or required caller/agent information is missing",
+    "DEFERRED": "operation identity is known but one or more authoritative conditions cannot be proven until canonical constructor, registry, or Burn/runtime preflight",
+    "REJECTED": "a known contract violation makes the declarative plan inadmissible"
+  },
+  "status_precedence": [
+    "REJECTED",
+    "AMBIGUOUS",
+    "DEFERRED",
+    "RESOLVED"
+  ],
+  "normalized_failure_classes": [
+    "OPERATION_NOT_FOUND",
+    "OPERATION_SELECTION_AMBIGUOUS",
+    "INPUT_ARITY_MISMATCH",
+    "DEPENDENCY_UNRESOLVED",
+    "INVALID_PARAMETER",
+    "AXIS_OUT_OF_RANGE",
+    "SEMANTIC_ROLE_UNRESOLVED",
+    "LAYOUT_INCOMPATIBLE",
+    "SHAPE_INCOMPATIBLE",
+    "CAPACITY_EXCEEDED",
+    "REGISTRY_BINDING_DEFERRED",
+    "RUNTIME_OPERATOR_DEFERRED"
+  ],
+  "invariants": [
+    "the registry is derived from existing machine-readable contracts rather than becoming a new numerical source of truth",
+    "pool queries never rank or select an operation on behalf of the agent",
+    "RESOLVED does not authorize execution and does not bypass AgentLayerSpec constructor validation, LayerRegistry binding, graph preflight, or Burn",
+    "unknown or dynamic layout and shape semantics become DEFERRED rather than REJECTED unless an existing contract proves incompatibility",
+    "semantic output roles remain caller or agent declarations and are never inferred from numerical layer type",
+    "known layout, axis, arity, dependency, parameter-type, and graph-capacity mismatches fail before execution",
+    "the v1 pool enumerates constructible operation types, not live initialized LayerRegistry instances"
+  ],
+  "surfaces": {
+    "module": "operation_contract_registry.mjs",
+    "load": "loadOperationContractRegistry",
+    "query_pool": "queryOperationPool",
+    "resolve_plan": "resolveDeclarativeGraphPlan"
+  },
+  "future_extensions": [
+    "live LayerRegistry instance inventory and identity-aware pool filtering",
+    "math operation namespace",
+    "dispatch and verifier operation namespaces",
+    "explicit resource-cost and backend-allocation models",
+    "plan-to-canonical-AgentGraphBuilder materialization adapter"
+  ]
+}
