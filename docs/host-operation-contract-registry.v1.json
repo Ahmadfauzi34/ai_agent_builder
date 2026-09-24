@@ -51,6 +51,7 @@
       "output_layout",
       "semantic_role"
     ],
+    "query_boundary": "caller intent is taken only from own properties; inherited prototype properties are ignored; non-object and array queries are REJECTED with INVALID_PARAMETER",
     "selection": "query returns all compatible or deferred candidates; no ranking or recommendation",
     "live_registry_instance_inventory": "deferred; this v1 does not enumerate initialized LayerRegistry identities"
   },
@@ -105,6 +106,8 @@
     "package_gate": "scripts/package_node_host.mjs",
     "proof_matrix": [
       "exact operation query -> RESOLVED",
+      "inherited selector properties do not become caller intent",
+      "malformed pool query -> REJECTED with INVALID_PARAMETER",
       "multi-candidate family selector -> AMBIGUOUS",
       "known operation with unmodeled authoritative static rule -> DEFERRED",
       "known layout/shape/axis/capacity violation -> REJECTED",
@@ -115,6 +118,8 @@
   "invariants": [
     "the registry is derived from existing machine-readable contracts rather than becoming a new numerical source of truth",
     "pool queries never rank or select an operation on behalf of the agent",
+    "pool query intent is derived only from own properties and never from Object prototype inheritance",
+    "malformed pool queries return a machine-readable REJECTED result rather than throwing as caller-input errors",
     "RESOLVED does not authorize execution and does not bypass AgentLayerSpec constructor validation, LayerRegistry binding, graph preflight, or Burn",
     "unknown or dynamic layout and shape semantics become DEFERRED rather than REJECTED unless an existing contract proves incompatibility",
     "semantic output roles remain caller or agent declarations and are never inferred from numerical layer type",
