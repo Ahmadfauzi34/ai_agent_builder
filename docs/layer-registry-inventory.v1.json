@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.layer-registry-inventory.v1",
+  "role": "read_only_live_layer_registry_instance_inventory",
+  "purpose": "Expose the exact initialized LayerRegistry instances needed for reuse planning without creating, destroying, selecting, or executing any layer.",
+  "authority": {
+    "live_instance_source": "LayerRegistry",
+    "init_identity_source": "LayerRegistry.init_identities",
+    "numerics": "Burn",
+    "selection": "agent_or_caller",
+    "execution_authorized": false,
+    "mutation": "none"
+  },
+  "snapshot": {
+    "schema": "burn-research.layer-registry-inventory-snapshot.v1",
+    "ordering": "ascending layer_type then layer_id",
+    "fingerprint": "sha256 over canonical ordered live instance records",
+    "state_identity_scope": "live structure plus validated init identity and parameter count; current numerical weight/state bytes are not included",
+    "fields": [
+      "schema",
+      "instance_count",
+      "total_params",
+      "inventory_fingerprint",
+      "state_identity_scope",
+      "instances",
+      "execution_authorized",
+      "mutation"
+    ]
+  },
+  "instance": {
+    "fields": [
+      "layer_type",
+      "layer_id",
+      "variant",
+      "flags",
+      "init_fingerprint",
+      "parameter_count"
+    ],
+    "lookup_identity": "layer_type + layer_id",
+    "init_identity": "variant + flags + canonical validated init payload",
+    "numerical_state_identity": "not_claimed"
+  },
+  "consistency": {
+    "live_map_vs_init_identity": "snapshot fails closed if a live instance lacks its canonical init identity or an init identity lacks a live instance",
+    "parameter_count": "snapshot fails closed if summed live parameter counts differ from LayerRegistry totalParams",
+    "destroyed_instances": "excluded because successful destroy removes the live map entry and init identity"
+  },
+  "planner_boundary": {
+    "constructible_operation_types": "host-operation-contract-registry.v1",
+    "live_initialized_instances": "this contract",
+    "operation_binding": "deferred to a separate protocol-identity-to-operation projection",
+    "initialize_or_reuse_decision": "deferred; this inventory never chooses"
+  },
+  "invariants": [
+    "inventory is derived from current LayerRegistry state and never from AgentWorkspace mirrors",
+    "inventory enumeration does not initialize, destroy, mutate, forward, compile, or execute layers",
+    "inventory does not infer graph.layer operation IDs from protocol layer_type/variant values",
+    "inventory_fingerprint is correlation/provenance only and is not authorization",
+    "identical inventory fingerprints do not claim identical numerical weights unless a future explicit state digest contract proves that separately",
+    "a live instance is reported only when LayerRegistry and canonical init identity agree"
+  ],
+  "surfaces": {
+    "capabilities": "layerRegistryInventoryCapabilities",
+    "snapshot": "LayerRegistry.inventorySnapshot"
+  },
+  "future_extensions": [
+    "machine-readable protocol layer_type/variant to operation_id mapping",
+    "planner resolution between exact reuse candidate and constructible initialization path",
+    "optional numerical state digest bound separately from init identity"
+  ]
+}
