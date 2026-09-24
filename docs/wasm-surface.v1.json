@@ -597,6 +597,7 @@
       "programPlan",
       "requiredInputSlots",
       "run",
+      "runWithTrace",
       "validateRegistryBinding",
       "verifyFlat"
     ],
@@ -626,9 +627,15 @@
       "inputPortStatus",
       "manifestFingerprint",
       "run",
+      "runWithTrace",
       "status",
       "toJSON",
       "verifyFlat"
+    ],
+    "TracedMultiInputRun": [
+      "constructor",
+      "output",
+      "report"
     ]
   },
   "default_init": "__wbg_init",

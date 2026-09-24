@@ -22,6 +22,7 @@
       "module_system": "esm",
       "adapter": "node.mjs",
       "interactive_runner": "interactive_multi_input_ingress.mjs",
+      "execution_trace_contract": "multi-input-execution-trace.v1.json",
       "ingress_provenance_verifier": "ingress_provenance.mjs",
       "ingress_provenance_contract": "ingress-provenance.v1.json",
       "state_bound_ingress_provenance_contract": "ingress-provenance.v2.json",

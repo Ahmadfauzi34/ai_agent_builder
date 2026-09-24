@@ -79,6 +79,8 @@ CI rebuilds this description from the packaged runtime and checks it again befor
 
 Adding or removing an exported member without intentionally updating the v1 contract is a WASM surface drift failure.
 
+The multi-input graph and semantic ingress bridge expose `runWithTrace`. Its returned `TracedMultiInputRun` has `report()` and `output()`; the packaged `multi-input-execution-trace.v1.json` describes observation bounds and digest semantics. The Node JSON Lines `trace` operation runs that path under the same signed input and durable receipt gates as `run`.
+
 The v1 name means the surface is contracted, not frozen forever. A future incompatible public surface should be treated as an explicit contract-version decision rather than accidental drift.
 
 ## Node communication path

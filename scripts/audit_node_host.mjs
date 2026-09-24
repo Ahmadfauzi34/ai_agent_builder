@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {createHash} from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import {verifyWasmSurfaceActual} from './generate_wasm_surface_actual.mjs';
 
@@ -48,6 +49,7 @@ assert(fs.existsSync(checkpointRestoreContractPath), 'packaged host-checkpoint-r
 assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-execution-receipt.v1.json is missing');
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
+assert(fs.existsSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
 assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
@@ -64,6 +66,7 @@ const requiredPackageFiles = [
   'wasm-surface.actual.json',
   'wasm-surface.bindings.actual.json',
   'wasm-surface.v1.json',
+  'multi-input-execution-trace.v1.json',
   'runtime-surface.v1.json',
   'node.mjs',
   'node.d.mts',
@@ -90,12 +93,16 @@ const actualSurface = JSON.parse(fs.readFileSync(surfaceActualPath, 'utf8'));
 assert(actualSurface.schema === 'burn-research.wasm-surface.actual.v1', 'runtime surface schema mismatch');
 assert(actualSurface.fingerprint?.algorithm === 'sha256', 'runtime surface fingerprint algorithm mismatch');
 assert(/^sha256:[0-9a-f]{64}$/.test(actualSurface.fingerprint?.value ?? ''), 'runtime surface fingerprint is malformed');
+assert(actualSurface.artifacts?.['multi-input-execution-trace.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json'))).digest('hex')}`,
+  'trace contract bytes are not bound by the runtime surface fingerprint');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
 assert(support.schema === 'burn-research.host-support.v1', 'host support schema mismatch');
 assert(support.verified_hosts?.node?.status === 'supported', 'Node host must be declared supported');
 assert(support.verified_hosts?.node?.adapter === 'node.mjs', 'Node adapter discovery mismatch');
 assert(support.verified_hosts?.node?.interactive_runner === 'interactive_multi_input_ingress.mjs', 'Node interactive runner discovery mismatch');
+assert(support.verified_hosts?.node?.execution_trace_contract === 'multi-input-execution-trace.v1.json', 'Node trace contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-provenance.v1.json', 'Node signed ingress contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');

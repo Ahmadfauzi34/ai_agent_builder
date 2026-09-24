@@ -771,6 +771,8 @@ pub(crate) fn multi_input_graph_capabilities() -> String {
         "\"preflight\":\"CompiledMultiInputGraph.preflight\",",
         "\"plan_explain\":\"CompiledMultiInputGraph.explainPlan\",",
         "\"plan_explain_scope\":\"compiled_topology_and_declared_input_shapes_with_partial_static_shape_inference\",",
+        "\"execution_trace\":\"CompiledMultiInputGraph.runWithTrace\",",
+        "\"execution_trace_scope\":\"bounded_observation_of_one_graph_execution\",",
         "\"execution\":\"CompiledMultiInputGraph.run\",",
         "\"runtime_inputs\":\"all declared external slots must be bound and contract-valid\",",
         "\"dtype\":\"f32\",",
@@ -854,6 +856,86 @@ mod tests {
                 "sha256:state".into(),
             )
             .unwrap();
+    }
+
+    #[test]
+    fn trace_observes_execution_with_exact_digest_and_budget() {
+        use sha2::{Digest, Sha256};
+        let (registry, _, plan) = two_input_add();
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
+        bind_valid_inputs(&mut bundle);
+        let traced = graph.run_with_trace(&registry, &bundle, 0, 1, 64).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
+        let expected = format!("sha256:{:x}", Sha256::digest([4.0f32.to_le_bytes(), 6.0f32.to_le_bytes()].concat()));
+        assert_eq!(report["program_identity"], serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap());
+        assert_eq!(report["execution_status"], "completed");
+        assert_eq!(report["execution_authorized"], false);
+        assert_eq!(report["trace_complete"], true);
+        assert_eq!(report["steps"][0]["index"], 0);
+        assert_eq!(report["steps"][0]["observation"]["value_sha256"], expected);
+        assert_eq!(report["terminal_output"]["value_sha256"], expected);
+        assert_eq!(traced.output().unwrap().to_array(), graph.run(&registry, &bundle).unwrap().to_array());
+        let capped: serde_json::Value = serde_json::from_str(&graph.run_with_trace(&registry, &bundle, 0, 1, 4).unwrap().report()).unwrap();
+        assert_eq!(capped["steps"][0]["observation"]["capture_status"], "tensor_budget_exceeded");
+        assert!(capped["steps"][0]["observation"]["value_sha256"].is_null());
+        assert!(graph.run_with_trace(&registry, &bundle, 1, 1, 64).is_err());
+        assert!(graph.run_with_trace(&registry, &bundle, 0, 0, 64).is_err());
+    }
+
+    #[test]
+    fn trace_returns_fault_without_output_for_numerical_shape_mismatch() {
+        let (registry, builder, _) = two_input_add();
+        let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
+        for (slot, role, features) in [(0, "observation", 2), (1, "state", 3)] {
+            plan.add_input_port(slot, role.into(), 1, features, 1, 1,
+                "feature_axis1_singleton".into(), false, 0).unwrap();
+        }
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
+        bundle.bind_input(0, &tensor(&[1.0, 2.0]), "observation".into(),
+            "feature_axis1_singleton".into(), "sensor-a".into(), 1, String::new()).unwrap();
+        let right = WasmTensor::new(&[3.0, 4.0, 5.0], &[1, 3, 1, 1]);
+        bundle.bind_input(1, &right, "state".into(),
+            "feature_axis1_singleton".into(), "memory-b".into(), 1, String::new()).unwrap();
+        let traced = graph.run_with_trace(&registry, &bundle, 0, 1, 64).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
+        assert_eq!(report["execution_status"], "failed");
+        assert_eq!(report["fault_step_index"], 0);
+        assert_eq!(report["steps"][0]["observation"]["capture_status"], "step_failed");
+        assert!(report["terminal_output"].is_null());
+        assert!(traced.output().is_err());
+    }
+
+    #[test]
+    fn trace_window_observes_only_selected_step_but_executes_full_graph() {
+        let mut registry = LayerRegistry::new();
+        let add = AgentLayerSpec::add(23);
+        let relu = AgentLayerSpec::relu(24);
+        registry.init_agent_layer(&add).unwrap();
+        registry.init_agent_layer(&relu).unwrap();
+        let mut builder = AgentGraphBuilder::new(4).unwrap();
+        builder.add_binary(&add, 0, 1, 2).unwrap();
+        builder.add_unary(&relu, 2, 3).unwrap();
+        builder.set_output(3).unwrap();
+        let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
+        for (slot, role) in [(0, "observation"), (1, "state")] {
+            plan.add_input_port(slot, role.into(), 1, 2, 1, 1,
+                "feature_axis1_singleton".into(), false, 0).unwrap();
+        }
+        let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
+        let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
+        for (slot, role, values) in [(0, "observation", [-5.0, 2.0]), (1, "state", [3.0, 4.0])] {
+            bundle.bind_input(slot, &tensor(&values), role.into(),
+                "feature_axis1_singleton".into(), "test".into(), 0, String::new()).unwrap();
+        }
+        let traced = graph.run_with_trace(&registry, &bundle, 1, 1, 64).unwrap();
+        let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
+        assert_eq!(report["completed_steps"], 2);
+        assert_eq!(report["observed_steps"], 1);
+        assert_eq!(report["steps"][0]["index"], 1);
+        assert_eq!(report["trace_complete"], false);
+        assert_eq!(traced.output().unwrap().to_array(), vec![0.0, 6.0]);
     }
 
     #[test]

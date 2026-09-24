@@ -17,12 +17,15 @@ From a repository checkout with `pkg/` built, run `node scripts/interactive_mult
 {"request_id":4,"op":"bind","slot":1,"values":[3,4],"shape":[1,2,1,1],"role":"state","layout":"feature_axis1_singleton","source":"memory-b","revision":3,"fingerprint":"state"}
 {"request_id":5,"op":"inspect"}
 {"request_id":6,"op":"consumer","slot":1,"id":"state-reader","acceptedRoles":["state"],"requireFingerprint":true,"minimumRevision":3}
-{"request_id":7,"op":"run"}
-{"request_id":8,"op":"verify","candidate":[4,6]}
-{"request_id":9,"op":"close"}
+{"request_id":7,"op":"trace","startStep":0,"maxSteps":1,"maxTensorBytes":1048576}
+{"request_id":8,"op":"run"}
+{"request_id":9,"op":"verify","candidate":[4,6]}
+{"request_id":10,"op":"close"}
 ```
 
 `run` returns `values: [4, 6]`; `verify` returns the ingress status and the numerical verification report. `explain` reports the compiled plan's ordered steps and partial static shapes before any input binding; it does not execute Burn or authorize a run. To inspect the contract before binding, send `{"op":"capabilities"}` or `{"op":"port","slot":1}`. `map`, `defer`, and `clear` let the caller revise logical mappings and bindings within the session. The `create` command accepts typed layer constructors listed by `agentCapabilities()`, unary/binary graph steps, and all input ports admitted by `MultiInputGraphPlan.v1`.
+
+`trace` executes the graph once and returns normal output alongside `execution_trace`. It observes selected step indices from `startStep` for up to `maxSteps` (maximum 256), while the whole graph still executes. The report binds the structural `program_identity`, ordered input and step shapes, and SHA-256 of captured f32 little-endian values. The per-tensor limit is `maxTensorBytes` (maximum 16 MiB); all input, step and terminal captures share a 64 MiB total limit. A skipped digest is `null` with a `capture_status`; `trace_complete` describes step coverage and completed execution, not digest coverage. The packaged `multi-input-execution-trace.v1.json` defines the fields and bounds. A failed operator returns `ok:false` with `execution_trace`, fault index and no output or receipt. A preflight or bound failure does not execute the graph and returns no trace. Each `trace` and `run` command is a separate execution, which matters for mutable state.
 
 The bridge status checks exact graph and bundle plan bytes, source equality, input contracts, deferred required ports, and registry structural binding. `status.ready` describes current coverage; `execution_authorized` stays false. The bridge's `run` method checks status again and delegates execution to `CompiledMultiInputGraph.run`, which repeats graph preflight. `source` and `fingerprint` are caller-declared metadata; this version does not authenticate their origin. Burn remains the final authority for tensor and operator compatibility.
 
@@ -93,6 +96,8 @@ With `--allow-checkpoint-restore` enabled by the trusted host, `{"op":"restore",
 The first run after restore records `state_parent_receipt_id` pointing to the restored receipt and `restore_event_id` pointing to the host's restore event. Each subsequent successful run in that session advances its immediate state parent to the previous receipt. A fresh `create` starts a new graph without inferred ancestry. If numerical execution starts but no receipt can be committed, the host discards the session; its possibly changed state cannot produce a misleading descendant receipt. These fields document causal checkpoint selection, including an explicit fork from an older receipt. The existing state handoff rule still orders parent receipts within a lane; it does not claim internal model state is semantically monotonic. Signed input claim v1 authenticates the input and structural manifest but does not bind active mutable checkpoint bytes. The restore flag is a host capability, not a producer signature for each restore. See `host-checkpoint-restore.v1.json`.
 
 ### Receipt for a durable multi-input run
+
+A successful durable `trace` also commits a receipt for its own execution and returns `output_f32_le_base64`. When the terminal digest was captured, compare `execution_trace.terminal_output.value_sha256` with the receipt output digest. A failed trace issues no receipt; after numerical execution starts, the durable runner discards that session.
 
 In durable mode, a successful `run` returns `execution_receipt` and `output_f32_le_base64` alongside `values`. The host records the exact graph `programIdentity`, manifest SHA-256, subject, signed claim SHA-256 per input slot, observed output shape and SHA-256 of little-endian f32 values, and a SHA-256 digest of the exact stateful multi-input ProgramBundle bytes captured after the run. It assigns a monotonic receipt sequence and stores the receipt in the same ledger while the input freshness lock is held. A failed disk commit returns an error, even if the numerical run already occurred.
 
