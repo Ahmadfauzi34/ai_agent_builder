@@ -143,6 +143,42 @@ test('baseline-candidate Burn verification receipt binds exact cases and mutable
  return {equal:equal.equivalent,unequal:unequal.equivalent,stale_rejected:stale,case_count:equal.tested_vector_count};
 });
 
+test('graph mutation transaction stages, verifies and commits only an issued receipt',()=>{
+ const reg=new m.LayerRegistry(),add=m.AgentLayerSpec.add(61);reg.initAgentLayer(add);
+ const builder=new m.AgentGraphBuilder(4);builder.addBinary(add,0,1,2);builder.setOutput(2);
+ const plan=builder.multiInputPlanV1();
+ for(const [slot,role] of [[0,'observation'],[1,'state']])plan.addInputPort(slot,role,1,2,1,1,'feature_axis1_singleton',false,0n);
+ const graph=reg.compileMultiInputGraph(plan),original=m.exportMultiInputProgramBundle(graph,reg,true);
+ const state=`sha256:${createHash('sha256').update(original).digest('hex')}`,identity=graph.programIdentity();
+ const tx=new m.GraphMutationTransaction(reg,graph,identity,state);
+ tx.removeStep(0);let bad=false;try{tx.stageCandidate()}catch{bad=true}
+ assert(bad,'empty candidate compiled');
+ const next=m.AgentLayerSpec.add(62);tx.insertStep(0,next,0,1,3);tx.setOutput(3);
+ const stage=JSON.parse(tx.stageCandidate());assert(stage.promotion_authorized===false,'stage authorized promotion');
+ assert(Buffer.compare(Buffer.from(original),Buffer.from(m.exportMultiInputProgramBundle(graph,reg,true)))===0,'staging changed baseline');
+ const baseReg=new m.LayerRegistry(),candidateReg=new m.LayerRegistry();
+ const baseGraph=m.importMultiInputProgramBundle(baseReg,tx.baselineBundle());
+ const candidateGraph=m.importMultiInputProgramBundle(candidateReg,tx.candidateBundle());
+ const candidatePlan=m.MultiInputGraphPlan.fromBytes(candidateGraph.inputPlanV1());
+ function inputs(p){const b=new m.MultiInputInputBundle(p);
+  for(const [slot,role,values] of [[0,'observation',[1,2]],[1,'state',[3,4]]]){
+   const tensor=new m.WasmTensor(new Float32Array(values),new Uint32Array([1,2,1,1]));
+   b.bindInput(slot,tensor,role,'feature_axis1_singleton','test',0n,'');tensor.free();
+  }return b;}
+ const cases=new m.MultiInputVerificationCases(baseGraph,candidateGraph);
+ const inputA=inputs(plan),inputB=inputs(candidatePlan);cases.addCase(inputA,inputB);
+ const receipt=JSON.parse(tx.verifyCases(cases,0,0));assert(receipt.equivalent,'same operator failed comparison');
+ let forged=false,denied=false;
+ try{tx.commitByReceipt(reg,graph,identity,state,'sha256:forged',true)}catch{forged=true}
+ try{tx.commitByReceipt(reg,graph,identity,state,receipt.receipt_digest,false)}catch{denied=true}
+ assert(forged&&denied,'receipt or authorization bypassed');
+ const promoted=tx.commitByReceipt(reg,graph,identity,state,receipt.receipt_digest,true);
+ assert(promoted.programIdentity()===candidateGraph.programIdentity(),'committed identity mismatch');
+ assert(Buffer.compare(Buffer.from(m.exportMultiInputProgramBundle(promoted,reg,true)),Buffer.from(tx.candidateBundle()))===0,'committed state mismatch');
+ for(const item of [inputA,inputB,cases,candidatePlan,candidateGraph,baseGraph,baseReg,candidateReg,promoted,tx,next,graph,plan,builder,add,reg])item.free();
+ return {stage_identity_changed:JSON.parse(identity).input_plan_hex!==stage.candidate_program_identity.input_plan_hex,forged_rejected:forged,unauthorized_rejected:denied,verified:receipt.equivalent};
+});
+
 test('semantic ingress v2 maps logical ports and gates source before run',()=>{
  const reg=new m.LayerRegistry(), add=m.AgentLayerSpec.add(31); reg.initAgentLayer(add);
  const b=new m.AgentGraphBuilder(3); b.addBinary(add,0,1,2); b.setOutput(2);

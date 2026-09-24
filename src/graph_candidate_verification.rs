@@ -24,6 +24,14 @@ struct VerificationCase {
     input_bytes: u64,
 }
 
+pub(crate) struct VerificationOutcome {
+    pub(crate) json: String,
+    pub(crate) digest: String,
+    pub(crate) equivalent: bool,
+    pub(crate) baseline_state: String,
+    pub(crate) candidate_state: String,
+}
+
 #[wasm_bindgen]
 pub struct MultiInputVerificationCases {
     baseline_plan: MultiInputGraphPlan,
@@ -161,6 +169,16 @@ impl MultiInputVerificationCases {
         candidate_registry: &LayerRegistry, candidate: &CompiledMultiInputGraph,
         abs_tol: f64, rel_tol: f64,
     ) -> Result<String, String> {
+        Ok(self.verify_outcome(baseline_registry, baseline, candidate_registry, candidate, abs_tol, rel_tol)?.json)
+    }
+}
+
+impl MultiInputVerificationCases {
+    pub(crate) fn verify_outcome(&self,
+        baseline_registry: &LayerRegistry, baseline: &CompiledMultiInputGraph,
+        candidate_registry: &LayerRegistry, candidate: &CompiledMultiInputGraph,
+        abs_tol: f64, rel_tol: f64,
+    ) -> Result<VerificationOutcome, String> {
         validate_tolerance(abs_tol, rel_tol)?;
         if self.cases.is_empty() {
             return Err("verification: at least one test vector is required".into());
@@ -239,7 +257,9 @@ impl MultiInputVerificationCases {
             if compared_f32_count == 0 { "null".to_string() } else { max_rel_error.to_string() },
             first_failure_case.map_or_else(|| "null".to_string(), |value| value.to_string()), rows.join(","),
         );
-        Ok(format!("{},\"receipt_digest\":\"{}\"}}", &proof[..proof.len() - 1], digest(proof.as_bytes())))
+        let receipt_digest = digest(proof.as_bytes());
+        let json = format!("{},\"receipt_digest\":\"{receipt_digest}\"}}", &proof[..proof.len() - 1]);
+        Ok(VerificationOutcome { json, digest: receipt_digest, equivalent, baseline_state, candidate_state })
     }
 }
 

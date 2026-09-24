@@ -81,6 +81,7 @@ fn validate_optional_epsilon(value: Option<f64>, context: &str) -> Result<(), St
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct AgentLayerSpec {
     layer_id: u32,
     layer_type: u8,

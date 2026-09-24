@@ -22,6 +22,7 @@ const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json
 const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
 const executionTraceContractSource = path.resolve('docs/multi-input-execution-trace.v1.json');
 const verificationContractSource = path.resolve('docs/baseline-candidate-verification.v1.json');
+const mutationContractSource = path.resolve('docs/transactional-graph-mutation.v1.json');
 const runtimeSurfaceContractSource = path.resolve('docs/runtime-surface.v1.json');
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
@@ -42,6 +43,7 @@ const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json
 const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
 const executionTraceContractTarget = path.join(pkgDir, 'multi-input-execution-trace.v1.json');
 const verificationContractTarget = path.join(pkgDir, 'baseline-candidate-verification.v1.json');
+const mutationContractTarget = path.join(pkgDir, 'transactional-graph-mutation.v1.json');
 const runtimeSurfaceContractTarget = path.join(pkgDir, 'runtime-surface.v1.json');
 
 const generatedPackageFiles = [
@@ -69,6 +71,7 @@ const packagedHostFiles = [
   'wasm-surface.v1.json',
   'multi-input-execution-trace.v1.json',
   'baseline-candidate-verification.v1.json',
+  'transactional-graph-mutation.v1.json',
   'runtime-surface.v1.json',
 ];
 
@@ -108,6 +111,7 @@ fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
 fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
 fs.copyFileSync(executionTraceContractSource, executionTraceContractTarget);
 fs.copyFileSync(verificationContractSource, verificationContractTarget);
+fs.copyFileSync(mutationContractSource, mutationContractTarget);
 fs.copyFileSync(runtimeSurfaceContractSource, runtimeSurfaceContractTarget);
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));

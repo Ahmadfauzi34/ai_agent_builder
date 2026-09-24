@@ -225,6 +225,16 @@ impl<'a> PlanCursor<'a> {
 }
 
 impl MultiInputGraphPlan {
+    pub(crate) fn with_graph_plan(&self, graph_plan: Vec<u8>) -> Result<Self, String> {
+        let decoded = decode_graph_plan(&graph_plan)?;
+        if decoded.num_slots != self.num_slots {
+            return Err("mutation: slot count must preserve the input port contract".into());
+        }
+        let candidate = Self { graph_plan, num_slots: self.num_slots, ports: self.ports.clone() };
+        candidate.validate_for_compile()?;
+        Ok(candidate)
+    }
+
     fn encode(&self) -> Result<Vec<u8>, String> {
         if self.ports.len() > MAX_INPUT_PORTS {
             return Err(format!(

@@ -85,6 +85,12 @@ For candidate evaluation, construct `MultiInputVerificationCases(baselineGraph, 
 
 This verifier runs at the direct WASM boundary. The JSON Lines ingress runner's signed input and durable execution receipt policy does not wrap the comparison; its provenance guarantees must not be inferred for a direct WASM call. A verification receipt covers only the submitted test vectors and is neither a promotion decision nor a signed proof of origin. A later graph-mutation transaction can consume this evidence under its own authority gate.
 
+### Transactional graph mutation
+
+At the direct WASM boundary, export the stateful baseline ProgramBundle and compute its SHA-256 as `sha256:<hex>`. Construct `GraphMutationTransaction(registry, graph, graph.programIdentity(), stateDigest)`. Use `replaceStep`, `insertStep`, `removeStep`, `reconnectStep`, `setOutput`, and `setWeightsFlat` to edit its isolated proposal. The slot count and external input contract are fixed. `stageCandidate()` imports a fresh snapshot, applies specs and weights, compiles, and returns structural identities and exact state digests; a failure leaves the live registry untouched.
+
+Import `baselineBundle()` and `candidateBundle()` into two temporary registries, create `MultiInputVerificationCases(baselineGraph, candidateGraph)`, and add matching input bundles for the test cases. Call `transaction.verifyCases(cases, absTol, relTol)`. A failed or mismatching comparison cannot be promoted. To promote an equivalent candidate, call `commitByReceipt(liveRegistry, liveGraph, expectedProgramIdentity, expectedStateDigest, receipt.receipt_digest, true)`, and use the **returned graph** with the newly installed registry. Every edit invalidates the previous stage and receipt. The live registry must still have exactly the snapshotted baseline bytes at commit time. The final boolean is the direct caller's explicit authorization; the receipt covers only tested inputs and is neither signed nor a durable host receipt. See `transactional-graph-mutation.v1.json` for the contract.
+
 The v1 name means the surface is contracted, not frozen forever. A future incompatible public surface should be treated as an explicit contract-version decision rather than accidental drift.
 
 ## Node communication path
