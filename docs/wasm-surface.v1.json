@@ -640,6 +640,25 @@
       "stageCandidate",
       "verifyCases"
     ],
+    "CheckpointBranchSet": [
+      "baselineBundle",
+      "baselineStateDigest",
+      "branchCount",
+      "candidateBundle",
+      "commitBranchByReceipt",
+      "constructor",
+      "fork",
+      "insertStep",
+      "promotedBranch",
+      "reconnectStep",
+      "removeStep",
+      "replaceStep",
+      "setOutput",
+      "setWeightsFlat",
+      "stageBranch",
+      "stateDiff",
+      "verifyBranch"
+    ],
     "SemanticIngressManifestV2": [
       "addDeferredPort",
       "addRuntimePort",
@@ -671,6 +690,7 @@
     "agentSpecLayout",
     "bindInputPortConsumerEdge",
     "bindSemanticLifecycleTransition",
+    "checkpointBranchCapabilities",
     "comparisonCapabilities",
     "describeGraph",
     "describeWorkspace",

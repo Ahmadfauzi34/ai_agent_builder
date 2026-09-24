@@ -25,6 +25,7 @@
       "execution_trace_contract": "multi-input-execution-trace.v1.json",
       "baseline_candidate_verification_contract": "baseline-candidate-verification.v1.json",
       "transactional_graph_mutation_contract": "transactional-graph-mutation.v1.json",
+      "checkpoint_branch_state_diff_contract": "transactional-graph-checkpoint-branch.v1.json",
       "ingress_provenance_verifier": "ingress_provenance.mjs",
       "ingress_provenance_contract": "ingress-provenance.v1.json",
       "state_bound_ingress_provenance_contract": "ingress-provenance.v2.json",

@@ -23,6 +23,8 @@ pub use candidate_verification::MultiInputVerificationCases;
 #[path = "graph_mutation_transaction.rs"]
 mod mutation_transaction;
 pub use mutation_transaction::GraphMutationTransaction;
+pub use mutation_transaction::CheckpointBranchSet;
+pub use mutation_transaction::checkpoint_branch_capabilities;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.transactional-graph-checkpoint-branch.v1",
+  "status": "implemented_wasm_reference_branch_set",
+  "authority": {
+    "engine": "WASM Burn reference machine",
+    "receipt": "content digest over branch ID, baseline/candidate identities, checkpoint byte digests, exact state diff, and nested Burn verification receipt",
+    "promotion": "explicit call to commitBranchByReceipt; the branch-set permits one promotion",
+    "origin": "no input-origin signature or durable host ledger is added by this API"
+  },
+  "checkpoint": {
+    "format": "burn-research.multi-input-program-bundle.v1",
+    "required_state": "exact stateful bytes and matching caller-supplied structural identity and SHA-256",
+    "fork": "each branch transaction imports the same validated checkpoint into its own isolated registry"
+  },
+  "lifecycle": [
+    "construct CheckpointBranchSet from live registry and graph plus expected identity and checkpoint digest",
+    "fork unique bounded branch IDs from the immutable baseline checkpoint",
+    "edit branches with replace/insert/remove/reconnect, output selection, or flat weight updates",
+    "stageBranch compiles an isolated candidate; failure leaves the live registry and sibling branches untouched",
+    "stateDiff reports exact checkpoint-bundle byte differences and digests",
+    "verifyBranch runs the existing Burn baseline/candidate test vectors and binds output comparison plus state diff to branch ID",
+    "commitBranchByReceipt promotes one equivalent branch only when caller authorization and the unchanged baseline are supplied"
+  ],
+  "state_diff": {
+    "meaning": "byte-level diff of the complete stateful ProgramBundle, including plan, structural identity, initialization records and layer state",
+    "ranges": "ordered differing byte spans with before/after span digests; at most 64 spans, with ranges_truncated when more exist",
+    "fields": ["baseline_bundle_sha256", "candidate_bundle_sha256", "baseline_bytes", "candidate_bytes", "byte_length_delta", "changed_byte_count", "same_length", "ranges", "ranges_truncated", "semantic_equivalence_asserted:false"],
+    "limit": "byte equality/difference does not establish semantic state equivalence"
+  },
+  "receipt": {
+    "branch_id": "bound into the outer receipt digest",
+    "output": "nested baseline-candidate verification receipt includes each tested output shape, digest and tolerance result",
+    "checkpoint": "baseline/candidate exact stateful bundle digests",
+    "promotion_authorized": false,
+    "negative_result": "mismatch produces equivalent:false and cannot be promoted"
+  },
+  "limits": {
+    "branch_count": 8,
+    "baseline_bundle_bytes": 16777216,
+    "aggregate_baseline_snapshot_bytes": 67108864,
+    "aggregate_candidate_bundle_bytes": 67108864,
+    "branch_id": "1..=64 ASCII letters, digits, period, underscore or hyphen",
+    "external_input_contract": "port declarations and slot count remain fixed within every branch"
+  }
+}

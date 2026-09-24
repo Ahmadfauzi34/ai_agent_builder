@@ -54,6 +54,12 @@
         "multi_input_program_bundle": "multiInputProgramBundleCapabilities"
       }
     },
+    "checkpoint_branch_state_diff": {
+      "owner": "wasm_reference_machine",
+      "capabilities": {
+        "checkpoint_branching_and_byte_diff": "checkpointBranchCapabilities"
+      }
+    },
     "math_interaction": {
       "owner": "wasm_reference_machine",
       "capabilities": {
@@ -97,7 +103,8 @@
       "wasm-surface.bindings.actual.json",
       "multi-input-execution-trace.v1.json",
       "baseline-candidate-verification.v1.json",
-      "transactional-graph-mutation.v1.json"
+      "transactional-graph-mutation.v1.json",
+      "transactional-graph-checkpoint-branch.v1.json"
     ]
   },
   "fingerprint": {

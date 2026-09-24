@@ -27,6 +27,7 @@ jobs:
           python3 -m json.tool docs/multi-input-execution-trace.v1.json >/dev/null
           python3 -m json.tool docs/baseline-candidate-verification.v1.json >/dev/null
           python3 -m json.tool docs/transactional-graph-mutation.v1.json >/dev/null
+          python3 -m json.tool docs/transactional-graph-checkpoint-branch.v1.json >/dev/null
           python3 -m json.tool docs/agent-interaction-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-fault-contract.v1.json >/dev/null
           python3 -m json.tool docs/agent-input-contract.v1.json >/dev/null

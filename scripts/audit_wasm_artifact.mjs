@@ -179,6 +179,57 @@ test('graph mutation transaction stages, verifies and commits only an issued rec
  return {stage_identity_changed:JSON.parse(identity).input_plan_hex!==stage.candidate_program_identity.input_plan_hex,forged_rejected:forged,unauthorized_rejected:denied,verified:receipt.equivalent};
 });
 
+test('checkpoint branches fork one exact state, report byte diff, and promote one verified branch',()=>{
+ const reg=new m.LayerRegistry(),add=m.AgentLayerSpec.add(71);reg.initAgentLayer(add);
+ const builder=new m.AgentGraphBuilder(4);builder.addBinary(add,0,1,2);builder.setOutput(2);
+ const plan=builder.multiInputPlanV1();
+ for(const [slot,role] of [[0,'observation'],[1,'state']])plan.addInputPort(slot,role,1,2,1,1,'feature_axis1_singleton',false,0n);
+ const graph=reg.compileMultiInputGraph(plan),baseline=m.exportMultiInputProgramBundle(graph,reg,true);
+ const identity=graph.programIdentity(),state=`sha256:${createHash('sha256').update(baseline).digest('hex')}`;
+ const capability=JSON.parse(m.checkpointBranchCapabilities());assert(capability.branch_limit===8,'branch capability limit');
+ const branches=new m.CheckpointBranchSet(reg,graph,identity,state);
+ assert(branches.fork('relu')===1&&branches.fork('sub')===2,'branch fork count');
+ const relu=m.AgentLayerSpec.relu(72),sub=m.AgentLayerSpec.sub(73);
+ branches.insertStep('relu',1,relu,2,2,3);branches.setOutput('relu',3);
+ branches.replaceStep('sub',0,sub,0,1,2);
+ branches.stageBranch('relu');branches.stageBranch('sub');
+ const diff=JSON.parse(branches.stateDiff('relu'));
+ assert(diff.branch_id==='relu'&&diff.state_diff.changed_byte_count>0,'state diff empty');
+ assert(diff.state_diff.semantic_equivalence_asserted===false,'byte diff claimed semantic equivalence');
+ assert(Buffer.compare(Buffer.from(baseline),Buffer.from(m.exportMultiInputProgramBundle(graph,reg,true)))===0,'fork or staging changed source');
+ const baseRegistry=new m.LayerRegistry(),reluRegistry=new m.LayerRegistry(),subRegistry=new m.LayerRegistry();
+ const baseGraph=m.importMultiInputProgramBundle(baseRegistry,branches.baselineBundle());
+ const reluGraph=m.importMultiInputProgramBundle(reluRegistry,branches.candidateBundle('relu'));
+ const subGraph=m.importMultiInputProgramBundle(subRegistry,branches.candidateBundle('sub'));
+ const reluPlan=m.MultiInputGraphPlan.fromBytes(reluGraph.inputPlanV1());
+ const subPlan=m.MultiInputGraphPlan.fromBytes(subGraph.inputPlanV1());
+ function inputs(p){const b=new m.MultiInputInputBundle(p);
+  for(const [slot,role,values] of [[0,'observation',[1,2]],[1,'state',[3,4]]]){
+   const tensor=new m.WasmTensor(new Float32Array(values),new Uint32Array([1,2,1,1]));
+   b.bindInput(slot,tensor,role,'feature_axis1_singleton','test',0n,'');tensor.free();
+  }return b;}
+ const reluCases=new m.MultiInputVerificationCases(baseGraph,reluGraph),subCases=new m.MultiInputVerificationCases(baseGraph,subGraph);
+ const b0=inputs(plan),br=inputs(reluPlan),bs=inputs(subPlan);reluCases.addCase(b0,br);subCases.addCase(b0,bs);
+ const reluReceipt=JSON.parse(branches.verifyBranch('relu',reluCases,0,0));
+ const subReceipt=JSON.parse(branches.verifyBranch('sub',subCases,0,0));
+ assert(reluReceipt.branch_id==='relu'&&reluReceipt.equivalent,'matching branch did not verify');
+ assert(reluReceipt.state_diff.changed_byte_count===diff.state_diff.changed_byte_count,'receipt changed branch diff');
+ assert(subReceipt.equivalent===false,'mismatching branch passed');
+ let wrong=false,unauthorized=false;
+ try{branches.commitBranchByReceipt('sub',reg,graph,identity,state,reluReceipt.receipt_digest,true)}catch{wrong=true}
+ try{branches.commitBranchByReceipt('relu',reg,graph,identity,state,reluReceipt.receipt_digest,false)}catch{unauthorized=true}
+ assert(wrong&&unauthorized,'branch or authorization gate failed');
+ const promoted=branches.commitBranchByReceipt('relu',reg,graph,identity,state,reluReceipt.receipt_digest,true);
+ assert(branches.promotedBranch()==='relu','promoted branch identity missing');
+ assert(promoted.programIdentity()===reluGraph.programIdentity(),'promoted branch identity differs');
+ assert(Buffer.compare(Buffer.from(m.exportMultiInputProgramBundle(promoted,reg,true)),Buffer.from(branches.candidateBundle('relu')))===0,'promoted checkpoint differs');
+ let second=false;try{branches.commitBranchByReceipt('sub',reg,graph,identity,state,subReceipt.receipt_digest,true)}catch{second=true}
+ assert(second,'branch set promoted more than once');
+ const promotedBranch=branches.promotedBranch();
+ for(const item of [b0,br,bs,reluCases,subCases,reluPlan,subPlan,baseGraph,reluGraph,subGraph,baseRegistry,reluRegistry,subRegistry,promoted,branches,relu,sub,graph,plan,builder,add,reg])item.free();
+ return {branch_count:2,changed_bytes:diff.state_diff.changed_byte_count,matching_branch:reluReceipt.equivalent,mismatch_branch:subReceipt.equivalent,promoted:promotedBranch,second_promotion_rejected:second};
+});
+
 test('semantic ingress v2 maps logical ports and gates source before run',()=>{
  const reg=new m.LayerRegistry(), add=m.AgentLayerSpec.add(31); reg.initAgentLayer(add);
  const b=new m.AgentGraphBuilder(3); b.addBinary(add,0,1,2); b.setOutput(2);

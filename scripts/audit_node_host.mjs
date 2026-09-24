@@ -52,6 +52,7 @@ assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is
 assert(fs.existsSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
 assert(fs.existsSync(path.join(pkgDir, 'baseline-candidate-verification.v1.json')), 'packaged verifier contract is missing');
 assert(fs.existsSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json')), 'packaged mutation contract is missing');
+assert(fs.existsSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json')), 'packaged checkpoint branch contract is missing');
 assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
@@ -71,6 +72,7 @@ const requiredPackageFiles = [
   'multi-input-execution-trace.v1.json',
   'baseline-candidate-verification.v1.json',
   'transactional-graph-mutation.v1.json',
+  'transactional-graph-checkpoint-branch.v1.json',
   'runtime-surface.v1.json',
   'node.mjs',
   'node.d.mts',
@@ -106,6 +108,9 @@ assert(actualSurface.artifacts?.['baseline-candidate-verification.v1.json']?.sha
 assert(actualSurface.artifacts?.['transactional-graph-mutation.v1.json']?.sha256
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
   'mutation contract bytes are not bound by the runtime surface fingerprint');
+assert(actualSurface.artifacts?.['transactional-graph-checkpoint-branch.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
+  'checkpoint branch contract bytes are not bound by the runtime surface fingerprint');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
 assert(support.schema === 'burn-research.host-support.v1', 'host support schema mismatch');
@@ -115,6 +120,7 @@ assert(support.verified_hosts?.node?.interactive_runner === 'interactive_multi_i
 assert(support.verified_hosts?.node?.execution_trace_contract === 'multi-input-execution-trace.v1.json', 'Node trace contract discovery mismatch');
 assert(support.verified_hosts?.node?.baseline_candidate_verification_contract === 'baseline-candidate-verification.v1.json', 'Node verifier contract discovery mismatch');
 assert(support.verified_hosts?.node?.transactional_graph_mutation_contract === 'transactional-graph-mutation.v1.json', 'Node mutation contract discovery mismatch');
+assert(support.verified_hosts?.node?.checkpoint_branch_state_diff_contract === 'transactional-graph-checkpoint-branch.v1.json', 'Node checkpoint branch contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_provenance_contract === 'ingress-provenance.v1.json', 'Node signed ingress contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_contract === 'ingress-replay-ledger.v1.json', 'Node replay ledger contract discovery mismatch');
 assert(support.verified_hosts?.node?.ingress_replay_ledger_initializer === 'init_ingress_replay_ledger.mjs', 'Node ledger initializer discovery mismatch');
