@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.baseline-candidate-verification.v1",
+  "status": "implemented_wasm_reference_comparison",
+  "entrypoint": "new MultiInputVerificationCases(baselineGraph, candidateGraph); addCase(baselineBundle, candidateBundle); verify(baselineRegistry, baselineGraph, candidateRegistry, candidateGraph, absTol, relTol)",
+  "authority": {
+    "numerical_execution": "both compiled graphs run through the Burn reference interpreter",
+    "receipt": "WASM observation of completed comparison cases; mismatch returns equivalent:false",
+    "promotion_authorized": false,
+    "input_origin_authenticated": false,
+    "host_durable_execution_receipt": "separate Node ledger contract, not produced by this verifier"
+  },
+  "case_contract": {
+    "input_port_declarations": "baseline and candidate have identical ordered slot, role, shape, layout, fingerprint requirement and minimum revision",
+    "input_values": "both bundles for each case have the same slot, rank-four shape and exact f32 bits",
+    "input_sha256": "SHA-256 of ordered slot:u8 + four dimensions:u64 little endian + f32 bit patterns little endian for every bound slot",
+    "snapshot": "addCase clones bundles after complete input preflight; later caller changes to the original bundles do not alter accepted cases",
+    "pre_execution": "all cases repeat graph, registry and value preflight before the first Burn run",
+    "case_order": "insertion order"
+  },
+  "state_contract": {
+    "baseline_and_candidate_registries": "passed independently; identical layer IDs are allowed",
+    "checkpoint_digest": "SHA-256 of the exact stateful multi-input ProgramBundle exported for each graph immediately before execution",
+    "stability": "both checkpoint byte digests are rechecked before and after each baseline and candidate run",
+    "on_change": "error, no verification receipt; no rollback of a state mutation is claimed",
+    "trust": "checkpoint bytes and digests have no origin signature"
+  },
+  "bounds": {
+    "case_count": "1..=128",
+    "total_input_payload_bytes": 67108864,
+    "per_output_payload_bytes": 16777216,
+    "total_observed_output_payload_bytes": 67108864,
+    "per_stateful_program_bundle_bytes": 16777216
+  },
+  "receipt_fields": [
+    "schema_version",
+    "schema_id",
+    "authority",
+    "baseline_program_identity",
+    "candidate_program_identity",
+    "baseline_state_checkpoint_bytes_sha256",
+    "candidate_state_checkpoint_bytes_sha256",
+    "abs_tol",
+    "rel_tol",
+    "tested_vector_count",
+    "compared_f32_count",
+    "max_abs_error",
+    "max_rel_error",
+    "first_failure_case_index",
+    "observed_output_bytes",
+    "equivalent",
+    "promotion_authorized:false",
+    "cases[].input_sha256",
+    "cases[].input_bytes",
+    "cases[].baseline_shape",
+    "cases[].candidate_shape",
+    "cases[].baseline_value_sha256",
+    "cases[].candidate_value_sha256",
+    "cases[].shape_matches",
+    "cases[].passed",
+    "cases[].max_abs_error",
+    "cases[].max_rel_error",
+    "cases[].first_failure",
+    "receipt_digest"
+  ],
+  "comparison": {
+    "per_element_pass": "abs(a-b) <= absTol + relTol * max(abs(a), abs(b), f64::EPSILON)",
+    "relative_error": "abs(a-b) / max(abs(a), abs(b), f64::EPSILON)",
+    "shape_mismatch": "negative receipt with null per-case errors and no compared elements for that case",
+    "non_finite_output_or_operator_failure": "error with no receipt",
+    "aggregate_errors": "maxima over cases whose output shapes match; null if none match",
+    "equivalent": "all cases completed, shapes matched and every output element met tolerance"
+  },
+  "receipt_digest": "SHA-256 over the exact compact UTF-8 JSON bytes with fixed Rust field order, without receipt_digest; a content correlation value rather than a signature or unique execution ID",
+  "limits": [
+    "Test vectors are selected by the caller; passing them establishes no general equivalence beyond the tested cases.",
+    "Input source, revision and fingerprint metadata are checked against each local plan but are not authenticated or part of input_sha256.",
+    "Calling verify again executes both programs again; identical receipt digests may describe separate executions over identical bytes.",
+    "Different output shape is a failed numerical comparison, while invalid preflight, mutable-state drift and execution fault yield no receipt.",
+    "A verifier receipt neither authorizes graph mutation nor commits a candidate as a promoted model."
+  ]
+}

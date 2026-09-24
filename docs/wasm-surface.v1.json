@@ -619,6 +619,12 @@
       "constructor",
       "planFingerprint"
     ],
+    "MultiInputVerificationCases": [
+      "addCase",
+      "caseCount",
+      "constructor",
+      "verify"
+    ],
     "SemanticIngressManifestV2": [
       "addDeferredPort",
       "addRuntimePort",

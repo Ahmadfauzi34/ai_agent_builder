@@ -17,6 +17,9 @@ mod plan_explain;
 #[path = "graph_execution_trace.rs"]
 mod execution_trace;
 pub use execution_trace::TracedMultiInputRun;
+#[path = "graph_candidate_verification.rs"]
+mod candidate_verification;
+pub use candidate_verification::MultiInputVerificationCases;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
