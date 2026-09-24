@@ -12,9 +12,58 @@ use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
 
 const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
+const MAX_CHECKPOINT_BRANCHES: usize = 8;
+const MAX_BRANCH_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_BRANCH_CANDIDATE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_STATE_DIFF_RANGES: usize = 64;
 
 fn digest(bytes: &[u8]) -> String {
     format!("sha256:{}", bytes_hex(&Sha256::digest(bytes)))
+}
+
+fn valid_branch_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
+}
+
+fn state_diff_json(before: &[u8], after: &[u8]) -> String {
+    let common = before.len().min(after.len());
+    let mut changed = 0usize;
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut range_start = None;
+    let mut truncated = false;
+    for offset in 0..common {
+        if before[offset] != after[offset] {
+            changed += 1;
+            if range_start.is_none() { range_start = Some(offset); }
+        } else if let Some(start) = range_start.take() {
+            if ranges.len() < MAX_STATE_DIFF_RANGES { ranges.push((start, offset)); }
+            else { truncated = true; }
+        }
+    }
+    if let Some(start) = range_start.take() {
+        if ranges.len() < MAX_STATE_DIFF_RANGES { ranges.push((start, common)); }
+        else { truncated = true; }
+    }
+    if after.len() > common {
+        changed += after.len() - common;
+        if ranges.len() < MAX_STATE_DIFF_RANGES { ranges.push((common, after.len())); }
+        else { truncated = true; }
+    } else if before.len() > common {
+        changed += before.len() - common;
+        if ranges.len() < MAX_STATE_DIFF_RANGES { ranges.push((common, before.len())); }
+        else { truncated = true; }
+    }
+    let encoded = ranges.iter().map(|(start, end)| {
+        let old_end = (*end).min(before.len());
+        let new_end = (*end).min(after.len());
+        format!("{{\"offset\":{start},\"length\":{},\"baseline_sha256\":\"{}\",\"candidate_sha256\":\"{}\"}}",
+            end - start, digest(&before[*start..old_end]), digest(&after[*start..new_end]))
+    }).collect::<Vec<_>>().join(",");
+    let delta = after.len() as i64 - before.len() as i64;
+    format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-state-diff.v1\",\"baseline_bundle_sha256\":\"{}\",\"candidate_bundle_sha256\":\"{}\",\"baseline_bytes\":{},\"candidate_bytes\":{},\"byte_length_delta\":{delta},\"changed_byte_count\":{changed},\"same_length\":{},\"ranges\":[{encoded}],\"ranges_truncated\":{truncated},\"semantic_equivalence_asserted\":false}}",
+        digest(before), digest(after), before.len(), after.len(), before.len() == after.len())
 }
 
 fn encode(plan: &DecodedGraphPlan) -> Result<Vec<u8>, String> {
@@ -39,6 +88,18 @@ struct StagedCandidate {
     receipt_digest: Option<String>,
 }
 
+struct BranchVerification {
+    receipt_digest: String,
+    verifier_receipt_digest: String,
+    equivalent: bool,
+}
+
+struct CheckpointBranch {
+    id: String,
+    transaction: GraphMutationTransaction,
+    verification: Option<BranchVerification>,
+}
+
 #[wasm_bindgen]
 pub struct GraphMutationTransaction {
     baseline_bundle: Vec<u8>,
@@ -52,6 +113,22 @@ pub struct GraphMutationTransaction {
     weight_patches: Vec<(u8, u32, Vec<f32>)>,
     candidate: Option<StagedCandidate>,
     committed: bool,
+}
+
+#[wasm_bindgen]
+pub struct CheckpointBranchSet {
+    baseline_bundle: Vec<u8>,
+    baseline_identity: String,
+    baseline_digest: String,
+    baseline_registry: LayerRegistry,
+    baseline_graph: CompiledMultiInputGraph,
+    branches: Vec<CheckpointBranch>,
+    promoted_branch: Option<String>,
+}
+
+#[wasm_bindgen(js_name = checkpointBranchCapabilities)]
+pub fn checkpoint_branch_capabilities() -> String {
+    format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-branch-capabilities.v1\",\"implementation\":\"wasm_burn_reference_machine\",\"contract\":\"transactional-graph-checkpoint-branch.v1\",\"checkpoint_format\":\"burn-research.multi-input-program-bundle.v1\",\"fork_source\":\"one validated exact stateful checkpoint snapshot\",\"branch_limit\":{MAX_CHECKPOINT_BRANCHES},\"baseline_snapshot_budget_bytes\":{MAX_BRANCH_SNAPSHOT_BYTES},\"candidate_bundle_budget_bytes\":{MAX_BRANCH_CANDIDATE_BYTES},\"state_diff_ranges_limit\":{MAX_STATE_DIFF_RANGES},\"promotion\":\"one branch per set; explicit caller authorization and that branch's passing receipt required\",\"state_diff_semantics\":\"exact checkpoint bundle byte difference with digests; does not assert semantic state equivalence\",\"output_comparison\":\"MultiInputVerificationCases Burn receipt included in branch receipt\",\"durable_host_ledger\":false}}")
 }
 
 impl GraphMutationTransaction {
@@ -81,6 +158,19 @@ impl GraphMutationTransaction {
         }
         Ok(())
     }
+}
+
+impl CheckpointBranchSet {
+    fn editable(&self) -> Result<(), String> {
+        if self.promoted_branch.is_some() { Err("checkpoint branches: a branch has already been promoted".into()) }
+        else { Ok(()) }
+    }
+
+    fn branch_mut(&mut self, id: &str) -> Result<&mut CheckpointBranch, String> {
+        self.branches.iter_mut().find(|branch| branch.id == id)
+            .ok_or_else(|| format!("checkpoint branches: unknown branch {id:?}"))
+    }
+
 }
 
 #[cfg(test)]
@@ -184,6 +274,53 @@ mod tests {
         live.destroy_layer(21, LAYER_BINARY);
         assert!(transaction.commit_by_receipt(&mut live, &baseline, &baseline.program_identity(),
             &transaction.baseline_state_digest(), receipt["receipt_digest"].as_str().unwrap(), true).is_err());
+    }
+
+    #[test]
+    fn checkpoint_branches_diff_compare_and_promote_one_exact_branch() {
+        let (mut live, baseline, plan) = setup();
+        let original = export_multi_input_program_bundle(&baseline, &live, true).unwrap();
+        let identity = baseline.program_identity();
+        let baseline_digest = digest(&original);
+        let mut branches = CheckpointBranchSet::new(&live, &baseline, &identity, &baseline_digest).unwrap();
+        assert_eq!(branches.fork("relu-path").unwrap(), 1);
+        branches.fork("sub-path").unwrap();
+        assert!(branches.fork("../bad").is_err());
+        branches.insert_step("relu-path", 1, &AgentLayerSpec::relu(22), 2, 2, 3).unwrap();
+        branches.set_output("relu-path", 3).unwrap();
+        branches.replace_step("sub-path", 0, &AgentLayerSpec::sub(23), 0, 1, 2).unwrap();
+        branches.stage_branch("relu-path").unwrap();
+        branches.stage_branch("sub-path").unwrap();
+        let diff: serde_json::Value = serde_json::from_str(&branches.state_diff("relu-path").unwrap()).unwrap();
+        assert!(diff["state_diff"]["changed_byte_count"].as_u64().unwrap() > 0);
+        assert_eq!(diff["state_diff"]["semantic_equivalence_asserted"], false);
+        assert_eq!(export_multi_input_program_bundle(&baseline, &live, true).unwrap(), original);
+
+        let mut relu_registry = LayerRegistry::new();
+        let relu_graph = import_multi_input_program_bundle(&mut relu_registry, &branches.candidate_bundle("relu-path").unwrap()).unwrap();
+        let relu_plan = MultiInputGraphPlan::from_bytes(&relu_graph.input_plan_v1()).unwrap();
+        let mut sub_registry = LayerRegistry::new();
+        let sub_graph = import_multi_input_program_bundle(&mut sub_registry, &branches.candidate_bundle("sub-path").unwrap()).unwrap();
+        let sub_plan = MultiInputGraphPlan::from_bytes(&sub_graph.input_plan_v1()).unwrap();
+        let mut relu_cases = MultiInputVerificationCases::new(&baseline, &relu_graph).unwrap();
+        relu_cases.add_case(&input(&plan), &input(&relu_plan)).unwrap();
+        let mut sub_cases = MultiInputVerificationCases::new(&baseline, &sub_graph).unwrap();
+        sub_cases.add_case(&input(&plan), &input(&sub_plan)).unwrap();
+        let relu_receipt: serde_json::Value = serde_json::from_str(&branches.verify_branch("relu-path", &relu_cases, 0.0, 0.0).unwrap()).unwrap();
+        let sub_receipt: serde_json::Value = serde_json::from_str(&branches.verify_branch("sub-path", &sub_cases, 0.0, 0.0).unwrap()).unwrap();
+        assert_eq!(relu_receipt["equivalent"], true);
+        assert_eq!(relu_receipt["branch_id"], "relu-path");
+        assert_eq!(sub_receipt["equivalent"], false);
+        assert!(branches.commit_branch_by_receipt("sub-path", &mut live, &baseline, &identity,
+            &baseline_digest, relu_receipt["receipt_digest"].as_str().unwrap(), true).is_err());
+        assert!(branches.commit_branch_by_receipt("relu-path", &mut live, &baseline, &identity,
+            &baseline_digest, relu_receipt["receipt_digest"].as_str().unwrap(), false).is_err());
+        assert_eq!(export_multi_input_program_bundle(&baseline, &live, true).unwrap(), original);
+        let promoted = branches.commit_branch_by_receipt("relu-path", &mut live, &baseline, &identity,
+            &baseline_digest, relu_receipt["receipt_digest"].as_str().unwrap(), true).unwrap();
+        assert_eq!(branches.promoted_branch().as_deref(), Some("relu-path"));
+        assert_eq!(promoted.program_identity(), relu_graph.program_identity());
+        assert!(branches.fork("after-promotion").is_err());
     }
 }
 
@@ -359,5 +496,190 @@ impl GraphMutationTransaction {
         let graph = import_multi_input_program_bundle(live_registry, &candidate.bundle)?;
         self.committed = true;
         Ok(graph)
+    }
+}
+
+#[wasm_bindgen]
+impl CheckpointBranchSet {
+    #[wasm_bindgen(constructor)]
+    pub fn new(registry: &LayerRegistry, graph: &CompiledMultiInputGraph,
+        expected_program_identity: &str, expected_state_digest: &str) -> Result<Self, String> {
+        let snapshot = GraphMutationTransaction::new(registry, graph,
+            expected_program_identity, expected_state_digest)?;
+        Ok(Self {
+            baseline_bundle: snapshot.baseline_bundle.clone(),
+            baseline_identity: snapshot.baseline_identity,
+            baseline_digest: snapshot.baseline_digest,
+            baseline_registry: snapshot.baseline_registry,
+            baseline_graph: snapshot.baseline_graph,
+            branches: Vec::new(),
+            promoted_branch: None,
+        })
+    }
+
+    #[wasm_bindgen(js_name = branchCount)]
+    pub fn branch_count(&self) -> u32 { self.branches.len() as u32 }
+
+    #[wasm_bindgen(js_name = promotedBranch)]
+    pub fn promoted_branch(&self) -> Option<String> { self.promoted_branch.clone() }
+
+    #[wasm_bindgen(js_name = baselineStateDigest)]
+    pub fn baseline_state_digest(&self) -> String { self.baseline_digest.clone() }
+
+    #[wasm_bindgen(js_name = baselineBundle)]
+    pub fn baseline_bundle(&self) -> Vec<u8> { self.baseline_bundle.clone() }
+
+    #[wasm_bindgen(js_name = fork)]
+    pub fn fork(&mut self, branch_id: &str) -> Result<u32, String> {
+        self.editable()?;
+        if !valid_branch_id(branch_id) { return Err("checkpoint branches.fork: id must be 1..=64 ASCII letters, digits, '.', '_' or '-'".into()); }
+        if self.branches.iter().any(|branch| branch.id == branch_id) {
+            return Err("checkpoint branches.fork: branch id already exists".into());
+        }
+        if self.branches.len() >= MAX_CHECKPOINT_BRANCHES {
+            return Err("checkpoint branches.fork: at most 8 branches".into());
+        }
+        let snapshots = self.baseline_bundle.len().checked_mul(self.branches.len() + 2)
+            .ok_or("checkpoint branches.fork: snapshot budget overflow")?;
+        if snapshots > MAX_BRANCH_SNAPSHOT_BYTES {
+            return Err("checkpoint branches.fork: aggregate baseline snapshots exceed 64 MiB".into());
+        }
+        let transaction = GraphMutationTransaction::new(&self.baseline_registry, &self.baseline_graph,
+            &self.baseline_identity, &self.baseline_digest)?;
+        self.branches.push(CheckpointBranch { id: branch_id.into(), transaction, verification: None });
+        Ok(self.branches.len() as u32)
+    }
+
+    #[wasm_bindgen(js_name = replaceStep)]
+    pub fn replace_step(&mut self, branch_id: &str, index: u32, spec: &AgentLayerSpec,
+        first: u8, second: u8, output: u8) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.replace_step(index, spec, first, second, output)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = insertStep)]
+    pub fn insert_step(&mut self, branch_id: &str, index: u32, spec: &AgentLayerSpec,
+        first: u8, second: u8, output: u8) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.insert_step(index, spec, first, second, output)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = removeStep)]
+    pub fn remove_step(&mut self, branch_id: &str, index: u32) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.remove_step(index)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = reconnectStep)]
+    pub fn reconnect_step(&mut self, branch_id: &str, index: u32,
+        first: u8, second: u8, output: u8) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.reconnect_step(index, first, second, output)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setOutput)]
+    pub fn set_output(&mut self, branch_id: &str, output: u8) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.set_output(output)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, branch_id: &str, layer_type: u8,
+        layer_id: u32, values: &[f32]) -> Result<(), String> {
+        self.editable()?;
+        let branch = self.branch_mut(branch_id)?;
+        branch.transaction.set_weights_flat(layer_type, layer_id, values)?;
+        branch.verification = None;
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = stageBranch)]
+    pub fn stage_branch(&mut self, branch_id: &str) -> Result<String, String> {
+        self.editable()?;
+        let other_candidate_bytes = self.branches.iter()
+            .filter(|branch| branch.id != branch_id)
+            .filter_map(|branch| branch.transaction.candidate.as_ref())
+            .map(|candidate| candidate.bundle.len()).sum::<usize>();
+        let branch = self.branch_mut(branch_id)?;
+        branch.verification = None;
+        let stage = branch.transaction.stage_candidate()?;
+        let candidate_len = branch.transaction.candidate.as_ref().unwrap().bundle.len();
+        if other_candidate_bytes.saturating_add(candidate_len) > MAX_BRANCH_CANDIDATE_BYTES {
+            branch.transaction.invalidate();
+            return Err("checkpoint branches.stageBranch: aggregate candidate bundles exceed 64 MiB".into());
+        }
+        Ok(format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-branch-stage.v1\",\"branch_id\":\"{}\",\"stage\":{stage}}}", branch.id))
+    }
+
+    #[wasm_bindgen(js_name = candidateBundle)]
+    pub fn candidate_bundle(&self, branch_id: &str) -> Result<Vec<u8>, String> {
+        let branch = self.branches.iter().find(|branch| branch.id == branch_id)
+            .ok_or_else(|| format!("checkpoint branches: unknown branch {branch_id:?}"))?;
+        branch.transaction.candidate_bundle()
+    }
+
+    #[wasm_bindgen(js_name = stateDiff)]
+    pub fn state_diff(&self, branch_id: &str) -> Result<String, String> {
+        let branch = self.branches.iter().find(|branch| branch.id == branch_id)
+            .ok_or_else(|| format!("checkpoint branches: unknown branch {branch_id:?}"))?;
+        let candidate = branch.transaction.candidate.as_ref().ok_or("checkpoint branches: stage branch before diff")?;
+        Ok(format!("{{\"branch_id\":\"{}\",\"state_diff\":{}}}",
+            branch.id, state_diff_json(&self.baseline_bundle, &candidate.bundle)))
+    }
+
+    #[wasm_bindgen(js_name = verifyBranch)]
+    pub fn verify_branch(&mut self, branch_id: &str, cases: &MultiInputVerificationCases,
+        abs_tol: f64, rel_tol: f64) -> Result<String, String> {
+        self.editable()?;
+        let baseline_identity = self.baseline_identity.clone();
+        let baseline_digest = self.baseline_digest.clone();
+        let baseline_bundle = self.baseline_bundle.clone();
+        let branch = self.branch_mut(branch_id)?;
+        branch.verification = None;
+        let verification = branch.transaction.verify_cases(cases, abs_tol, rel_tol)?;
+        let candidate = branch.transaction.candidate.as_ref().ok_or("checkpoint branches: candidate disappeared")?;
+        let verifier_receipt_digest = candidate.receipt_digest.clone().unwrap_or_default();
+        let equivalent = !verifier_receipt_digest.is_empty();
+        let state_diff = state_diff_json(&baseline_bundle, &candidate.bundle);
+        let body = format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-branch-verification.v1\",\"authority\":\"wasm_burn_reference_observation\",\"branch_id\":\"{}\",\"baseline_program_identity\":{},\"candidate_program_identity\":{},\"baseline_state_checkpoint_bytes_sha256\":\"{}\",\"candidate_state_checkpoint_bytes_sha256\":\"{}\",\"equivalent\":{equivalent},\"promotion_authorized\":false,\"verifier_receipt\":{},\"state_diff\":{}}}",
+            branch.id, baseline_identity, candidate.graph.program_identity(), baseline_digest,
+            digest(&candidate.bundle), verification, state_diff);
+        let receipt_digest = digest(body.as_bytes());
+        let receipt = format!("{},\"receipt_digest\":\"{receipt_digest}\"}}", &body[..body.len()-1]);
+        branch.verification = Some(BranchVerification { receipt_digest, verifier_receipt_digest, equivalent });
+        Ok(receipt)
+    }
+
+    #[wasm_bindgen(js_name = commitBranchByReceipt)]
+    pub fn commit_branch_by_receipt(&mut self, branch_id: &str,
+        live_registry: &mut LayerRegistry, live_graph: &CompiledMultiInputGraph,
+        expected_program_identity: &str, expected_state_digest: &str,
+        receipt_digest: &str, authorize: bool) -> Result<CompiledMultiInputGraph, String> {
+        self.editable()?;
+        if !authorize { return Err("checkpoint branches: explicit promotion authorization required".into()); }
+        let branch = self.branch_mut(branch_id)?;
+        let proof = branch.verification.as_ref().ok_or("checkpoint branches: verified branch receipt required")?;
+        if !proof.equivalent || proof.receipt_digest != receipt_digest {
+            return Err("checkpoint branches: equivalent receipt for this branch required".into());
+        }
+        let promoted = branch.transaction.commit_by_receipt(live_registry, live_graph,
+            expected_program_identity, expected_state_digest, &proof.verifier_receipt_digest, true)?;
+        self.promoted_branch = Some(branch_id.into());
+        Ok(promoted)
     }
 }

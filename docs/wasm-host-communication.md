@@ -91,6 +91,12 @@ At the direct WASM boundary, export the stateful baseline ProgramBundle and comp
 
 Import `baselineBundle()` and `candidateBundle()` into two temporary registries, create `MultiInputVerificationCases(baselineGraph, candidateGraph)`, and add matching input bundles for the test cases. Call `transaction.verifyCases(cases, absTol, relTol)`. A failed or mismatching comparison cannot be promoted. To promote an equivalent candidate, call `commitByReceipt(liveRegistry, liveGraph, expectedProgramIdentity, expectedStateDigest, receipt.receipt_digest, true)`, and use the **returned graph** with the newly installed registry. Every edit invalidates the previous stage and receipt. The live registry must still have exactly the snapshotted baseline bytes at commit time. The final boolean is the direct caller's explicit authorization; the receipt covers only tested inputs and is neither signed nor a durable host receipt. See `transactional-graph-mutation.v1.json` for the contract.
 
+### Checkpoint branches and state diff
+
+`CheckpointBranchSet(registry, graph, graph.programIdentity(), stateDigest)` snapshots one exact stateful ProgramBundle. Call `fork(branchId)` for unique bounded IDs, then use the branch-scoped edit methods and `stageBranch(branchId)`. Every fork starts from the same checkpoint in its own registry. `stateDiff(branchId)` reports changed byte spans and before/after span digests for the full bundle. This is a byte-level diff across graph plan, initialization records, identity, and layer state; it does not claim semantic parameter or state equivalence.
+
+Build baseline and candidate input bundles as for the verifier, then call `verifyBranch(branchId, cases, absTol, relTol)`. The returned branch receipt binds the branch ID, checkpoint digests, exact byte diff, and the nested Burn output comparison receipt. Only an equivalent branch can be promoted. `commitBranchByReceipt(branchId, liveRegistry, liveGraph, expectedProgramIdentity, expectedStateDigest, receipt.receipt_digest, true)` promotes at most one branch in the set; use the returned graph. Branch count and aggregate checkpoint/candidate bytes are bounded. This direct WASM API does not add durable branch storage or host-ledger provenance; see `transactional-graph-checkpoint-branch.v1.json`.
+
 The v1 name means the surface is contracted, not frozen forever. A future incompatible public surface should be treated as an explicit contract-version decision rather than accidental drift.
 
 ## Node communication path
