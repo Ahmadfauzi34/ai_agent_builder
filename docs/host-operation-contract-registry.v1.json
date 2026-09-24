@@ -100,6 +100,18 @@
     "REGISTRY_BINDING_DEFERRED",
     "RUNTIME_OPERATOR_DEFERRED"
   ],
+  "validation": {
+    "packaged_audit": "scripts/audit_operation_contract_registry.mjs",
+    "package_gate": "scripts/package_node_host.mjs",
+    "proof_matrix": [
+      "exact operation query -> RESOLVED",
+      "multi-candidate family selector -> AMBIGUOUS",
+      "known operation with unmodeled authoritative static rule -> DEFERRED",
+      "known layout/shape/axis/capacity violation -> REJECTED",
+      "canonical layout subset compatibility is preserved from agent-layout-contracts.v1",
+      "resolved plan remains execution_authorized=false and mutation=none"
+    ]
+  },
   "invariants": [
     "the registry is derived from existing machine-readable contracts rather than becoming a new numerical source of truth",
     "pool queries never rank or select an operation on behalf of the agent",
