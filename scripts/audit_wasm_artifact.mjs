@@ -1,4 +1,5 @@
 import fs from 'fs'; import path from 'path'; import {pathToFileURL} from 'url';
+import {createHash} from 'node:crypto';
 const dir=process.argv[2];
 const modUrl=pathToFileURL(path.join(dir,'burn_research.js'));
 const m=await import(modUrl);
@@ -94,6 +95,52 @@ test('multi-input graph plan preflights all external slots before execution',()=
  const caps=JSON.parse(m.multiInputGraphCapabilities()); assert(caps.execution_authorized_by_preflight===false,'preflight must not claim authorization');
  const detail={missing:missing.ready,mismatch:mismatch.ready,shape_mismatch:shapeMismatch.ready,ready:ready.ready,plan_mismatch:planMismatch.bundle_plan_matches,registry_current:drift.registry_binding_current,required_slots:arr(graph.requiredInputSlots()),got,verification:verification.verification};
  replacement.free();otherBundle.free();otherPlan.free();otherBuilder.free();otherAdd.free();wrongShape.free();out.free();left.free();right.free();incomplete.free();graph.free();replay.free();plan.free();b.free();add.free();reg.free(); return detail;
+});
+
+test('baseline-candidate Burn verification receipt binds exact cases and mutable state',()=>{
+ function machine(spec){
+  const registry=new m.LayerRegistry(); registry.initAgentLayer(spec);
+  const builder=new m.AgentGraphBuilder(3); builder.addBinary(spec,0,1,2); builder.setOutput(2);
+  const plan=builder.multiInputPlanV1();
+  plan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',false,0n);
+  plan.addInputPort(1,'state',1,2,1,1,'feature_axis1_singleton',false,0n);
+  return {registry,builder,plan,graph:registry.compileMultiInputGraph(plan),spec};
+ }
+ function inputs(plan,leftValues=[1,2],rightValues=[3,4]){
+  const bundle=new m.MultiInputInputBundle(plan);
+  const left=new m.WasmTensor(new Float32Array(leftValues),new Uint32Array([1,2,1,1]));
+  const right=new m.WasmTensor(new Float32Array(rightValues),new Uint32Array([1,2,1,1]));
+  bundle.bindInput(0,left,'observation','feature_axis1_singleton','test',0n,'');
+  bundle.bindInput(1,right,'state','feature_axis1_singleton','test',0n,'');
+  left.free();right.free();return bundle;
+ }
+ const base=machine(m.AgentLayerSpec.add(42)), same=machine(m.AgentLayerSpec.add(43));
+ const different=machine(m.AgentLayerSpec.sub(42));
+ const equalCases=new m.MultiInputVerificationCases(base.graph,same.graph);
+ const left=inputs(base.plan),right=inputs(same.plan);
+ assert(equalCases.addCase(left,right)===1,'case cardinality');
+ const equal=JSON.parse(equalCases.verify(base.registry,base.graph,same.registry,same.graph,0,0));
+ assert(equal.equivalent===true&&equal.tested_vector_count===1&&equal.compared_f32_count===2,'equal program receipt');
+ assert(equal.promotion_authorized===false&&equal.baseline_program_identity.input_plan_hex!==equal.candidate_program_identity.input_plan_hex,'identity or authority');
+ const stateBytes=m.exportMultiInputProgramBundle(base.graph,base.registry,true);
+ assert(equal.baseline_state_checkpoint_bytes_sha256===`sha256:${createHash('sha256').update(stateBytes).digest('hex')}`,'state digest mismatch');
+ const receiptBody={...equal}; delete receiptBody.receipt_digest;
+ assert(equal.receipt_digest===`sha256:${createHash('sha256').update(JSON.stringify(receiptBody)).digest('hex')}`,'receipt body digest mismatch');
+ const unequalCases=new m.MultiInputVerificationCases(base.graph,different.graph);
+ const wrong=inputs(different.plan,[1,3]);
+ let rejected=false;try{unequalCases.addCase(left,wrong)}catch{rejected=true}
+ assert(rejected&&unequalCases.caseCount()===0,'mismatched test vector unexpectedly accepted');
+ wrong.free();
+ const input=inputs(different.plan); unequalCases.addCase(left,input);
+ const unequal=JSON.parse(unequalCases.verify(base.registry,base.graph,different.registry,different.graph,0,0));
+ assert(unequal.equivalent===false&&unequal.first_failure_case_index===0&&unequal.max_abs_error===8,'changed operator passed');
+ assert(unequal.cases[0].input_sha256===equal.cases[0].input_sha256,'identical input vectors changed digest');
+ const replacement=m.AgentLayerSpec.mul(42); different.registry.initAgentLayer(replacement);
+ let stale=false; try{unequalCases.verify(base.registry,base.graph,different.registry,different.graph,0,0)}catch{stale=true}
+ assert(stale,'stale candidate registry issued receipt');
+ replacement.free();input.free();unequalCases.free();right.free();left.free();equalCases.free();
+ for(const item of [base,same,different]){item.graph.free();item.plan.free();item.builder.free();item.spec.free();item.registry.free()}
+ return {equal:equal.equivalent,unequal:unequal.equivalent,stale_rejected:stale,case_count:equal.tested_vector_count};
 });
 
 test('semantic ingress v2 maps logical ports and gates source before run',()=>{

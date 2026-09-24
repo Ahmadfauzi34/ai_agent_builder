@@ -81,6 +81,10 @@ Adding or removing an exported member without intentionally updating the v1 cont
 
 The multi-input graph and semantic ingress bridge expose `runWithTrace`. Its returned `TracedMultiInputRun` has `report()` and `output()`; the packaged `multi-input-execution-trace.v1.json` describes observation bounds and digest semantics. The Node JSON Lines `trace` operation runs that path under the same signed input and durable receipt gates as `run`.
 
+For candidate evaluation, construct `MultiInputVerificationCases(baselineGraph, candidateGraph)` in the WASM runtime, call `addCase(baselineBundle, candidateBundle)` for each tested input, then call `verify(baselineRegistry, baselineGraph, candidateRegistry, candidateGraph, absTol, relTol)`. Independent registries allow both graphs to use the same layer IDs; each pair of bundles must contain identical f32 input bits under the same port contract. Burn executes both programs for every accepted case. The verifier reports output shapes, digests, numerical errors, both structural program identities, and exact stateful ProgramBundle digests. A shape or numerical mismatch returns `equivalent:false`; a stale binding, state change during execution, or execution fault returns an error without a receipt. The packaged `baseline-candidate-verification.v1.json` specifies limits and the receipt fields.
+
+This verifier runs at the direct WASM boundary. The JSON Lines ingress runner's signed input and durable execution receipt policy does not wrap the comparison; its provenance guarantees must not be inferred for a direct WASM call. A verification receipt covers only the submitted test vectors and is neither a promotion decision nor a signed proof of origin. A later graph-mutation transaction can consume this evidence under its own authority gate.
+
 The v1 name means the surface is contracted, not frozen forever. A future incompatible public surface should be treated as an explicit contract-version decision rather than accidental drift.
 
 ## Node communication path

@@ -51,6 +51,7 @@ pub struct MultiInputGraphPlan {
 }
 
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct MultiInputInputBundle {
     plan_bytes: Vec<u8>,
     plan_fingerprint: String,
@@ -773,6 +774,8 @@ pub(crate) fn multi_input_graph_capabilities() -> String {
         "\"plan_explain_scope\":\"compiled_topology_and_declared_input_shapes_with_partial_static_shape_inference\",",
         "\"execution_trace\":\"CompiledMultiInputGraph.runWithTrace\",",
         "\"execution_trace_scope\":\"bounded_observation_of_one_graph_execution\",",
+        "\"baseline_candidate_verification\":\"MultiInputVerificationCases\",",
+        "\"baseline_candidate_verification_scope\":\"exact_test_vectors_program_and_state_bound_burn_comparison\",",
         "\"execution\":\"CompiledMultiInputGraph.run\",",
         "\"runtime_inputs\":\"all declared external slots must be bound and contract-valid\",",
         "\"dtype\":\"f32\",",
