@@ -91,7 +91,8 @@
       "checkpoint_restore": "host-checkpoint-restore.v1.json",
       "legacy_execution_receipt": "host-execution-receipt.v1.json",
       "state_handoff": "host-state-handoff.v1.json",
-      "branch_promotion_lineage": "host-branch-promotion-lineage.v1.json"
+      "branch_promotion_lineage": "host-branch-promotion-lineage.v1.json",
+      "operation_contract_registry": "host-operation-contract-registry.v1.json"
     }
   },
   "artifact_identity": {
@@ -116,7 +117,8 @@
   },
   "authority_boundaries": {
     "wasm": "Rust/Burn reference machine owns numerical execution and WASM capability descriptions",
-    "node_host": "Node contracts describe optional trust, replay, receipt, state handoff, and durable promotion-lineage behavior outside the WASM export surface",
+    "node_host": "Node contracts describe optional trust, replay, receipt, state handoff, durable promotion-lineage, and operation-planning projections outside the WASM export surface",
+    "operation_registry": "constructible operation discovery and declarative plan resolution are read-only host projections; AgentLayerSpec, AgentGraphBuilder, LayerRegistry and Burn remain authoritative",
     "preflight": "readiness and compatibility do not grant external action authority"
   },
   "evolution": {
