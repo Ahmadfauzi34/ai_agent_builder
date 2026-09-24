@@ -106,13 +106,19 @@
       "multi-input-execution-trace.v1.json",
       "baseline-candidate-verification.v1.json",
       "transactional-graph-mutation.v1.json",
-      "transactional-graph-checkpoint-branch.v1.json"
+      "transactional-graph-checkpoint-branch.v1.json",
+      "agent-layer-catalog.v1.json",
+      "agent-layout-contracts.v1.json",
+      "agent-input-port.v1.json",
+      "agent-fault-contract.v1.json",
+      "multi-input-graph-plan.v1.json",
+      "multi-input-plan-explain.v1.json"
     ]
   },
   "fingerprint": {
     "algorithm": "sha256",
     "canonicalization": "UTF-8 compact JSON with recursively sorted object keys and preserved array order; fingerprint field omitted",
-    "scope": "artifact digests, generated binding and raw module projections, runtime capability JSON, plus Node host contract definitions and their digests",
+    "scope": "artifact digests, generated binding and raw module projections, runtime capability JSON, operation-registry source contract bytes, plus Node host contract definitions and their digests",
     "authority": "artifact consistency and correlation only; not a signature, provenance proof, or action authorization"
   },
   "authority_boundaries": {
