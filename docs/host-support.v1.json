@@ -28,6 +28,17 @@
       "checkpoint_branch_state_diff_contract": "transactional-graph-checkpoint-branch.v1.json",
       "branch_promotion_lineage_module": "branch_promotion_lineage.mjs",
       "branch_promotion_lineage_contract": "host-branch-promotion-lineage.v1.json",
+      "operation_registry_module": "operation_contract_registry.mjs",
+      "operation_registry_contract": "host-operation-contract-registry.v1.json",
+      "operation_registry_source_contracts": [
+        "agent-layer-catalog.v1.json",
+        "agent-layout-contracts.v1.json",
+        "agent-input-port.v1.json",
+        "agent-fault-contract.v1.json",
+        "multi-input-graph-plan.v1.json",
+        "multi-input-plan-explain.v1.json"
+      ],
+      "operation_registry_scope": "constructible graph operation type pool and nonexecuting declarative plan resolution; live LayerRegistry instance inventory remains deferred",
       "ingress_provenance_verifier": "ingress_provenance.mjs",
       "ingress_provenance_contract": "ingress-provenance.v1.json",
       "state_bound_ingress_provenance_contract": "ingress-provenance.v2.json",
