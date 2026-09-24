@@ -20,6 +20,9 @@ pub use execution_trace::TracedMultiInputRun;
 #[path = "graph_candidate_verification.rs"]
 mod candidate_verification;
 pub use candidate_verification::MultiInputVerificationCases;
+#[path = "graph_mutation_transaction.rs"]
+mod mutation_transaction;
+pub use mutation_transaction::GraphMutationTransaction;
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;

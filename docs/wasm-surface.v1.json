@@ -625,6 +625,21 @@
       "constructor",
       "verify"
     ],
+    "GraphMutationTransaction": [
+      "baselineBundle",
+      "baselineStateDigest",
+      "candidateBundle",
+      "commitByReceipt",
+      "constructor",
+      "insertStep",
+      "reconnectStep",
+      "removeStep",
+      "replaceStep",
+      "setOutput",
+      "setWeightsFlat",
+      "stageCandidate",
+      "verifyCases"
+    ],
     "SemanticIngressManifestV2": [
       "addDeferredPort",
       "addRuntimePort",

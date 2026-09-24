@@ -96,7 +96,8 @@
       "burn_research_bg.wasm.d.ts",
       "wasm-surface.bindings.actual.json",
       "multi-input-execution-trace.v1.json",
-      "baseline-candidate-verification.v1.json"
+      "baseline-candidate-verification.v1.json",
+      "transactional-graph-mutation.v1.json"
     ]
   },
   "fingerprint": {

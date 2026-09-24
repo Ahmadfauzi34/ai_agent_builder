@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "schema_id": "burn-research.transactional-graph-mutation.v1",
+  "status": "implemented_wasm_reference_transaction",
+  "authority": "explicit caller request within the same live WASM transaction; no signed origin or host ledger authority",
+  "scope": {
+    "baseline": "stateful multi-input ProgramBundle snapshot, maximum 16 MiB, exact expected program identity and checkpoint SHA-256 required",
+    "edit_ops": ["replaceStep", "insertStep", "removeStep", "reconnectStep", "setOutput", "setWeightsFlat"],
+    "fixed_contract": "slot count and external input port declarations remain unchanged",
+    "candidate": "fresh isolated registry imported from baseline snapshot, edited and compiled with Burn; failed staging never changes the live registry",
+    "verification": "verifyCases runs MultiInputVerificationCases against the internal baseline snapshot and staged candidate; only an equivalent receipt is retained for promotion",
+    "promotion": "commitByReceipt requires authorize=true, the exact receipt digest issued by this transaction, unchanged expected baseline identity and stateful bundle bytes, and an unchanged staged candidate; import is atomic",
+    "receipt_scope": "observed inputs and tolerances only; caller decides whether this evidence is sufficient"
+  },
+  "lifecycle": ["construct", "edit", "stageCandidate", "verifyCases", "commitByReceipt"],
+  "invalidation": "any successful edit invalidates the staged candidate and prior receipt; staging invalidates a prior receipt even when the new stage fails",
+  "limits": {"steps": 4096, "baseline_bundle_bytes": 16777216, "candidate_bundle_bytes": 16777216},
+  "promotion_result": "new CompiledMultiInputGraph bound to the newly installed registry; old compiled graph remains bound to the old baseline"
+}
