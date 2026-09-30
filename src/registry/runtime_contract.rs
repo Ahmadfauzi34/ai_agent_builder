@@ -1,11 +1,10 @@
-// NOTE: this module is loaded via `#[path = "registry/runtime_contract.rs"]`
-// from `src/graph.rs`. Under `#[path]`, child `mod` declarations resolve
-// relative to this file's directory (`src/registry/`), NOT the usual
-// `file_stem/` convention (`src/registry/runtime_contract/`). The explicit
-// `#[path]`s below keep the child files in `src/registry/runtime_contract/`.
-#[path = "runtime_contract/binding.rs"]
+// This module is declared as `crate::registry::runtime_contract` (see
+// `src/registry.rs`). It MUST stay a child of `registry`: the inventory and
+// binding projections read `LayerRegistry`'s private fields, which are only
+// visible inside `registry` and its descendants. Do not re-home it under
+// `graph` via `#[path]` -- that breaks field privacy (E0616) and, because of
+// `#[path]` child-resolution rules, module lookup (E0583).
 mod binding;
-#[path = "runtime_contract/inventory.rs"]
 mod inventory;
 
 use crate::protocol::{
@@ -107,7 +106,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-pub(super) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
+pub(crate) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
     let mut variant = None;
     let mut payload = None;
     for field in fingerprint.split(';') {
