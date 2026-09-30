@@ -66,6 +66,13 @@ try {
   const right = {op: 'bind', slot: 1, values: [3, 4], shape: [1, 2, 1, 1], role: 'state', layout: 'feature_axis1_singleton', source: 'memory-b', revision: 3, fingerprint: 'state'};
 
   check(!(await ask(left)).ok, 'unsigned bind succeeded');
+  // R-11: empty fingerprint in signed mode fails closed with the documented contract.
+  const emptyFp = await ask({...left, fingerprint: ''});
+  check(!emptyFp.ok && emptyFp.error_envelope?.code === 'invalid_argument'
+    && emptyFp.error_envelope?.path === 'fingerprint'
+    && emptyFp.error_envelope?.constraint === 'non_empty'
+    && emptyFp.error_envelope?.authority_mode === 'ed25519_host_enforced',
+    'empty fingerprint in signed mode did not fail with the documented contract');
   check(!(await ask(signed(left, manifest, 'foreign', 'run-1', foreignKey))).ok, 'foreign signature succeeded');
   check(!(await ask(signed(left, manifest, 'subject', 'other-run'))).ok, 'foreign subject succeeded');
   check(!(await ask(signed({...right, source: 'sensor-a'}, manifest, 'wrong-source'))).ok, 'signed source bypassed logical mapping');
@@ -78,8 +85,35 @@ try {
   check((await ask(signed(right, manifest, 'n-right'))).ok, 'valid signed state rejected');
   const firstRun = await ask({op: 'run'});
   check(firstRun.ok && firstRun.result.host_provenance.ready && JSON.stringify(firstRun.result.values) === '[4,6]', 'signed reference output mismatch');
+  // R-10: ready is the execution gate; no FIELD named execution_authorized may
+  // stay false on a legitimate successful run (the word may still appear inside
+  // documentation strings explaining the removal).
+  check(!JSON.stringify(firstRun.result).includes('"execution_authorized":'),
+    'execution_authorized field leaked into a signed run result');
+  const rhp = firstRun.result.host_provenance;
+  check(rhp.authority_mode === 'ed25519_host_enforced' && rhp.execution_gate?.field === 'ready'
+    && rhp.host_authority_attested === true && rhp.denial_reason === null
+    && rhp.claim_verification?.all_verified === true
+    && rhp.claim_verification?.verified_ports === rhp.claim_verification?.total_ports,
+    'signed gate status malformed on ready');
+  // R-10 negative: before claim coverage completes, denial_reason names the blocker.
+  const chp = created.result.host_provenance;
+  check(chp.ready === false && chp.host_authority_attested === false
+    && typeof chp.denial_reason === 'string' && chp.denial_reason.length > 0
+    && chp.enforcement_effect.includes('deny-by-default'), 'signed denial status malformed');
   const verification = await ask({op: 'verify', candidate: [4, 6]});
   check(verification.result.reference.verification.passed && verification.result.host_provenance.ready, 'signed reference verification failed');
+  // R-10: the field is gone from trace and verify surfaces too.
+  const signedTrace = await ask({op: 'trace'});
+  check(signedTrace.ok && JSON.stringify(signedTrace.result.values) === '[4,6]', 'signed trace failed');
+  for (const [name, res] of [['trace', signedTrace], ['verify', verification]]) {
+    check(!JSON.stringify(res.result).includes('"execution_authorized":'),
+      `execution_authorized field leaked into signed ${name} result`);
+    check(res.result.host_provenance.host_authority_attested === true
+      && res.result.host_provenance.denial_reason === null, `signed ${name} gate status malformed`);
+  }
+  check(signedTrace.result.execution_trace.steps[0].layer_type_name === 'binary',
+    'signed trace step lacks canonical layer type name');
 
   const deferred = await ask({op: 'defer', id: 'optional-context', role: 'x-context', required: false});
   check(deferred.ok, 'optional manifest transition failed');

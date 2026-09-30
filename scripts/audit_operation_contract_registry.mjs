@@ -17,43 +17,43 @@ function assert(condition, message) {
 
 for (const file of [
   'operation_contract_registry.mjs',
-  'host-operation-contract-registry.v1.json',
-  'agent-layer-catalog.v1.json',
-  'agent-layout-contracts.v1.json',
-  'agent-input-port.v1.json',
-  'agent-fault-contract.v1.json',
-  'multi-input-graph-plan.v1.json',
-  'multi-input-plan-explain.v1.json',
-  'host-support.v1.json',
-  'runtime-surface.v1.json',
+  'docs/host-operation-contract-registry.v1.json',
+  'docs/agent-layer-catalog.v1.json',
+  'docs/agent-layout-contracts.v1.json',
+  'docs/agent-input-port.v1.json',
+  'docs/agent-fault-contract.v1.json',
+  'docs/multi-input-graph-plan.v1.json',
+  'docs/multi-input-plan-explain.v1.json',
+  'docs/host-support.v1.json',
+  'docs/runtime-surface.v1.json',
 ]) {
   assert(fs.existsSync(path.join(pkgDir, file)), `packaged operation-registry dependency missing: ${file}`);
 }
 
-const hostSupport = JSON.parse(fs.readFileSync(path.join(pkgDir, 'host-support.v1.json'), 'utf8'));
+const hostSupport = JSON.parse(fs.readFileSync(path.join(pkgDir, 'docs/host-support.v1.json'), 'utf8'));
 assert(hostSupport.verified_hosts?.node?.operation_registry_module === 'operation_contract_registry.mjs', 'Node host does not advertise operation registry module');
 assert(hostSupport.verified_hosts?.node?.operation_registry_contract === 'host-operation-contract-registry.v1.json', 'Node host does not advertise operation registry contract');
 assert(hostSupport.verified_hosts?.node?.operation_registry_scope?.includes('constructible graph operation type pool'), 'Node host operation registry scope missing');
 
-const registryContract = JSON.parse(fs.readFileSync(path.join(pkgDir, 'host-operation-contract-registry.v1.json'), 'utf8'));
+const registryContract = JSON.parse(fs.readFileSync(path.join(pkgDir, 'docs/host-operation-contract-registry.v1.json'), 'utf8'));
 assert(registryContract.schema === 'burn-research.host-operation-contract-registry.v1', 'operation registry host contract schema mismatch');
 assert(registryContract.authority?.execution_authorized === false, 'operation registry contract must not authorize execution');
 assert(registryContract.pool?.live_registry_instance_inventory?.startsWith('deferred'), 'operation registry contract overclaims live registry inventory');
 
-const runtimeSurface = JSON.parse(fs.readFileSync(path.join(pkgDir, 'runtime-surface.v1.json'), 'utf8'));
-assert(runtimeSurface.host_capability_contracts?.contracts?.operation_contract_registry === 'host-operation-contract-registry.v1.json', 'runtime surface does not discover operation registry contract');
+const runtimeSurface = JSON.parse(fs.readFileSync(path.join(pkgDir, 'docs/runtime-surface.v1.json'), 'utf8'));
+assert(runtimeSurface.host_capability_contracts?.contracts?.operation_contract_registry === 'docs/host-operation-contract-registry.v1.json', 'runtime surface does not discover operation registry contract');
 for (const file of [
-  'agent-layer-catalog.v1.json',
-  'agent-layout-contracts.v1.json',
-  'agent-input-port.v1.json',
-  'agent-fault-contract.v1.json',
-  'multi-input-graph-plan.v1.json',
-  'multi-input-plan-explain.v1.json',
+  'docs/agent-layer-catalog.v1.json',
+  'docs/agent-layout-contracts.v1.json',
+  'docs/agent-input-port.v1.json',
+  'docs/agent-fault-contract.v1.json',
+  'docs/multi-input-graph-plan.v1.json',
+  'docs/multi-input-plan-explain.v1.json',
 ]) {
   assert(runtimeSurface.artifact_identity?.files?.includes(file), `runtime artifact identity does not bind ${file}`);
 }
 
-const registry = loadOperationContractRegistry(pkgDir);
+const registry = loadOperationContractRegistry(path.join(pkgDir, 'docs'));
 assert(registry.schema === OPERATION_REGISTRY_SCHEMAS.registry, 'registry schema mismatch');
 assert(registry.execution_authorized === false && registry.mutation === 'none', 'registry must remain projection-only');
 assert(registry.pool_kind === 'constructible_operation_types_not_live_registry_instances', 'pool kind overclaims live registry inventory');

@@ -2,13 +2,42 @@
 
 The packaged Node artifact includes `interactive_multi_input_ingress.mjs`. It loads the local WASM through the verified `node.mjs` adapter and keeps one graph session alive while an agent or a human sends JSON Lines requests. Each request produces one JSON response with the same `request_id`.
 
-After downloading and extracting the `burn-wasm-output` artifact, run:
+## Quick start
+
+After downloading and extracting the `burn-wasm-output` artifact, pick one authority mode. Every mode speaks the same JSON Lines protocol; they differ only in who attests the input claims.
+
+**Mode 1 — caller-declared** (no trust policy; inputs are caller-asserted metadata):
 
 ```bash
 node interactive_multi_input_ingress.mjs
 ```
 
-From a repository checkout with `pkg/` built, run `node scripts/interactive_multi_input_ingress.mjs pkg`. Send one command per line. The following example uses the typed `add` layer, two numeric inputs, and an exact source declaration for each logical port:
+Then send one JSON object per line (see the full session below). `run` returns `values: [4, 6]`.
+
+**Mode 2 — signed ingress** (host-enforced Ed25519 claims):
+
+```bash
+node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json
+```
+
+Every `bind` must carry `proof: {claim, signature}` from a configured issuer; unsigned binds are rejected. See "Signed host provenance" below for the policy and claim format.
+
+**Mode 3 — durable signed ingress** (claims + replay-safe ledger across restarts):
+
+```bash
+node init_ingress_replay_ledger.mjs /private/ingress-ledger.json run-42
+node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json /private/ingress-ledger.json run-42
+```
+
+Add `--allow-state-checkpoint-export --allow-checkpoint-restore` after the subject to enable `op=checkpoint` / `op=restore`; add `--require-state-bound-inputs` to require v2 state-bound claims. These flags are trusted host startup configuration — JSON Lines commands cannot set them. See "Host subject and replay across restarts" below.
+
+Startup argument order: `packageDir [trustPolicyPath] [ledgerPath] [subject] [trusted flags...]`. A ledger path or subject without a trust policy is rejected at startup.
+
+From a repository checkout with `pkg/` built, run `node scripts/interactive_multi_input_ingress.mjs pkg` (plus the same optional arguments).
+
+## Caller-declared session
+
+Send one command per line. The following example uses the typed `add` layer, two numeric inputs, and an exact source declaration for each logical port:
 
 ```jsonl
 {"request_id":1,"op":"create","numSlots":3,"layers":[{"constructor":"add","args":[31]}],"steps":[{"kind":"binary","layer":0,"slots":[0,1,2]}],"outputSlot":2,"ports":[{"slot":0,"role":"observation","shape":[1,2,1,1],"layout":"feature_axis1_singleton","requireFingerprint":true,"minimumRevision":2},{"slot":1,"role":"state","shape":[1,2,1,1],"layout":"feature_axis1_singleton","requireFingerprint":true,"minimumRevision":3}],"logicalPorts":[{"id":"observation","slot":0,"source":"sensor-a"},{"id":"memory","slot":1,"source":"memory-b"}]}
@@ -27,7 +56,7 @@ From a repository checkout with `pkg/` built, run `node scripts/interactive_mult
 
 `trace` executes the graph once and returns normal output alongside `execution_trace`. It observes selected step indices from `startStep` for up to `maxSteps` (maximum 256), while the whole graph still executes. The report binds the structural `program_identity`, ordered input and step shapes, and SHA-256 of captured f32 little-endian values. The per-tensor limit is `maxTensorBytes` (maximum 16 MiB); all input, step and terminal captures share a 64 MiB total limit. A skipped digest is `null` with a `capture_status`; `trace_complete` describes step coverage and completed execution, not digest coverage. The packaged `multi-input-execution-trace.v1.json` defines the fields and bounds. A failed operator returns `ok:false` with `execution_trace`, fault index and no output or receipt. A preflight or bound failure does not execute the graph and returns no trace. Each `trace` and `run` command is a separate execution, which matters for mutable state.
 
-The bridge status checks exact graph and bundle plan bytes, source equality, input contracts, deferred required ports, and registry structural binding. `status.ready` describes current coverage; `execution_authorized` stays false. The bridge's `run` method checks status again and delegates execution to `CompiledMultiInputGraph.run`, which repeats graph preflight. `source` and `fingerprint` are caller-declared metadata; this version does not authenticate their origin. Burn remains the final authority for tensor and operator compatibility.
+The bridge status checks exact graph and bundle plan bytes, source equality, input contracts, deferred required ports, and registry structural binding. `status.ready` describes current coverage and is the real execution gate: `run`/`trace` are refused while any blocker remains. (`execution_authorized` was a misleading hardcoded field and has been removed from the host JSON surface; do not branch on it.) The bridge's `run` method checks status again and delegates execution to `CompiledMultiInputGraph.run`, which repeats graph preflight. `source` and `fingerprint` are caller-declared metadata; this version does not authenticate their origin. Burn remains the final authority for tensor and operator compatibility.
 
 ## Signed host provenance
 
@@ -47,6 +76,22 @@ The policy file uses `burn-research.ingress-trust-policy.v1` and pins issuer pub
   ]
 }
 ```
+
+A signed claim binds one input tensor to one logical port. The producer builds it with `canonicalInputClaim(binding, context, keyId, subject, nonce)`; the canonical JSON that gets signed looks like this (values abbreviated):
+
+```json
+{
+  "schema": "burn-research.signed-input-claim.v1",
+  "key_id": "sensor-key-1",
+  "subject": "run-42",
+  "nonce": "01J...",
+  "binding": {"slot": 0, "logical_port_id": "observation", "source": "sensor-a", "role": "observation", "layout": "feature_axis1_singleton", "shape": [1, 2, 1, 1], "revision": 2, "fingerprint": "obs"},
+  "context": {"plan_hex": "7f454c46...", "manifest_sha256": "sha256:...", "value_sha256": "sha256:..."},
+  "signature": "base64(ed25519 over the canonical JSON above)"
+}
+```
+
+`bind` carries it as `{"proof": {"claim": {...}, "signature": "..."}}`. The host verifies the Ed25519 signature against the pinned issuer key, the manifest SHA-256 against the live graph, and the value SHA-256 against the submitted tensor bytes. Fingerprints must be non-empty in signed modes; an empty fingerprint is rejected with `invalid_argument` at path `fingerprint`.
 
 The producer constructs a v1 claim with `canonicalInputClaim(binding, context, keyId, subject, nonce)` from `ingress_provenance.mjs`. `context` contains `plan_hex`, `manifest_fingerprint`, `manifest_sha256: manifestDigest(manifest)`, and the mapped `logical_port_id` returned by `create`. The issuer signs `Buffer.from(JSON.stringify(claim))` with its Ed25519 private key and sends `proof: {claim, signature: base64}` in the existing `bind` command. See `scripts/audit_signed_ingress_provenance.mjs` for a complete executable producer and host session.
 
@@ -79,7 +124,15 @@ node interactive_multi_input_ingress.mjs . /trusted/ingress-policy.json /private
 
 The checkpoint flags grant independent capabilities: `--allow-state-checkpoint-export` allows `op=checkpoint` to return raw mutable state, while `--allow-checkpoint-restore` permits `op=restore` by a committed receipt ID. `--require-state-bound-inputs` requires v2 for every runtime input and does not grant raw checkpoint export. A host may combine these flags according to its policy. Durable runs retain their checkpoint and bind its byte digest to the receipt regardless of those client-facing flags.
 
-Run initialization once under the trusted host deployment before accepting any input. It refuses to overwrite an existing ledger. The ledger parent must exist, be owned by the runner user, and not be writable by other users. Every runner startup requires that existing private file; a missing or deleted ledger fails closed. A later process must present the exact same host subject to use that ledger. Each signed claim must also use that subject and a public key allowed for it by the host trust policy. JSON Lines requests cannot change the host subject or ledger path.
+Run initialization once under the trusted host deployment before accepting any input. It refuses to overwrite an existing ledger. The ledger parent must exist, be owned by the runner user, and not be writable by other users. Permission rules, enforced by the host at every startup (see `scripts/ingress_replay_ledger.mjs`):
+
+| Path | Accepted | Rejected |
+|---|---|---|
+| Ledger parent directory | `0700`, `0755` (no group/other write bit) | group-writable or world-writable (e.g. `0775`, `0707`) — startup fails closed with `ledger parent must be a private host-owned directory` |
+| Ledger file itself | owner-only modes such as `0600` | any group/other permission bit |
+| `<ledger>.checkpoints` directory and retained entries | owner-only | any group/other permission bit, symlinks |
+
+A common failure mode is copying a fixture with a tool that does not preserve modes: always re-verify with `stat -c '%a %U' <path>` after copy or restore. Every runner startup requires that existing private file; a missing or deleted ledger fails closed. A later process must present the exact same host subject to use that ledger. Each signed claim must also use that subject and a public key allowed for it by the host trust policy. JSON Lines requests cannot change the host subject or ledger path.
 
 A successful `bind` records its nonce and revision atomically on disk before replying. If the disk commit fails, the runner clears the newly bound tensor. On every `run` and `verify`, it checks that each in-session claim is recorded and remains the latest revision, while holding a filesystem lock. Reusing a nonce or lowering a revision after restarting is rejected. Two runner processes sharing the ledger serialize commits through that lock; a busy or abandoned lock fails closed. After a crash, an operator must confirm no process holds the lock before removing it.
 
@@ -104,3 +157,13 @@ In durable mode, a successful `run` returns `execution_receipt` and `output_f32_
 After restarting the runner with the same ledger and subject, send `{"op":"receipt","receipt_id":"sha256:..."}` to retrieve the committed record. Supply `shape` and either `values` or `output_f32_le_base64` with that command to receive `output_matches: true` or `false`. Use the byte encoding returned by `run` for exact comparisons: JSON renders `-0` as `0`, despite their different f32 bytes. This lookup does not execute the graph again; the separate `verify` command still provides Burn numerical comparison against a candidate. Receipt lookup fails if the record is absent or ledger validation fails. Older ledger snapshots without a receipt list retain their signed claim history and accept new receipts.
 
 The receipt is a host observation, not a WASM-signed certificate or permission for an agent action. Its SHA-256 ID detects changed content within the trusted ledger; a privileged host file writer can rewrite both content and ID. `programIdentity` remains structural and omits mutable layer state; `state_checkpoint_bytes_sha256` separately correlates the exact serialized bundle bytes. The bundle bytes have no signature, and the digest does not claim semantic state identity or state authenticity. Receipt storage has a 50,000-record limit and shares the existing 32 MiB ledger cap. The packaged `host-execution-receipt.v2.json` specifies the proof boundary; v1 history remains accepted.
+
+## Checkpoint bundle integrity: who checks what
+
+The multi-input `ProgramBundle` is a structural format with no trailing checksum: the WASM structural parser validates each field in order and silently ignores bytes after the last field, so a single-bit flip in the final byte still parses. Integrity responsibility is therefore split:
+
+- **WASM/parser**: structural validity only (magic, schema version, per-field bounds). It does not attest byte-level integrity.
+- **Host**: byte-level integrity. `{"op":"verifyCheckpointIntegrity","bundle_f32le_base64":"...","expected_digest":"sha256:..."}` hashes every byte of the bundle and compares it to the expected digest; any single-bit flip anywhere — including the final byte the structural parser ignores — fails the check. Prefer canonical base64 when producing bundles; the host accepts standard base64 padding variants.
+- **Durable mode**: every retained checkpoint is bound to its receipt by `state_checkpoint_bytes_sha256`. `op=restore` re-hashes the retained bytes and refuses to load them when they differ from the receipt.
+
+Never trust bundle bytes that crossed an untrusted channel without one of these host checks.
