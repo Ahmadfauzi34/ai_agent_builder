@@ -1,3 +1,12 @@
+// This module is declared as `crate::registry::runtime_contract` (see
+// `src/registry.rs`). It MUST stay a child of `registry`: the inventory and
+// binding projections read `LayerRegistry`'s private fields, which are only
+// visible inside `registry` and its descendants. Do not re-home it under
+// `graph` via `#[path]` -- that breaks field privacy (E0616) and, because of
+// `#[path]` child-resolution rules, module lookup (E0583).
+mod binding;
+mod inventory;
+
 use crate::protocol::{
     PayloadCursor, CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, LAYER_CONV,
     LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
@@ -97,7 +106,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-pub(super) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
+pub(crate) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>), String> {
     let mut variant = None;
     let mut payload = None;
     for field in fingerprint.split(';') {

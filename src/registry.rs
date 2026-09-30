@@ -15,6 +15,11 @@ use crate::layers::custom::seblock::WasmSeBlock;
 use crate::layers::custom::feature_norm::WasmFeatureNorm;
 use crate::layers::binary::WasmBinary;
 
+// The runtime-contract projection over the live registry. It lives here (not
+// under `graph`) so it can read `LayerRegistry`'s private fields: privacy in
+// Rust is scoped to the defining module and its descendants.
+pub(crate) mod runtime_contract;
+
 type LayerId = u32;
 type LayerKey = (u8, LayerId);
 

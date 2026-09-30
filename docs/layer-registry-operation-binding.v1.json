@@ -1,0 +1,138 @@
+{
+  "authority": {
+    "execution_authorized": false,
+    "instance_records": "burn-research.layer-registry-inventory-snapshot.v1 canonical live instance records",
+    "live_instance_source": "LayerRegistry",
+    "mutation": "none",
+    "operation_vocabulary": "agent-layer-catalog.v1.json constructor names",
+    "selection": "none; the agent or caller selects which bindings to use"
+  },
+  "binding_table": {
+    "0x01_linear": {
+      "operation_id": "linear",
+      "variants": "any (variant-insensitive)"
+    },
+    "0x02_norm": {
+      "0x00": "batchNorm",
+      "0x01": "groupNorm",
+      "0x02": "instanceNorm",
+      "0x03": "layerNorm",
+      "0x04": "rmsNorm"
+    },
+    "0x03_conv": {
+      "0x00": "conv1d",
+      "0x01": "conv2d",
+      "0x02": "convTranspose2d"
+    },
+    "0x04_activation": {
+      "0x00": "gelu",
+      "0x01": "relu",
+      "0x02": "sigmoid",
+      "0x03": "tanh",
+      "0x04": "hardSwish",
+      "0x05": "leakyRelu",
+      "0x06": "prelu",
+      "0x07": "swiGlu",
+      "0x08": "hardSigmoid",
+      "0x09": "softplus",
+      "0x0A": "mish",
+      "0x0B": "softmax",
+      "0x0C": "logSoftmax",
+      "0x0D": "glu"
+    },
+    "0x05_embedding": {
+      "operation_id": "embedding",
+      "variants": "any (variant-insensitive)"
+    },
+    "0x06_pool": {
+      "0x00": "maxPool1d",
+      "0x01": "maxPool2d",
+      "0x02": "avgPool1d",
+      "0x03": "avgPool2d",
+      "0x04": "adaptiveAvgPool2d"
+    },
+    "0x10_shift": {
+      "0x00": "shiftUp",
+      "0x01": "shiftDown",
+      "0x02": "shiftLeft",
+      "0x03": "shiftRight"
+    },
+    "0x11_ghost": {
+      "operation_id": "ghost",
+      "variants": "any (variant-insensitive)"
+    },
+    "0x12_seblock": {
+      "operation_id": "seBlock",
+      "variants": "any (variant-insensitive)"
+    },
+    "0x13_binary": {
+      "0x00": "add",
+      "0x01": "sub",
+      "0x02": "mul",
+      "0x03": "matmul",
+      "0x04": "concat"
+    },
+    "0x14_feature_norm": {
+      "operation_id": "featureNorm",
+      "variants": "any (variant-insensitive)"
+    }
+  },
+  "fail_closed": [
+    "unknown layer_type has no host operation-ID mapping",
+    "unknown variant for a variant-discriminated layer type has no host operation-ID mapping",
+    "live layer maps disagree with canonical init identities",
+    "summed live parameter count disagrees with LayerRegistry totalParams"
+  ],
+  "preserved_boundaries": [
+    "no operation ranking or recommendation",
+    "no initialize-vs-reuse decision",
+    "no graph/runtime execution",
+    "no mutation of LayerRegistry, AgentWorkspace, or any layer state",
+    "binding does not claim current numerical weight/state identity"
+  ],
+  "projection": {
+    "fingerprint": "sha256 over canonical ordered binding records, which embed the inventory fingerprint so the binding is provably computed over the exact canonical inventory",
+    "inference_rule": "deterministic (layer_type, variant) -> host operation-ID lookup; variant-discriminated layer types require an exact variant match; variant-insensitive layer types collapse to a single host operation-ID, matching LayerRegistry init acceptance",
+    "input": "canonical live instance records enumerated directly from LayerRegistry state, not AgentWorkspace mirrors",
+    "ordering": "ascending layer_type then layer_id",
+    "schema": "burn-research.layer-registry-operation-binding-snapshot.v1",
+    "state_identity_scope": "live structure plus validated init identity and parameter count; current numerical weight/state bytes are not included"
+  },
+  "purpose": "Infer the host operation-ID for every live LayerRegistry instance from the canonical (layer_type, variant) protocol identity. This completes the protocol (layer_type, variant) -> host operation-ID inference deferred by burn-research.layer-registry-inventory.v1, without ranking, selecting, initializing, executing, or mutating anything.",
+  "role": "read_only_live_operation_binding_projection",
+  "schema_id": "burn-research.layer-registry-operation-binding.v1",
+  "schema_version": 1,
+  "snapshot": {
+    "binding_fields": [
+      "layer_type",
+      "layer_id",
+      "variant",
+      "operation_id",
+      "init_fingerprint",
+      "parameter_count"
+    ],
+    "fields": [
+      "schema",
+      "instance_count",
+      "inventory_fingerprint",
+      "binding_fingerprint",
+      "bindings",
+      "execution_authorized",
+      "mutation"
+    ],
+    "schema": "burn-research.layer-registry-operation-binding-snapshot.v1"
+  },
+  "surfaces": {
+    "capabilities": "layerRegistryOperationBindingCapabilities",
+    "module": "src/registry/runtime_contract/binding.rs",
+    "snapshot": "LayerRegistry.operationBindingSnapshot"
+  },
+  "validation": {
+    "rust_tests": [
+      "empty registry binds to an empty deterministic non-executing snapshot",
+      "live linear/activation/conv instances bind to their exact host operation-IDs",
+      "binding fingerprint is anchored to the inventory fingerprint of the same live state",
+      "unknown (layer_type, variant) inference fails closed without touching the registry"
+    ]
+  }
+}
