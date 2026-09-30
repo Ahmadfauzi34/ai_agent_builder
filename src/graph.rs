@@ -10,8 +10,8 @@ use crate::protocol::{LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_S
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
 
-#[path = "registry/runtime_contract.rs"]
-mod runtime_contract;
+// `runtime_contract` lives at `crate::registry::runtime_contract` (declared in
+// `src/registry.rs`); it is intentionally NOT re-declared here via `#[path]`.
 #[path = "graph_plan_explain.rs"]
 mod plan_explain;
 #[path = "graph_execution_trace.rs"]
@@ -262,7 +262,7 @@ impl CompiledGraph {
                         s.layer_type,
                         LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
                     ) {
-                        runtime_contract::validate_registry_unary_contract(
+                        crate::registry::runtime_contract::validate_registry_unary_contract(
                             registry,
                             s.layer_type,
                             s.layer_id,
@@ -504,7 +504,7 @@ impl CompiledGraph {
                     s.layer_type,
                     LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
                 ) {
-                    runtime_contract::validate_registry_unary_contract(
+                    crate::registry::runtime_contract::validate_registry_unary_contract(
                         registry,
                         s.layer_type,
                         s.layer_id,
