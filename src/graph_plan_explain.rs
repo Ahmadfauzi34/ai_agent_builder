@@ -1,7 +1,8 @@
 //! Read-only explanation of a compiled multi-input plan. Shape projections are
 //! deliberately partial: execution and operator validity still belong to Burn.
 
-use super::{runtime_contract, CompiledMultiInputGraph};
+use super::CompiledMultiInputGraph;
+use crate::registry::runtime_contract;
 use crate::graph_plan::GraphPlanStep;
 use crate::protocol::{
     PayloadCursor, ACT_GLU, ACT_SWIGLU, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL,
