@@ -1,3 +1,4 @@
+mod binding;
 mod inventory;
 
 use crate::protocol::{
