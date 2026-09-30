@@ -14,10 +14,20 @@ const INVENTORY_SCHEMA: &str = "burn-research.layer-registry-inventory-snapshot.
 const INVENTORY_SCOPE: &str =
     "live_structure_plus_validated_init_identity_and_parameter_count_not_numerical_weight_state";
 
-fn sha256_text(value: &str) -> String {
+pub(super) fn sha256_text(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
     format!("sha256:{:x}", hasher.finalize())
+}
+
+/// One canonical live instance, enumerated directly from [`LayerRegistry`] state.
+pub(super) struct LiveInstanceRecord {
+    pub(super) layer_type: u8,
+    pub(super) layer_id: u32,
+    pub(super) variant: u8,
+    pub(super) flags: u8,
+    pub(super) init_fingerprint: String,
+    pub(super) parameter_count: usize,
 }
 
 fn live_instance_count(registry: &LayerRegistry) -> usize {
@@ -101,7 +111,12 @@ fn instance_param_count(
     }
 }
 
-fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
+/// Enumerate the canonical live instance records, failing closed when the live
+/// layer maps, the canonical init identities, or the cached parameter total
+/// disagree. Records are ordered deterministically by `(layer_type, layer_id)`.
+pub(super) fn live_instance_records(
+    registry: &LayerRegistry,
+) -> Result<(Vec<LiveInstanceRecord>, usize), String> {
     let live_count = live_instance_count(registry);
     if registry.init_identities.len() != live_count {
         return Err(format!(
@@ -117,8 +132,7 @@ fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
         .collect::<Vec<_>>();
     keys.sort_unstable();
 
-    let mut canonical_records = Vec::with_capacity(keys.len());
-    let mut json_records = Vec::with_capacity(keys.len());
+    let mut records = Vec::with_capacity(keys.len());
     let mut summed_params = 0usize;
 
     for (layer_type, layer_id) in keys {
@@ -138,14 +152,14 @@ fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
             .checked_add(parameter_count)
             .ok_or_else(|| "inventorySnapshot: parameter count overflow".to_string())?;
 
-        canonical_records.push(format!(
-            "type={layer_type:02x}|id={layer_id}|variant={:02x}|flags={:02x}|params={parameter_count}|init={init_fingerprint}",
-            identity.variant, identity.flags
-        ));
-        json_records.push(format!(
-            "{{\"layer_type\":{layer_type},\"layer_id\":{layer_id},\"variant\":{},\"flags\":{},\"init_fingerprint\":\"{init_fingerprint}\",\"parameter_count\":{parameter_count}}}",
-            identity.variant, identity.flags
-        ));
+        records.push(LiveInstanceRecord {
+            layer_type,
+            layer_id,
+            variant: identity.variant,
+            flags: identity.flags,
+            init_fingerprint,
+            parameter_count,
+        });
     }
 
     if summed_params != registry.cached_params {
@@ -155,12 +169,56 @@ fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
         ));
     }
 
+    Ok((records, summed_params))
+}
+
+/// The canonical SHA-256 inventory fingerprint over ordered live instance
+/// records. Shared with the operation binding projection so a binding snapshot
+/// can prove it was computed over the exact same canonical inventory.
+pub(super) fn inventory_fingerprint_of(
+    records: &[LiveInstanceRecord],
+    summed_params: usize,
+) -> String {
+    let canonical_records = records
+        .iter()
+        .map(|record| {
+            format!(
+                "type={:02x}|id={}|variant={:02x}|flags={:02x}|params={}|init={}",
+                record.layer_type,
+                record.layer_id,
+                record.variant,
+                record.flags,
+                record.parameter_count,
+                record.init_fingerprint
+            )
+        })
+        .collect::<Vec<_>>();
     let canonical = format!(
         "schema={INVENTORY_SCHEMA}|scope={INVENTORY_SCOPE}|instances={}|total_params={summed_params}|{}",
         canonical_records.len(),
         canonical_records.join("||")
     );
-    let inventory_fingerprint = sha256_text(&canonical);
+    sha256_text(&canonical)
+}
+
+fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
+    let (records, summed_params) = live_instance_records(registry)?;
+    let inventory_fingerprint = inventory_fingerprint_of(&records, summed_params);
+
+    let json_records = records
+        .iter()
+        .map(|record| {
+            format!(
+                "{{\"layer_type\":{},\"layer_id\":{},\"variant\":{},\"flags\":{},\"init_fingerprint\":\"{}\",\"parameter_count\":{}}}",
+                record.layer_type,
+                record.layer_id,
+                record.variant,
+                record.flags,
+                record.init_fingerprint,
+                record.parameter_count
+            )
+        })
+        .collect::<Vec<_>>();
 
     Ok(format!(
         "{{\"schema\":\"{INVENTORY_SCHEMA}\",\"instance_count\":{},\"total_params\":{summed_params},\"inventory_fingerprint\":\"{inventory_fingerprint}\",\"state_identity_scope\":\"{INVENTORY_SCOPE}\",\"instances\":[{}],\"execution_authorized\":false,\"mutation\":\"none\"}}",
@@ -184,7 +242,7 @@ impl LayerRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::{inventory_snapshot, INVENTORY_SCHEMA};
+    use super::{inventory_fingerprint_of, inventory_snapshot, live_instance_records, INVENTORY_SCHEMA};
     use crate::agent::AgentLayerSpec;
     use crate::registry::LayerRegistry;
 
@@ -214,5 +272,21 @@ mod tests {
         assert!(registry.destroy_layer(7, spec.layer_type()));
         let empty = inventory_snapshot(&registry).unwrap();
         assert!(empty.contains("\"instance_count\":0"));
+    }
+
+    #[test]
+    fn shared_records_keep_canonical_fingerprint_stable() {
+        let mut registry = LayerRegistry::new();
+        registry
+            .init_agent_layer(&AgentLayerSpec::linear(7, 4, 3, true).unwrap())
+            .unwrap();
+        let (records, summed) = live_instance_records(&registry).unwrap();
+        let first = inventory_fingerprint_of(&records, summed);
+        let (records2, summed2) = live_instance_records(&registry).unwrap();
+        let second = inventory_fingerprint_of(&records2, summed2);
+        assert_eq!(first, second);
+        assert!(inventory_snapshot(&registry)
+            .unwrap()
+            .contains(&format!("\"inventory_fingerprint\":\"{first}\"")));
     }
 }

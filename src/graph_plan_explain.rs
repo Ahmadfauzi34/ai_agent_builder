@@ -1,7 +1,8 @@
 //! Read-only explanation of a compiled multi-input plan. Shape projections are
 //! deliberately partial: execution and operator validity still belong to Burn.
 
-use super::{runtime_contract, CompiledMultiInputGraph};
+use super::CompiledMultiInputGraph;
+use crate::registry::runtime_contract;
 use crate::graph_plan::GraphPlanStep;
 use crate::protocol::{
     PayloadCursor, ACT_GLU, ACT_SWIGLU, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL,
@@ -49,7 +50,7 @@ fn infer_shape(step: &GraphPlanStep, identity: &str, inputs: &[Option<Shape>]) -
     let Some(input) = inputs.first().copied().flatten() else {
         return Projection::unknown("upstream_shape_unknown");
     };
-    let Ok((variant, payload)) = runtime_contract::parse_init_fingerprint(identity) else {
+    let Ok((variant, payload)) = crate::registry::runtime_contract::parse_init_fingerprint(identity) else {
         return Projection::unknown("init_identity_unreadable");
     };
 
