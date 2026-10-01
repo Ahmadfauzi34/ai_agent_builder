@@ -4,7 +4,7 @@ The packaged Node artifact includes `interactive_multi_input_ingress.mjs`. It lo
 
 ## Quick start
 
-After downloading and extracting the `burn-wasm-output` artifact, pick one authority mode. Every mode speaks the same JSON Lines protocol; they differ only in who attests the input claims.
+After downloading and extracting the `node-host-package` artifact, pick one authority mode. Every mode speaks the same JSON Lines protocol; they differ only in who attests the input claims.
 
 **Mode 1 — caller-declared** (no trust policy; inputs are caller-asserted metadata):
 
@@ -77,19 +77,30 @@ The policy file uses `burn-research.ingress-trust-policy.v1` and pins issuer pub
 }
 ```
 
-A signed claim binds one input tensor to one logical port. The producer builds it with `canonicalInputClaim(binding, context, keyId, subject, nonce)`; the canonical JSON that gets signed looks like this (values abbreviated):
+A signed claim binds one input tensor to one logical port. The producer builds it with `canonicalInputClaim(binding, context, keyId, subject, nonce)` from `ingress_provenance.mjs`; the claim is a flat object with this exact field order, and the canonical JSON that gets signed is `JSON.stringify(claim)` (values abbreviated):
 
 ```json
 {
   "schema": "burn-research.signed-input-claim.v1",
   "key_id": "sensor-key-1",
+  "plan_hex": "7f454c46...",
+  "manifest_fingerprint": "...",
+  "manifest_sha256": "sha256:...",
+  "logical_port_id": "observation",
+  "slot": 0,
+  "source": "sensor-a",
   "subject": "run-42",
+  "role": "observation",
+  "layout": "feature_axis1_singleton",
+  "shape": [1, 2, 1, 1],
+  "revision": "2",
+  "fingerprint": "obs",
   "nonce": "01J...",
-  "binding": {"slot": 0, "logical_port_id": "observation", "source": "sensor-a", "role": "observation", "layout": "feature_axis1_singleton", "shape": [1, 2, 1, 1], "revision": 2, "fingerprint": "obs"},
-  "context": {"plan_hex": "7f454c46...", "manifest_sha256": "sha256:...", "value_sha256": "sha256:..."},
-  "signature": "base64(ed25519 over the canonical JSON above)"
+  "value_sha256": "sha256:..."
 }
 ```
+
+Notes: `revision` is a decimal string, not a number. The `signature` is not part of the claim — the issuer signs `Buffer.from(JSON.stringify(claim))` with its Ed25519 private key and the runner receives `proof: {"claim": {...}, "signature": "<base64 signature>"}` on `bind`. A claim carrying an embedded `signature` field, a nested `binding`/`context` structure, or a numeric `revision` will not match the host's rebuilt claim and is rejected.
 
 `bind` carries it as `{"proof": {"claim": {...}, "signature": "..."}}`. The host verifies the Ed25519 signature against the pinned issuer key, the manifest SHA-256 against the live graph, and the value SHA-256 against the submitted tensor bytes. Fingerprints must be non-empty in signed modes; an empty fingerprint is rejected with `invalid_argument` at path `fingerprint`.
 
@@ -163,7 +174,7 @@ The receipt is a host observation, not a WASM-signed certificate or permission f
 The multi-input `ProgramBundle` is a structural format with no trailing checksum: the WASM structural parser validates each field in order and silently ignores bytes after the last field, so a single-bit flip in the final byte still parses. Integrity responsibility is therefore split:
 
 - **WASM/parser**: structural validity only (magic, schema version, per-field bounds). It does not attest byte-level integrity.
-- **Host**: byte-level integrity. `{"op":"verifyCheckpointIntegrity","bundle_f32le_base64":"...","expected_digest":"sha256:..."}` hashes every byte of the bundle and compares it to the expected digest; any single-bit flip anywhere — including the final byte the structural parser ignores — fails the check. Prefer canonical base64 when producing bundles; the host accepts standard base64 padding variants.
+- **Host**: byte-level integrity. `{"op":"verifyCheckpointIntegrity","bundle_f32le_base64":"...","expected_digest":"sha256:..."}` hashes every byte of the bundle and compares it to the expected digest; any single-bit flip anywhere — including the final byte the structural parser ignores — fails the check. `bundle_f32le_base64` must be canonical base64 (standard alphabet, length a multiple of 4, correct `=` padding, no whitespace); non-canonical spellings are rejected with `invalid_argument` and constraint `canonical_base64`, even when a lenient decoder would still produce bytes. Always pass the `bundle_f32le_base64` value from `op=checkpoint` through unchanged.
 - **Durable mode**: every retained checkpoint is bound to its receipt by `state_checkpoint_bytes_sha256`. `op=restore` re-hashes the retained bytes and refuses to load them when they differ from the receipt.
 
 Never trust bundle bytes that crossed an untrusted channel without one of these host checks.
