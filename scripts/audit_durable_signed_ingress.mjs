@@ -454,10 +454,14 @@ try {
     && (await prior.ask(signed({...right, revision: 4}, alternateManifest, 'alternate-right'))).ok,
   'distinct state graph did not accept new signed inputs');
   const alternateRun = await runAndVerify(prior, null);
+  // Complaint #15: fresh-layer initialization is deterministic, so the same structure
+  // must reproduce the same mutable state and outputs. Distinct executions are still
+  // distinguished by their receipt ids (anti-replay), not by random weights.
   check(JSON.stringify(alternateRun.receipt.program_identity) === JSON.stringify(priorRun.receipt.program_identity)
-    && alternateRun.receipt.state_checkpoint_bytes_sha256 !== priorRun.receipt.state_checkpoint_bytes_sha256
-    && JSON.stringify(alternateRun.result.values) !== JSON.stringify(priorRun.result.values),
-  'fresh graph with same structure did not produce distinct mutable state and output');
+    && alternateRun.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256
+    && JSON.stringify(alternateRun.result.values) === JSON.stringify(priorRun.result.values)
+    && alternateRun.receipt.receipt_id !== priorRun.receipt.receipt_id,
+  'fresh graph with same structure did not reproduce deterministic mutable state and output with a distinct receipt');
   await prior.close();
   const storeFile = path.join(`${resumeLedger}.checkpoints`, `${priorRun.receipt.receipt_id.slice(7)}.json`);
   const retained = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
@@ -477,7 +481,9 @@ try {
     && afterResume.receipt.state_parent_receipt_id === priorRun.receipt.receipt_id
     && afterResume.receipt.restore_event_id === resumedResult.result.restore_event_id
     && afterResume.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256
-    && JSON.stringify(afterResume.result.values) !== JSON.stringify(alternateRun.result.values),
+    // Deterministic init (complaint #15): the resumed run must also match the
+    // re-created instance's outputs — all three runs share the reference state.
+    && JSON.stringify(afterResume.result.values) === JSON.stringify(alternateRun.result.values),
   'restart did not run the same exact reference state');
   const continued = await runAndVerify(resumed, priorRun.result.values);
   check(continued.receipt.sequence === 4
