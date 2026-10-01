@@ -151,8 +151,23 @@ impl WasmEmbedding {
         }
     }
 
+    fn d_model(&self) -> usize {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            EmbeddingLayerRecord::Basic(r) => r.weight.dims()[1],
+        }
+    }
+
     pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         require_singleton_spatial(input.inner.dims(), "Embedding forward")?;
+        // Complaint #18: output is [b, s, d_model], i.e. input_numel * d_model
+        // elements — it can dwarf the input. Validate the budget before the
+        // lookup materializes it, so the run fails structured.
+        let input_numel: usize = input.inner.dims().iter().product();
+        crate::protocol::check_numel(
+            &[input_numel, self.d_model()],
+            "Embedding forward output",
+        )?;
         let input_data = input.inner.to_data();
         let values = input_data
             .as_slice::<f32>()

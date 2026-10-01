@@ -180,6 +180,15 @@ pub const MAX_DIM: usize = 1 << 20;
 /// Maximum elements of one weight tensor accepted from untrusted input.
 /// 2^28 f32 elements = 1 GiB; larger models must shard across layers.
 pub const MAX_TENSOR_ELEMENTS: usize = 1 << 28;
+/// Maximum bytes of a single tensor materialization (complaint #17).
+/// 64 MiB: allocations above this are rejected *before* touching memory,
+/// instead of blindly allocating up to the 1 GiB protocol ceiling above.
+/// Caller-controlled dims (e.g. linear(0,10000,10000) = 381 MiB) used to
+/// allocate with no warning, spiking RSS and stalling for seconds — a viable
+/// OOM vector when dims are influenced by untrusted input.
+pub const MAX_ALLOC_BYTES: usize = 64 << 20;
+/// Same budget expressed in f32 elements.
+pub const MAX_ALLOC_ELEMENTS: usize = MAX_ALLOC_BYTES / 4;
 
 /// Validate one dimension value before it can drive an allocation.
 pub fn check_dim(value: usize, context: &str) -> Result<(), String> {
@@ -189,6 +198,25 @@ pub fn check_dim(value: usize, context: &str) -> Result<(), String> {
     if value > MAX_DIM {
         return Err(format!(
             "{context}: dimension {value} exceeds maximum {MAX_DIM}"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a tensor byte budget before materialization (complaints #17/#18).
+/// Returns a structured `tensor_too_large` error carrying the requested size
+/// and the applicable limit, so a caller/agent can self-correct instead of
+/// hitting a raw `unreachable` trap with zero information.
+pub fn check_alloc_budget(numel: usize, context: &str) -> Result<(), String> {
+    let bytes = numel
+        .checked_mul(4)
+        .ok_or_else(|| format!("{context}: tensor element count overflows byte size"))?;
+    if bytes > MAX_ALLOC_BYTES {
+        return Err(format!(
+            "tensor_too_large: {context} requests {numel} elements ({} MiB), \
+             exceeds allocation budget {} MiB ({MAX_ALLOC_ELEMENTS} elements)",
+            bytes / (1 << 20),
+            MAX_ALLOC_BYTES / (1 << 20),
         ));
     }
     Ok(())
@@ -209,7 +237,9 @@ pub fn check_numel(dims: &[usize], context: &str) -> Result<(), String> {
             "{context}: tensor with {numel} elements exceeds maximum {MAX_TENSOR_ELEMENTS}"
         ));
     }
-    Ok(())
+    // Complaint #17: enforce the materialization budget on every tensor the
+    // runtime is about to allocate, not just the 1 GiB protocol ceiling.
+    check_alloc_budget(numel, context)
 }
 
 pub struct PayloadCursor<'a> {
