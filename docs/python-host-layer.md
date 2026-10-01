@@ -189,7 +189,7 @@ The supported Python claim requires a wheel installed into a fresh venv outside 
 
 ## Supported matrix
 
-This additive optimizer transport method does not widen the already-proven Python platform matrix. The support claim remains limited to `docs/host-support.v1.json`.
+This additive optimizer transport method does not widen the already-proven Python platform matrix. The support claim remains limited to `docs/contracts/host-support.v1.json`.
 
 ## Other languages
 

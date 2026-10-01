@@ -9,7 +9,7 @@ use crate::protocol::{
 use super::super::LayerRegistry;
 
 const INVENTORY_CAPABILITIES_V1: &str =
-    include_str!("../../../docs/layer-registry-inventory.v1.json");
+    include_str!("../../../docs/contracts/layer-registry-inventory.v1.json");
 const INVENTORY_SCHEMA: &str = "burn-research.layer-registry-inventory-snapshot.v1";
 const INVENTORY_SCOPE: &str =
     "live_structure_plus_validated_init_identity_and_parameter_count_not_numerical_weight_state";

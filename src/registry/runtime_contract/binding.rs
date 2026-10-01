@@ -16,7 +16,7 @@ use super::inventory::{inventory_fingerprint_of, live_instance_records, sha256_t
 use super::super::LayerRegistry;
 
 const BINDING_CAPABILITIES_V1: &str =
-    include_str!("../../../docs/layer-registry-operation-binding.v1.json");
+    include_str!("../../../docs/contracts/layer-registry-operation-binding.v1.json");
 const BINDING_SCHEMA: &str = "burn-research.layer-registry-operation-binding-snapshot.v1";
 
 /// Infer the host operation-ID for a canonical `(layer_type, variant)` protocol

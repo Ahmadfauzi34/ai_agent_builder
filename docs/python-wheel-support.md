@@ -76,7 +76,7 @@ package:       burn-research-ffi wheel
 orchestration: host-owned
 ```
 
-The installed-wheel proof passed on this matrix. `docs/host-support.v1.json` records only this verified slice.
+The installed-wheel proof passed on this matrix. `docs/contracts/host-support.v1.json` records only this verified slice.
 
 This must not be interpreted as proof for macOS, Windows, other architectures, PyPy, free-threaded Python, or every CPython version accepted by package metadata.
 

@@ -7,28 +7,28 @@ This README is a navigation hub. Detailed semantics and support claims live in t
 ## Start here
 
 - [Burn contract baseline](docs/burn-contract-baseline.md) — numerical/backend authority and current non-autodiff execution baseline.
-- [Agent contracts v1](docs/agent-contracts.v1.json) — machine-readable agent capability/contract surface.
-- [Agent layout contracts v1](docs/agent-layout-contracts.v1.json) — machine-readable layout/structure contracts.
+- [Agent contracts v1](docs/contracts/agent-contracts.v1.json) — machine-readable agent capability/contract surface.
+- [Agent layout contracts v1](docs/contracts/agent-layout-contracts.v1.json) — machine-readable layout/structure contracts.
 - [Agent workspace](docs/agent-workspace.md) — workspace metadata/control memory and its separation from execution truth.
 - [ES + graph host orchestration](docs/es-graph-host-orchestration.md) — graph/binding/optimizer lifecycle and host-owned policy boundary.
 
 ## Host and distribution contracts
 
-- [Host support manifest](docs/host-support.v1.json) — **authoritative source for currently supported hosts and verified matrices**.
+- [Host support manifest](docs/contracts/host-support.v1.json) — **authoritative source for currently supported hosts and verified matrices**.
 - [Native Rust package support](docs/rust-package-support.md) — packaged `.crate` consumer boundary.
 - [Python host layer](docs/python-host-layer.md) — verified external Python host role and orchestration boundary.
 - [Python FFI v1](docs/python-ffi-v1.md) — versioned C ABI/CFFI boundary.
 - [Python facade v1](docs/python-facade-v1.md) — typed Python facade over ABI v1.
 - [Python wheel support](docs/python-wheel-support.md) — installed-wheel consumer proof and supported matrix.
-- [WASM surface v1](docs/wasm-surface.v1.json) — machine-readable pinned WASM export contract.
-- [Runtime surface v1](docs/runtime-surface.v1.json) — capability inventory and ownership map used to generate the packaged runtime description.
+- [WASM surface v1](docs/contracts/wasm-surface.v1.json) — machine-readable pinned WASM export contract.
+- [Runtime surface v1](docs/contracts/runtime-surface.v1.json) — capability inventory and ownership map used to generate the packaged runtime description.
 - [WASM host communication](docs/wasm-host-communication.md) — how Node, native Rust, Python, and generated browser artifacts reach the reference machine and how to classify failures.
-- [Multi-input semantic ingress v2](docs/semantic-ingress-manifest.v2.json) — logical port mapping, exact plan checks, and execution gating.
+- [Multi-input semantic ingress v2](docs/contracts/semantic-ingress-manifest.v2.json) — logical port mapping, exact plan checks, and execution gating.
 - [Interactive WASM ingress](docs/interactive-multi-input-ingress.md) — packaged Node JSON Lines session for binding, inspecting, running, and verifying input ports.
-- [Signed ingress provenance](docs/ingress-provenance.v1.json) — optional Node host gate binding trusted issuer signatures to exact manifest, subject, port and f32 input values.
-- [Durable signed ingress ledger](docs/ingress-replay-ledger.v1.json) — optional private Node host replay state, pinned to a subject and checked across runner restarts.
-- [Host execution receipt v2](docs/host-execution-receipt.v2.json) — durable multi-input `run` record binding the structural program, signed input claims, observed output, and exact serialized state-checkpoint bytes. [v1](docs/host-execution-receipt.v1.json) remains accepted as historical ledger data.
-- [Host state handoff](docs/host-state-handoff.v1.json) — exact receipt-output continuity into a signed `state` input, with replay-safe branches across graph ticks.
+- [Signed ingress provenance](docs/contracts/ingress-provenance.v1.json) — optional Node host gate binding trusted issuer signatures to exact manifest, subject, port and f32 input values.
+- [Durable signed ingress ledger](docs/contracts/ingress-replay-ledger.v1.json) — optional private Node host replay state, pinned to a subject and checked across runner restarts.
+- [Host execution receipt v2](docs/contracts/host-execution-receipt.v2.json) — durable multi-input `run` record binding the structural program, signed input claims, observed output, and exact serialized state-checkpoint bytes. [v1](docs/contracts/host-execution-receipt.v1.json) remains accepted as historical ledger data.
+- [Host state handoff](docs/contracts/host-state-handoff.v1.json) — exact receipt-output continuity into a signed `state` input, with replay-safe branches across graph ticks.
 
 ## Runtime proof and evidence
 
@@ -56,7 +56,7 @@ python3 scripts/repo_map.py --profile architecture --format json
 python3 scripts/repo_map.py --profile architecture --format dot
 ```
 
-The mapper inventories repository structure and dependency/evidence edges. The v3 architecture profile additionally maps README/docs references and workflow→docs evidence edges. It does not infer host support or policy ownership from file names or links; [`docs/host-support.v1.json`](docs/host-support.v1.json) remains authoritative for support status.
+The mapper inventories repository structure and dependency/evidence edges. The v3 architecture profile additionally maps README/docs references and workflow→docs evidence edges. It does not infer host support or policy ownership from file names or links; [`docs/contracts/host-support.v1.json`](docs/contracts/host-support.v1.json) remains authoritative for support status.
 
 ## Architectural separation
 

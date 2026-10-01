@@ -10,7 +10,7 @@ use crate::effective_spec::{
 use crate::graph::CompiledGraph;
 use crate::workspace::{AgentWorkspace, WorkspaceRuntimeSubjectBinding};
 
-const BRIDGE_CONTRACT_V1: &str = include_str!("../docs/resolution-runtime-bridge.v1.json");
+const BRIDGE_CONTRACT_V1: &str = include_str!("../docs/contracts/resolution-runtime-bridge.v1.json");
 
 const MAX_ID_BYTES: usize = 512;
 const MAX_SUBJECT_KIND_BYTES: usize = 128;

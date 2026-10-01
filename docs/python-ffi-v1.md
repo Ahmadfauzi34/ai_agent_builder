@@ -148,7 +148,7 @@ The separate installed-wheel proof in `scripts/audit_python_wheel.py` verifies t
 
 ## Supported and unsupported scope
 
-Packaged Python support is intentionally narrower than the ABI itself. The currently verified installed-wheel matrix is recorded in `docs/python-wheel-support.md` and `docs/host-support.v1.json`.
+Packaged Python support is intentionally narrower than the ABI itself. The currently verified installed-wheel matrix is recorded in `docs/python-wheel-support.md` and `docs/contracts/host-support.v1.json`.
 
 The current proof does not establish macOS, Windows, non-x86_64, PyPy, free-threaded Python, zero-copy NumPy/DLPack, PyO3 ergonomics, C++/Go/Unity support, or long-term ABI stability beyond the explicit versioned v1 contract.
 

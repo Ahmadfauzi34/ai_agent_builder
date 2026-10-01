@@ -10,7 +10,7 @@ This document defines what it means for `burn-research` to be a **supported nati
 
 The repository proved semantic host portability in #181: an external Rust integration test can compose `CompiledGraph`, `GraphParameterBinding`, `EsOptimizer`, host-owned objective policy, and `ProgramBundle` replay through the public crate surface.
 
-The packaged-consumer audit was then completed and merged. Current `docs/host-support.v1.json` records the native Rust package as `supported` with `scripts/audit_rust_package.py` as its consumer proof. The package contract therefore describes an established support boundary, not a pending promotion.
+The packaged-consumer audit was then completed and merged. Current `docs/contracts/host-support.v1.json` records the native Rust package as `supported` with `scripts/audit_rust_package.py` as its consumer proof. The package contract therefore describes an established support boundary, not a pending promotion.
 
 ## Support layers
 
@@ -104,7 +104,7 @@ The proof is deliberately separate from `tests/native_es_graph_host_orchestratio
 - the integration test proves semantic portability through the crate's public surface;
 - the package audit proves the **packaged source artifact** remains consumable as an external dependency.
 
-Both proofs remain required support gates. Current main satisfies them, and `docs/host-support.v1.json` records Rust as a supported native package surface.
+Both proofs remain required support gates. Current main satisfies them, and `docs/contracts/host-support.v1.json` records Rust as a supported native package surface.
 
 ## What Rust support does not mean
 
@@ -176,7 +176,7 @@ For native Rust package changes:
 2. preserve public-package consumption without repository-internal access;
 3. keep host objective/reward/scheduling policy outside the reference machine;
 4. do not infer a stable C ABI from Rust public API stability;
-5. keep `docs/host-support.v1.json` authoritative for actual supported hosts and matrices.
+5. keep `docs/contracts/host-support.v1.json` authoritative for actual supported hosts and matrices.
 
 For foreign-host changes, treat `burn-research.ffi.v1` and the Python host contract as separate layers. Broader platform, Python-version, or language support requires new external-consumer proof before the support manifest is widened.
 

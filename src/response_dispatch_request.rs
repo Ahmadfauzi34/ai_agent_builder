@@ -8,7 +8,7 @@ use crate::runtime_evidence_interpretation::EvidenceResponseAction;
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
 const RESPONSE_DISPATCH_REQUEST_V1: &str =
-    include_str!("../docs/response-dispatch-request.v1.json");
+    include_str!("../docs/contracts/response-dispatch-request.v1.json");
 const MAX_INFORMATION_REQUEST_BYTES: usize = 4096;
 
 fn json_escape(value: &str) -> String {
