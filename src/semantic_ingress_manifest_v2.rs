@@ -8,7 +8,7 @@ use crate::registry::LayerRegistry;
 use crate::semantic_ingress_manifest::validate_logical_port_id;
 use crate::WasmTensor;
 
-const CONTRACT: &str = include_str!("../docs/semantic-ingress-manifest.v2.json");
+const CONTRACT: &str = include_str!("../docs/contracts/semantic-ingress-manifest.v2.json");
 const MAX_SOURCE_BYTES: usize = 256;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

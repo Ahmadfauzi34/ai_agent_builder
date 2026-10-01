@@ -4,7 +4,7 @@ use crate::runtime_evidence_interpretation::{
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
 const AGENT_RESPONSE_INTENT_V1: &str =
-    include_str!("../docs/agent-response-intent.v1.json");
+    include_str!("../docs/contracts/agent-response-intent.v1.json");
 
 const MAX_SELECTOR_BYTES: usize = 256;
 

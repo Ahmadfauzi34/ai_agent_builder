@@ -4,8 +4,8 @@ Status: **contracted communication guidance for the pinned WASM surface v1**
 
 Related contracts:
 
-- `docs/wasm-surface.v1.json`
-- `docs/host-support.v1.json`
+- `docs/contracts/wasm-surface.v1.json`
+- `docs/contracts/host-support.v1.json`
 - `docs/agent-facade.md`
 
 ## Purpose
@@ -44,7 +44,7 @@ A failure in one consumer path must not automatically be diagnosed as a failure 
 
 The declared generated surface is:
 
-`docs/wasm-surface.v1.json`
+`docs/contracts/wasm-surface.v1.json`
 
 `wasm-pack` produces `pkg/burn_research.d.ts`. The export checker parses the generated TypeScript declaration into:
 
@@ -75,7 +75,7 @@ After packaging the Node adapter, `scripts/generate_wasm_surface_actual.mjs` loa
 - Node host contract definitions and hashes for provenance, durable replay, execution receipts, and state handoff;
 - a canonical SHA-256 fingerprint over the complete generated description.
 
-CI rebuilds this description from the packaged runtime and checks it again before artifact upload. Host definitions are embedded from their packaged contract files so an agent can inspect the full authority boundary from this snapshot; the file hashes bind those definitions to the sibling artifacts. The fingerprint proves consistency between the packaged bytes, queried capabilities, and included contracts; it is not a signature, provenance proof, or authorization token. `docs/runtime-surface.v1.json` declares the capability inventory and keeps host-owned features distinct from WASM exports.
+CI rebuilds this description from the packaged runtime and checks it again before artifact upload. Host definitions are embedded from their packaged contract files so an agent can inspect the full authority boundary from this snapshot; the file hashes bind those definitions to the sibling artifacts. The fingerprint proves consistency between the packaged bytes, queried capabilities, and included contracts; it is not a signature, provenance proof, or authorization token. `docs/contracts/runtime-surface.v1.json` declares the capability inventory and keeps host-owned features distinct from WASM exports.
 
 Adding or removing an exported member without intentionally updating the v1 contract is a WASM surface drift failure.
 
@@ -208,7 +208,7 @@ The facade is an ergonomics layer. Registry/execution contracts and Burn-backed 
 
 For multiple external tensor inputs, `SemanticIngressManifestV2` maps logical port IDs to the exact `MultiInputGraphPlan.v1` slots. Its read-only `status`, `inputPortStatus`, and `consumerCompatibility` explain the current binding. Its `run` and `verifyFlat` methods recheck bridge coverage, then delegate to `CompiledMultiInputGraph`; they do not introduce another numerical execution engine. The packaged `interactive_multi_input_ingress.mjs` exposes this flow as a persistent JSON Lines session through the verified Node adapter. See `docs/interactive-multi-input-ingress.md` in the repository for a reproducible transcript.
 
-`CompiledMultiInputGraph.explainPlan(registry)` returns `burn-research.multi-input-plan-explain.v1` before a bundle is bound. It reports the exact compiled program identity, declared input shapes, ordered graph steps, current registry binding, and partial static output shape projections. Known shape mismatches are labeled `incompatible`; operators without a sound static rule are labeled `unknown`. The reported `output_f32_payload_bytes` covers only the projected output tensor and is not a runtime allocation estimate. See `docs/multi-input-plan-explain.v1.json` for the proof boundary; call `preflight` with the actual bundle and `run` for Burn's execution verdict.
+`CompiledMultiInputGraph.explainPlan(registry)` returns `burn-research.multi-input-plan-explain.v1` before a bundle is bound. It reports the exact compiled program identity, declared input shapes, ordered graph steps, current registry binding, and partial static output shape projections. Known shape mismatches are labeled `incompatible`; operators without a sound static rule are labeled `unknown`. The reported `output_f32_payload_bytes` covers only the projected output tensor and is not a runtime allocation estimate. See `docs/contracts/multi-input-plan-explain.v1.json` for the proof boundary; call `preflight` with the actual bundle and `run` for Burn's execution verdict.
 
 Raw compatibility surfaces may remain present even when the typed facade is preferred. Their existence is not evidence of duplicated execution engines.
 
@@ -220,7 +220,7 @@ When a configured issuer allows v2, the host returns the active digest in `host_
 
 `--require-state-bound-inputs` is a trusted runner startup option. It requires every configured issuer to allow v2 and every runtime input to carry a current v2 claim. Without it, v1 remains accepted according to issuer policy. The v2 execution receipt records each input's signed state digest and, when all inputs share one digest, `input_state_checkpoint_bytes_sha256`; `state_checkpoint_bytes_sha256` continues to identify the post-execution checkpoint.
 
-These hashes establish byte-level state binding and freshness. They do not authenticate who created a checkpoint, prove semantic equivalence, or grant action authority. Direct WASM callers remain outside this Node host gate. See `docs/ingress-provenance.v2.json` for the machine-readable contract.
+These hashes establish byte-level state binding and freshness. They do not authenticate who created a checkpoint, prove semantic equivalence, or grant action authority. Direct WASM callers remain outside this Node host gate. See `docs/contracts/ingress-provenance.v2.json` for the machine-readable contract.
 
 ## Failure classification
 
@@ -273,9 +273,9 @@ The package also carries `wasm-surface.v1.json`, `runtime-surface.v1.json`, `was
 
 ## Authority
 
-For support status and verified matrices, use `docs/host-support.v1.json`.
+For support status and verified matrices, use `docs/contracts/host-support.v1.json`.
 
-For the pinned WASM export contract, use `docs/wasm-surface.v1.json` and its generated declaration projection `pkg/wasm-surface.bindings.actual.json`. For the self-describing snapshot of the exact packaged runtime, use `pkg/wasm-surface.actual.json` with `docs/runtime-surface.v1.json`.
+For the pinned WASM export contract, use `docs/contracts/wasm-surface.v1.json` and its generated declaration projection `pkg/wasm-surface.bindings.actual.json`. For the self-describing snapshot of the exact packaged runtime, use `pkg/wasm-surface.actual.json` with `docs/contracts/runtime-surface.v1.json`.
 
 For execution/identity semantics, follow the underlying graph, binding, Math Program, ProgramBundle, and Burn contracts rather than inferring semantics from host adapter names.
 

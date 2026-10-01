@@ -4,7 +4,7 @@ use crate::input_port::role_valid;
 use crate::workspace::AgentWorkspace;
 
 const SEMANTIC_INGRESS_MANIFEST_V1: &str =
-    include_str!("../docs/semantic-ingress-manifest.v1.json");
+    include_str!("../docs/contracts/semantic-ingress-manifest.v1.json");
 const MAX_LOGICAL_PORT_ID_BYTES: usize = 64;
 const MAX_SOURCE_BYTES: usize = 256;
 const MAX_FINGERPRINT_BYTES: usize = 256;

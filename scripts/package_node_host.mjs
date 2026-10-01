@@ -19,19 +19,19 @@ const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.
 // docs/... relative links working (complaint #13). Every docs/... target the
 // README links to is packaged here.
 const docSources = {
-  'host-support.v1.json': path.resolve('docs/host-support.v1.json'),
+  'host-support.v1.json': path.resolve('docs/contracts/host-support.v1.json'),
   'wasm-host-communication.md': path.resolve('docs/wasm-host-communication.md'),
   'interactive-multi-input-ingress.md': path.resolve('docs/interactive-multi-input-ingress.md'),
-  'ingress-provenance.v1.json': path.resolve('docs/ingress-provenance.v1.json'),
-  'ingress-provenance.v2.json': path.resolve('docs/ingress-provenance.v2.json'),
-  'ingress-replay-ledger.v1.json': path.resolve('docs/ingress-replay-ledger.v1.json'),
-  'host-execution-receipt.v1.json': path.resolve('docs/host-execution-receipt.v1.json'),
-  'host-execution-receipt.v2.json': path.resolve('docs/host-execution-receipt.v2.json'),
-  'host-checkpoint-restore.v1.json': path.resolve('docs/host-checkpoint-restore.v1.json'),
-  'host-state-handoff.v1.json': path.resolve('docs/host-state-handoff.v1.json'),
-  'host-branch-promotion-lineage.v1.json': path.resolve('docs/host-branch-promotion-lineage.v1.json'),
-  'host-operation-contract-registry.v1.json': path.resolve('docs/host-operation-contract-registry.v1.json'),
-  'agent-contracts.v1.json': path.resolve('docs/agent-contracts.v1.json'),
+  'ingress-provenance.v1.json': path.resolve('docs/contracts/ingress-provenance.v1.json'),
+  'ingress-provenance.v2.json': path.resolve('docs/contracts/ingress-provenance.v2.json'),
+  'ingress-replay-ledger.v1.json': path.resolve('docs/contracts/ingress-replay-ledger.v1.json'),
+  'host-execution-receipt.v1.json': path.resolve('docs/contracts/host-execution-receipt.v1.json'),
+  'host-execution-receipt.v2.json': path.resolve('docs/contracts/host-execution-receipt.v2.json'),
+  'host-checkpoint-restore.v1.json': path.resolve('docs/contracts/host-checkpoint-restore.v1.json'),
+  'host-state-handoff.v1.json': path.resolve('docs/contracts/host-state-handoff.v1.json'),
+  'host-branch-promotion-lineage.v1.json': path.resolve('docs/contracts/host-branch-promotion-lineage.v1.json'),
+  'host-operation-contract-registry.v1.json': path.resolve('docs/contracts/host-operation-contract-registry.v1.json'),
+  'agent-contracts.v1.json': path.resolve('docs/contracts/agent-contracts.v1.json'),
   'agent-workspace.md': path.resolve('docs/agent-workspace.md'),
   'burn-contract-baseline.md': path.resolve('docs/burn-contract-baseline.md'),
   'es-graph-host-orchestration.md': path.resolve('docs/es-graph-host-orchestration.md'),
@@ -40,19 +40,19 @@ const docSources = {
   'python-ffi-v1.md': path.resolve('docs/python-ffi-v1.md'),
   'python-facade-v1.md': path.resolve('docs/python-facade-v1.md'),
   'python-wheel-support.md': path.resolve('docs/python-wheel-support.md'),
-  'agent-layer-catalog.v1.json': path.resolve('docs/agent-layer-catalog.v1.json'),
-  'agent-layout-contracts.v1.json': path.resolve('docs/agent-layout-contracts.v1.json'),
-  'agent-input-port.v1.json': path.resolve('docs/agent-input-port.v1.json'),
-  'agent-fault-contract.v1.json': path.resolve('docs/agent-fault-contract.v1.json'),
-  'multi-input-graph-plan.v1.json': path.resolve('docs/multi-input-graph-plan.v1.json'),
-  'multi-input-plan-explain.v1.json': path.resolve('docs/multi-input-plan-explain.v1.json'),
-  'multi-input-execution-trace.v1.json': path.resolve('docs/multi-input-execution-trace.v1.json'),
-  'baseline-candidate-verification.v1.json': path.resolve('docs/baseline-candidate-verification.v1.json'),
-  'transactional-graph-mutation.v1.json': path.resolve('docs/transactional-graph-mutation.v1.json'),
-  'transactional-graph-checkpoint-branch.v1.json': path.resolve('docs/transactional-graph-checkpoint-branch.v1.json'),
-  'semantic-ingress-manifest.v2.json': path.resolve('docs/semantic-ingress-manifest.v2.json'),
-  'wasm-surface.v1.json': path.resolve('docs/wasm-surface.v1.json'),
-  'runtime-surface.v1.json': path.resolve('docs/runtime-surface.v1.json'),
+  'agent-layer-catalog.v1.json': path.resolve('docs/contracts/agent-layer-catalog.v1.json'),
+  'agent-layout-contracts.v1.json': path.resolve('docs/contracts/agent-layout-contracts.v1.json'),
+  'agent-input-port.v1.json': path.resolve('docs/contracts/agent-input-port.v1.json'),
+  'agent-fault-contract.v1.json': path.resolve('docs/contracts/agent-fault-contract.v1.json'),
+  'multi-input-graph-plan.v1.json': path.resolve('docs/contracts/multi-input-graph-plan.v1.json'),
+  'multi-input-plan-explain.v1.json': path.resolve('docs/contracts/multi-input-plan-explain.v1.json'),
+  'multi-input-execution-trace.v1.json': path.resolve('docs/contracts/multi-input-execution-trace.v1.json'),
+  'baseline-candidate-verification.v1.json': path.resolve('docs/contracts/baseline-candidate-verification.v1.json'),
+  'transactional-graph-mutation.v1.json': path.resolve('docs/contracts/transactional-graph-mutation.v1.json'),
+  'transactional-graph-checkpoint-branch.v1.json': path.resolve('docs/contracts/transactional-graph-checkpoint-branch.v1.json'),
+  'semantic-ingress-manifest.v2.json': path.resolve('docs/contracts/semantic-ingress-manifest.v2.json'),
+  'wasm-surface.v1.json': path.resolve('docs/contracts/wasm-surface.v1.json'),
+  'runtime-surface.v1.json': path.resolve('docs/contracts/runtime-surface.v1.json'),
   'runtime-architecture-artifact-proof.md': path.resolve('docs/runtime-architecture-artifact-proof.md'),
 };
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
@@ -105,7 +105,15 @@ for (const file of generatedPackageFiles) {
 fs.mkdirSync(docsDir, {recursive: true});
 fs.copyFileSync(nodeAdapterSource, nodeAdapterTarget);
 fs.copyFileSync(nodeTypesSource, nodeTypesTarget);
-fs.copyFileSync(readmeSource, readmeTarget);
+// Repo sources reference contracts as docs/contracts/<name>.json, but the
+// packaged layout keeps them at docs/<name>.json (Opsi D). Rewrite .md copies
+// so packaged README/docs links resolve against the packaged layout.
+function copyDocWithPackagedLinks(source, target) {
+  let text = fs.readFileSync(source, 'utf8');
+  text = text.replaceAll('docs/contracts/', 'docs/');
+  fs.writeFileSync(target, text);
+}
+copyDocWithPackagedLinks(readmeSource, readmeTarget);
 fs.copyFileSync(interactiveSource, interactiveTarget);
 fs.copyFileSync(provenanceSource, provenanceTarget);
 fs.copyFileSync(replayLedgerSource, replayLedgerTarget);
@@ -114,7 +122,12 @@ fs.copyFileSync(branchPromotionLineageSource, branchPromotionLineageTarget);
 fs.copyFileSync(operationRegistrySource, operationRegistryTarget);
 fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
 for (const [name, source] of Object.entries(docSources)) {
-  fs.copyFileSync(source, path.join(docsDir, name));
+  const target = path.join(docsDir, name);
+  if (name.endsWith('.md')) {
+    copyDocWithPackagedLinks(source, target);
+  } else {
+    fs.copyFileSync(source, target);
+  }
 }
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));

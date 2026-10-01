@@ -7,7 +7,7 @@ use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
 use crate::workspace::AgentWorkspace;
 
 const RUNTIME_RESOLUTION_EVIDENCE_V1: &str =
-    include_str!("../docs/runtime-resolution-evidence.v1.json");
+    include_str!("../docs/contracts/runtime-resolution-evidence.v1.json");
 
 pub const MAX_RUNTIME_EVIDENCE_ENTRIES: usize = 64;
 const MAX_SHORT_FIELD_BYTES: usize = 256;

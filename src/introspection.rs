@@ -20,9 +20,9 @@ use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::{AgentWorkspace, WorkspaceLayerIntrospection};
 
-const LAYER_CATALOG_V1: &str = include_str!("../docs/agent-layer-catalog.v1.json");
+const LAYER_CATALOG_V1: &str = include_str!("../docs/contracts/agent-layer-catalog.v1.json");
 const INTROSPECTION_CONTRACT_V1: &str =
-    include_str!("../docs/agent-introspection-contract.v1.json");
+    include_str!("../docs/contracts/agent-introspection-contract.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

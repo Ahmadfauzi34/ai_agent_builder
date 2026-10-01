@@ -229,7 +229,7 @@ This slice does not add:
 
 ## Promotion rule
 
-The typed facade/host is supported only within the matrix recorded in `docs/host-support.v1.json`. This transport optimization does not widen OS, architecture, or Python-version support and does not change the experimental/versioned status of ABI v1.
+The typed facade/host is supported only within the matrix recorded in `docs/contracts/host-support.v1.json`. This transport optimization does not widen OS, architecture, or Python-version support and does not change the experimental/versioned status of ABI v1.
 
 ## Host-role clarification
 

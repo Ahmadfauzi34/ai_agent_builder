@@ -7,7 +7,7 @@ use crate::input_port_consumer::InputPortConsumerSpec;
 use crate::workspace::AgentWorkspace;
 
 const INPUT_PORT_EDGE_BINDING_V1: &str =
-    include_str!("../docs/agent-input-port-edge-binding.v1.json");
+    include_str!("../docs/contracts/agent-input-port-edge-binding.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

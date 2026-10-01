@@ -18,7 +18,7 @@ Opt-in architecture profile (v3) retains the v2 data and also maps:
 - GitHub workflow -> tracked docs references
 
 The mapper uses only the Python standard library and never infers support or
-policy ownership from file names or reference edges. docs/host-support.v1.json
+policy ownership from file names or reference edges. docs/contracts/host-support.v1.json
 remains the authority for host support status.
 """
 

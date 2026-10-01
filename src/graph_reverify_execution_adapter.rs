@@ -13,7 +13,7 @@ use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
 const GRAPH_REVERIFY_EXECUTION_ADAPTER_V1: &str =
-    include_str!("../docs/graph-reverify-execution-adapter.v1.json");
+    include_str!("../docs/contracts/graph-reverify-execution-adapter.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

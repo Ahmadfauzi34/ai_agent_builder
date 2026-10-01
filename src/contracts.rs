@@ -1,11 +1,11 @@
 //! # Kontrak: `contracts`
 //!
 //! ## Tanggung jawab
-//! Meng-embed kontrak JSON kanonis dari `docs/` via `include_str!` dan
+//! Meng-embed kontrak JSON kanonis dari `docs/contracts/` via `include_str!` dan
 //! mengekspos validasi skema + `LayoutTag` untuk tata letak layer.
 //!
 //! ## Invariant
-//! - Setiap `include_str!("../docs/*.json")` merujuk ke file yang ada dan
+//! - Setiap `include_str!("../docs/contracts/*.json")` merujuk ke file yang ada dan
 //!   versinya terkunci (`*.v1.json`); perubahan kontrak = file versi baru,
 //!   bukan edit diam-diam.
 //! - `LayoutTag` adalah satu-satunya sumber kebenaran tag tata letak yang
@@ -25,8 +25,8 @@ use crate::protocol::{
     POOL_MAXPOOL1D,
 };
 
-const AGENT_CONTRACT_SCHEMA_V1: &str = include_str!("../docs/agent-contracts.v1.json");
-const AGENT_LAYOUT_CONTRACT_V1: &str = include_str!("../docs/agent-layout-contracts.v1.json");
+const AGENT_CONTRACT_SCHEMA_V1: &str = include_str!("../docs/contracts/agent-contracts.v1.json");
+const AGENT_LAYOUT_CONTRACT_V1: &str = include_str!("../docs/contracts/agent-layout-contracts.v1.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LayoutTag {
