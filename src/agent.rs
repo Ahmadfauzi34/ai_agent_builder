@@ -1,3 +1,23 @@
+//! # Kontrak: `agent`
+//!
+//! ## Tanggung jawab
+//! Fasad pembangun `AgentLayerSpec` yang ramah-agen (`linear()`,
+//! `embedding()`, …): validasi parameter dimensi dan encoding paket init
+//! little-endian sebelum diserahkan ke registry.
+//!
+//! ## Invariant
+//! - Dimensi harus > 0 (`validate_positive`); paket cacat ditolak di sini,
+//!   bukan di allocator.
+//! - Fasad ini adalah jalur yang didukung untuk membangun spec dari kode
+//!   agen; ia tidak pernah mengalokasikan tensor sendiri.
+//!
+//! ## Error yang dijamin
+//! - String validasi menyebut konteks dan nilai yang melanggar.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Alokasi dan eksekusi → `registry` + `layers/*`.
+//! - Batas budget → `protocol`.
+
 use wasm_bindgen::prelude::*;
 
 use crate::graph::CompiledGraph;

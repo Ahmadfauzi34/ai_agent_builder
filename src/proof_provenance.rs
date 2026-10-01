@@ -1,3 +1,18 @@
+//! # Kontrak: `proof_provenance`
+//!
+//! ## Tanggung jawab
+//! Provenance bukti dan atestasi: pencatatan atestasi workspace,
+//! verifikasi resi vektor, dan kapabilitas proof (`proof_provenance`,
+//! `math_proof`).
+//!
+//! ## Invariant
+//! - Setiap atestasi terikat pada workspace dan dapat diverifikasi ulang
+//!   dari resinya; tidak ada atestasi tanpa bukti yang dapat diverifikasi.
+//! - Kapabilitas diumumkan via `*_capabilities()` sebelum dipakai host.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Menyimpan bukti mentah → host/packager; mengeksekusi klaim → `math`.
+
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;

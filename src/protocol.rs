@@ -1,3 +1,30 @@
+//! # Kontrak: `protocol`
+//!
+//! ## Tanggung jawab
+//! Satu-satunya sumber kebenaran untuk angka-angka protokol tensor: opcode
+//! (`OP_*`), byte tipe layer (`LAYER_*`), byte varian, serta batas ukuran dan
+//! budget alokasi. Semua jalur init dan run WAJIB melewati `check_numel`
+//! sebelum materialisasi.
+//!
+//! ## Invariant
+//! - `MAX_TENSOR_ELEMENTS = 1 << 28`: ceiling elemen per tensor. Tidak naik
+//!   tanpa revisi kontrak.
+//! - `MAX_ALLOC_BYTES = 64 MiB` (`MAX_ALLOC_ELEMENTS` elemen f32): budget
+//!   materialisasi per tensor. `check_alloc_budget` menolak SEBELUM alokasi
+//!   (keluhan #17: `linear(0,10000,10000)` = 381 MiB kini ditolak <100 ms
+//!   tanpa spike RSS).
+//! - `check_numel` selalu memanggil `check_alloc_budget`; tidak ada jalur
+//!   init yang boleh lolos dari budget.
+//!
+//! ## Error yang dijamin
+//! - `tensor_too_large: <konteks> requests <numel> elements (<MiB> MiB),
+//!   exceeds allocation budget 64 MiB (<elemen> elements)` — menyebut ukuran
+//!   yang diminta dan batas yang berlaku (keluhan #18).
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Kebijakan retry/fallback setelah penolakan → urusan caller (agen/host).
+//! - Validasi bentuk spesifik per layer → `layers/*`, lewat `check_numel`.
+
 use wasm_bindgen::prelude::*;
 
 // ============================================================

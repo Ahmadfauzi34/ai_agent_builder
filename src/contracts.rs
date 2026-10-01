@@ -1,3 +1,20 @@
+//! # Kontrak: `contracts`
+//!
+//! ## Tanggung jawab
+//! Meng-embed kontrak JSON kanonis dari `docs/` via `include_str!` dan
+//! mengekspos validasi skema + `LayoutTag` untuk tata letak layer.
+//!
+//! ## Invariant
+//! - Setiap `include_str!("../docs/*.json")` merujuk ke file yang ada dan
+//!   versinya terkunci (`*.v1.json`); perubahan kontrak = file versi baru,
+//!   bukan edit diam-diam.
+//! - `LayoutTag` adalah satu-satunya sumber kebenaran tag tata letak yang
+//!   dipakai validasi.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Penegakan runtime atas kontrak → test konformansi di `tests/` dan
+//!   audit `scripts/audit_*.mjs`.
+
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentLayerSpec;

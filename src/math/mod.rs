@@ -1,3 +1,20 @@
+//! # Kontrak: `math`
+//!
+//! ## Tanggung jawab
+//! Pustaka program matematika berversi (`program_v4` … `program_v9`),
+//! masing-masing dengan pasangan `_wasm`, plus primitif tensor, linalg,
+//! statistik, probabilitas, dan interaksi.
+//!
+//! ## Invariant
+//! - `program_v9` adalah versi kanonis untuk kode baru.
+//! - `program_v4` … `program_v8` FROZEN: hanya untuk kompatibilitas baca
+//!   (rencana/checkpoint lama); tidak ada fitur baru di versi lama.
+//! - Setiap versi mengekspos `*_capabilities` agar host dapat melakukan
+//!   discovery sebelum memakai.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Memilih versi mana yang dipakai sebuah deployment → caller/host.
+
 pub mod comparison;
 pub mod comparison_wasm;
 pub mod index_source;

@@ -1,3 +1,30 @@
+//! # Kontrak: `registry`
+//!
+//! ## Tanggung jawab
+//! `LayerRegistry`: pemilik semua instance layer (`HashMap<LayerId, _>` per
+//! tipe). Menyediakan siklus hidup init → forward → get_state/load_state →
+//! destroy, plus proyeksi `runtime_contract` untuk inventarisasi runtime.
+//!
+//! ## Invariant
+//! - Satu `(tipe_layer, layer_id)` = satu instance; init ulang pada kunci
+//!   yang sama bersifat deterministik.
+//! - Isolasi per-call: satu panggilan yang gagal TIDAK PERNAH me-wedge
+//!   instance maupun registry — panggilan jujur berikutnya tetap berhasil
+//!   (keluhan #14).
+//! - Input `forwardLayer` serta output linear/matmul/embedding divalidasi
+//!   ukurannya SEBELUM materialisasi (keluhan #17/#18).
+//! - `runtime_contract` dideklarasikan di sini (bukan via `#[path]` dari
+//!   modul lain) agar dapat membaca field privat registry: privasi Rust
+//!   mengikuti pohon modul yang dideklarasikan, bukan path file.
+//!
+//! ## Error yang dijamin
+//! - String terstruktur; `tensor_too_large:` untuk tensor melebihi budget,
+//!   selalu per-call dan tidak me-wedge.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Membangun paket init dari parameter ramah-agen → `agent.rs`.
+//! - Engine komputasi per layer → `layers/*`.
+
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
