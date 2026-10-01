@@ -109,16 +109,16 @@ const actualSurface = JSON.parse(fs.readFileSync(surfaceActualPath, 'utf8'));
 assert(actualSurface.schema === 'burn-research.wasm-surface.actual.v1', 'runtime surface schema mismatch');
 assert(actualSurface.fingerprint?.algorithm === 'sha256', 'runtime surface fingerprint algorithm mismatch');
 assert(/^sha256:[0-9a-f]{64}$/.test(actualSurface.fingerprint?.value ?? ''), 'runtime surface fingerprint is malformed');
-assert(actualSurface.artifacts?.['multi-input-execution-trace.v1.json']?.sha256
+assert(actualSurface.artifacts?.['docs/multi-input-execution-trace.v1.json']?.sha256
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'multi-input-execution-trace.v1.json'))).digest('hex')}`,
   'trace contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['baseline-candidate-verification.v1.json']?.sha256
+assert(actualSurface.artifacts?.['docs/baseline-candidate-verification.v1.json']?.sha256
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'baseline-candidate-verification.v1.json'))).digest('hex')}`,
   'verifier contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['transactional-graph-mutation.v1.json']?.sha256
+assert(actualSurface.artifacts?.['docs/transactional-graph-mutation.v1.json']?.sha256
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
   'mutation contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['transactional-graph-checkpoint-branch.v1.json']?.sha256
+assert(actualSurface.artifacts?.['docs/transactional-graph-checkpoint-branch.v1.json']?.sha256
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
   'checkpoint branch contract bytes are not bound by the runtime surface fingerprint');
 
