@@ -13,7 +13,7 @@ membaca kontrak dari paket tetap stabil.
 
 | Kontrak | Dipaketkan | Di-embed oleh | Penegak |
 |---|---|---|---|
-| `agent-contracts.v1.json` | ya | `src/contracts.rs` | `src/contracts.rs` |
+| `agent-contracts.v1.json` | ya | `src/contracts.rs` | scripts/check_wasm_surface.py, `src/contracts.rs` |
 | `agent-fault-contract.v1.json` | ya | — | scripts/audit_operation_contract_registry.mjs |
 | `agent-input-contract.v1.json` | tidak | `src/input_contract.rs` | `src/input_contract.rs` |
 | `agent-input-port-consumer.v1.json` | tidak | `src/input_port_consumer.rs` | `src/input_port_consumer.rs` |
@@ -23,7 +23,7 @@ membaca kontrak dari paket tetap stabil.
 | `agent-interaction-contract.v1.json` | tidak | — | — |
 | `agent-introspection-contract.v1.json` | tidak | `src/introspection.rs` | `src/introspection.rs` |
 | `agent-layer-catalog.v1.json` | ya | `src/introspection.rs` | scripts/audit_operation_contract_registry.mjs, `src/introspection.rs` |
-| `agent-layout-contracts.v1.json` | ya | `src/contracts.rs` | scripts/audit_operation_contract_registry.mjs, `src/contracts.rs` |
+| `agent-layout-contracts.v1.json` | ya | `src/contracts.rs` | scripts/audit_operation_contract_registry.mjs, scripts/check_wasm_surface.py, `src/contracts.rs` |
 | `agent-response-intent.v1.json` | tidak | `src/agent_response_intent.rs` | `src/bin/agent_response_intent_probe.rs`, `src/agent_response_intent.rs` |
 | `agent-semantic-execution-context.v1.json` | tidak | `src/semantic_execution_context.rs` | `src/semantic_execution_context.rs` |
 | `agent-semantic-lifecycle.v1.json` | tidak | `src/semantic_lifecycle.rs` | `src/semantic_lifecycle.rs` |
@@ -62,7 +62,7 @@ membaca kontrak dari paket tetap stabil.
 | `transactional-graph-checkpoint-branch.v1.json` | ya | — | scripts/audit_node_host.mjs |
 | `transactional-graph-mutation.v1.json` | ya | — | scripts/audit_node_host.mjs |
 | `unified-math-interaction.v1.json` | tidak | — | — |
-| `wasm-surface.v1.json` | ya | — | scripts/audit_node_host.mjs |
+| `wasm-surface.v1.json` | ya | — | scripts/audit_node_host.mjs, scripts/check_wasm_surface.py |
 
 ## Kontrak tanpa konsumen (kandidat review)
 
