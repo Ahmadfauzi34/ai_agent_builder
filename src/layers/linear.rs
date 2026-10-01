@@ -18,6 +18,7 @@ impl LinearLayerConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> LinearLayer<B> {
         let linear = LinearConfig::new(self.d_input, self.d_output)
             .with_bias(self.bias)
+            .with_initializer(burn::module::Initializer::Zeros)
             .init(device);
         LinearLayer { inner: linear }
     }

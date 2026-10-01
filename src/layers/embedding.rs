@@ -108,7 +108,9 @@ impl WasmEmbedding {
     #[wasm_bindgen(constructor)]
     pub fn new(vocab_size: usize, d_model: usize) -> WasmEmbedding {
         let device = Default::default();
-        let config = EmbeddingConfig::new(vocab_size, d_model);
+        // Complaint #15: deterministic zero initial weights (no implicit RNG).
+        let config = EmbeddingConfig::new(vocab_size, d_model)
+            .with_initializer(burn::module::Initializer::Zeros);
         WasmEmbedding {
             inner: EmbeddingConfigEnum::Basic(config).init(&device),
         }

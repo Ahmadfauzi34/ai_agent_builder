@@ -323,9 +323,13 @@ impl LayerRegistry {
     fn init_linear(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let in_dim = c.read_usize()?;
-        let out_dim = c.read_usize()?;
+        let in_dim = c.read_dim("linear in_dim")?;
+        let out_dim = c.read_dim("linear out_dim")?;
         let bias = c.read_bool()?;
+        check_numel(&[in_dim, out_dim], "linear weight")?;
+        if bias {
+            check_numel(&[out_dim], "linear bias")?;
+        }
         let layer = WasmLinear::new(in_dim, out_dim, bias);
         insert_layer!(self, linears, id, layer);
         Ok(())
@@ -334,18 +338,20 @@ impl LayerRegistry {
     fn init_norm(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let size = c.read_usize()?;
+        let size = c.read_dim("norm size")?;
         let eps = c.read_option_f64()?;
+        check_numel(&[size], "norm weight")?;
         let layer = match header.variant {
-            NORM_BATCH     => WasmNorm::new_batch_norm(size, eps),
-            NORM_GROUP     => {
-                let num_groups = c.read_usize()?;
-                let num_channels = c.read_usize()?;
+            NORM_BATCH => WasmNorm::new_batch_norm(size, eps),
+            NORM_GROUP => {
+                let num_groups = c.read_dim("group_norm num_groups")?;
+                let num_channels = c.read_dim("group_norm num_channels")?;
+                check_numel(&[num_channels], "group_norm weight")?;
                 WasmNorm::try_new_group_norm(num_groups, num_channels, eps)?
             }
-            NORM_INSTANCE  => WasmNorm::new_instance_norm(size, eps),
-            NORM_LAYER     => WasmNorm::new_layer_norm(size, eps),
-            NORM_RMS       => WasmNorm::try_new_rms_norm(size, eps)?,
+            NORM_INSTANCE => WasmNorm::new_instance_norm(size, eps),
+            NORM_LAYER => WasmNorm::new_layer_norm(size, eps),
+            NORM_RMS => WasmNorm::try_new_rms_norm(size, eps)?,
             _ => return Err(format!("Unknown norm variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, norms, id, layer);
@@ -355,18 +361,21 @@ impl LayerRegistry {
     fn init_conv(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let in_ch = c.read_usize()?;
-        let out_ch = c.read_usize()?;
-        let kh = c.read_usize()?;
-        let kw = c.read_usize()?;
-        let sh = c.read_option_usize()?;
-        let sw = c.read_option_usize()?;
-        let ph = c.read_option_usize()?;
-        let pw = c.read_option_usize()?;
+        let in_ch = c.read_dim("conv in_ch")?;
+        let out_ch = c.read_dim("conv out_ch")?;
+        let kh = c.read_dim("conv kh")?;
+        let kw = c.read_dim("conv kw")?;
+        let sh = c.read_bounded_opt_usize("conv sh")?;
+        let sw = c.read_bounded_opt_usize("conv sw")?;
+        let ph = c.read_bounded_opt_usize("conv ph")?;
+        let pw = c.read_bounded_opt_usize("conv pw")?;
+        check_numel(&[out_ch, in_ch, kh, kw], "conv weight")?;
         let layer = match header.variant {
-            CONV_CONV1D          => WasmConv::try_new_conv1d(in_ch, out_ch, kh, sh, ph)?,
-            CONV_CONV2D          => WasmConv::try_new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
-            CONV_CONVTRANSPOSE2D => WasmConv::try_new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
+            CONV_CONV1D => WasmConv::try_new_conv1d(in_ch, out_ch, kh, sh, ph)?,
+            CONV_CONV2D => WasmConv::try_new_conv2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?,
+            CONV_CONVTRANSPOSE2D => {
+                WasmConv::try_new_conv_transpose2d(in_ch, out_ch, kh, kw, sh, sw, ph, pw)?
+            }
             _ => return Err(format!("Unknown conv variant: 0x{:02X}", header.variant)),
         };
         insert_layer!(self, convs, id, layer);
@@ -387,14 +396,18 @@ impl LayerRegistry {
                 WasmActivation::new_leaky_relu(slope)
             }
             ACT_PRELU => {
-                let num_params = c.read_option_usize()?;
+                let num_params = c.read_bounded_opt_usize("prelu num_params")?;
+                if let Some(n) = num_params {
+                    check_numel(&[n], "prelu weight")?;
+                }
                 let alpha = c.read_option_f64()?;
                 WasmActivation::new_prelu(num_params, alpha)
             }
             ACT_SWIGLU => {
-                let d_in = c.read_usize()?;
-                let d_out = c.read_usize()?;
+                let d_in = c.read_dim("swiglu d_in")?;
+                let d_out = c.read_dim("swiglu d_out")?;
                 let bias = c.read_option_u32()?.map(|v| v != 0);
+                check_numel(&[d_in, d_out], "swiglu weight")?;
                 WasmActivation::new_swiglu(d_in, d_out, bias)
             }
             ACT_HARDSIGMOID => {
@@ -406,17 +419,17 @@ impl LayerRegistry {
                 let beta = c.read_option_f64()?;
                 WasmActivation::new_softplus(beta)
             }
-            ACT_MISH        => WasmActivation::new_mish(),
-            ACT_SOFTMAX     => {
-                let dim = c.read_usize()?;
+            ACT_MISH => WasmActivation::new_mish(),
+            ACT_SOFTMAX => {
+                let dim = c.read_dim("softmax dim")?;
                 WasmActivation::new_softmax(dim)
             }
-            ACT_LOGSOFTMAX  => {
-                let dim = c.read_usize()?;
+            ACT_LOGSOFTMAX => {
+                let dim = c.read_dim("log_softmax dim")?;
                 WasmActivation::new_log_softmax(dim)
             }
-            ACT_GLU         => {
-                let dim = c.read_usize()?;
+            ACT_GLU => {
+                let dim = c.read_dim("glu dim")?;
                 WasmActivation::new_glu(dim)
             }
             _ => return Err(format!("Unknown activation variant: 0x{:02X}", header.variant)),
@@ -428,8 +441,9 @@ impl LayerRegistry {
     fn init_embedding(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let vocab = c.read_usize()?;
-        let d_model = c.read_usize()?;
+        let vocab = c.read_dim("embedding vocab")?;
+        let d_model = c.read_dim("embedding d_model")?;
+        check_numel(&[vocab, d_model], "embedding weight")?;
         let layer = WasmEmbedding::new(vocab, d_model);
         insert_layer!(self, embeddings, id, layer);
         Ok(())
@@ -440,38 +454,40 @@ impl LayerRegistry {
         let id = c.read_u32()?;
         let layer = match header.variant {
             POOL_MAXPOOL1D => {
-                let k = c.read_usize()?;
-                let s = c.read_option_usize()?;
-                let p = c.read_option_usize()?;
+                let k = c.read_dim("max_pool1d k")?;
+                let s = c.read_bounded_opt_usize("max_pool1d s")?;
+                let p = c.read_bounded_opt_usize("max_pool1d p")?;
                 WasmPool::try_new_max_pool1d(k, s, p)?
             }
             POOL_AVGPOOL1D => {
-                let k = c.read_usize()?;
-                let s = c.read_option_usize()?;
-                let p = c.read_option_usize()?;
+                let k = c.read_dim("avg_pool1d k")?;
+                let s = c.read_bounded_opt_usize("avg_pool1d s")?;
+                let p = c.read_bounded_opt_usize("avg_pool1d p")?;
                 WasmPool::try_new_avg_pool1d(k, s, p)?
             }
             POOL_MAXPOOL2D => {
-                let k = c.read_usize()?;
-                let kw = c.read_usize()?;
-                let sh = c.read_option_usize()?;
-                let sw = c.read_option_usize()?;
-                let ph = c.read_option_usize()?;
-                let pw = c.read_option_usize()?;
+                let k = c.read_dim("max_pool2d k")?;
+                let kw = c.read_dim("max_pool2d kw")?;
+                let sh = c.read_bounded_opt_usize("max_pool2d sh")?;
+                let sw = c.read_bounded_opt_usize("max_pool2d sw")?;
+                let ph = c.read_bounded_opt_usize("max_pool2d ph")?;
+                let pw = c.read_bounded_opt_usize("max_pool2d pw")?;
                 WasmPool::try_new_max_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_AVGPOOL2D => {
-                let k = c.read_usize()?;
-                let kw = c.read_usize()?;
-                let sh = c.read_option_usize()?;
-                let sw = c.read_option_usize()?;
-                let ph = c.read_option_usize()?;
-                let pw = c.read_option_usize()?;
+                let k = c.read_dim("avg_pool2d k")?;
+                let kw = c.read_dim("avg_pool2d kw")?;
+                let sh = c.read_bounded_opt_usize("avg_pool2d sh")?;
+                let sw = c.read_bounded_opt_usize("avg_pool2d sw")?;
+                let ph = c.read_bounded_opt_usize("avg_pool2d ph")?;
+                let pw = c.read_bounded_opt_usize("avg_pool2d pw")?;
                 WasmPool::try_new_avg_pool2d(k, kw, sh, sw, ph, pw)?
             }
             POOL_ADAPTIVEAVGPOOL2D => {
-                let oh = c.read_usize()?;
-                let ow = c.read_usize()?;
+                let oh = c.read_dim("adaptive_avg_pool2d oh")?;
+                let ow = c.read_dim("adaptive_avg_pool2d ow")?;
+                // Adaptive output dims drive the output allocation at forward time.
+                check_numel(&[oh, ow], "adaptive_avg_pool2d output")?;
                 WasmPool::new_adaptive_avg_pool2d(oh, ow)
             }
             _ => return Err(format!("Unknown pool variant: 0x{:02X}", header.variant)),
@@ -483,7 +499,7 @@ impl LayerRegistry {
     fn init_shift(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let shift_size = c.read_usize()?;
+        let shift_size = c.read_dim("shift size")?;
         let layer = match header.variant {
             SHIFT_UP    => WasmShift::new_shift_up(shift_size),
             SHIFT_DOWN  => WasmShift::new_shift_down(shift_size),
@@ -507,16 +523,18 @@ impl LayerRegistry {
     fn init_ghost(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let in_ch = c.read_usize()?;
-        let out_ch = c.read_usize()?;
-        let kh = c.read_usize()?;
-        let kw = c.read_usize()?;
-        let ratio = c.read_option_usize()?;
-        let sh = c.read_option_usize()?;
-        let sw = c.read_option_usize()?;
-        let ph = c.read_option_usize()?;
-        let pw = c.read_option_usize()?;
-        let layer = WasmGhostModule::new(in_ch, out_ch, kh, kw, ratio, sh, sw, ph, pw);
+        let in_ch = c.read_dim("ghost in_ch")?;
+        let out_ch = c.read_dim("ghost out_ch")?;
+        let kh = c.read_dim("ghost kh")?;
+        let kw = c.read_dim("ghost kw")?;
+        let ratio = c.read_bounded_opt_usize("ghost ratio")?;
+        let sh = c.read_bounded_opt_usize("ghost sh")?;
+        let sw = c.read_bounded_opt_usize("ghost sw")?;
+        let ph = c.read_bounded_opt_usize("ghost ph")?;
+        let pw = c.read_bounded_opt_usize("ghost pw")?;
+        // Over-approximation of the internal primary+cheap conv weights.
+        check_numel(&[out_ch, in_ch, kh, kw], "ghost weight")?;
+        let layer = WasmGhostModule::try_new(in_ch, out_ch, kh, kw, ratio, sh, sw, ph, pw)?;
         insert_layer!(self, ghosts, id, layer);
         Ok(())
     }
@@ -524,9 +542,11 @@ impl LayerRegistry {
     fn init_seblock(&mut self, _header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
-        let channels = c.read_usize()?;
-        let reduction = c.read_option_usize()?;
-        let layer = WasmSeBlock::new(channels, reduction);
+        let channels = c.read_dim("seblock channels")?;
+        let reduction = c.read_bounded_opt_usize("seblock reduction")?;
+        // Over-approximation of the internal squeeze/excitation linear weights.
+        check_numel(&[channels, channels], "seblock weight")?;
+        let layer = WasmSeBlock::try_new(channels, reduction)?;
         insert_layer!(self, seblocks, id, layer);
         Ok(())
     }
@@ -598,12 +618,23 @@ impl LayerRegistry {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
         let dim = c.read_usize()?;
+        // `dim` is only meaningful for CONCAT; other variants honestly encode
+        // it as 0. Bound it in all cases, require positive only for CONCAT.
+        if dim > crate::protocol::MAX_DIM {
+            return Err(format!(
+                "binary dim: parameter {dim} exceeds maximum {}",
+                crate::protocol::MAX_DIM
+            ));
+        }
         let layer = match header.variant {
             BINARY_ADD    => WasmBinary::new_add(),
             BINARY_SUB    => WasmBinary::new_sub(),
             BINARY_MUL    => WasmBinary::new_mul(),
             BINARY_MATMUL => WasmBinary::new_matmul(),
-            BINARY_CONCAT => WasmBinary::new_concat(dim),
+            BINARY_CONCAT => {
+                crate::protocol::check_dim(dim, "binary concat dim")?;
+                WasmBinary::new_concat(dim)
+            }
             _ => return Err(format!("Unknown binary variant: 0x{:02X}", header.variant)),
         };
         self.binaries.insert(id, layer);

@@ -862,4 +862,191 @@ mod tests {
         assert!(caps.contains("no_signature_or_authentication"));
         assert!(caps.contains("\"authorization\":false"));
     }
+
+    /// R-18 (complaint #14): corrupt bundle bytes must never panic or abort the
+    /// importing process. A full single-byte-flip sweep over an exported
+    /// bundle asserts every mutation either imports cleanly or returns a
+    /// per-call `Err` — zero panics. On WASM, a panic here would be an
+    /// `unreachable` trap that permanently wedges the in-process runtime.
+    #[test]
+    fn r18_corrupt_bundle_import_never_panics() {
+        use std::panic::AssertUnwindSafe;
+        let mut source = LayerRegistry::new();
+        let lin0 = AgentLayerSpec::linear(0, 2, 2, false).unwrap();
+        let lin1 = AgentLayerSpec::linear(1, 2, 2, false).unwrap();
+        let add = AgentLayerSpec::add(2);
+        let act = AgentLayerSpec::relu(3);
+        for s in [&lin0, &lin1, &add, &act] {
+            source.init_agent_layer(s).unwrap();
+        }
+        source
+            .set_weights_flat(0, crate::protocol::LAYER_LINEAR, &[1.0, 0.5, -0.25, 2.0])
+            .unwrap();
+        source
+            .set_weights_flat(1, crate::protocol::LAYER_LINEAR, &[2.0, 1.0, 0.5, -1.0])
+            .unwrap();
+        let mut builder = AgentGraphBuilder::new(6).unwrap();
+        builder.add_unary(&lin0, 0, 2).unwrap();
+        builder.add_unary(&lin1, 1, 3).unwrap();
+        builder.add_binary(&add, 2, 3, 4).unwrap();
+        builder.add_unary(&act, 4, 5).unwrap();
+        builder.set_output(5).unwrap();
+        let mut plan = builder.multi_input_plan_v1().unwrap();
+        plan.add_input_port(
+            0,
+            "observation".into(),
+            1,
+            2,
+            1,
+            1,
+            "feature_axis1_singleton".into(),
+            false,
+            0,
+        )
+        .unwrap();
+        plan.add_input_port(
+            1,
+            "observation".into(),
+            1,
+            2,
+            1,
+            1,
+            "feature_axis1_singleton".into(),
+            false,
+            0,
+        )
+        .unwrap();
+        let graph = source.compile_multi_input_graph(&plan).unwrap();
+        let bundle = export_multi_input_program_bundle(&graph, &source, true).unwrap();
+        // Pinned case from the complaint: 1525-byte bundle, offset 973 set to
+        // 0xFF (corrupts linear in_dim to 0xFF000002). Must be a per-call Err,
+        // never a panic/abort.
+        assert_eq!(
+            bundle.len(),
+            1525,
+            "bundle layout changed; re-pin offset 973"
+        );
+        let mut pinned = bundle.clone();
+        pinned[973] = 0xFF;
+        let pinned_result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let mut target = LayerRegistry::new();
+            import_multi_input_program_bundle(&mut target, &pinned)
+        }));
+        assert!(
+            matches!(pinned_result, Ok(Err(_))),
+            "pinned corrupt import must be a per-call Err"
+        );
+        let mut panics = Vec::new();
+        let mut errs = 0;
+        for off in 0..bundle.len() {
+            let mut b = bundle.clone();
+            b[off] ^= 0xff;
+            let r = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                let mut target = LayerRegistry::new();
+                import_multi_input_program_bundle(&mut target, &b)
+            }));
+            match r {
+                Ok(Ok(_)) => {}
+                Ok(Err(_)) => errs += 1,
+                Err(_) => panics.push(off),
+            }
+        }
+        assert!(panics.is_empty(), "panicking offsets: {panics:?}");
+        assert!(errs > 0, "sweep mutated nothing observable");
+    }
+
+    /// R-19 (complaint #15): fresh layers have deterministic initial weights.
+    ///
+    /// Two fresh registries built from the same specs must produce identical
+    /// weights (no implicit RNG): linear/conv/embedding are exactly all-zero,
+    /// norms carry Burn's deterministic defaults (gamma=1, beta=0). Layers
+    /// without a weight accessor (ghost/seblock/swiglu) are covered through
+    /// identical forward outputs from two fresh instances.
+    #[test]
+    fn r19_fresh_layers_have_deterministic_zero_weights() {
+        use crate::layers::activation::WasmActivation;
+        use crate::layers::custom::ghost::WasmGhostModule;
+        use crate::layers::custom::seblock::WasmSeBlock;
+        use crate::protocol::{LAYER_CONV, LAYER_EMBEDDING, LAYER_NORM};
+
+        let specs: Vec<(AgentLayerSpec, u8, u32)> = vec![
+            (
+                AgentLayerSpec::linear(0, 4, 3, true).unwrap(),
+                LAYER_LINEAR,
+                0,
+            ),
+            (
+                AgentLayerSpec::conv2d(1, 2, 3, 2, 2, None, None, None, None).unwrap(),
+                LAYER_CONV,
+                1,
+            ),
+            (
+                AgentLayerSpec::embedding(2, 8, 4).unwrap(),
+                LAYER_EMBEDDING,
+                2,
+            ),
+            (
+                AgentLayerSpec::layer_norm(3, 4, None).unwrap(),
+                LAYER_NORM,
+                3,
+            ),
+        ];
+
+        let mut r1 = LayerRegistry::new();
+        let mut r2 = LayerRegistry::new();
+        for (spec, _, _) in &specs {
+            r1.init_agent_layer(spec).unwrap();
+            r2.init_agent_layer(spec).unwrap();
+        }
+
+        for (_spec, layer_type, layer_id) in &specs {
+            let w1 = r1.get_weights_flat(*layer_id, *layer_type).unwrap();
+            let w2 = r2.get_weights_flat(*layer_id, *layer_type).unwrap();
+            assert_eq!(
+                w1, w2,
+                "fresh weights differ between registries: type={layer_type:#04X} id={layer_id}"
+            );
+            assert!(
+                !w1.is_empty(),
+                "fresh weights must not be empty: type={layer_type:#04X} id={layer_id}"
+            );
+            if *layer_type == LAYER_NORM {
+                // Burn deterministic defaults: gamma=1, beta=0.
+                let half = w1.len() / 2;
+                assert!(
+                    w1[..half].iter().all(|&v| v == 1.0),
+                    "norm gamma != 1: type={layer_type:#04X} id={layer_id}"
+                );
+                assert!(
+                    w1[half..].iter().all(|&v| v == 0.0),
+                    "norm beta != 0: type={layer_type:#04X} id={layer_id}"
+                );
+            } else {
+                assert!(
+                    w1.iter().all(|&v| v == 0.0),
+                    "fresh weights not all-zero: type={layer_type:#04X} id={layer_id}"
+                );
+            }
+        }
+
+        // Layers without a weight accessor: identical forward outputs from
+        // two fresh instances prove deterministic initialization.
+        let ghost_in = WasmTensor::new(&[0.5; 2 * 4 * 4], &[1, 2, 4, 4]);
+        let g1 = WasmGhostModule::try_new(2, 4, 2, 2, Some(2), None, None, None, None).unwrap();
+        let g2 = WasmGhostModule::try_new(2, 4, 2, 2, Some(2), None, None, None, None).unwrap();
+        assert_eq!(
+            g1.forward(&ghost_in).to_array(),
+            g2.forward(&ghost_in).to_array()
+        );
+
+        let se_in = WasmTensor::new(&[0.25; 8 * 2 * 2], &[1, 8, 2, 2]);
+        let s1 = WasmSeBlock::try_new(8, Some(4)).unwrap();
+        let s2 = WasmSeBlock::try_new(8, Some(4)).unwrap();
+        assert_eq!(s1.forward(&se_in).to_array(), s2.forward(&se_in).to_array());
+
+        let sw_in = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 1, 1, 4]);
+        let a1 = WasmActivation::new_swiglu(4, 4, Some(true));
+        let a2 = WasmActivation::new_swiglu(4, 4, Some(true));
+        assert_eq!(a1.forward(&sw_in).to_array(), a2.forward(&sw_in).to_array());
+    }
 }

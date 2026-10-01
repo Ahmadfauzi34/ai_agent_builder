@@ -246,7 +246,10 @@ impl WasmConv {
             config.padding = burn::nn::PaddingConfig1d::Explicit(p);
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::Conv1d(config).init(&device),
+            inner: ConvolutionConfig::Conv1d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 
@@ -271,7 +274,10 @@ impl WasmConv {
             config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::Conv2d(config).init(&device),
+            inner: ConvolutionConfig::Conv2d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 
@@ -296,7 +302,10 @@ impl WasmConv {
             config.padding = [ph, pw];
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
+            inner: ConvolutionConfig::ConvTranspose2d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 

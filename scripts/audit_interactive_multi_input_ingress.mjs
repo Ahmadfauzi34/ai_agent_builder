@@ -555,6 +555,14 @@ assert(rs?.execution_gate?.field === 'ready'
   'execution gate not documented in capabilities');
 assert(JSON.stringify(rs.authority_modes) === '["caller_declared","ed25519_host_enforced","ed25519_host_durable"]',
   'authority modes not disclosed');
+// R-20 (#16): session-free capabilities host_provenance carries the same canonical
+// execution gate as the session surface (field, semantics, supersedes, enforcement_effect).
+const capHp = f6ById['cap'].result.host_provenance;
+assert(capHp?.execution_gate?.field === 'ready'
+  && capHp.execution_gate.meaning === rs.execution_gate.meaning
+  && capHp.execution_gate.supersedes === rs.execution_gate.supersedes
+  && capHp.enforcement_effect === f6hp.enforcement_effect,
+  'session-free capabilities host_provenance does not carry the canonical execution gate');
 // #11: fingerprint contract is explicit per mode; caller-declared accepts empty.
 const fpReq = rs.fingerprint_requirement?.by_authority_mode;
 assert(fpReq?.caller_declared?.fingerprint_required === false

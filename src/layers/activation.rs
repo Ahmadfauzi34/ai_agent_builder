@@ -287,7 +287,11 @@ impl WasmActivation {
         if let Some(b) = bias {
             config = config.with_bias(b);
         }
-        WasmActivation { inner: ActivationConfig::SwiGlu(config).init(&device) }
+        // Complaint #15: deterministic zero initial weights (no implicit RNG).
+        let config = config.with_initializer(burn::module::Initializer::Zeros);
+        WasmActivation {
+            inner: ActivationConfig::SwiGlu(config).init(&device),
+        }
     }
 
     #[wasm_bindgen(js_name = newHardSigmoid)]

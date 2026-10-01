@@ -171,6 +171,47 @@ pub const VARIANT_NONE: u8 = 0xFF;
 pub const FLAG_BIAS: u8 = 1 << 0;
 pub const FLAG_TRAINING: u8 = 1 << 1;
 
+/// Maximum single dimension accepted from untrusted init payloads (complaint
+/// #14). Bounds the allocation a single corrupt init payload can trigger:
+/// dimensions arrive as u32, so without this a flipped byte can request a
+/// multi-gigabyte tensor and abort the process (native) / trap and wedge the
+/// WASM instance (in-process DoS).
+pub const MAX_DIM: usize = 1 << 20;
+/// Maximum elements of one weight tensor accepted from untrusted input.
+/// 2^28 f32 elements = 1 GiB; larger models must shard across layers.
+pub const MAX_TENSOR_ELEMENTS: usize = 1 << 28;
+
+/// Validate one dimension value before it can drive an allocation.
+pub fn check_dim(value: usize, context: &str) -> Result<(), String> {
+    if value == 0 {
+        return Err(format!("{context}: dimension must be positive"));
+    }
+    if value > MAX_DIM {
+        return Err(format!(
+            "{context}: dimension {value} exceeds maximum {MAX_DIM}"
+        ));
+    }
+    Ok(())
+}
+
+/// Validate a tensor element count (checked product of dims) before
+/// materialization. Prevents dim pairs that are individually small but whose
+/// product would attempt a gigantic allocation.
+pub fn check_numel(dims: &[usize], context: &str) -> Result<(), String> {
+    let mut numel: usize = 1;
+    for dim in dims {
+        numel = numel
+            .checked_mul(*dim)
+            .ok_or_else(|| format!("{context}: tensor shape overflows usize"))?;
+    }
+    if numel > MAX_TENSOR_ELEMENTS {
+        return Err(format!(
+            "{context}: tensor with {numel} elements exceeds maximum {MAX_TENSOR_ELEMENTS}"
+        ));
+    }
+    Ok(())
+}
+
 pub struct PayloadCursor<'a> {
     data: &'a [u8],
     pos: usize,
@@ -255,6 +296,30 @@ impl<'a> PayloadCursor<'a> {
     #[inline]
     pub fn read_usize(&mut self) -> Result<usize, String> {
         self.read_u32().map(|v| v as usize)
+    }
+
+    /// Read a dimension and validate it before it can drive an allocation
+    /// (complaint #14). Rejects zero and absurd values from untrusted input.
+    #[inline]
+    pub fn read_dim(&mut self, context: &str) -> Result<usize, String> {
+        let value = self.read_usize()?;
+        check_dim(value, context)?;
+        Ok(value)
+    }
+
+    /// Read an `Option<usize>` parameter (kernel/stride/padding style) and
+    /// bound the value; zero is allowed here, absurd values are not.
+    #[inline]
+    pub fn read_bounded_opt_usize(&mut self, context: &str) -> Result<Option<usize>, String> {
+        let value = self.read_option_usize()?;
+        if let Some(v) = value {
+            if v > MAX_DIM {
+                return Err(format!(
+                    "{context}: parameter {v} exceeds maximum {MAX_DIM}"
+                ));
+            }
+        }
+        Ok(value)
     }
 
     /// Option<u32> fixed-size:
