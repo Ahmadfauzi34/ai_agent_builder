@@ -6,9 +6,9 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SURFACE_PATH = ROOT / "docs" / "wasm-surface.v1.json"
-AGENT_CONTRACT_PATH = ROOT / "docs" / "agent-contracts.v1.json"
-LAYOUT_CONTRACT_PATH = ROOT / "docs" / "agent-layout-contracts.v1.json"
+SURFACE_PATH = ROOT / "docs" / "contracts" / "wasm-surface.v1.json"
+AGENT_CONTRACT_PATH = ROOT / "docs" / "contracts" / "agent-contracts.v1.json"
+LAYOUT_CONTRACT_PATH = ROOT / "docs" / "contracts" / "agent-layout-contracts.v1.json"
 DEFAULT_PKG_PATH = ROOT / "pkg"
 
 
