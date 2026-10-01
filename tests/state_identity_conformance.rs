@@ -313,9 +313,9 @@ fn direct_activation_rejects_prelu_shape_mismatch_without_mutating() {
 
 #[test]
 fn direct_ghost_rejects_structural_state_mismatch_without_mutating() {
-    let foreign = WasmGhostModule::new(6, 8, 3, 3, Some(2), None, None, None, None);
+    let foreign = WasmGhostModule::try_new(6, 8, 3, 3, Some(2), None, None, None, None).unwrap();
     let foreign_state = foreign.get_state().unwrap();
-    let mut target = WasmGhostModule::new(4, 8, 3, 3, Some(2), None, None, None, None);
+    let mut target = WasmGhostModule::try_new(4, 8, 3, 3, Some(2), None, None, None, None).unwrap();
     let before = target.get_state().unwrap();
     let params_before = target.num_params();
 
@@ -327,9 +327,9 @@ fn direct_ghost_rejects_structural_state_mismatch_without_mutating() {
 
 #[test]
 fn direct_seblock_rejects_structural_state_mismatch_without_mutating() {
-    let foreign = WasmSeBlock::new(20, Some(4));
+    let foreign = WasmSeBlock::try_new(20, Some(4)).unwrap();
     let foreign_state = foreign.get_state().unwrap();
-    let mut target = WasmSeBlock::new(16, Some(4));
+    let mut target = WasmSeBlock::try_new(16, Some(4)).unwrap();
     let before = target.get_state().unwrap();
     let params_before = target.num_params();
 

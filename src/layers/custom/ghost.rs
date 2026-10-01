@@ -1,7 +1,7 @@
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::PaddingConfig2d;
 use burn::prelude::*;
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 
 use crate::{WasmBackend, WasmTensor};
@@ -65,12 +65,14 @@ impl GhostModuleConfig {
         let primary_ch = self.out_channels / self.ratio;
 
         let mut primary_cfg =
-            Conv2dConfig::new([self.in_channels, primary_ch], self.kernel_size);
+            Conv2dConfig::new([self.in_channels, primary_ch], self.kernel_size)
+                .with_initializer(burn::module::Initializer::Zeros);
         primary_cfg.stride = self.stride;
         primary_cfg.padding = PaddingConfig2d::Explicit(self.padding[0], self.padding[1]);
         let primary = primary_cfg.init(device);
 
-        let mut cheap_cfg = Conv2dConfig::new([primary_ch, primary_ch], [1, 1]);
+        let mut cheap_cfg = Conv2dConfig::new([primary_ch, primary_ch], [1, 1])
+            .with_initializer(burn::module::Initializer::Zeros);
         cheap_cfg.groups = primary_ch;
         cheap_cfg.bias = false;
         let cheap = cheap_cfg.init(device);
@@ -162,7 +164,10 @@ pub struct WasmGhostModule {
 #[wasm_bindgen]
 impl WasmGhostModule {
     #[wasm_bindgen(constructor)]
-    pub fn new(
+    /// Fallible constructor (complaint #14): invalid configs are a per-call
+    /// `Err`, never a panic/`throw_str`, so corrupt bundle bytes cannot wedge
+    /// the in-process WASM runtime.
+    pub fn try_new(
         in_channels: usize,
         out_channels: usize,
         kernel_size_h: usize,
@@ -172,7 +177,7 @@ impl WasmGhostModule {
         stride_w: Option<usize>,
         padding_h: Option<usize>,
         padding_w: Option<usize>,
-    ) -> WasmGhostModule {
+    ) -> Result<WasmGhostModule, String> {
         let device = Default::default();
         let mut config =
             GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
@@ -186,7 +191,7 @@ impl WasmGhostModule {
             config.padding = [ph, pw];
         }
         let inner = config.try_init(&device).unwrap_or_else(reject_invalid_config);
-        WasmGhostModule { inner }
+        Ok(WasmGhostModule { inner })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
@@ -213,11 +218,7 @@ impl WasmGhostModule {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 

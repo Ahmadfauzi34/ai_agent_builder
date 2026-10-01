@@ -10,6 +10,22 @@ The agent-facing path is intentionally layered so callers do not need to constru
 
 The typed facade is an ergonomics layer only. `LayerRegistry`, the existing binary protocol, the graph compiler/runtime, and Burn remain the sources of truth. Raw protocol APIs stay available for compatibility and advanced use.
 
+## Initial weight contract (complaint #15)
+
+A freshly registered layer starts from **deterministic initial weights** — no
+implicit random initialization, ever:
+
+- Linear, Conv1d/Conv2d/ConvTranspose2d, Embedding, SwiGlu, Ghost, SeBlock:
+  **all-zero** weights (`Initializer::Zeros`, single materialization, no RNG
+  draw).
+- Norm layers (batch/group/instance/layer/RMS): Burn's deterministic defaults
+  (**gamma = 1, beta = 0**), unchanged from upstream semantics.
+- PReLU: alpha comes from the (deterministic) layer configuration.
+
+Two fresh registries therefore always produce identical weights, exports, and
+run outputs. Callers must set real weights with `LayerRegistry.setWeightsFlat`
+(or import a bundle that carries state) before relying on output values.
+
 Malformed facade configuration should be rejected before backend initialization whenever the facade can validate it deterministically. The final generated Python/Rust/JS tool does not need to ship this WASM runtime unless the product itself chooses to use it at runtime.
 
 ## Host communication context

@@ -1,6 +1,6 @@
 use burn::prelude::*;
 use burn::nn::{Linear, LinearConfig};
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 use crate::layers::shape_contract::{require_axis_size, require_singleton_spatial};
@@ -18,6 +18,7 @@ impl LinearLayerConfig {
     pub fn init<B: Backend>(&self, device: &B::Device) -> LinearLayer<B> {
         let linear = LinearConfig::new(self.d_input, self.d_output)
             .with_bias(self.bias)
+            .with_initializer(burn::module::Initializer::Zeros)
             .init(device);
         LinearLayer { inner: linear }
     }
@@ -102,11 +103,7 @@ impl WasmLinear {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 

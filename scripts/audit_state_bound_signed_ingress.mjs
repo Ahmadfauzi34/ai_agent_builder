@@ -78,6 +78,22 @@ function graph() {
     logicalPorts: [{id: 'observation', slot: 0, source: 'sensor-a'}, {id: 'memory', slot: 1, source: 'memory-b'}]};
 }
 
+// Structurally different program variant: same ports and steps, but the linear
+// layer drops its bias, so its deterministic state digest differs from graph().
+function graphVariant() {
+  const spec = graph();
+  spec.layers = [{constructor: 'add', args: [31]}, {constructor: 'linear', args: [32, 2, 2, false]}];
+  return spec;
+}
+
+// Manufacture a well-formed but non-active state digest for the state-gate
+// negative control by flipping one hex digit.
+function flipHexDigit(digest) {
+  const hex = digest.slice('sha256:'.length);
+  const last = hex[hex.length - 1];
+  return `sha256:${hex.slice(0, -1)}${last === 'f' ? 'e' : 'f'}`;
+}
+
 function inputs(leftRevision, rightRevision) {
   return [
     {op: 'bind', slot: 0, values: [1, 2], shape: [1, 2, 1, 1], role: 'observation',
@@ -102,8 +118,8 @@ function signed(binding, manifest, nonce, schema, activeStateDigest) {
     signature: sign(null, Buffer.from(JSON.stringify(claim)), privateKey).toString('base64')}};
 }
 
-async function create(client) {
-  const result = await client.ask(graph());
+async function create(client, spec = graph()) {
+  const result = await client.ask(spec);
   check(result.ok && !result.result.host_provenance.ready, `graph creation failed: ${JSON.stringify(result)}`);
   return result.result;
 }
@@ -139,7 +155,7 @@ const mixedPolicy = writePolicy('mixed-policy', [
 const report = {schema: 'burn-research.state-bound-ingress-audit.v1', scenarios: {}};
 
 try {
-  // Fixed graph and f32 inputs; only independent mutable layer initialization differs.
+  // Fixed graph and f32 inputs on both hosts.
   const ledgerA = initLedger('host-a');
   const ledgerB = initLedger('host-b');
   const hostA = start(v2Policy, ledgerA, ['--allow-checkpoint-restore']);
@@ -154,13 +170,22 @@ try {
     'the fixed structural graph produced different manifests');
   check(JSON.stringify(createdA.program_identity) === JSON.stringify(createdB.program_identity),
     'negative control changed structural program identity instead of mutable state');
-  check(digestA !== digestB, 'negative control did not create distinct active model state');
+  // Complaint #15: fresh-layer initialization is deterministic, so the same structure
+  // must reproduce the same active state digest on both hosts.
+  check(digestA === digestB, 'deterministic fresh state was not reproducible across hosts');
+  // Negative control for the state gate: a v2 proof bound to a non-active state digest
+  // must be rejected. Same-structure hosts now share state by design, so the mismatched
+  // digest is manufactured by flipping one hex digit and re-signing with the audit key —
+  // provenance passes and only the state gate can reject it.
+  const otherDigest = flipHexDigit(digestA);
+  const otherStateClaim = signed(inputs(2, 3)[0], createdB.manifest,
+    'host-b-other-state-0', SIGNED_INPUT_CLAIM_SCHEMA_V2, otherDigest);
 
   const claimsA = inputs(2, 3).map((binding, index) =>
     signed(binding, createdA.manifest, `host-a-${index}`, SIGNED_INPUT_CLAIM_SCHEMA_V2, digestA));
   const bindA0 = await hostA.ask(claimsA[0]);
   check(bindA0.ok, `state-matched v2 input was rejected: ${JSON.stringify(bindA0)}`);
-  const crossState = await hostB.ask(claimsA[0]);
+  const crossState = await hostB.ask(otherStateClaim);
   check(!crossState.ok && /checkpoint digest differs from the active program state/i.test(crossState.error),
     `state-mismatched proof did not fail at the state gate: ${JSON.stringify(crossState)}`);
   const untouchedB = await hostB.ask({op: 'inspect'});
@@ -195,8 +220,10 @@ try {
   check(tamperProbe.status !== 0 && /common input checkpoint digest is inconsistent/i.test(tamperProbe.stderr),
     'ledger accepted a rehashed receipt with a mismatched common input checkpoint digest');
 
-  // Reinitialize the same program on host A, then restore A's earlier receipt.
-  const createdA2 = await create(hostA);
+  // Reinitialize host A with a structurally different program so the active state digest
+  // genuinely changes — deterministic init (complaint #15) reproduces the identical digest
+  // for an identical structure — then restore A's earlier receipt.
+  const createdA2 = await create(hostA, graphVariant());
   const digestA2 = createdA2.host_provenance.active_state_checkpoint_bytes_sha256;
   check(digestA2 !== receiptA.state_checkpoint_bytes_sha256,
     'restore freshness fixture did not produce a checkpoint distinct from the later session');
@@ -225,7 +252,8 @@ try {
     verdict: 'PASS_WITH_PROVEN_LIMITS',
     fixed_manifest_equal_across_peers: true,
     structural_program_identity_equal_across_peers: true,
-    state_digests_distinct: [digestA, digestB],
+    state_digests: {host_a: digestA, host_b: digestB, equal: digestA === digestB},
+    manufactured_mismatched_digest_rejected: otherDigest,
     exact_signed_v2_proof_rejected_on_other_state: true,
     rejected_bind_left_input_count: 0,
     receipt_input_digest: receiptA.input_state_checkpoint_bytes_sha256,

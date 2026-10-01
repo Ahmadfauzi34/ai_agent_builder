@@ -875,6 +875,14 @@ function handle(command) {
           },
         },
         host_provenance: {mode: provenanceVerifier?.mode ?? 'caller_declared',
+          // Complaint #16: session-free discovery must expose the same canonical
+          // execution gate metadata as the session surface (field, semantics,
+          // supersedes, enforcement_effect) so callers learn the gate before create.
+          execution_gate: EXECUTION_GATE,
+          enforcement_effect: provenanceVerifier
+            ? 'deny-by-default: unsigned, forged, replayed, stale, or cross-slot claims are rejected; '
+              + 'execution requires host_provenance.ready === true'
+            : 'none: caller-declared inputs carry no signatures; the host checks structural readiness only',
           signed_claim: SIGNED_INPUT_CLAIM_SCHEMA_V1,
           signed_claim_schemas: provenanceVerifier?.acceptedClaimSchemas ?? [], trust_root: 'host_startup_only',
           replay_scope: provenanceVerifier?.replayScope ?? 'none',

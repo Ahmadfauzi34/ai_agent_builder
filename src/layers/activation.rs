@@ -4,7 +4,7 @@ use burn::nn::{
     PReluConfig, Relu, Sigmoid, Softplus, SoftplusConfig, SwiGlu, SwiGluConfig, Tanh,
 };
 use burn::nn::activation::HardSwish;
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 
@@ -287,7 +287,11 @@ impl WasmActivation {
         if let Some(b) = bias {
             config = config.with_bias(b);
         }
-        WasmActivation { inner: ActivationConfig::SwiGlu(config).init(&device) }
+        // Complaint #15: deterministic zero initial weights (no implicit RNG).
+        let config = config.with_initializer(burn::module::Initializer::Zeros);
+        WasmActivation {
+            inner: ActivationConfig::SwiGlu(config).init(&device),
+        }
     }
 
     #[wasm_bindgen(js_name = newHardSigmoid)]
@@ -359,11 +363,7 @@ impl WasmActivation {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 

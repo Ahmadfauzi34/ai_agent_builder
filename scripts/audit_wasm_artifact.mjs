@@ -459,6 +459,73 @@ test('corrupt program bundle fails atomically',()=>{
  const detail={err,target_preserved:true}; existing.free();graph.free();builder.free();spec.free();source.free();target.free();return detail;
 });
 
+// R-18 (complaint #14): corrupt bundle bytes must fail as per-call errors,
+// never as a wasm trap. A trap poisons the whole instance, so after the sweep an
+// honest import plus run in the SAME instance must still succeed.
+test('R-18 corrupt bundle bytes never trap; instance recovers',()=>{
+ const source=new m.LayerRegistry();
+ const lin0=m.AgentLayerSpec.linear(0,2,2,false), lin1=m.AgentLayerSpec.linear(1,2,2,false);
+ const add=m.AgentLayerSpec.add(2), act=m.AgentLayerSpec.relu(3);
+ for(const s of [lin0,lin1,add,act]) source.initAgentLayer(s);
+ const lt=lin0.layerType();
+ source.setWeightsFlat(0,lt,new Float32Array([1,0.5,-0.25,2]));
+ source.setWeightsFlat(1,lt,new Float32Array([2,1,0.5,-1]));
+ const builder=new m.AgentGraphBuilder(6);
+ builder.addUnary(lin0,0,2); builder.addUnary(lin1,1,3); builder.addBinary(add,2,3,4); builder.addUnary(act,4,5); builder.setOutput(5);
+ const plan=builder.multiInputPlanV1();
+ plan.addInputPort(0,'observation',1,2,1,1,'feature_axis1_singleton',false,0n);
+ plan.addInputPort(1,'observation',1,2,1,1,'feature_axis1_singleton',false,0n);
+ const graph=source.compileMultiInputGraph(plan);
+ const honest=m.exportMultiInputProgramBundle(graph,source,true);
+ assert(honest.length>0,'empty bundle');
+ // Pinned case from the complaint: 1525-byte bundle, offset 973 set to 0xFF.
+ // Must surface as a per-call JS error, never 'unreachable' (a trap would
+ // permanently wedge this instance).
+ assert(honest.length===1525,`bundle layout changed (${honest.length} bytes); re-pin offset 973`);
+ {
+   const pinned=honest.slice(); pinned[973]=0xFF;
+   const target=new m.LayerRegistry(); let msg='';
+   try{ const g=m.importMultiInputProgramBundle(target,pinned); g.free(); }
+   catch(e){ msg=String((e&&e.message)||e); }
+   assert(msg,`pinned corrupt import unexpectedly succeeded`);
+   assert(!/unreachable/i.test(msg),`pinned corrupt import trapped the instance: ${msg}`);
+   target.free();
+ }
+ const runOnce=(reg,g,p)=>{
+   const rp=m.MultiInputGraphPlan.fromBytes(g.inputPlanV1());
+   const b=new m.MultiInputInputBundle(rp);
+   const left=new m.WasmTensor(new Float32Array([1,-2]),new Uint32Array([1,2,1,1]));
+   const right=new m.WasmTensor(new Float32Array([0.5,0.25]),new Uint32Array([1,2,1,1]));
+   b.bindInput(0,left,'observation','feature_axis1_singleton','test',1n,'');
+   b.bindInput(1,right,'observation','feature_axis1_singleton','test',1n,'');
+   const out=g.run(reg,b); const got=arr(out.to_array());
+   out.free();b.free();rp.free();left.free();right.free();return got;
+ };
+ const expected=runOnce(source,graph,plan);
+ let rejected=0, inert=0, firstTrap=-1;
+ for(let off=0; off<honest.length; off++){
+   const bad=honest.slice(); bad[off]^=0xff;
+   const target=new m.LayerRegistry();
+   try{ const g2=m.importMultiInputProgramBundle(target,bad); g2.free(); inert++; }
+   catch(e){
+     const msg=String((e&&e.message)||e);
+     if(/unreachable/i.test(msg) && firstTrap<0) firstTrap=off;
+     rejected++;
+   }
+   target.free();
+ }
+ assert(firstTrap<0,`wasm trap at bundle offset ${firstTrap}: corrupt import poisoned the instance`);
+ assert(rejected>0,'byte sweep rejected nothing');
+ // Instance recovery: honest import and run in the same instance after the sweep.
+ const target=new m.LayerRegistry();
+ const imported=m.importMultiInputProgramBundle(target,honest);
+ const got=runOnce(target,imported,plan);
+ assert(JSON.stringify(got)===JSON.stringify(expected),`post-sweep honest run mismatch: ${expected} -> ${got}`);
+ const detail={bundle_bytes:honest.length,rejected,inert,output:got};
+ imported.free();target.free();graph.free();plan.free();builder.free();
+ act.free();add.free();lin1.free();lin0.free();source.free();return detail;
+});
+
 let asyncInit;
 try{ const m2=await import(modUrl.href+'?asyncprobe=1'); await m2.default(); asyncInit={ok:true}; }catch(e){ asyncInit={ok:false,error:String(e)}; }
 results.push({name:'default async init local file',pass:asyncInit.ok,expected_portability_caveat:!asyncInit.ok,detail:asyncInit});

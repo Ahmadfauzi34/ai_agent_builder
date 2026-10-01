@@ -1,7 +1,7 @@
 use burn::nn::pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig};
 use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
 use burn::prelude::*;
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 
 use crate::{WasmBackend, WasmTensor};
@@ -49,9 +49,13 @@ impl SeBlockConfig {
         let reduced = self.channels / self.reduction;
 
         let squeeze = AdaptiveAvgPool2dConfig::new([1, 1]).init();
-        let fc1 = LinearConfig::new(self.channels, reduced).init(device);
+        let fc1 = LinearConfig::new(self.channels, reduced)
+            .with_initializer(burn::module::Initializer::Zeros)
+            .init(device);
         let relu = Relu::new();
-        let fc2 = LinearConfig::new(reduced, self.channels).init(device);
+        let fc2 = LinearConfig::new(reduced, self.channels)
+            .with_initializer(burn::module::Initializer::Zeros)
+            .init(device);
         let sigmoid = Sigmoid::new();
 
         Ok(SeBlock {
@@ -151,14 +155,17 @@ pub struct WasmSeBlock {
 #[wasm_bindgen]
 impl WasmSeBlock {
     #[wasm_bindgen(constructor)]
-    pub fn new(channels: usize, reduction: Option<usize>) -> WasmSeBlock {
+    /// Fallible constructor (complaint #14): invalid configs are a per-call
+    /// `Err`, never a panic/`throw_str`, so corrupt bundle bytes cannot wedge
+    /// the in-process WASM runtime.
+    pub fn try_new(channels: usize, reduction: Option<usize>) -> Result<WasmSeBlock, String> {
         let device = Default::default();
         let mut config = SeBlockConfig::new(channels);
         if let Some(r) = reduction {
             config.reduction = r;
         }
         let inner = config.try_init(&device).unwrap_or_else(reject_invalid_config);
-        WasmSeBlock { inner }
+        Ok(WasmSeBlock { inner })
     }
 
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
@@ -185,11 +192,7 @@ impl WasmSeBlock {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 

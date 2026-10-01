@@ -4,7 +4,7 @@ use burn::nn::conv::{
     Conv2d, Conv2dConfig,
     ConvTranspose2d, ConvTranspose2dConfig
 };
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 use crate::{WasmBackend, WasmTensor};
 use crate::layers::shape_contract::require_singleton_axis;
@@ -220,11 +220,7 @@ impl WasmConv {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 
@@ -246,7 +242,10 @@ impl WasmConv {
             config.padding = burn::nn::PaddingConfig1d::Explicit(p);
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::Conv1d(config).init(&device),
+            inner: ConvolutionConfig::Conv1d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 
@@ -271,7 +270,10 @@ impl WasmConv {
             config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::Conv2d(config).init(&device),
+            inner: ConvolutionConfig::Conv2d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 
@@ -296,7 +298,10 @@ impl WasmConv {
             config.padding = [ph, pw];
         }
         Ok(WasmConv {
-            inner: ConvolutionConfig::ConvTranspose2d(config).init(&device),
+            inner: ConvolutionConfig::ConvTranspose2d(
+                config.with_initializer(burn::module::Initializer::Zeros),
+            )
+            .init(&device),
         })
     }
 
