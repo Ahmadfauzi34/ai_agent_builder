@@ -74,47 +74,14 @@ jobs:
           targets: wasm32-unknown-unknown
           components: clippy
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
       - name: Check host target
         run: cargo check --lib --verbose
 
-      - name: Build native resolution runtime bridge probe
-        run: cargo build --release --bin resolution_runtime_bridge_probe
-
-      - name: Build native runtime resolution evidence probe
-        run: cargo build --release --bin runtime_resolution_evidence_probe
-
-      - name: Build native runtime resolution evidence adapter probe
-        run: cargo build --release --bin runtime_resolution_evidence_adapter_probe
-
-      - name: Build native runtime evidence interpretation probe
-        run: cargo build --release --bin runtime_evidence_interpretation_probe
-
-      - name: Build native agent response intent probe
-        run: cargo build --release --bin agent_response_intent_probe
-
-      - name: Build native response intent execution gate probe
-        run: cargo build --release --bin response_intent_execution_gate_probe
-
-      - name: Build native response dispatch requirements probe
-        run: cargo build --release --bin response_dispatch_requirements_probe
-
-      - name: Build native response dispatch request probe
-        run: cargo build --release --bin response_dispatch_request_probe
-
-      - name: Build native response dispatch executor preflight probe
-        run: cargo build --release --bin response_dispatch_executor_preflight_probe
-
-      - name: Build native revision dispatch execution adapter probe
-        run: cargo build --release --bin revision_dispatch_execution_adapter_probe
-
-      - name: Build native revision execution evidence rejoin probe
-        run: cargo build --release --bin revision_execution_evidence_rejoin_probe
-
-      - name: Build native graph reverify runtime binding probe
-        run: cargo build --release --bin graph_reverify_runtime_binding_probe
-
-      - name: Build native graph reverify execution adapter probe
-        run: cargo build --release --bin graph_reverify_execution_adapter_probe
+      - name: Build native probes
+        run: cargo build --release --bins
 
       - name: Clippy host library
         run: cargo clippy --lib --all-targets
