@@ -497,6 +497,17 @@ const f6Case = await new Promise((resolve, reject) => {
       expected_digest: `sha256:${'0'.repeat(64)}`},
     {op: 'verifyCheckpointIntegrity', request_id: 'vfmt',
       bundle_f32le_base64: Buffer.from('x').toString('base64'), expected_digest: 'not-a-digest'},
+    // #12: canonical base64 is enforced — non-canonical spellings are
+    // rejected even when they would decode to bytes.
+    {op: 'verifyCheckpointIntegrity', request_id: 'vpad',
+      bundle_f32le_base64: Buffer.from('burn-research-synthetic-bundle!').toString('base64').replace(/=+$/, ''),
+      expected_digest: `sha256:${createHash('sha256').update('burn-research-synthetic-bundle!').digest('hex')}`},
+    {op: 'verifyCheckpointIntegrity', request_id: 'vws',
+      bundle_f32le_base64: Buffer.from('white space').toString('base64').replace(/(.{4})/, '$1\n'),
+      expected_digest: `sha256:${createHash('sha256').update('white space').digest('hex')}`},
+    {op: 'verifyCheckpointIntegrity', request_id: 'vjunk',
+      bundle_f32le_base64: '!!!not-base64!!!',
+      expected_digest: `sha256:${createHash('sha256').update('junk').digest('hex')}`},
     {op: 'close', request_id: 'done'},
   ];
   let stdout = '';
@@ -562,6 +573,21 @@ assert(f6ById['vbad'].ok === true && f6ById['vbad'].result.integrity_ok === fals
   'integrity helper accepted a tampered bundle');
 assert(f6ById['vfmt'].ok === false && f6ById['vfmt'].error_envelope?.code === 'invalid_argument'
   && f6ById['vfmt'].error_envelope?.path === 'expected_digest', 'bad digest format not rejected');
+// #12: non-canonical base64 spellings are rejected at the security boundary,
+// even when a lenient decoder would still produce bytes.
+{
+  // Self-validating fixture: the vpad input must actually carry padding,
+  // otherwise stripping it would test nothing.
+  const paddedFixture = Buffer.from('burn-research-synthetic-bundle!').toString('base64');
+  assert(paddedFixture.endsWith('=') && paddedFixture.replace(/=+$/, '').length % 4 !== 0,
+    'vpad fixture lost its base64 padding');
+}
+for (const id of ['vpad', 'vws', 'vjunk']) {
+  const envelope = f6ById[id].error_envelope;
+  assert(f6ById[id].ok === false && envelope?.code === 'invalid_argument'
+    && envelope?.path === 'bundle_f32le_base64' && envelope?.constraint === 'canonical_base64',
+    `${id}: non-canonical base64 not rejected with the canonical_base64 constraint`);
+}
 {
   const raw = Buffer.from('burn-research-synthetic-bundle');
   const good = `sha256:${createHash('sha256').update(raw).digest('hex')}`;

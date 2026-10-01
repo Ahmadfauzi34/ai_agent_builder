@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
@@ -221,6 +222,56 @@ graph.free();
 builder.free();
 spec.free();
 reg.free();
+
+// Regression follow-up F1: the packager fails closed on an empty directory
+// (and on a directory missing the wasm-pack generated files) instead of
+// producing a partial package. Both cases must exit non-zero with the exact
+// precondition error.
+{
+  const packager = path.resolve('scripts/package_node_host.mjs');
+  const emptyDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pkg-empty-'));
+  const emptyRun = spawnSync(process.execPath, [packager, emptyDir], {encoding: 'utf8'});
+  assert(emptyRun.status !== 0 && /package\.json not found/.test(emptyRun.stderr || emptyRun.stdout || ''),
+    'packager did not fail closed on an empty directory');
+  assert(!fs.existsSync(path.join(emptyDir, 'interactive_multi_input_ingress.mjs')),
+    'packager wrote files into a directory whose preconditions failed');
+  fs.rmSync(emptyDir, {recursive: true, force: true});
+  const noGenDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pkg-nogen-'));
+  fs.writeFileSync(path.join(noGenDir, 'package.json'), JSON.stringify({name: 'x'}));
+  const noGenRun = spawnSync(process.execPath, [packager, noGenDir], {encoding: 'utf8'});
+  assert(noGenRun.status !== 0 && /required generated package file is missing/.test(noGenRun.stderr || noGenRun.stdout || ''),
+    'packager did not fail closed when wasm-pack generated files are missing');
+  fs.rmSync(noGenDir, {recursive: true, force: true});
+}
+
+// Regression follow-up F2: the R-15 link checker fails closed. Sabotage a
+// package copy (delete one README-linked doc; add one escaping link) and
+// require the checker to name the exact problem.
+{
+  const checker = path.resolve('scripts/check_distribution_links.mjs');
+  const runChecker = dir => spawnSync(process.execPath, [checker, dir], {encoding: 'utf8'});
+  const sabotage = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pkg-sabotage-'));
+  fs.cpSync(pkgDir, sabotage, {recursive: true});
+  const linkedDoc = path.join(sabotage, 'docs', 'host-support.v1.json');
+  assert(fs.existsSync(linkedDoc), 'sabotage fixture lost the README-linked doc');
+  fs.rmSync(linkedDoc);
+  const missingRun = runChecker(sabotage);
+  assert(missingRun.status !== 0, 'link checker passed with a deleted link target');
+  const missingReport = JSON.parse(missingRun.stdout);
+  assert(missingReport.verdict === 'FAIL'
+    && missingReport.missing.some(m => m.target === 'docs/host-support.v1.json' && m.reason === 'target missing'),
+    `link checker did not name the deleted target: ${missingRun.stdout.slice(0, 200)}`);
+  const escaping = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pkg-escape-'));
+  fs.cpSync(pkgDir, escaping, {recursive: true});
+  fs.appendFileSync(path.join(escaping, 'README.md'), '\n[escape](../outside.md)\n');
+  const escapeRun = runChecker(escaping);
+  assert(escapeRun.status !== 0, 'link checker passed with an escaping link');
+  const escapeReport = JSON.parse(escapeRun.stdout);
+  assert(escapeReport.missing.some(m => m.target === '../outside.md' && m.reason === 'escapes package root'),
+    'link checker did not flag the escaping link');
+  fs.rmSync(sabotage, {recursive: true, force: true});
+  fs.rmSync(escaping, {recursive: true, force: true});
+}
 
 console.log(JSON.stringify({
   verdict: 'PASS',
