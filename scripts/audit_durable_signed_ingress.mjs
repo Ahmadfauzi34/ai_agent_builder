@@ -586,6 +586,45 @@ try {
       rejected.push(mode.toString(8));
     }
     check(JSON.stringify(accepted) === '["700","755"]', 'permission matrix accepted set changed');
+    // R-16 follow-up: copy/restore + stat. A fixture copied with a tool that
+    // does not preserve modes (plain cp -r) must be re-verified with stat;
+    // the host enforces whatever mode stat reports.
+    {
+      const copyRoot = path.join(temporary, 'perm-copy');
+      fs.mkdirSync(copyRoot, {recursive: true});
+      const origin = path.join(copyRoot, 'origin');
+      fs.mkdirSync(origin);
+      fs.chmodSync(origin, 0o700);
+      new IngressReplayLedger(path.join(origin, 'replay.json'), 'run-1', {initialize: true});
+      fs.chmodSync(path.join(origin, 'replay.json'), 0o600);
+      const clone = path.join(copyRoot, 'clone');
+      fs.cpSync(origin, clone, {recursive: true}); // no mode preservation, like a naive fixture copy
+      const statMode = (fs.statSync(clone).mode & 0o777).toString(8);
+      check(/^[0-7]{3,4}$/.test(statMode), `stat could not report the copied directory mode (got ${statMode})`);
+      // The copied mode is whatever the tool produced; the host must accept
+      // or reject exactly according to the matrix for the stat-reported mode.
+      const groupWritable = (parseInt(statMode, 8) & 0o022) !== 0;
+      let cloneInitThrew = false;
+      try { new IngressReplayLedger(path.join(clone, 'replay.json'), 'run-1'); }
+      catch (error) { cloneInitThrew = /private host-owned/.test(error.message); }
+      check(cloneInitThrew === groupWritable,
+        `copy+stat round-trip inconsistent: stat reported ${statMode}, host ${cloneInitThrew ? 'rejected' : 'accepted'}`);
+      // The ledger FILE itself: owner-only accepted, any group/other bit rejected.
+      const fileDir = path.join(copyRoot, 'filemodes');
+      fs.mkdirSync(fileDir);
+      fs.chmodSync(fileDir, 0o700);
+      for (const [mode, shouldThrow] of [[0o600, false], [0o640, true], [0o604, true]]) {
+        const ledgerPath = path.join(fileDir, `replay-${mode.toString(8)}.json`);
+        new IngressReplayLedger(ledgerPath, 'run-1', {initialize: true});
+        fs.chmodSync(ledgerPath, mode);
+        const reported = (fs.statSync(ledgerPath).mode & 0o777).toString(8);
+        let threw = false;
+        try { new IngressReplayLedger(ledgerPath, 'run-1'); }
+        catch (error) { threw = /private|permission/.test(error.message); }
+        check(threw === shouldThrow,
+          `ledger file mode ${reported} (stat) was ${threw ? 'rejected' : 'accepted'}, expected ${shouldThrow ? 'rejection' : 'acceptance'}`);
+      }
+    }
   }
   const audit = {restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,

@@ -6,13 +6,16 @@
 //      then create -> bind -> bind -> run -> verify, expecting [4, 6].
 //   2. signed mode: ephemeral Ed25519 key + trust policy, then a signed
 //      bind/run session, expecting [4, 6] and ed25519_host_enforced.
+//   3. durable mode: packaged ledger init script + trust policy + ledger +
+//      subject, then a signed bind/run session, expecting [4, 6] and
+//      ed25519_host_durable.
 //
 // Usage: node scripts/smoke_distribution.mjs [packageDir]
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
-import {spawn} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import {generateKeyPairSync, sign} from 'node:crypto';
 
 const packageDir = path.resolve(process.argv[2] ?? 'pkg');
@@ -88,8 +91,8 @@ const results = [];
     child.kill();
   }
 }
-// Mode 2: signed ingress with an ephemeral key and trust policy.
-{
+
+async function signedQuickStart({subject, runnerArgs, expectedMode, resultMode}) {
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'dist-smoke-'));
   try {
     const {privateKey, publicKey} = generateKeyPairSync('ed25519');
@@ -97,14 +100,14 @@ const results = [];
     fs.writeFileSync(trustPath, JSON.stringify({
       schema: 'burn-research.ingress-trust-policy.v1',
       issuers: [
-        {source: 'sensor-a', key_id: 'lab-key', subjects: ['smoke-1'], public_key_pem: publicKey.export({type: 'spki', format: 'pem'})},
-        {source: 'memory-b', key_id: 'lab-key', subjects: ['smoke-1'], public_key_pem: publicKey.export({type: 'spki', format: 'pem'})},
+        {source: 'sensor-a', key_id: 'lab-key', subjects: [subject], public_key_pem: publicKey.export({type: 'spki', format: 'pem'})},
+        {source: 'memory-b', key_id: 'lab-key', subjects: [subject], public_key_pem: publicKey.export({type: 'spki', format: 'pem'})},
       ],
     }));
-    const {child, ask} = spawnRunner(['.', trustPath]);
+    const {child, ask} = spawnRunner(runnerArgs(trustPath, temporary));
     try {
       const caps = await ask({op: 'capabilities'});
-      check(caps.result.host_provenance?.mode === 'ed25519_host_enforced', 'signed mode did not activate');
+      check(caps.result.host_provenance?.mode === expectedMode, `${resultMode}: mode did not activate`);
       let nonce = 0;
       await quickStartSession(ask, (binding, manifest) => {
         const mapped = manifest.ports.find(port => port.slot === binding.slot);
@@ -113,10 +116,10 @@ const results = [];
           manifest_fingerprint: manifest.manifest_fingerprint,
           manifest_sha256: manifestDigest(manifest),
           logical_port_id: mapped.logical_port_id,
-        }, 'lab-key', 'smoke-1', `smoke-${++nonce}`);
+        }, 'lab-key', subject, `smoke-${++nonce}`);
         return {...binding, proof: {claim, signature: sign(null, Buffer.from(JSON.stringify(claim)), privateKey).toString('base64')}};
       });
-      results.push({mode: 'ed25519_host_enforced', ok: true});
+      results.push({mode: resultMode, ok: true});
     } finally {
       child.kill();
     }
@@ -124,5 +127,31 @@ const results = [];
     fs.rmSync(temporary, {recursive: true, force: true});
   }
 }
+
+// Mode 2: signed ingress with an ephemeral key and trust policy.
+await signedQuickStart({
+  subject: 'smoke-1',
+  runnerArgs: trustPath => ['.', trustPath],
+  expectedMode: 'ed25519_host_enforced',
+  resultMode: 'ed25519_host_enforced',
+});
+
+// Mode 3: durable signed ingress (usage guide quick start 3). The ledger is
+// initialized once via the packaged init script, then the runner starts with
+// the trust policy, ledger path, and host subject.
+await signedQuickStart({
+  subject: 'smoke-durable',
+  runnerArgs: (trustPath, temporary) => {
+    const ledgerPath = path.join(temporary, 'ledger', 'replay.json');
+    fs.mkdirSync(path.dirname(ledgerPath), {recursive: true, mode: 0o700});
+    const init = spawnSync(process.execPath,
+      [path.join(packageDir, 'init_ingress_replay_ledger.mjs'), ledgerPath, 'smoke-durable'],
+      {cwd: packageDir, encoding: 'utf8'});
+    check(init.status === 0, `ledger init failed: ${(init.stderr || init.stdout || '').slice(0, 300)}`);
+    return ['.', trustPath, ledgerPath, 'smoke-durable'];
+  },
+  expectedMode: 'ed25519_host_durable',
+  resultMode: 'ed25519_host_durable',
+});
 
 console.log(JSON.stringify({verdict: 'PASS', packageDir, results}, null, 2));
