@@ -219,7 +219,7 @@ jobs:
         )
         self.assertIn(
             {
-                "from": "docs/host-support.v1.json",
+                "from": "docs/contracts/host-support.v1.json",
                 "to": "scripts/audit_rust_package.py",
                 "kind": "doc_reference",
             },
