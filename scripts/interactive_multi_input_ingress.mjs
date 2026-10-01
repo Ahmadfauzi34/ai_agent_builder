@@ -1092,6 +1092,15 @@ function handle(command) {
     // never consumes) by comparing against the digest recorded at export time.
     // In durable mode, restore additionally verifies sha256(bytes) against the
     // receipt before import.
+    //
+    // bundle_f32le_base64 must be CANONICAL base64: the standard alphabet,
+    // length a multiple of 4, correct '=' padding, no whitespace. The check is
+    // a decode/re-encode round-trip, so any non-canonical spelling (missing
+    // padding, stray whitespace, truncated input that still decodes) is
+    // rejected instead of being silently normalized. op=checkpoint always
+    // emits canonical base64, so strictness never rejects host-produced
+    // bundles; it only stops callers from depending on lenient decoding at a
+    // security boundary.
     case 'verifyCheckpointIntegrity': {
       const encoded = command.bundle_f32le_base64;
       if (typeof encoded !== 'string' || encoded.length === 0)
@@ -1101,10 +1110,12 @@ function handle(command) {
       let bytes;
       try {
         bytes = Buffer.from(encoded, 'base64');
-        if (bytes.length === 0) throw new Error('empty');
+        if (bytes.length === 0 || bytes.toString('base64') !== encoded) throw new Error('non-canonical base64');
       } catch {
         throw fail('invalid_argument', 'verifyCheckpointIntegrity',
-          'bundle_f32le_base64 is not valid base64', {path: 'bundle_f32le_base64'});
+          'bundle_f32le_base64 must be canonical base64 (standard alphabet, length multiple of 4, correct padding, no whitespace)',
+          {path: 'bundle_f32le_base64', constraint: 'canonical_base64',
+           remediation_hint: 'use the bundle_f32le_base64 value from op=checkpoint unchanged'});
       }
       const expected = command.expected_digest;
       if (typeof expected !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(expected))
