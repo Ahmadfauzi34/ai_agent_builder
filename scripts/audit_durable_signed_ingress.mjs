@@ -457,11 +457,16 @@ try {
   // Complaint #15: fresh-layer initialization is deterministic, so the same structure
   // must reproduce the same mutable state and outputs. Distinct executions are still
   // distinguished by their receipt ids (anti-replay), not by random weights.
-  check(JSON.stringify(alternateRun.receipt.program_identity) === JSON.stringify(priorRun.receipt.program_identity)
-    && alternateRun.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256
-    && JSON.stringify(alternateRun.result.values) === JSON.stringify(priorRun.result.values)
-    && alternateRun.receipt.receipt_id !== priorRun.receipt.receipt_id,
-  'fresh graph with same structure did not reproduce deterministic mutable state and output with a distinct receipt');
+  // Each conjunct is asserted separately so a failure names the exact contract
+  // term that broke instead of hiding behind one opaque message.
+  check(JSON.stringify(alternateRun.receipt.program_identity) === JSON.stringify(priorRun.receipt.program_identity),
+    'fresh graph with same structure did not reproduce the same program identity');
+  check(alternateRun.receipt.state_checkpoint_bytes_sha256 === priorRun.receipt.state_checkpoint_bytes_sha256,
+    'fresh graph with same structure did not reproduce the same state checkpoint bytes');
+  check(JSON.stringify(alternateRun.result.values) === JSON.stringify(priorRun.result.values),
+    'fresh graph with same structure did not reproduce the same output values');
+  check(alternateRun.receipt.receipt_id !== priorRun.receipt.receipt_id,
+    'fresh graph runs did not receive distinct receipt ids');
   await prior.close();
   const storeFile = path.join(`${resumeLedger}.checkpoints`, `${priorRun.receipt.receipt_id.slice(7)}.json`);
   const retained = JSON.parse(fs.readFileSync(storeFile, 'utf8'));
