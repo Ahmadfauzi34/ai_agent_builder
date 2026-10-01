@@ -58,6 +58,13 @@ impl Binary {
                         da, db
                     ));
                 }
+                // Complaint #18: output [*,*,m,n] can dwarf both inputs
+                // (e.g. 16384^2); validate the budget before the matmul so
+                // the run fails structured instead of trapping unreachable.
+                crate::protocol::check_numel(
+                    &[da[0], da[1], da[2], db[3]],
+                    "binary matmul output",
+                )?;
                 Ok(a.matmul(b))
             }
             BinaryOp::Concat => {

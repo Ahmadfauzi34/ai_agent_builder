@@ -192,6 +192,11 @@ impl LayerRegistry {
         layer_type: u8,
         input: &WasmTensor,
     ) -> Result<WasmTensor, String> {
+        // Complaint #18: validate the input tensor against the allocation
+        // budget before dispatch, so an oversized run fails here as a
+        // structured per-call error instead of a raw `unreachable` trap
+        // deep inside the op.
+        check_numel(&input.shape(), "forwardLayer input")?;
         match layer_type {
             LAYER_LINEAR => self
                 .linears

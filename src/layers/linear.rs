@@ -115,6 +115,10 @@ impl WasmLinear {
         require_axis_size(shape, 1, self.in_dim, "Linear forward")?;
 
         let [b, d, _, _] = shape;
+        // Complaint #18: the matmul below materializes [b, out_dim]; validate
+        // the output against the allocation budget first so an oversized run
+        // fails as a structured error instead of a raw `unreachable` trap.
+        crate::protocol::check_numel(&[b, self.out_dim], "Linear forward output")?;
         let x_2d = x.reshape([b, d]);
         let out = self.inner.forward(x_2d);
         let [b_out, d_out] = out.dims();
