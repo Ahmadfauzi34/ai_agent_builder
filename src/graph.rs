@@ -1,3 +1,23 @@
+//! # Kontrak: `graph`
+//!
+//! ## Tanggung jawab
+//! `CompiledGraph`: rencana eksekusi multi-input yang dikompilasi dari
+//! `GraphPlanStep`, dengan slot bernomor, rencana kanonis, dan sidik jari
+//! init untuk verifikasi.
+//!
+//! ## Invariant
+//! - `CG_MAX_SLOTS = 64`: `num_slots` harus dalam `1..=64`; di luar itu
+//!   ditolak dengan pesan yang menyebut batasnya (batas desain).
+//! - `ARITY_UNARY` / `ARITY_BINARY` adalah satu-satunya sumber kebenaran
+//!   arity untuk graph + registry.
+//! - Submodul (`plan_explain`, `execution_trace`, `candidate_verification`,
+//!   `mutation_transaction`) di-declare via `#[path]` eksplisit; child `mod`
+//!   di dalamnya resolve relatif terhadap file target `#[path]`, bukan
+//!   konvensi `file_stem/`.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Engine layer → `layers/*`; kepemilikan instance → `registry`.
+
 use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_report;

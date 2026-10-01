@@ -1,3 +1,19 @@
+//! # Kontrak: `semantic_lifecycle` (grup: `semantic_*`)
+//!
+//! ## Tanggung jawab
+//! Siklus hidup semantik agen: `semantic_lifecycle` (transisi state),
+//! `semantic_execution_context`, `semantic_ingress_manifest` (v1) dan
+//! `semantic_ingress_manifest_v2`.
+//!
+//! ## Invariant
+//! - Setiap transisi punya ID deterministik (`SemanticTransitionSpec`);
+//!   transisi yang sama selalu menghasilkan ID yang sama.
+//! - Manifes ingress v1 dan v2 hidup berdampingan; v2 tidak boleh memutus
+//!   pembaca v1.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Eksekusi tensor → `layers/*`; orkestrasi graph → `graph`.
+
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{

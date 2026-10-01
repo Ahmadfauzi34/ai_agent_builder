@@ -5,6 +5,22 @@
 //! to make unresolved intent explicit, track deterministic review-like
 //! diagnostics, accept explicit responses, and report whether an intent is
 //! eligible to cross into a later compilation/proof boundary.
+//!
+//! # Kontrak: `resolution` (grup: `resolution_*`)
+//!
+//! ## Tanggung jawab
+//! Workflow resolusi intent gaya-kompiler: `resolution` (state +
+//! diagnostik), `resolution_review`, `resolution_revision`,
+//! `resolution_runtime_bridge`, `resolution_subject`.
+//!
+//! ## Invariant
+//! - Modul ini TIDAK mengeksekusi math dan TIDAK membangun `MathProgram`;
+//!   ia hanya membuat intent yang belum ter-resolve menjadi eksplisit.
+//! - Transisi state deterministik; diagnostik bersifat review-like dan
+//!   eksplisit.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Eksekusi program → `math`; bukti → `proof_provenance`.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResolutionState {

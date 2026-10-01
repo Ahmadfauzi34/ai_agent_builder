@@ -1,3 +1,20 @@
+//! # Kontrak: `input_port` (grup: `input_port_*`)
+//!
+//! ## Tanggung jawab
+//! Port input workspace agen: `input_port` (metadata binding),
+//! `input_port_consumer`, `input_port_edge_binding`, `input_port_routing`,
+//! `input_contract`.
+//!
+//! ## Invariant
+//! - Setiap port punya kapabilitas yang dapat di-discovery
+//!   (`input_port_capabilities`); binding metadata eksplisit lewat
+//!   `workspace_bind_input_port_metadata` dan dapat dibersihkan.
+//! - Kontrak input di-embed dari `docs/agent-input-*.v1.json` dan versinya
+//!   terkunci.
+//!
+//! ## Bukan tanggung jawab modul ini
+//! - Eksekusi graph → `graph`; validasi tensor → `protocol`.
+
 use wasm_bindgen::prelude::*;
 
 use crate::workspace::{AgentWorkspace, WorkspaceInputPortMetadata};
