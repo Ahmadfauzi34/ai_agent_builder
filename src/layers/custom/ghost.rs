@@ -1,7 +1,7 @@
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::PaddingConfig2d;
 use burn::prelude::*;
-use burn::record::{BinBytesRecorder, FullPrecisionSettings, Recorder};
+use super::super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 
 use crate::{WasmBackend, WasmTensor};
@@ -218,11 +218,7 @@ impl WasmGhostModule {
     }
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        let record = self.inner.clone().into_record();
-        let bytes = BinBytesRecorder::<FullPrecisionSettings>::default()
-            .record(record, ())
-            .map_err(|e| e.to_string())?;
-        Ok(bytes)
+        deterministic_record_bytes(&self.inner)
     }
 }
 

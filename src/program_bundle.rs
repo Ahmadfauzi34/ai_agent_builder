@@ -1049,4 +1049,85 @@ mod tests {
         let a2 = WasmActivation::new_swiglu(4, 4, Some(true));
         assert_eq!(a1.forward(&sw_in).to_array(), a2.forward(&sw_in).to_array());
     }
+
+    // Regression test (complaint #15 follow-up; CI durable-ingress diagnostic
+    // 2026-10-01): two fresh same-structure graphs must export byte-identical
+    // state checkpoints. Burn assigns each `Param` a random `ParamId` at
+    // creation and serializes it as the tensor's record name, so `get_state()`
+    // used to emit different bytes per export even with identical weights.
+    // `deterministic_record_bytes` re-keys those ids on the export clone.
+    fn fresh_audit_graph() -> (LayerRegistry, CompiledMultiInputGraph) {
+        let mut registry = LayerRegistry::new();
+        let add = AgentLayerSpec::add(31);
+        let linear = AgentLayerSpec::linear(32, 2, 2, true).unwrap();
+        registry.init_agent_layer(&add).unwrap();
+        registry.init_agent_layer(&linear).unwrap();
+        let mut builder = AgentGraphBuilder::new(4).unwrap();
+        builder.add_binary(&add, 0, 1, 2).unwrap();
+        builder.add_unary(&linear, 2, 3).unwrap();
+        builder.set_output(3).unwrap();
+        let mut plan = builder.multi_input_plan_v1().unwrap();
+        plan.add_input_port(
+            0,
+            "observation".into(),
+            1,
+            2,
+            1,
+            1,
+            "feature_axis1_singleton".into(),
+            true,
+            1,
+        )
+        .unwrap();
+        plan.add_input_port(
+            1,
+            "state".into(),
+            1,
+            2,
+            1,
+            1,
+            "feature_axis1_singleton".into(),
+            true,
+            2,
+        )
+        .unwrap();
+        let graph = registry.compile_multi_input_graph(&plan).unwrap();
+        (registry, graph)
+    }
+
+    #[test]
+    fn two_fresh_graphs_export_identical_state_checkpoints() {
+        let (r1, g1) = fresh_audit_graph();
+        let (r2, g2) = fresh_audit_graph();
+        assert_eq!(
+            g1.program_identity(),
+            g2.program_identity(),
+            "fixture graphs diverged in program identity"
+        );
+        let b1 = export_multi_input_program_bundle(&g1, &r1, true).unwrap();
+        let b2 = export_multi_input_program_bundle(&g2, &r2, true).unwrap();
+        assert_eq!(
+            b1, b2,
+            "two fresh same-structure graphs diverged in checkpoint bytes"
+        );
+    }
+
+    #[test]
+    fn state_checkpoint_bytes_still_track_weight_changes() {
+        // Companion to the determinism test above: normalization must not
+        // erase real state differences.
+        let (mut r1, g1) = fresh_audit_graph();
+        let (r2, g2) = fresh_audit_graph();
+        let b1 = export_multi_input_program_bundle(&g1, &r1, true).unwrap();
+        let b2 = export_multi_input_program_bundle(&g2, &r2, true).unwrap();
+        assert_eq!(b1, b2);
+        let mut weights = r1.get_weights_flat(32, LAYER_LINEAR).unwrap();
+        weights[0] += 1.0;
+        r1.set_weights_flat(32, LAYER_LINEAR, &weights).unwrap();
+        let b1_changed = export_multi_input_program_bundle(&g1, &r1, true).unwrap();
+        assert_ne!(
+            b1, b1_changed,
+            "state checkpoint bytes did not track changed weights"
+        );
+    }
 }

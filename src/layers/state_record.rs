@@ -1,5 +1,7 @@
-use burn::record::{BurnRecord, FullPrecisionSettings, Record};
+use burn::module::{Module, ModuleMapper, Param, ParamId};
+use burn::record::{BinBytesRecorder, BurnRecord, FullPrecisionSettings, Record, Recorder};
 use burn::tensor::backend::Backend;
+use burn::tensor::{Bool, Int, Tensor};
 
 /// Decode a bincode payload with a byte limit derived from the input length.
 ///
@@ -72,4 +74,83 @@ where
     }
 
     Ok(R::from_item::<FullPrecisionSettings>(record.item, device))
+}
+
+/// Re-keys every parameter of a cloned module with deterministic ids.
+///
+/// Root cause (complaint #15 follow-up, found via the durable-ingress CI
+/// diagnostic): Burn assigns each `Param` a *random* `ParamId` at creation
+/// (`burn_std::id::IdGenerator::generate`), and `into_record()` serializes
+/// that id as the tensor's 13-character base32 name inside the bincode state
+/// bytes. Two identically-initialized layers therefore exported different
+/// checkpoint bytes even though weights, outputs and program identity were
+/// all identical, breaking the deterministic-checkpoint contract that the
+/// durable signed-ingress audit verifies.
+///
+/// The mapper walks the module in structural (field declaration) order and
+/// assigns `ParamId::from(counter)`, so the id sequence is a pure function of
+/// the module structure. Tensor values and initialization state are preserved
+/// (`Param::from_mapped_value` keeps both); only the live tensor's random id
+/// is replaced, and only on the clone used for export.
+struct DeterministicParamIdMapper {
+    counter: u64,
+}
+
+impl DeterministicParamIdMapper {
+    fn new() -> Self {
+        Self { counter: 0 }
+    }
+
+    fn next_id(&mut self) -> ParamId {
+        let id = ParamId::from(self.counter);
+        self.counter += 1;
+        id
+    }
+}
+
+impl<B: Backend> ModuleMapper<B> for DeterministicParamIdMapper {
+    fn map_float<const D: usize>(&mut self, param: Param<Tensor<B, D>>) -> Param<Tensor<B, D>> {
+        let (_old_id, tensor, mapper) = param.consume();
+        Param::from_mapped_value(self.next_id(), tensor, mapper)
+    }
+
+    fn map_int<const D: usize>(
+        &mut self,
+        param: Param<Tensor<B, D, Int>>,
+    ) -> Param<Tensor<B, D, Int>> {
+        let (_old_id, tensor, mapper) = param.consume();
+        Param::from_mapped_value(self.next_id(), tensor, mapper)
+    }
+
+    fn map_bool<const D: usize>(
+        &mut self,
+        param: Param<Tensor<B, D, Bool>>,
+    ) -> Param<Tensor<B, D, Bool>> {
+        let (_old_id, tensor, mapper) = param.consume();
+        Param::from_mapped_value(self.next_id(), tensor, mapper)
+    }
+}
+
+/// Serialize a module's record with deterministic tensor names.
+///
+/// Drop-in replacement for the
+/// `BinBytesRecorder::default().record(module.clone().into_record(), ())`
+/// pattern used by every layer `get_state()`: the clone is re-keyed through
+/// [`DeterministicParamIdMapper`] before recording, so the exported bytes are
+/// a pure function of (module structure, parameter values). The live module
+/// is untouched, and the output remains a valid `BinBytesRecorder` payload
+/// that `load_layer_state` accepts (old checkpoints with random ids still
+/// load; only newly exported bytes are normalized).
+pub(crate) fn deterministic_record_bytes<M, B>(module: &M) -> Result<Vec<u8>, String>
+where
+    B: Backend,
+    M: Module<B> + Clone,
+    M::Record: Record<B>,
+{
+    let mut mapper = DeterministicParamIdMapper::new();
+    let rekeyed = module.clone().map(&mut mapper);
+    let record = rekeyed.into_record();
+    BinBytesRecorder::<FullPrecisionSettings>::default()
+        .record(record, ())
+        .map_err(|e| e.to_string())
 }
