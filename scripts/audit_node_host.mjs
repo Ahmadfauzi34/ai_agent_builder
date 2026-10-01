@@ -116,10 +116,10 @@ assert(actualSurface.artifacts?.['docs/baseline-candidate-verification.v1.json']
   === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'baseline-candidate-verification.v1.json'))).digest('hex')}`,
   'verifier contract bytes are not bound by the runtime surface fingerprint');
 assert(actualSurface.artifacts?.['docs/transactional-graph-mutation.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
   'mutation contract bytes are not bound by the runtime surface fingerprint');
 assert(actualSurface.artifacts?.['docs/transactional-graph-checkpoint-branch.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
   'checkpoint branch contract bytes are not bound by the runtime surface fingerprint');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));
