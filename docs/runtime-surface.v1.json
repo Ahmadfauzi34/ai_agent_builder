@@ -2,7 +2,7 @@
   "schema": "burn-research.runtime-surface.v1",
   "version": 1,
   "generated_artifact": "wasm-surface.actual.json",
-  "wasm_export_contract": "wasm-surface.v1.json",
+  "wasm_export_contract": "docs/wasm-surface.v1.json",
   "wasm_declaration_projection": {
     "generator": "scripts/check_wasm_surface.py",
     "source": "burn_research.d.ts",
@@ -83,16 +83,16 @@
   "host_capability_contracts": {
     "owner": "node_host",
     "contracts": {
-      "host_support": "host-support.v1.json",
-      "signed_ingress_provenance": "ingress-provenance.v1.json",
-      "state_bound_signed_ingress_provenance": "ingress-provenance.v2.json",
-      "durable_replay_ledger": "ingress-replay-ledger.v1.json",
-      "execution_receipt": "host-execution-receipt.v2.json",
-      "checkpoint_restore": "host-checkpoint-restore.v1.json",
-      "legacy_execution_receipt": "host-execution-receipt.v1.json",
-      "state_handoff": "host-state-handoff.v1.json",
-      "branch_promotion_lineage": "host-branch-promotion-lineage.v1.json",
-      "operation_contract_registry": "host-operation-contract-registry.v1.json"
+      "host_support": "docs/host-support.v1.json",
+      "signed_ingress_provenance": "docs/ingress-provenance.v1.json",
+      "state_bound_signed_ingress_provenance": "docs/ingress-provenance.v2.json",
+      "durable_replay_ledger": "docs/ingress-replay-ledger.v1.json",
+      "execution_receipt": "docs/host-execution-receipt.v2.json",
+      "checkpoint_restore": "docs/host-checkpoint-restore.v1.json",
+      "legacy_execution_receipt": "docs/host-execution-receipt.v1.json",
+      "state_handoff": "docs/host-state-handoff.v1.json",
+      "branch_promotion_lineage": "docs/host-branch-promotion-lineage.v1.json",
+      "operation_contract_registry": "docs/host-operation-contract-registry.v1.json"
     }
   },
   "artifact_identity": {
@@ -103,16 +103,16 @@
       "burn_research.d.ts",
       "burn_research_bg.wasm.d.ts",
       "wasm-surface.bindings.actual.json",
-      "multi-input-execution-trace.v1.json",
-      "baseline-candidate-verification.v1.json",
-      "transactional-graph-mutation.v1.json",
-      "transactional-graph-checkpoint-branch.v1.json",
-      "agent-layer-catalog.v1.json",
-      "agent-layout-contracts.v1.json",
-      "agent-input-port.v1.json",
-      "agent-fault-contract.v1.json",
-      "multi-input-graph-plan.v1.json",
-      "multi-input-plan-explain.v1.json"
+      "docs/multi-input-execution-trace.v1.json",
+      "docs/baseline-candidate-verification.v1.json",
+      "docs/transactional-graph-mutation.v1.json",
+      "docs/transactional-graph-checkpoint-branch.v1.json",
+      "docs/agent-layer-catalog.v1.json",
+      "docs/agent-layout-contracts.v1.json",
+      "docs/agent-input-port.v1.json",
+      "docs/agent-fault-contract.v1.json",
+      "docs/multi-input-graph-plan.v1.json",
+      "docs/multi-input-plan-explain.v1.json"
     ]
   },
   "fingerprint": {

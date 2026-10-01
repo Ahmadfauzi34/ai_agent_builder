@@ -97,7 +97,7 @@ async function loadRuntime(pkgDir) {
 
 export async function buildWasmSurfaceActual(pkgDir = DEFAULT_PKG_DIR, suppliedRuntime) {
   pkgDir = path.resolve(pkgDir);
-  const runtimeContract = readContract(pkgDir, 'runtime-surface.v1.json').value;
+  const runtimeContract = readContract(pkgDir, 'docs/runtime-surface.v1.json').value;
   if (runtimeContract.schema !== 'burn-research.runtime-surface.v1' || runtimeContract.version !== 1) {
     fail('unsupported runtime-surface contract');
   }
@@ -124,7 +124,7 @@ export async function buildWasmSurfaceActual(pkgDir = DEFAULT_PKG_DIR, suppliedR
 
   const contractFiles = {
     wasm_export_contract: runtimeContract.wasm_export_contract,
-    runtime_surface_contract: 'runtime-surface.v1.json',
+    runtime_surface_contract: 'docs/runtime-surface.v1.json',
     ...runtimeContract.host_capability_contracts.contracts,
   };
   const contractDigests = {};
@@ -190,8 +190,8 @@ export async function buildWasmSurfaceActual(pkgDir = DEFAULT_PKG_DIR, suppliedR
     contract: {
       schema: runtimeContract.schema,
       version: runtimeContract.version,
-      file: 'runtime-surface.v1.json',
-      sha256: contractDigests['runtime-surface.v1.json'].sha256,
+      file: 'docs/runtime-surface.v1.json',
+      sha256: contractDigests['docs/runtime-surface.v1.json'].sha256,
     },
     artifacts: artifactDigests,
     wasm_exports: bindingProjection,

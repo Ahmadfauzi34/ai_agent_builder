@@ -3,11 +3,11 @@ import path from 'node:path';
 import {spawnSync} from 'node:child_process';
 
 const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
+const docsDir = path.join(pkgDir, 'docs');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const nodeAdapterSource = path.resolve('hosts/node/node.mjs');
 const nodeTypesSource = path.resolve('hosts/node/node.d.mts');
-const hostSupportSource = path.resolve('docs/host-support.v1.json');
-const communicationSource = path.resolve('docs/wasm-host-communication.md');
+const readmeSource = path.resolve('README.md');
 const interactiveSource = path.resolve('scripts/interactive_multi_input_ingress.mjs');
 const provenanceSource = path.resolve('scripts/ingress_provenance.mjs');
 const replayLedgerSource = path.resolve('scripts/ingress_replay_ledger.mjs');
@@ -15,31 +15,49 @@ const executionReceiptSource = path.resolve('scripts/ingress_execution_receipt.m
 const branchPromotionLineageSource = path.resolve('scripts/branch_promotion_lineage.mjs');
 const operationRegistrySource = path.resolve('scripts/operation_contract_registry.mjs');
 const replayLedgerInitSource = path.resolve('scripts/init_ingress_replay_ledger.mjs');
-const provenanceContractSource = path.resolve('docs/ingress-provenance.v1.json');
-const stateBoundProvenanceContractSource = path.resolve('docs/ingress-provenance.v2.json');
-const replayLedgerContractSource = path.resolve('docs/ingress-replay-ledger.v1.json');
-const executionReceiptContractSource = path.resolve('docs/host-execution-receipt.v2.json');
-const checkpointRestoreContractSource = path.resolve('docs/host-checkpoint-restore.v1.json');
-const legacyExecutionReceiptContractSource = path.resolve('docs/host-execution-receipt.v1.json');
-const stateHandoffContractSource = path.resolve('docs/host-state-handoff.v1.json');
-const branchPromotionLineageContractSource = path.resolve('docs/host-branch-promotion-lineage.v1.json');
-const operationRegistryContractSource = path.resolve('docs/host-operation-contract-registry.v1.json');
-const layerCatalogContractSource = path.resolve('docs/agent-layer-catalog.v1.json');
-const layoutContractSource = path.resolve('docs/agent-layout-contracts.v1.json');
-const inputPortContractSource = path.resolve('docs/agent-input-port.v1.json');
-const agentFaultContractSource = path.resolve('docs/agent-fault-contract.v1.json');
-const multiInputGraphContractSource = path.resolve('docs/multi-input-graph-plan.v1.json');
-const multiInputPlanExplainContractSource = path.resolve('docs/multi-input-plan-explain.v1.json');
-const wasmSurfaceContractSource = path.resolve('docs/wasm-surface.v1.json');
-const executionTraceContractSource = path.resolve('docs/multi-input-execution-trace.v1.json');
-const verificationContractSource = path.resolve('docs/baseline-candidate-verification.v1.json');
-const mutationContractSource = path.resolve('docs/transactional-graph-mutation.v1.json');
-const branchContractSource = path.resolve('docs/transactional-graph-checkpoint-branch.v1.json');
-const runtimeSurfaceContractSource = path.resolve('docs/runtime-surface.v1.json');
+// Distribution documents live under docs/ so the packaged README.md keeps its
+// docs/... relative links working (complaint #13). Every docs/... target the
+// README links to is packaged here.
+const docSources = {
+  'host-support.v1.json': path.resolve('docs/host-support.v1.json'),
+  'wasm-host-communication.md': path.resolve('docs/wasm-host-communication.md'),
+  'interactive-multi-input-ingress.md': path.resolve('docs/interactive-multi-input-ingress.md'),
+  'ingress-provenance.v1.json': path.resolve('docs/ingress-provenance.v1.json'),
+  'ingress-provenance.v2.json': path.resolve('docs/ingress-provenance.v2.json'),
+  'ingress-replay-ledger.v1.json': path.resolve('docs/ingress-replay-ledger.v1.json'),
+  'host-execution-receipt.v1.json': path.resolve('docs/host-execution-receipt.v1.json'),
+  'host-execution-receipt.v2.json': path.resolve('docs/host-execution-receipt.v2.json'),
+  'host-checkpoint-restore.v1.json': path.resolve('docs/host-checkpoint-restore.v1.json'),
+  'host-state-handoff.v1.json': path.resolve('docs/host-state-handoff.v1.json'),
+  'host-branch-promotion-lineage.v1.json': path.resolve('docs/host-branch-promotion-lineage.v1.json'),
+  'host-operation-contract-registry.v1.json': path.resolve('docs/host-operation-contract-registry.v1.json'),
+  'agent-contracts.v1.json': path.resolve('docs/agent-contracts.v1.json'),
+  'agent-workspace.md': path.resolve('docs/agent-workspace.md'),
+  'burn-contract-baseline.md': path.resolve('docs/burn-contract-baseline.md'),
+  'es-graph-host-orchestration.md': path.resolve('docs/es-graph-host-orchestration.md'),
+  'rust-package-support.md': path.resolve('docs/rust-package-support.md'),
+  'python-host-layer.md': path.resolve('docs/python-host-layer.md'),
+  'python-ffi-v1.md': path.resolve('docs/python-ffi-v1.md'),
+  'python-facade-v1.md': path.resolve('docs/python-facade-v1.md'),
+  'python-wheel-support.md': path.resolve('docs/python-wheel-support.md'),
+  'agent-layer-catalog.v1.json': path.resolve('docs/agent-layer-catalog.v1.json'),
+  'agent-layout-contracts.v1.json': path.resolve('docs/agent-layout-contracts.v1.json'),
+  'agent-input-port.v1.json': path.resolve('docs/agent-input-port.v1.json'),
+  'agent-fault-contract.v1.json': path.resolve('docs/agent-fault-contract.v1.json'),
+  'multi-input-graph-plan.v1.json': path.resolve('docs/multi-input-graph-plan.v1.json'),
+  'multi-input-plan-explain.v1.json': path.resolve('docs/multi-input-plan-explain.v1.json'),
+  'multi-input-execution-trace.v1.json': path.resolve('docs/multi-input-execution-trace.v1.json'),
+  'baseline-candidate-verification.v1.json': path.resolve('docs/baseline-candidate-verification.v1.json'),
+  'transactional-graph-mutation.v1.json': path.resolve('docs/transactional-graph-mutation.v1.json'),
+  'transactional-graph-checkpoint-branch.v1.json': path.resolve('docs/transactional-graph-checkpoint-branch.v1.json'),
+  'semantic-ingress-manifest.v2.json': path.resolve('docs/semantic-ingress-manifest.v2.json'),
+  'wasm-surface.v1.json': path.resolve('docs/wasm-surface.v1.json'),
+  'runtime-surface.v1.json': path.resolve('docs/runtime-surface.v1.json'),
+  'runtime-architecture-artifact-proof.md': path.resolve('docs/runtime-architecture-artifact-proof.md'),
+};
 const nodeAdapterTarget = path.join(pkgDir, 'node.mjs');
 const nodeTypesTarget = path.join(pkgDir, 'node.d.mts');
-const hostSupportTarget = path.join(pkgDir, 'host-support.v1.json');
-const communicationTarget = path.join(pkgDir, 'wasm-host-communication.md');
+const readmeTarget = path.join(pkgDir, 'README.md');
 const interactiveTarget = path.join(pkgDir, 'interactive_multi_input_ingress.mjs');
 const provenanceTarget = path.join(pkgDir, 'ingress_provenance.mjs');
 const replayLedgerTarget = path.join(pkgDir, 'ingress_replay_ledger.mjs');
@@ -47,27 +65,6 @@ const executionReceiptTarget = path.join(pkgDir, 'ingress_execution_receipt.mjs'
 const branchPromotionLineageTarget = path.join(pkgDir, 'branch_promotion_lineage.mjs');
 const operationRegistryTarget = path.join(pkgDir, 'operation_contract_registry.mjs');
 const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
-const provenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v1.json');
-const stateBoundProvenanceContractTarget = path.join(pkgDir, 'ingress-provenance.v2.json');
-const replayLedgerContractTarget = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
-const executionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v2.json');
-const checkpointRestoreContractTarget = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
-const legacyExecutionReceiptContractTarget = path.join(pkgDir, 'host-execution-receipt.v1.json');
-const stateHandoffContractTarget = path.join(pkgDir, 'host-state-handoff.v1.json');
-const branchPromotionLineageContractTarget = path.join(pkgDir, 'host-branch-promotion-lineage.v1.json');
-const operationRegistryContractTarget = path.join(pkgDir, 'host-operation-contract-registry.v1.json');
-const layerCatalogContractTarget = path.join(pkgDir, 'agent-layer-catalog.v1.json');
-const layoutContractTarget = path.join(pkgDir, 'agent-layout-contracts.v1.json');
-const inputPortContractTarget = path.join(pkgDir, 'agent-input-port.v1.json');
-const agentFaultContractTarget = path.join(pkgDir, 'agent-fault-contract.v1.json');
-const multiInputGraphContractTarget = path.join(pkgDir, 'multi-input-graph-plan.v1.json');
-const multiInputPlanExplainContractTarget = path.join(pkgDir, 'multi-input-plan-explain.v1.json');
-const wasmSurfaceContractTarget = path.join(pkgDir, 'wasm-surface.v1.json');
-const executionTraceContractTarget = path.join(pkgDir, 'multi-input-execution-trace.v1.json');
-const verificationContractTarget = path.join(pkgDir, 'baseline-candidate-verification.v1.json');
-const mutationContractTarget = path.join(pkgDir, 'transactional-graph-mutation.v1.json');
-const branchContractTarget = path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json');
-const runtimeSurfaceContractTarget = path.join(pkgDir, 'runtime-surface.v1.json');
 
 const generatedPackageFiles = [
   'burn_research_bg.wasm.d.ts',
@@ -77,8 +74,7 @@ const generatedPackageFiles = [
 const packagedHostFiles = [
   'node.mjs',
   'node.d.mts',
-  'host-support.v1.json',
-  'wasm-host-communication.md',
+  'README.md',
   'interactive_multi_input_ingress.mjs',
   'ingress_provenance.mjs',
   'ingress_replay_ledger.mjs',
@@ -86,27 +82,7 @@ const packagedHostFiles = [
   'branch_promotion_lineage.mjs',
   'operation_contract_registry.mjs',
   'init_ingress_replay_ledger.mjs',
-  'ingress-provenance.v1.json',
-  'ingress-provenance.v2.json',
-  'ingress-replay-ledger.v1.json',
-  'host-execution-receipt.v1.json',
-  'host-execution-receipt.v2.json',
-  'host-checkpoint-restore.v1.json',
-  'host-state-handoff.v1.json',
-  'host-branch-promotion-lineage.v1.json',
-  'host-operation-contract-registry.v1.json',
-  'agent-layer-catalog.v1.json',
-  'agent-layout-contracts.v1.json',
-  'agent-input-port.v1.json',
-  'agent-fault-contract.v1.json',
-  'multi-input-graph-plan.v1.json',
-  'multi-input-plan-explain.v1.json',
-  'wasm-surface.v1.json',
-  'multi-input-execution-trace.v1.json',
-  'baseline-candidate-verification.v1.json',
-  'transactional-graph-mutation.v1.json',
-  'transactional-graph-checkpoint-branch.v1.json',
-  'runtime-surface.v1.json',
+  ...Object.keys(docSources).map(name => `docs/${name}`),
 ];
 
 const requiredManifestFiles = [
@@ -126,10 +102,10 @@ for (const file of generatedPackageFiles) {
   }
 }
 
+fs.mkdirSync(docsDir, {recursive: true});
 fs.copyFileSync(nodeAdapterSource, nodeAdapterTarget);
 fs.copyFileSync(nodeTypesSource, nodeTypesTarget);
-fs.copyFileSync(hostSupportSource, hostSupportTarget);
-fs.copyFileSync(communicationSource, communicationTarget);
+fs.copyFileSync(readmeSource, readmeTarget);
 fs.copyFileSync(interactiveSource, interactiveTarget);
 fs.copyFileSync(provenanceSource, provenanceTarget);
 fs.copyFileSync(replayLedgerSource, replayLedgerTarget);
@@ -137,27 +113,9 @@ fs.copyFileSync(executionReceiptSource, executionReceiptTarget);
 fs.copyFileSync(branchPromotionLineageSource, branchPromotionLineageTarget);
 fs.copyFileSync(operationRegistrySource, operationRegistryTarget);
 fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
-fs.copyFileSync(provenanceContractSource, provenanceContractTarget);
-fs.copyFileSync(stateBoundProvenanceContractSource, stateBoundProvenanceContractTarget);
-fs.copyFileSync(replayLedgerContractSource, replayLedgerContractTarget);
-fs.copyFileSync(executionReceiptContractSource, executionReceiptContractTarget);
-fs.copyFileSync(checkpointRestoreContractSource, checkpointRestoreContractTarget);
-fs.copyFileSync(legacyExecutionReceiptContractSource, legacyExecutionReceiptContractTarget);
-fs.copyFileSync(stateHandoffContractSource, stateHandoffContractTarget);
-fs.copyFileSync(branchPromotionLineageContractSource, branchPromotionLineageContractTarget);
-fs.copyFileSync(operationRegistryContractSource, operationRegistryContractTarget);
-fs.copyFileSync(layerCatalogContractSource, layerCatalogContractTarget);
-fs.copyFileSync(layoutContractSource, layoutContractTarget);
-fs.copyFileSync(inputPortContractSource, inputPortContractTarget);
-fs.copyFileSync(agentFaultContractSource, agentFaultContractTarget);
-fs.copyFileSync(multiInputGraphContractSource, multiInputGraphContractTarget);
-fs.copyFileSync(multiInputPlanExplainContractSource, multiInputPlanExplainContractTarget);
-fs.copyFileSync(wasmSurfaceContractSource, wasmSurfaceContractTarget);
-fs.copyFileSync(executionTraceContractSource, executionTraceContractTarget);
-fs.copyFileSync(verificationContractSource, verificationContractTarget);
-fs.copyFileSync(mutationContractSource, mutationContractTarget);
-fs.copyFileSync(branchContractSource, branchContractTarget);
-fs.copyFileSync(runtimeSurfaceContractSource, runtimeSurfaceContractTarget);
+for (const [name, source] of Object.entries(docSources)) {
+  fs.copyFileSync(source, path.join(docsDir, name));
+}
 
 const manifest = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const files = Array.isArray(manifest.files) ? [...manifest.files] : [];

@@ -561,6 +561,32 @@ try {
   } finally { checkpointLedger.write = originalRestoreWrite; }
   check(checkpointLedger.load().state.restores.length === 1,
     'failed restore event commit created durable ancestry');
+  // R-16: ledger parent permission matrix. 0700 and 0755 are accepted;
+  // group- or world-writable parents fail closed at startup.
+  {
+    const matrixDir = path.join(temporary, 'perm-matrix');
+    fs.mkdirSync(matrixDir, {recursive: true});
+    const accepted = [];
+    for (const mode of [0o700, 0o755]) {
+      const dir = path.join(matrixDir, `ok-${mode.toString(8)}`);
+      fs.mkdirSync(dir);
+      fs.chmodSync(dir, mode);
+      new IngressReplayLedger(path.join(dir, 'replay.json'), 'run-1', {initialize: true});
+      accepted.push(mode.toString(8));
+    }
+    const rejected = [];
+    for (const mode of [0o775, 0o707, 0o777]) {
+      const dir = path.join(matrixDir, `bad-${mode.toString(8)}`);
+      fs.mkdirSync(dir);
+      fs.chmodSync(dir, mode);
+      let threw = false;
+      try { new IngressReplayLedger(path.join(dir, 'replay.json'), 'run-1', {initialize: true}); }
+      catch (error) { threw = /private host-owned/.test(error.message); }
+      check(threw, `ledger parent mode ${mode.toString(8)} was not rejected`);
+      rejected.push(mode.toString(8));
+    }
+    check(JSON.stringify(accepted) === '["700","755"]', 'permission matrix accepted set changed');
+  }
   const audit = {restart_replay_rejected: true, stale_revision_rejected: true, subject_pinned: true,
     failed_commit_clears_input: true, cross_process_invalidation: true,
     missing_and_corrupt_ledger_rejected: true, execution_receipt_persisted: true,
@@ -578,6 +604,7 @@ try {
     restore_event_commit_failure_closed: true,
     distinct_mutable_state_rollback_lineage: true, post_execution_failure_discards_session: true,
     forged_restore_ancestor_rejected: true,
+    ledger_parent_permission_matrix_enforced: true,
     reference: [4, 6]};
   console.log(JSON.stringify({verdict: 'PASS', mode: 'ed25519_host_durable', ...audit}));
 } finally {

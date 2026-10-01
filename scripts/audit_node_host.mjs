@@ -6,26 +6,27 @@ import { pathToFileURL } from 'node:url';
 import {verifyWasmSurfaceActual} from './generate_wasm_surface_actual.mjs';
 
 const pkgDir = path.resolve(process.argv[2] ?? 'pkg');
+const docsDir = path.join(pkgDir, 'docs');
 const adapterPath = path.join(pkgDir, 'node.mjs');
 const typesPath = path.join(pkgDir, 'node.d.mts');
-const supportPath = path.join(pkgDir, 'host-support.v1.json');
-const communicationPath = path.join(pkgDir, 'wasm-host-communication.md');
+const supportPath = path.join(docsDir, 'host-support.v1.json');
+const communicationPath = path.join(docsDir, 'wasm-host-communication.md');
 const interactivePath = path.join(pkgDir, 'interactive_multi_input_ingress.mjs');
 const provenancePath = path.join(pkgDir, 'ingress_provenance.mjs');
 const replayLedgerPath = path.join(pkgDir, 'ingress_replay_ledger.mjs');
 const executionReceiptPath = path.join(pkgDir, 'ingress_execution_receipt.mjs');
 const branchPromotionLineagePath = path.join(pkgDir, 'branch_promotion_lineage.mjs');
 const replayLedgerInitPath = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
-const provenanceContractPath = path.join(pkgDir, 'ingress-provenance.v1.json');
-const stateBoundProvenanceContractPath = path.join(pkgDir, 'ingress-provenance.v2.json');
-const replayLedgerContractPath = path.join(pkgDir, 'ingress-replay-ledger.v1.json');
-const executionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v2.json');
-const checkpointRestoreContractPath = path.join(pkgDir, 'host-checkpoint-restore.v1.json');
-const legacyExecutionReceiptContractPath = path.join(pkgDir, 'host-execution-receipt.v1.json');
-const stateHandoffContractPath = path.join(pkgDir, 'host-state-handoff.v1.json');
-const branchPromotionLineageContractPath = path.join(pkgDir, 'host-branch-promotion-lineage.v1.json');
-const wasmSurfaceContractPath = path.join(pkgDir, 'wasm-surface.v1.json');
-const runtimeSurfaceContractPath = path.join(pkgDir, 'runtime-surface.v1.json');
+const provenanceContractPath = path.join(docsDir, 'ingress-provenance.v1.json');
+const stateBoundProvenanceContractPath = path.join(docsDir, 'ingress-provenance.v2.json');
+const replayLedgerContractPath = path.join(docsDir, 'ingress-replay-ledger.v1.json');
+const executionReceiptContractPath = path.join(docsDir, 'host-execution-receipt.v2.json');
+const checkpointRestoreContractPath = path.join(docsDir, 'host-checkpoint-restore.v1.json');
+const legacyExecutionReceiptContractPath = path.join(docsDir, 'host-execution-receipt.v1.json');
+const stateHandoffContractPath = path.join(docsDir, 'host-state-handoff.v1.json');
+const branchPromotionLineageContractPath = path.join(docsDir, 'host-branch-promotion-lineage.v1.json');
+const wasmSurfaceContractPath = path.join(docsDir, 'wasm-surface.v1.json');
+const runtimeSurfaceContractPath = path.join(docsDir, 'runtime-surface.v1.json');
 const packageJsonPath = path.join(pkgDir, 'package.json');
 const surfaceActualPath = path.join(pkgDir, 'wasm-surface.actual.json');
 const bindingSurfaceActualPath = path.join(pkgDir, 'wasm-surface.bindings.actual.json');
@@ -54,10 +55,10 @@ assert(fs.existsSync(legacyExecutionReceiptContractPath), 'packaged legacy host-
 assert(fs.existsSync(stateHandoffContractPath), 'packaged host-state-handoff.v1.json is missing');
 assert(fs.existsSync(branchPromotionLineageContractPath), 'packaged host-branch-promotion-lineage.v1.json is missing');
 assert(fs.existsSync(wasmSurfaceContractPath), 'packaged wasm-surface.v1.json is missing');
-assert(fs.existsSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
-assert(fs.existsSync(path.join(pkgDir, 'baseline-candidate-verification.v1.json')), 'packaged verifier contract is missing');
-assert(fs.existsSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json')), 'packaged mutation contract is missing');
-assert(fs.existsSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json')), 'packaged checkpoint branch contract is missing');
+assert(fs.existsSync(path.join(docsDir, 'multi-input-execution-trace.v1.json')), 'packaged trace contract is missing');
+assert(fs.existsSync(path.join(docsDir, 'baseline-candidate-verification.v1.json')), 'packaged verifier contract is missing');
+assert(fs.existsSync(path.join(docsDir, 'transactional-graph-mutation.v1.json')), 'packaged mutation contract is missing');
+assert(fs.existsSync(path.join(docsDir, 'transactional-graph-checkpoint-branch.v1.json')), 'packaged checkpoint branch contract is missing');
 assert(fs.existsSync(runtimeSurfaceContractPath), 'packaged runtime-surface.v1.json is missing');
 assert(fs.existsSync(packageJsonPath), 'packaged package.json is missing');
 assert(fs.existsSync(surfaceActualPath), 'packaged wasm-surface.actual.json is missing');
@@ -73,30 +74,32 @@ const requiredPackageFiles = [
   'burn_research_bg.wasm.d.ts',
   'wasm-surface.actual.json',
   'wasm-surface.bindings.actual.json',
-  'wasm-surface.v1.json',
-  'multi-input-execution-trace.v1.json',
-  'baseline-candidate-verification.v1.json',
-  'transactional-graph-mutation.v1.json',
-  'transactional-graph-checkpoint-branch.v1.json',
-  'runtime-surface.v1.json',
+  'docs/wasm-surface.v1.json',
+  'docs/multi-input-execution-trace.v1.json',
+  'docs/baseline-candidate-verification.v1.json',
+  'docs/transactional-graph-mutation.v1.json',
+  'docs/transactional-graph-checkpoint-branch.v1.json',
+  'docs/runtime-surface.v1.json',
   'node.mjs',
   'node.d.mts',
-  'host-support.v1.json',
-  'wasm-host-communication.md',
+  'README.md',
+  'docs/host-support.v1.json',
+  'docs/wasm-host-communication.md',
+  'docs/interactive-multi-input-ingress.md',
   'interactive_multi_input_ingress.mjs',
   'ingress_provenance.mjs',
   'ingress_replay_ledger.mjs',
   'ingress_execution_receipt.mjs',
   'branch_promotion_lineage.mjs',
   'init_ingress_replay_ledger.mjs',
-  'ingress-provenance.v1.json',
-  'ingress-provenance.v2.json',
-  'ingress-replay-ledger.v1.json',
-  'host-execution-receipt.v1.json',
-  'host-execution-receipt.v2.json',
-  'host-checkpoint-restore.v1.json',
-  'host-state-handoff.v1.json',
-  'host-branch-promotion-lineage.v1.json',
+  'docs/ingress-provenance.v1.json',
+  'docs/ingress-provenance.v2.json',
+  'docs/ingress-replay-ledger.v1.json',
+  'docs/host-execution-receipt.v1.json',
+  'docs/host-execution-receipt.v2.json',
+  'docs/host-checkpoint-restore.v1.json',
+  'docs/host-state-handoff.v1.json',
+  'docs/host-branch-promotion-lineage.v1.json',
 ];
 for (const file of requiredPackageFiles) {
   assert(manifest.files.includes(file), `package.json files allowlist is missing ${file}`);
@@ -106,17 +109,17 @@ const actualSurface = JSON.parse(fs.readFileSync(surfaceActualPath, 'utf8'));
 assert(actualSurface.schema === 'burn-research.wasm-surface.actual.v1', 'runtime surface schema mismatch');
 assert(actualSurface.fingerprint?.algorithm === 'sha256', 'runtime surface fingerprint algorithm mismatch');
 assert(/^sha256:[0-9a-f]{64}$/.test(actualSurface.fingerprint?.value ?? ''), 'runtime surface fingerprint is malformed');
-assert(actualSurface.artifacts?.['multi-input-execution-trace.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'multi-input-execution-trace.v1.json'))).digest('hex')}`,
+assert(actualSurface.artifacts?.['docs/multi-input-execution-trace.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'multi-input-execution-trace.v1.json'))).digest('hex')}`,
   'trace contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['baseline-candidate-verification.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'baseline-candidate-verification.v1.json'))).digest('hex')}`,
+assert(actualSurface.artifacts?.['docs/baseline-candidate-verification.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'baseline-candidate-verification.v1.json'))).digest('hex')}`,
   'verifier contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['transactional-graph-mutation.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
+assert(actualSurface.artifacts?.['docs/transactional-graph-mutation.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'transactional-graph-mutation.v1.json'))).digest('hex')}`,
   'mutation contract bytes are not bound by the runtime surface fingerprint');
-assert(actualSurface.artifacts?.['transactional-graph-checkpoint-branch.v1.json']?.sha256
-  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(pkgDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
+assert(actualSurface.artifacts?.['docs/transactional-graph-checkpoint-branch.v1.json']?.sha256
+  === `sha256:${createHash('sha256').update(fs.readFileSync(path.join(docsDir, 'transactional-graph-checkpoint-branch.v1.json'))).digest('hex')}`,
   'checkpoint branch contract bytes are not bound by the runtime surface fingerprint');
 
 const support = JSON.parse(fs.readFileSync(supportPath, 'utf8'));

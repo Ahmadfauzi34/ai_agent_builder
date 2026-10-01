@@ -177,11 +177,24 @@ jobs:
       - name: Package Node host adapter
         run: node scripts/package_node_host.mjs pkg
 
+      - name: Check packaged README local links
+        run: node scripts/check_distribution_links.mjs pkg
+
+      - name: Run distribution smoke test
+        run: node scripts/smoke_distribution.mjs pkg
+
       - name: Generate WASM runtime surface snapshot from the packaged runtime
         run: node scripts/generate_wasm_surface_actual.mjs pkg --write
 
       - name: Verify WASM runtime surface snapshot against the packaged runtime
         run: node scripts/generate_wasm_surface_actual.mjs pkg --check
+
+      - name: Upload packaged Node host bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-host-package
+          path: pkg/
+          if-no-files-found: error
 
       - name: Upload WASM runtime surface diagnostics
         if: always()
