@@ -6,9 +6,9 @@
 //! statistik, probabilitas, dan interaksi.
 //!
 //! ## Invariant
-//! - `program_v9` adalah versi kanonis untuk kode baru.
-//! - `program_v4` … `program_v8` FROZEN: hanya untuk kompatibilitas baca
-//!   (rencana/checkpoint lama); tidak ada fitur baru di versi lama.
+//! - Semua versi (`program_v4` … `program_v9`) tetap aktif dikembangkan;
+//!   belum ada versi kanonis. Kanonisasi ditunda sampai desain penutup
+//!   `math` jelas (arah: AST untuk math type sebagai dasar topology).
 //! - Setiap versi mengekspos `*_capabilities` agar host dapat melakukan
 //!   discovery sebelum memakai.
 //!
