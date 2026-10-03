@@ -9,14 +9,14 @@ const CONTRACT_MODULES: &[&str] = &[
     "src/registry.rs",
     "src/layers/mod.rs",
     "src/agent.rs",
-    "src/graph.rs",
+    "src/graph/graph.rs",
     "src/math/mod.rs",
     "src/es/mod.rs",
     "src/contracts.rs",
-    "src/semantic_lifecycle.rs",
-    "src/resolution.rs",
-    "src/input_port.rs",
-    "src/proof_provenance.rs",
+    "src/semantic/semantic_lifecycle.rs",
+    "src/resolution/resolution.rs",
+    "src/ingress/input_port.rs",
+    "src/evidence/proof_provenance.rs",
 ];
 
 fn manifest_dir() -> PathBuf {

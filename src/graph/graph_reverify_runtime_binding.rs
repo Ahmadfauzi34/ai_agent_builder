@@ -10,7 +10,7 @@ use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
 const GRAPH_REVERIFY_RUNTIME_BINDING_V1: &str =
-    include_str!("../docs/contracts/graph-reverify-runtime-binding.v1.json");
+    include_str!("../../docs/contracts/graph-reverify-runtime-binding.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

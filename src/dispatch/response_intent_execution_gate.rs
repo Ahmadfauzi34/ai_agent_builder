@@ -5,7 +5,7 @@ use crate::runtime_evidence_interpretation::EvidenceResponseAction;
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
 const RESPONSE_INTENT_EXECUTION_GATE_V1: &str =
-    include_str!("../docs/contracts/response-intent-execution-gate.v1.json");
+    include_str!("../../docs/contracts/response-intent-execution-gate.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

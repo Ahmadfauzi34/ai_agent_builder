@@ -8,7 +8,7 @@ use crate::runtime_evidence_interpretation::EvidenceResponseAction;
 use crate::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 const REVISION_EXECUTION_EVIDENCE_REJOIN_V1: &str =
-    include_str!("../docs/contracts/revision-execution-evidence-rejoin.v1.json");
+    include_str!("../../docs/contracts/revision-execution-evidence-rejoin.v1.json");
 
 fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> String {
     let mut hash = 0xcbf29ce484222325u64;

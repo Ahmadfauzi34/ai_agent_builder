@@ -4,51 +4,54 @@ use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
 pub mod agent;
-pub mod agent_response_intent;
-pub mod response_intent_execution_gate;
-pub mod response_dispatch_requirements;
-pub mod response_dispatch_request;
-pub mod response_dispatch_executor_preflight;
-pub mod revision_dispatch_execution_adapter;
-pub mod revision_execution_evidence_rejoin;
+// --- domain modules (Opsi A): flat modules grouped without API change ---
+pub mod dispatch;
+pub mod evidence;
+pub mod graph;
+pub mod ingress;
+pub mod resolution;
+pub mod semantic;
+// --- root re-exports: old `burn_research::<module>::` paths keep working ---
+pub use dispatch::{
+    agent_response_intent, response_dispatch_executor_preflight,
+    response_dispatch_request, response_dispatch_requirements,
+    response_intent_execution_gate, revision_dispatch_execution_adapter,
+    revision_execution_evidence_rejoin,
+};
+pub use evidence::{
+    program_bundle, proof_provenance, runtime_evidence_interpretation,
+    runtime_resolution_evidence,
+};
+pub use graph::{
+    graph_candidate_verification, graph_execution_trace, graph_mutation_transaction,
+    graph_parameters, graph_parameters_wasm, graph_plan, graph_plan_explain,
+    graph_reverify_execution_adapter, graph_reverify_runtime_binding, multi_input_graph,
+};
+pub use ingress::{
+    input_contract, input_port, input_port_consumer, input_port_edge_binding,
+    input_port_routing,
+};
+pub use resolution::{
+    resolution_review, resolution_revision, resolution_runtime_bridge,
+    resolution_subject,
+};
+pub use semantic::{
+    semantic_execution_context, semantic_ingress_manifest, semantic_ingress_manifest_v2,
+    semantic_lifecycle,
+};
 pub mod authorization;
 pub mod coprocessor;
 pub mod contracts;
 pub mod effective_spec;
 pub mod effective_spec_inherit_remainder;
 pub mod es;
-pub mod graph;
-pub mod graph_reverify_execution_adapter;
-pub mod graph_reverify_runtime_binding;
-mod graph_plan;
-pub mod graph_parameters;
-pub mod graph_parameters_wasm;
 pub mod interaction;
 pub mod interaction_fault;
-pub mod input_contract;
-pub mod input_port;
-pub mod input_port_consumer;
-pub mod input_port_edge_binding;
-pub mod input_port_routing;
 pub mod introspection;
 pub mod layers;
 pub mod math;
-pub mod multi_input_graph;
-pub mod proof_provenance;
-pub mod program_bundle;
 pub mod protocol;
 pub mod registry;
-pub mod resolution;
-pub mod resolution_review;
-pub mod resolution_revision;
-pub mod resolution_runtime_bridge;
-pub mod resolution_subject;
-pub mod runtime_resolution_evidence;
-pub mod runtime_evidence_interpretation;
-pub mod semantic_lifecycle;
-pub mod semantic_execution_context;
-pub mod semantic_ingress_manifest;
-pub mod semantic_ingress_manifest_v2;
 pub mod workspace;
 pub mod workspace_ops;
 #[cfg(test)]

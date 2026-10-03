@@ -19,7 +19,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::workspace::{AgentWorkspace, WorkspaceInputPortMetadata};
 
-const INPUT_PORT_V1: &str = include_str!("../docs/contracts/agent-input-port.v1.json");
+const INPUT_PORT_V1: &str = include_str!("../../docs/contracts/agent-input-port.v1.json");
 const MAX_ROLE_BYTES: usize = 64;
 const MAX_SOURCE_BYTES: usize = 256;
 const MAX_FINGERPRINT_BYTES: usize = 256;

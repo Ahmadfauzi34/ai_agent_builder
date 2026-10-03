@@ -313,10 +313,10 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
     // 8) Resolution/specification layers must not import or invoke Math Program execution.
     {
         let sources = [
-            include_str!("../src/resolution.rs"),
-            include_str!("../src/resolution_review.rs"),
-            include_str!("../src/resolution_revision.rs"),
-            include_str!("../src/resolution_subject.rs"),
+            include_str!("../src/resolution/resolution.rs"),
+            include_str!("../src/resolution/resolution_review.rs"),
+            include_str!("../src/resolution/resolution_revision.rs"),
+            include_str!("../src/resolution/resolution_subject.rs"),
             include_str!("../src/effective_spec.rs"),
         ];
         let forbidden = [

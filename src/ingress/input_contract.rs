@@ -6,7 +6,7 @@ use crate::contracts::{
 };
 use crate::workspace::{AgentWorkspace, WorkspaceInputContract};
 
-const INPUT_CONTRACT_V1: &str = include_str!("../docs/contracts/agent-input-contract.v1.json");
+const INPUT_CONTRACT_V1: &str = include_str!("../../docs/contracts/agent-input-contract.v1.json");
 const MAX_INPUT_SEMANTICS_BYTES: usize = 512;
 
 fn json_escape(value: &str) -> String {

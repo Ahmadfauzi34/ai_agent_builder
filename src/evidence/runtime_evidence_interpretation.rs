@@ -1,7 +1,7 @@
 use crate::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 const RUNTIME_EVIDENCE_INTERPRETATION_V1: &str =
-    include_str!("../docs/contracts/runtime-evidence-interpretation.v1.json");
+    include_str!("../../docs/contracts/runtime-evidence-interpretation.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

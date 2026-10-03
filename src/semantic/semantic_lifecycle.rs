@@ -25,7 +25,7 @@ use crate::input_port_edge_binding::semantic_graph_identity_json;
 use crate::workspace::AgentWorkspace;
 
 const SEMANTIC_LIFECYCLE_V1: &str =
-    include_str!("../docs/contracts/agent-semantic-lifecycle.v1.json");
+    include_str!("../../docs/contracts/agent-semantic-lifecycle.v1.json");
 const MAX_TRANSITION_ID_BYTES: usize = 128;
 const MAX_ROLE_BYTES: usize = 64;
 

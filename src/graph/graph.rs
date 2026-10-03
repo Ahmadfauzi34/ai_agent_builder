@@ -11,9 +11,9 @@
 //! - `ARITY_UNARY` / `ARITY_BINARY` adalah satu-satunya sumber kebenaran
 //!   arity untuk graph + registry.
 //! - Submodul (`plan_explain`, `execution_trace`, `candidate_verification`,
-//!   `mutation_transaction`) di-declare via `#[path]` eksplisit; child `mod`
-//!   di dalamnya resolve relatif terhadap file target `#[path]`, bukan
-//!   konvensi `file_stem/`.
+//!   `mutation_transaction`) di-declare sebagai `pub mod` di
+//!   `src/graph/mod.rs`; file ini merujuknya via `super::` agar setiap file
+//!   dikompilasi tepat sekali.
 //!
 //! ## Bukan tanggung jawab modul ini
 //! - Engine layer → `layers/*`; kepemilikan instance → `registry`.
@@ -30,21 +30,16 @@ use crate::protocol::{LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_S
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
 
-// `runtime_contract` lives at `crate::registry::runtime_contract` (declared in
-// `src/registry.rs`); it is intentionally NOT re-declared here via `#[path]`.
-#[path = "graph_plan_explain.rs"]
-mod plan_explain;
-#[path = "graph_execution_trace.rs"]
-mod execution_trace;
-pub use execution_trace::TracedMultiInputRun;
-#[path = "graph_candidate_verification.rs"]
-mod candidate_verification;
-pub use candidate_verification::MultiInputVerificationCases;
-#[path = "graph_mutation_transaction.rs"]
-mod mutation_transaction;
-pub use mutation_transaction::GraphMutationTransaction;
-pub use mutation_transaction::CheckpointBranchSet;
-pub use mutation_transaction::checkpoint_branch_capabilities;
+// Sibling modules are declared as `pub mod` in `super` (src/graph/mod.rs);
+// refer to them via `super::` instead of private `#[path]` copies so each
+// file compiles exactly once (a `#[path]` copy here would double-compile
+// the #[wasm_bindgen] exports).
+use super::graph_plan_explain;
+pub use super::graph_execution_trace::TracedMultiInputRun;
+pub use super::graph_candidate_verification::MultiInputVerificationCases;
+pub use super::graph_mutation_transaction::{
+    GraphMutationTransaction, CheckpointBranchSet, checkpoint_branch_capabilities,
+};
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
@@ -52,7 +47,7 @@ pub(crate) const ARITY_BINARY: u8 = 2;
 
 const CG_MAX_SLOTS: u32 = 64;
 
-fn bytes_hex(bytes: &[u8]) -> String {
+pub(crate) fn bytes_hex(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().saturating_mul(2));
     for byte in bytes {
         let _ = write!(&mut out, "{byte:02x}");
@@ -62,17 +57,17 @@ fn bytes_hex(bytes: &[u8]) -> String {
 
 #[wasm_bindgen]
 pub struct CompiledGraph {
-    steps: Vec<GraphPlanStep>,
-    num_slots: u32,
-    out_slot: u8,
+    pub(crate) steps: Vec<GraphPlanStep>,
+    pub(crate) num_slots: u32,
+    pub(crate) out_slot: u8,
     canonical_plan: Vec<u8>,
-    init_fingerprints: Vec<String>,
+    pub(crate) init_fingerprints: Vec<String>,
 }
 
 #[wasm_bindgen]
 pub struct CompiledMultiInputGraph {
-    graph: CompiledGraph,
-    plan: MultiInputGraphPlan,
+    pub(crate) graph: CompiledGraph,
+    pub(crate) plan: MultiInputGraphPlan,
     input_plan_bytes: Vec<u8>,
 }
 
@@ -91,7 +86,7 @@ impl CompiledGraph {
         )
     }
 
-    fn validate_registry_binding_internal(
+    pub(crate) fn validate_registry_binding_internal(
         &self,
         registry: &LayerRegistry,
         context: &str,
@@ -243,7 +238,7 @@ impl CompiledGraph {
         self.run_with_external_inputs_observed(registry, inputs, |_, _, _| {})
     }
 
-    fn run_with_external_inputs_observed<F>(
+    pub(crate) fn run_with_external_inputs_observed<F>(
         &self,
         registry: &LayerRegistry,
         inputs: &[(u8, WasmTensor)],
@@ -321,7 +316,7 @@ impl CompiledMultiInputGraph {
         })
     }
 
-    fn preflight_state(
+    pub(crate) fn preflight_state(
         &self,
         registry: &LayerRegistry,
         bundle: &MultiInputInputBundle,
@@ -351,7 +346,7 @@ impl CompiledMultiInputGraph {
         (ready, report)
     }
 
-    fn program_identity_json(&self) -> String {
+    pub(crate) fn program_identity_json(&self) -> String {
         let layer_identities = self
             .graph
             .init_fingerprints
@@ -371,7 +366,7 @@ impl CompiledMultiInputGraph {
 impl CompiledMultiInputGraph {
     #[wasm_bindgen(js_name = explainPlan)]
     pub fn explain_plan(&self, registry: &LayerRegistry) -> String {
-        plan_explain::report(self, registry)
+        graph_plan_explain::report(self, registry)
     }
 
     #[wasm_bindgen(js_name = runWithTrace)]
@@ -387,7 +382,7 @@ impl CompiledMultiInputGraph {
         if !ready {
             return Err("CompiledMultiInputGraph.runWithTrace: input or registry preflight failed; execution was not started".into());
         }
-        execution_trace::run(self, registry, bundle, start_step, max_steps, max_tensor_bytes)
+        super::graph_execution_trace::run(self, registry, bundle, start_step, max_steps, max_tensor_bytes)
     }
 
     #[wasm_bindgen(js_name = preflight)]

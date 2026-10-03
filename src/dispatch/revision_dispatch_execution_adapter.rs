@@ -8,7 +8,7 @@ use crate::runtime_evidence_interpretation::EvidenceResponseAction;
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
 const REVISION_DISPATCH_EXECUTION_ADAPTER_V1: &str =
-    include_str!("../docs/contracts/revision-dispatch-execution-adapter.v1.json");
+    include_str!("../../docs/contracts/revision-dispatch-execution-adapter.v1.json");
 
 fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);

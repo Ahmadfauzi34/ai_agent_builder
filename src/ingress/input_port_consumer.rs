@@ -6,7 +6,7 @@ use crate::input_port::role_valid;
 use crate::workspace::AgentWorkspace;
 
 const INPUT_PORT_CONSUMER_V1: &str =
-    include_str!("../docs/contracts/agent-input-port-consumer.v1.json");
+    include_str!("../../docs/contracts/agent-input-port-consumer.v1.json");
 const MAX_CONSUMER_ID_BYTES: usize = 128;
 const MAX_ACCEPTED_ROLES: usize = 16;
 

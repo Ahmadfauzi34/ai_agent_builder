@@ -87,7 +87,7 @@ function fail(code, phase, message, details = {}) {
 }
 
 // Complaint #07: role/layout vocabulary, mirrored from the WASM core
-// (src/input_port.rs CANONICAL_ROLES/role_valid, src/contracts.rs LayoutTag).
+// (src/ingress/input_port.rs CANONICAL_ROLES/role_valid, src/contracts.rs LayoutTag).
 // The host validates enum MEMBERSHIP only; shape-vs-layout constraints stay
 // authoritative in the WASM, so the host can never reject what the WASM accepts.
 const HOST_VOCABULARY_VERSION = 'burn-research.host-vocabulary.v1';

@@ -9,7 +9,7 @@ use crate::registry::LayerRegistry;
 use crate::workspace::AgentWorkspace;
 
 const INPUT_PORT_ROUTING_V1: &str =
-    include_str!("../docs/contracts/agent-input-port-routing.v1.json");
+    include_str!("../../docs/contracts/agent-input-port-routing.v1.json");
 
 fn bool_json(value: bool) -> &'static str {
     if value { "true" } else { "false" }

@@ -36,8 +36,8 @@ use crate::resolution_runtime_bridge::runtime_subject_binding_json;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
-const PROOF_PROVENANCE_V1: &str = include_str!("../docs/contracts/proof-provenance.v1.json");
-const MATH_PROOF_V1: &str = include_str!("../docs/contracts/math-proof.v1.json");
+const PROOF_PROVENANCE_V1: &str = include_str!("../../docs/contracts/proof-provenance.v1.json");
+const MATH_PROOF_V1: &str = include_str!("../../docs/contracts/math-proof.v1.json");
 const MAX_PROOF_LABEL_BYTES: usize = 256;
 const MAX_ATTESTATION_DETAIL_BYTES: usize = 1024;
 
