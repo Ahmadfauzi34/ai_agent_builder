@@ -56,8 +56,16 @@ fn build_graph(layer_id: u32) -> (LayerRegistry, CompiledGraph, GraphParameterBi
     let graph = builder.compile(&registry).expect("compile graph");
     let binding = GraphParameterBinding::build(&graph, &registry).expect("parameter binding");
 
-    assert_eq!(binding.total_len(), 3, "2->1 Linear+bias must expose 3 coordinates");
-    assert_eq!(binding.owners().len(), 1, "regression graph should have one trainable owner");
+    assert_eq!(
+        binding.total_len(),
+        3,
+        "2->1 Linear+bias must expose 3 coordinates"
+    );
+    assert_eq!(
+        binding.owners().len(),
+        1,
+        "regression graph should have one trainable owner"
+    );
 
     (registry, graph, binding)
 }
@@ -134,8 +142,15 @@ fn native_rust_host_composes_es_graph_objective_and_checkpoint_without_controlle
     }
 
     let best = optimizer.best();
-    assert_eq!(best.len(), binding.total_len(), "best candidate dimension mismatch");
-    assert!(best.iter().all(|value| value.is_finite()), "best candidate must be finite");
+    assert_eq!(
+        best.len(),
+        binding.total_len(),
+        "best candidate dimension mismatch"
+    );
+    assert!(
+        best.iter().all(|value| value.is_finite()),
+        "best candidate must be finite"
+    );
 
     binding
         .apply_flat(&graph, &mut registry, &best)
@@ -166,7 +181,10 @@ fn native_rust_host_composes_es_graph_objective_and_checkpoint_without_controlle
 
     // Existing stateful ProgramBundle is the checkpoint/replay artifact.
     let bundle = export_program_bundle(&graph, &registry, true).expect("export learned checkpoint");
-    assert!(!bundle.is_empty(), "stateful checkpoint bundle must not be empty");
+    assert!(
+        !bundle.is_empty(),
+        "stateful checkpoint bundle must not be empty"
+    );
 
     let mut imported_registry = LayerRegistry::new();
     let imported_graph = import_program_bundle(&mut imported_registry, &bundle)

@@ -63,18 +63,14 @@ impl ProgramStepRecord {
         bytes
     }
 
-    pub(crate) fn decode_prefix(
-        bytes: &[u8],
-        context: &str,
-    ) -> Result<(Self, usize), String> {
+    pub(crate) fn decode_prefix(bytes: &[u8], context: &str) -> Result<(Self, usize), String> {
         if bytes.len() < STEP_HEADER_BYTES {
             return Err(format!(
                 "{context}: truncated header: expected at least {STEP_HEADER_BYTES} bytes, got {}",
                 bytes.len()
             ));
         }
-        let payload_len =
-            u32::from_le_bytes([bytes[6], bytes[7], bytes[8], bytes[9]]) as usize;
+        let payload_len = u32::from_le_bytes([bytes[6], bytes[7], bytes[8], bytes[9]]) as usize;
         if payload_len > MAX_PARAM_BYTES {
             return Err(format!(
                 "{context}: payload length {payload_len} exceeds maximum {MAX_PARAM_BYTES}"
@@ -114,19 +110,16 @@ mod tests {
     #[test]
     fn structural_record_roundtrips_exactly() {
         let record =
-            ProgramStepRecord::new(0x26, 2, 0, 1, 2, 0, vec![1, 2, 3], "test step")
-                .unwrap();
+            ProgramStepRecord::new(0x26, 2, 0, 1, 2, 0, vec![1, 2, 3], "test step").unwrap();
         let encoded = record.encode();
-        let (decoded, consumed) =
-            ProgramStepRecord::decode_prefix(&encoded, "test step").unwrap();
+        let (decoded, consumed) = ProgramStepRecord::decode_prefix(&encoded, "test step").unwrap();
         assert_eq!(decoded, record);
         assert_eq!(consumed, encoded.len());
     }
 
     #[test]
     fn diagnostic_context_is_preserved() {
-        let error = ProgramStepRecord::decode_prefix(&[0; 9], "MathProgramV7 step")
-            .unwrap_err();
+        let error = ProgramStepRecord::decode_prefix(&[0; 9], "MathProgramV7 step").unwrap_err();
         assert_eq!(
             error,
             "MathProgramV7 step: truncated header: expected at least 10 bytes, got 9"

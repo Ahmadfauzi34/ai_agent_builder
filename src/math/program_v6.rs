@@ -4,9 +4,7 @@
 //! executed through a canonical one-step v5 program, so v6 does not fork existing math semantics.
 //! The only new execution semantic in this version is `fillLike(reference, scalar)`.
 
-use crate::math::program::{
-    OP_CLAMP, OP_COSINE_SIMILARITY, OP_PERMUTE, OP_RESHAPE, OP_SLICE,
-};
+use crate::math::program::{OP_CLAMP, OP_COSINE_SIMILARITY, OP_PERMUTE, OP_RESHAPE, OP_SLICE};
 use crate::math::program_select_params::{SelectAxisParams, PARAM_SELECT_AXIS};
 use crate::math::program_shape_params::{
     FixedShapeParams, PARAM_PERMUTE_RANK4, PARAM_RESHAPE_RANK4, PARAM_SLICE_RANK4,
@@ -518,13 +516,8 @@ impl MathProgramV6Builder {
             return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
         compile_record(&record)?;
-        let (filled, written) = validate_topology(
-            &record,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_topology(&record, self.num_slots, self.filled, self.written, context)?;
         self.records.push(record);
         self.filled = filled;
         self.written = written;
@@ -542,26 +535,14 @@ impl MathProgramV6Builder {
         )
     }
 
-    pub fn add_binary(
-        &mut self,
-        op: u8,
-        lhs: u8,
-        rhs: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
         self.push_legacy(
             V4StepRecord::new(op, 2, lhs, rhs, output, PARAM_NONE, vec![])?,
             "MathProgramV6Builder.addBinary",
         )
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
         self.push_legacy(
             V4StepRecord::new(
                 OP_CLAMP,
@@ -597,12 +578,7 @@ impl MathProgramV6Builder {
         )
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::reshape(shape)?;
         self.push_legacy(
             V4StepRecord::new(
@@ -618,12 +594,7 @@ impl MathProgramV6Builder {
         )
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::permute(axes)?;
         self.push_legacy(
             V4StepRecord::new(
@@ -683,12 +654,7 @@ impl MathProgramV6Builder {
         )
     }
 
-    pub fn add_fill_like(
-        &mut self,
-        reference: u8,
-        output: u8,
-        scalar: f32,
-    ) -> Result<(), String> {
+    pub fn add_fill_like(&mut self, reference: u8, output: u8, scalar: f32) -> Result<(), String> {
         let params = FillLikeParams::new(scalar)?;
         self.push_record(
             V6Record::FillLike {
@@ -806,9 +772,7 @@ impl MathProgramV6 {
                     out,
                 } => {
                     let a = slots[*in_a as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV6.runInputs: step {index} input slot {in_a} is empty"
-                        )
+                        format!("MathProgramV6.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let b = if *arity == 2 {
                         slots[*in_b as usize].as_ref().ok_or_else(|| {
@@ -838,9 +802,12 @@ impl MathProgramV6 {
             slots[out as usize] = Some(value);
         }
 
-        slots[self.out_slot as usize]
-            .take()
-            .ok_or_else(|| format!("MathProgramV6.runInputs: output slot {} is empty", self.out_slot))
+        slots[self.out_slot as usize].take().ok_or_else(|| {
+            format!(
+                "MathProgramV6.runInputs: output slot {} is empty",
+                self.out_slot
+            )
+        })
     }
 
     pub fn program_plan(&self) -> Vec<u8> {
@@ -982,8 +949,7 @@ mod tests {
         builder.set_output(1).unwrap();
         let program = builder.compile().unwrap();
         let mut plan = program.program_plan();
-        plan[PLAN_HEADER_BYTES + 6..PLAN_HEADER_BYTES + 10]
-            .copy_from_slice(&8u32.to_le_bytes());
+        plan[PLAN_HEADER_BYTES + 6..PLAN_HEADER_BYTES + 10].copy_from_slice(&8u32.to_le_bytes());
         assert!(MathProgramV6::from_plan(&plan).is_err());
     }
 

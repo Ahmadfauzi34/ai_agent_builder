@@ -7,14 +7,10 @@ mod effective_spec;
 
 use std::collections::BTreeSet;
 
-use burn_research::resolution::{
-    DiagnosticKind, ResolutionDiagnostic, ResolutionResponse,
-};
+use burn_research::resolution::{DiagnosticKind, ResolutionDiagnostic, ResolutionResponse};
 use burn_research::resolution_review::{ApprovalSnapshot, ResolutionReviewSession};
 use burn_research::resolution_subject::SubjectBoundReviewSession;
-use effective_spec::{
-    ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration, SpecDirective,
-};
+use effective_spec::{ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration, SpecDirective};
 use serde_json::json;
 
 #[derive(Debug)]
@@ -64,7 +60,8 @@ fn ambiguity_diagnostic() -> ResolutionDiagnostic {
 }
 
 fn build_review(final_approver: &str) -> ApprovalSnapshot {
-    let mut review = ResolutionReviewSession::new(format!("intent-policy-{final_approver}")).unwrap();
+    let mut review =
+        ResolutionReviewSession::new(format!("intent-policy-{final_approver}")).unwrap();
     review.submit("agent").unwrap();
     review
         .request_diagnostic("validator", ambiguity_diagnostic())
@@ -117,9 +114,7 @@ fn expand_explicit_inherit_remainder(
 
 fn approved_large_parent() -> ApprovedEffectiveSpec {
     let declarations = (0..64)
-        .map(|index| {
-            SpecDeclaration::new(format!("k{index:02}"), format!("v{index:02}")).unwrap()
-        })
+        .map(|index| SpecDeclaration::new(format!("k{index:02}"), format!("v{index:02}")).unwrap())
         .collect::<Vec<_>>();
     let spec = EffectiveSpec::root(declarations).unwrap();
     let mut review =
@@ -155,10 +150,8 @@ fn audit_candidate_customer_authority_and_bulk_policy() {
 
     // 2) Explicit delegation can be represented without giving every agent blanket approval authority.
     {
-        let policy = CustomerAuthorityPolicy::new(
-            "customer",
-            vec!["customer-delegate".to_string()],
-        );
+        let policy =
+            CustomerAuthorityPolicy::new("customer", vec!["customer-delegate".to_string()]);
         let delegated = build_review("customer-delegate");
         let unrelated = build_review("agent");
         assert!(policy.authorizes(&delegated));

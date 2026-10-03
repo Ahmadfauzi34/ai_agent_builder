@@ -1,8 +1,6 @@
 use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
 use burn_research::authorization::{AuthorizationPolicy, AuthorizationSnapshot};
-use burn_research::effective_spec::{
-    ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration,
-};
+use burn_research::effective_spec::{ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration};
 use burn_research::introspection::{describe_graph, describe_workspace};
 use burn_research::proof_provenance::{
     workspace_record_attestation, workspace_verify_graph_receipt,
@@ -10,8 +8,8 @@ use burn_research::proof_provenance::{
 use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::{
     bind_runtime_subject_projection, resolution_runtime_bridge_capabilities,
-    workspace_bind_runtime_subject, workspace_runtime_program_binding,
-    workspace_runtime_subject, RuntimeSubjectProjection,
+    workspace_bind_runtime_subject, workspace_runtime_program_binding, workspace_runtime_subject,
+    RuntimeSubjectProjection,
 };
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 use burn_research::workspace::AgentWorkspace;
@@ -76,8 +74,7 @@ fn authorized_effective_spec_projects_exact_existing_identity_tuple() {
     assert!(!projection.authorization_is_revision);
     assert_eq!(projection.fields.len(), 3);
 
-    let projection_json: serde_json::Value =
-        serde_json::from_str(&projection.to_json()).unwrap();
+    let projection_json: serde_json::Value = serde_json::from_str(&projection.to_json()).unwrap();
     assert_eq!(
         projection_json["planner_policy"],
         "opaque_fields_agent_planner_required"
@@ -173,7 +170,9 @@ fn burn_backed_receipt_preserves_exact_bound_runtime_subject_context() {
 
     let mut builder = AgentGraphBuilder::new(2).unwrap();
     let mut registry = LayerRegistry::new();
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let output_slot = workspace_init_unary(
         &mut workspace,
@@ -217,10 +216,7 @@ fn burn_backed_receipt_preserves_exact_bound_runtime_subject_context() {
     .unwrap();
 
     assert_eq!(receipt["authority"], "wasm_verifier");
-    assert_eq!(
-        receipt["reference_authority"],
-        "burn_compiled_graph"
-    );
+    assert_eq!(receipt["reference_authority"], "burn_compiled_graph");
     assert_eq!(
         receipt["runtime_subject"]["intent_id"],
         "intent-runtime-bridge"
@@ -264,8 +260,9 @@ fn runtime_subject_binding_is_idempotent_but_not_replaceable() {
     .unwrap_err();
 
     assert!(error.contains("immutable"));
-    assert!(workspace_runtime_subject(&workspace)
-        .contains("\"intent_id\":\"intent-runtime-bridge\""));
+    assert!(
+        workspace_runtime_subject(&workspace).contains("\"intent_id\":\"intent-runtime-bridge\"")
+    );
 }
 
 #[test]
@@ -319,7 +316,9 @@ fn bound_subject_rejects_legacy_compiled_graph_until_exact_identity_is_bound() {
     assert!(bind_runtime_subject_projection(&mut workspace, &projection).unwrap());
     let mut builder = AgentGraphBuilder::new(2).unwrap();
     let mut registry = LayerRegistry::new();
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let out = workspace_init_unary(
         &mut workspace,
@@ -399,13 +398,9 @@ fn cross_context_graph_relabeling_is_rejected_without_receipt_mutation() {
         "relu-b".into(),
     )
     .unwrap();
-    let graph_b = workspace_compile_for_runtime_subject(
-        &mut workspace_b,
-        &builder_b,
-        &registry_b,
-        out,
-    )
-    .unwrap();
+    let graph_b =
+        workspace_compile_for_runtime_subject(&mut workspace_b, &builder_b, &registry_b, out)
+            .unwrap();
 
     let status_a: serde_json::Value =
         serde_json::from_str(&workspace_runtime_program_binding(&workspace_a, &graph_b)).unwrap();
@@ -454,7 +449,9 @@ fn unbound_legacy_graph_receipt_remains_supported() {
     let mut workspace = AgentWorkspace::new(2).unwrap();
     let mut builder = AgentGraphBuilder::new(2).unwrap();
     let mut registry = LayerRegistry::new();
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let out = workspace_init_unary(
         &mut workspace,

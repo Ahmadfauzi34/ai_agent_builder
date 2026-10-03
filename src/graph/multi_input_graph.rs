@@ -81,7 +81,11 @@ fn json_escape(value: &str) -> String {
 }
 
 fn bool_json(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
+    if value {
+        "true"
+    } else {
+        "false"
+    }
 }
 
 fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> String {
@@ -192,7 +196,10 @@ impl<'a> PlanCursor<'a> {
             .checked_add(len)
             .ok_or_else(|| format!("MultiInputGraphPlan: {context} offset overflow"))?;
         let value = self.data.get(self.pos..end).ok_or_else(|| {
-            format!("MultiInputGraphPlan: truncated {context} at byte {}", self.pos)
+            format!(
+                "MultiInputGraphPlan: truncated {context} at byte {}",
+                self.pos
+            )
         })?;
         self.pos = end;
         Ok(value)
@@ -230,7 +237,11 @@ impl MultiInputGraphPlan {
         if decoded.num_slots != self.num_slots {
             return Err("mutation: slot count must preserve the input port contract".into());
         }
-        let candidate = Self { graph_plan, num_slots: self.num_slots, ports: self.ports.clone() };
+        let candidate = Self {
+            graph_plan,
+            num_slots: self.num_slots,
+            ports: self.ports.clone(),
+        };
         candidate.validate_for_compile()?;
         Ok(candidate)
     }
@@ -281,7 +292,9 @@ impl MultiInputGraphPlan {
 
     pub(crate) fn validate_for_compile(&self) -> Result<Vec<u8>, String> {
         if self.ports.len() < 2 {
-            return Err("MultiInputGraphPlan: at least two external input ports are required".into());
+            return Err(
+                "MultiInputGraphPlan: at least two external input ports are required".into(),
+            );
         }
         let bytes = self.encode()?;
         let slots = self.ports.iter().map(|port| port.slot).collect::<Vec<_>>();
@@ -297,7 +310,11 @@ impl MultiInputGraphPlan {
             ));
         }
         for (index, step) in decoded.steps.iter().enumerate() {
-            let second_input = if step.arity == 2 { step.in_slot2 } else { step.in_slot };
+            let second_input = if step.arity == 2 {
+                step.in_slot2
+            } else {
+                step.in_slot
+            };
             if [step.in_slot, second_input, step.out_slot]
                 .iter()
                 .any(|slot| u32::from(*slot) >= decoded.num_slots)
@@ -413,7 +430,10 @@ impl MultiInputGraphPlan {
         for _ in 0..port_count {
             let slot = cursor.read_u8("input slot")?;
             if prior_slot.is_some_and(|prior| prior >= slot) {
-                return Err("MultiInputGraphPlan.fromBytes: input ports must be unique and sorted by slot".into());
+                return Err(
+                    "MultiInputGraphPlan.fromBytes: input ports must be unique and sorted by slot"
+                        .into(),
+                );
             }
             prior_slot = Some(slot);
             let role_len = usize::from(cursor.read_u8("role length")?);
@@ -428,12 +448,18 @@ impl MultiInputGraphPlan {
             ];
             let layout_len = usize::from(cursor.read_u16("layout length")?);
             let layout = std::str::from_utf8(cursor.take(layout_len, "layout")?)
-                .map_err(|_| "MultiInputGraphPlan.fromBytes: layout is not valid UTF-8".to_string())?
+                .map_err(|_| {
+                    "MultiInputGraphPlan.fromBytes: layout is not valid UTF-8".to_string()
+                })?
                 .to_string();
             let require_fingerprint = match cursor.read_u8("fingerprint policy")? {
                 0 => false,
                 1 => true,
-                value => return Err(format!("MultiInputGraphPlan.fromBytes: invalid fingerprint policy {value}")),
+                value => {
+                    return Err(format!(
+                        "MultiInputGraphPlan.fromBytes: invalid fingerprint policy {value}"
+                    ))
+                }
             };
             let minimum_revision = cursor.read_u64("minimum revision")?;
             let port = MultiInputPortContract {
@@ -483,7 +509,11 @@ impl MultiInputGraphPlan {
         validate_port_contract(&port, self.num_slots)?;
         match self.ports.iter().find(|existing| existing.slot == slot) {
             Some(existing) if existing == &port => return Ok(false),
-            Some(_) => return Err(format!("MultiInputGraphPlan.addInputPort: conflicting definition for slot {slot}")),
+            Some(_) => {
+                return Err(format!(
+                    "MultiInputGraphPlan.addInputPort: conflicting definition for slot {slot}"
+                ))
+            }
             None => {}
         }
         if self.ports.len() >= MAX_INPUT_PORTS {
@@ -523,7 +553,12 @@ impl MultiInputGraphPlan {
 
     #[wasm_bindgen(js_name = toJSON)]
     pub fn to_json(&self) -> Result<String, String> {
-        let ports = self.ports.iter().map(port_contract_json).collect::<Vec<_>>().join(",");
+        let ports = self
+            .ports
+            .iter()
+            .map(port_contract_json)
+            .collect::<Vec<_>>()
+            .join(",");
         let fingerprint = self.fingerprint_internal()?;
         Ok(format!(
             "{{\"schema_version\":1,\"schema_id\":\"{}\",\"plan_fingerprint\":\"{}\",\"topology_plan_bytes\":{},\"input_ports\":[{}],\"runtime_policy\":\"all_declared_inputs_must_be_bound_before_execution\",\"execution_authorized\":false}}",
@@ -548,7 +583,10 @@ impl MultiInputInputBundle {
                 .ports
                 .iter()
                 .cloned()
-                .map(|contract| InputPortBinding { contract, bound: None })
+                .map(|contract| InputPortBinding {
+                    contract,
+                    bound: None,
+                })
                 .collect(),
         })
     }
@@ -568,12 +606,18 @@ impl MultiInputInputBundle {
             .ports
             .iter()
             .position(|port| port.contract.slot == slot)
-            .ok_or_else(|| format!("MultiInputInputBundle.bindInput: slot {slot} is not declared in the plan"))?;
+            .ok_or_else(|| {
+                format!("MultiInputInputBundle.bindInput: slot {slot} is not declared in the plan")
+            })?;
         if role.is_empty() || role.len() > MAX_ROLE_BYTES || !role_valid(&role) {
-            return Err(format!("MultiInputInputBundle.bindInput: unsupported role {role:?}"));
+            return Err(format!(
+                "MultiInputInputBundle.bindInput: unsupported role {role:?}"
+            ));
         }
         if source.is_empty() || source.len() > MAX_SOURCE_BYTES {
-            return Err(format!("MultiInputInputBundle.bindInput: source must be 1..={MAX_SOURCE_BYTES} bytes"));
+            return Err(format!(
+                "MultiInputInputBundle.bindInput: source must be 1..={MAX_SOURCE_BYTES} bytes"
+            ));
         }
         if fingerprint.len() > MAX_FINGERPRINT_BYTES {
             return Err(format!("MultiInputInputBundle.bindInput: fingerprint exceeds {MAX_FINGERPRINT_BYTES} bytes"));
@@ -608,7 +652,11 @@ impl MultiInputInputBundle {
 
     #[wasm_bindgen(js_name = clearInput)]
     pub fn clear_input(&mut self, slot: u8) -> bool {
-        let Some(port) = self.ports.iter_mut().find(|port| port.contract.slot == slot) else {
+        let Some(port) = self
+            .ports
+            .iter_mut()
+            .find(|port| port.contract.slot == slot)
+        else {
             return false;
         };
         port.bound.take().is_some()
@@ -616,7 +664,10 @@ impl MultiInputInputBundle {
 
     #[wasm_bindgen(js_name = boundPortCount)]
     pub fn bound_port_count(&self) -> u32 {
-        self.ports.iter().filter(|port| port.bound.is_some()).count() as u32
+        self.ports
+            .iter()
+            .filter(|port| port.bound.is_some())
+            .count() as u32
     }
 
     #[wasm_bindgen(js_name = planFingerprint)]
@@ -641,7 +692,11 @@ impl MultiInputInputBundle {
     }
 
     pub(crate) fn bound_input(&self, slot: u8) -> Option<&BoundInput> {
-        self.ports.iter().find(|port| port.contract.slot == slot)?.bound.as_ref()
+        self.ports
+            .iter()
+            .find(|port| port.contract.slot == slot)?
+            .bound
+            .as_ref()
     }
 
     pub(crate) fn input_preflight(&self, plan: &MultiInputGraphPlan) -> InputPreflight {
@@ -674,8 +729,13 @@ impl MultiInputInputBundle {
             let shape_matches = actual_shape == contract.shape;
             let layout_matches = actual.layout == contract.layout;
             let revision_satisfies = actual.revision >= contract.minimum_revision;
-            let fingerprint_satisfies = !contract.require_fingerprint || !actual.fingerprint.is_empty();
-            let finite_values = actual.tensor.to_array().iter().all(|value| value.is_finite());
+            let fingerprint_satisfies =
+                !contract.require_fingerprint || !actual.fingerprint.is_empty();
+            let finite_values = actual
+                .tensor
+                .to_array()
+                .iter()
+                .all(|value| value.is_finite());
             let port_ready = role_matches
                 && shape_matches
                 && layout_matches
@@ -706,7 +766,11 @@ impl MultiInputInputBundle {
                     "}}"
                 ),
                 contract.slot,
-                if port_ready { "ready" } else { "contract_mismatch" },
+                if port_ready {
+                    "ready"
+                } else {
+                    "contract_mismatch"
+                },
                 bool_json(role_matches),
                 bool_json(shape_matches),
                 bool_json(layout_matches),
@@ -727,8 +791,16 @@ impl MultiInputInputBundle {
                 },
             ));
         }
-        let slots = self.ports.iter().map(|port| port.contract.slot).collect::<Vec<_>>();
-        let slots_json = slots.iter().map(u8::to_string).collect::<Vec<_>>().join(",");
+        let slots = self
+            .ports
+            .iter()
+            .map(|port| port.contract.slot)
+            .collect::<Vec<_>>();
+        let slots_json = slots
+            .iter()
+            .map(u8::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
         let json = format!(
             concat!(
                 "{{",
@@ -750,13 +822,20 @@ impl MultiInputInputBundle {
             self.plan_fingerprint,
             bool_json(plan_matches),
             slots_json,
-            self.ports.iter().filter(|port| port.bound.is_some()).count(),
+            self.ports
+                .iter()
+                .filter(|port| port.bound.is_some())
+                .count(),
             missing_count,
             mismatch_count,
             bool_json(ready),
             port_json.join(","),
         );
-        InputPreflight { ready, json, port_checks }
+        InputPreflight {
+            ready,
+            json,
+            port_checks,
+        }
     }
 
     pub(crate) fn bound_inputs(&self) -> Vec<(u8, WasmTensor)> {
@@ -880,17 +959,35 @@ mod tests {
         bind_valid_inputs(&mut bundle);
         let traced = graph.run_with_trace(&registry, &bundle, 0, 1, 64).unwrap();
         let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
-        let expected = format!("sha256:{:x}", Sha256::digest([4.0f32.to_le_bytes(), 6.0f32.to_le_bytes()].concat()));
-        assert_eq!(report["program_identity"], serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap());
+        let expected = format!(
+            "sha256:{:x}",
+            Sha256::digest([4.0f32.to_le_bytes(), 6.0f32.to_le_bytes()].concat())
+        );
+        assert_eq!(
+            report["program_identity"],
+            serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap()
+        );
         assert_eq!(report["execution_status"], "completed");
         assert_eq!(report["execution_authorized"], false);
         assert_eq!(report["trace_complete"], true);
         assert_eq!(report["steps"][0]["index"], 0);
         assert_eq!(report["steps"][0]["observation"]["value_sha256"], expected);
         assert_eq!(report["terminal_output"]["value_sha256"], expected);
-        assert_eq!(traced.output().unwrap().to_array(), graph.run(&registry, &bundle).unwrap().to_array());
-        let capped: serde_json::Value = serde_json::from_str(&graph.run_with_trace(&registry, &bundle, 0, 1, 4).unwrap().report()).unwrap();
-        assert_eq!(capped["steps"][0]["observation"]["capture_status"], "tensor_budget_exceeded");
+        assert_eq!(
+            traced.output().unwrap().to_array(),
+            graph.run(&registry, &bundle).unwrap().to_array()
+        );
+        let capped: serde_json::Value = serde_json::from_str(
+            &graph
+                .run_with_trace(&registry, &bundle, 0, 1, 4)
+                .unwrap()
+                .report(),
+        )
+        .unwrap();
+        assert_eq!(
+            capped["steps"][0]["observation"]["capture_status"],
+            "tensor_budget_exceeded"
+        );
         assert!(capped["steps"][0]["observation"]["value_sha256"].is_null());
         assert!(graph.run_with_trace(&registry, &bundle, 1, 1, 64).is_err());
         assert!(graph.run_with_trace(&registry, &bundle, 0, 0, 64).is_err());
@@ -901,21 +998,52 @@ mod tests {
         let (registry, builder, _) = two_input_add();
         let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
         for (slot, role, features) in [(0, "observation", 2), (1, "state", 3)] {
-            plan.add_input_port(slot, role.into(), 1, features, 1, 1,
-                "feature_axis1_singleton".into(), false, 0).unwrap();
+            plan.add_input_port(
+                slot,
+                role.into(),
+                1,
+                features,
+                1,
+                1,
+                "feature_axis1_singleton".into(),
+                false,
+                0,
+            )
+            .unwrap();
         }
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
         let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
-        bundle.bind_input(0, &tensor(&[1.0, 2.0]), "observation".into(),
-            "feature_axis1_singleton".into(), "sensor-a".into(), 1, String::new()).unwrap();
+        bundle
+            .bind_input(
+                0,
+                &tensor(&[1.0, 2.0]),
+                "observation".into(),
+                "feature_axis1_singleton".into(),
+                "sensor-a".into(),
+                1,
+                String::new(),
+            )
+            .unwrap();
         let right = WasmTensor::new(&[3.0, 4.0, 5.0], &[1, 3, 1, 1]);
-        bundle.bind_input(1, &right, "state".into(),
-            "feature_axis1_singleton".into(), "memory-b".into(), 1, String::new()).unwrap();
+        bundle
+            .bind_input(
+                1,
+                &right,
+                "state".into(),
+                "feature_axis1_singleton".into(),
+                "memory-b".into(),
+                1,
+                String::new(),
+            )
+            .unwrap();
         let traced = graph.run_with_trace(&registry, &bundle, 0, 1, 64).unwrap();
         let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
         assert_eq!(report["execution_status"], "failed");
         assert_eq!(report["fault_step_index"], 0);
-        assert_eq!(report["steps"][0]["observation"]["capture_status"], "step_failed");
+        assert_eq!(
+            report["steps"][0]["observation"]["capture_status"],
+            "step_failed"
+        );
         assert!(report["terminal_output"].is_null());
         assert!(traced.output().is_err());
     }
@@ -933,14 +1061,33 @@ mod tests {
         builder.set_output(3).unwrap();
         let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
         for (slot, role) in [(0, "observation"), (1, "state")] {
-            plan.add_input_port(slot, role.into(), 1, 2, 1, 1,
-                "feature_axis1_singleton".into(), false, 0).unwrap();
+            plan.add_input_port(
+                slot,
+                role.into(),
+                1,
+                2,
+                1,
+                1,
+                "feature_axis1_singleton".into(),
+                false,
+                0,
+            )
+            .unwrap();
         }
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
         let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
         for (slot, role, values) in [(0, "observation", [-5.0, 2.0]), (1, "state", [3.0, 4.0])] {
-            bundle.bind_input(slot, &tensor(&values), role.into(),
-                "feature_axis1_singleton".into(), "test".into(), 0, String::new()).unwrap();
+            bundle
+                .bind_input(
+                    slot,
+                    &tensor(&values),
+                    role.into(),
+                    "feature_axis1_singleton".into(),
+                    "test".into(),
+                    0,
+                    String::new(),
+                )
+                .unwrap();
         }
         let traced = graph.run_with_trace(&registry, &bundle, 1, 1, 64).unwrap();
         let report: serde_json::Value = serde_json::from_str(&traced.report()).unwrap();
@@ -956,23 +1103,40 @@ mod tests {
         let (mut registry, _builder, plan) = two_input_add();
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
         let empty_bundle = MultiInputInputBundle::new(&plan).unwrap();
-        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
 
-        assert_eq!(report["schema_id"], "burn-research.multi-input-plan-explain.v1");
-        assert_eq!(report["program_identity"], serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap());
-        assert_eq!(report["declared_input_ports"][1]["declared_shape"], serde_json::json!([1, 2, 1, 1]));
+        assert_eq!(
+            report["schema_id"],
+            "burn-research.multi-input-plan-explain.v1"
+        );
+        assert_eq!(
+            report["program_identity"],
+            serde_json::from_str::<serde_json::Value>(&graph.program_identity()).unwrap()
+        );
+        assert_eq!(
+            report["declared_input_ports"][1]["declared_shape"],
+            serde_json::json!([1, 2, 1, 1])
+        );
         assert_eq!(report["steps"][0]["input_slots"], serde_json::json!([0, 1]));
-        assert_eq!(report["steps"][0]["output_shape"], serde_json::json!([1, 2, 1, 1]));
+        assert_eq!(
+            report["steps"][0]["output_shape"],
+            serde_json::json!([1, 2, 1, 1])
+        );
         assert_eq!(report["steps"][0]["output_f32_payload_bytes"], 8);
         assert_eq!(report["static_shape_status"], "complete");
         assert_eq!(report["registry_binding_current"], true);
         assert_eq!(report["burn_executed"], false);
         assert_eq!(report["execution_authorized"], false);
-        assert_eq!(report["estimated_runtime_allocation_bytes"], serde_json::Value::Null);
+        assert_eq!(
+            report["estimated_runtime_allocation_bytes"],
+            serde_json::Value::Null
+        );
         assert!(graph.run(&registry, &empty_bundle).is_err());
 
         assert!(registry.destroy_layer(21, crate::protocol::LAYER_BINARY));
-        let stale: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        let stale: serde_json::Value =
+            serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
         assert_eq!(stale["registry_binding_current"], false);
         assert_eq!(stale["program_identity"], report["program_identity"]);
     }
@@ -982,23 +1146,58 @@ mod tests {
         let (registry, builder, _) = two_input_add();
         let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
         for (slot, role, features) in [(0, "observation", 2), (1, "state", 3)] {
-            plan.add_input_port(slot, role.into(), 1, features, 1, 1,
-                "feature_axis1_singleton".into(), false, 0).unwrap();
+            plan.add_input_port(
+                slot,
+                role.into(),
+                1,
+                features,
+                1,
+                1,
+                "feature_axis1_singleton".into(),
+                false,
+                0,
+            )
+            .unwrap();
         }
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
-        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
         assert_eq!(report["static_shape_status"], "incompatible");
         assert_eq!(report["steps"][0]["reason"], "elementwise_shape_mismatch");
         assert!(report["steps"][0]["output_shape"].is_null());
 
         let mut bundle = MultiInputInputBundle::new(&plan).unwrap();
-        bundle.bind_input(0, &tensor(&[1.0, 2.0]), "observation".into(),
-            "feature_axis1_singleton".into(), "sensor-a".into(), 1, String::new()).unwrap();
+        bundle
+            .bind_input(
+                0,
+                &tensor(&[1.0, 2.0]),
+                "observation".into(),
+                "feature_axis1_singleton".into(),
+                "sensor-a".into(),
+                1,
+                String::new(),
+            )
+            .unwrap();
         let right = WasmTensor::new(&[3.0, 4.0, 5.0], &[1, 3, 1, 1]);
-        bundle.bind_input(1, &right, "state".into(),
-            "feature_axis1_singleton".into(), "memory-b".into(), 1, String::new()).unwrap();
-        assert!(graph.preflight(&registry, &bundle).contains("\"ready\":true"));
-        assert!(graph.run(&registry, &bundle).err().unwrap().contains("shape mismatch"));
+        bundle
+            .bind_input(
+                1,
+                &right,
+                "state".into(),
+                "feature_axis1_singleton".into(),
+                "memory-b".into(),
+                1,
+                String::new(),
+            )
+            .unwrap();
+        assert!(graph
+            .preflight(&registry, &bundle)
+            .contains("\"ready\":true"));
+        assert!(graph
+            .run(&registry, &bundle)
+            .err()
+            .unwrap()
+            .contains("shape mismatch"));
     }
 
     #[test]
@@ -1014,11 +1213,22 @@ mod tests {
         builder.set_output(3).unwrap();
         let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
         for (slot, role) in [(0, "observation"), (1, "state")] {
-            plan.add_input_port(slot, role.into(), 1, 2, 1, 1,
-                "feature_axis1_singleton".into(), false, 0).unwrap();
+            plan.add_input_port(
+                slot,
+                role.into(),
+                1,
+                2,
+                1,
+                1,
+                "feature_axis1_singleton".into(),
+                false,
+                0,
+            )
+            .unwrap();
         }
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
-        let report: serde_json::Value = serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
+        let report: serde_json::Value =
+            serde_json::from_str(&graph.explain_plan(&registry)).unwrap();
         assert_eq!(report["known_steps"], 1);
         assert_eq!(report["unknown_steps"], 1);
         assert_eq!(report["static_shape_status"], "partial");
@@ -1033,12 +1243,17 @@ mod tests {
         let replay = MultiInputGraphPlan::from_bytes(&encoded).unwrap();
         assert_eq!(replay.to_bytes().unwrap(), encoded);
         assert_eq!(replay.input_slots(), vec![0, 1]);
-        assert_eq!(replay.plan_fingerprint().unwrap(), plan.plan_fingerprint().unwrap());
+        assert_eq!(
+            replay.plan_fingerprint().unwrap(),
+            plan.plan_fingerprint().unwrap()
+        );
 
         let graph = CompiledMultiInputGraph::build(&registry, &replay).unwrap();
         let mut bundle = MultiInputInputBundle::new(&replay).unwrap();
         bind_valid_inputs(&mut bundle);
-        assert!(graph.preflight(&registry, &bundle).contains("\"ready\":true"));
+        assert!(graph
+            .preflight(&registry, &bundle)
+            .contains("\"ready\":true"));
         let result = graph.run(&registry, &bundle).unwrap().to_array();
         assert_eq!(result, vec![4.0, 6.0]);
         let proof = graph
@@ -1052,7 +1267,9 @@ mod tests {
         let (registry, _builder, plan) = two_input_add();
         let graph = CompiledMultiInputGraph::build(&registry, &plan).unwrap();
         let empty = MultiInputInputBundle::new(&plan).unwrap();
-        assert!(graph.preflight(&registry, &empty).contains("\"ready\":false"));
+        assert!(graph
+            .preflight(&registry, &empty)
+            .contains("\"ready\":false"));
         assert!(graph.run(&registry, &empty).is_err());
 
         let mut mismatch = MultiInputInputBundle::new(&plan).unwrap();

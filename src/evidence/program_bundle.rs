@@ -1,3 +1,7 @@
+pub use crate::facade::evidence::{
+    export_multi_input_program_bundle, export_program_bundle, import_multi_input_program_bundle,
+    import_program_bundle, multi_input_program_bundle_capabilities, program_bundle_capabilities,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::graph::{CompiledGraph, CompiledMultiInputGraph};
@@ -6,17 +10,17 @@ use crate::multi_input_graph::MultiInputGraphPlan;
 use crate::protocol::{PacketHeader, OP_INIT};
 use crate::registry::LayerRegistry;
 
-const BUNDLE_MAGIC: &[u8; 8] = b"BRPGBNDL";
-const MULTI_INPUT_BUNDLE_MAGIC: &[u8; 8] = b"BRMIBNDL";
-const BUNDLE_SCHEMA_VERSION: u32 = 1;
-const BUNDLE_FLAG_STATE_INCLUDED: u32 = 1 << 0;
+pub(crate) const BUNDLE_MAGIC: &[u8; 8] = b"BRPGBNDL";
+pub(crate) const MULTI_INPUT_BUNDLE_MAGIC: &[u8; 8] = b"BRMIBNDL";
+pub(crate) const BUNDLE_SCHEMA_VERSION: u32 = 1;
+pub(crate) const BUNDLE_FLAG_STATE_INCLUDED: u32 = 1 << 0;
 const BUNDLE_KNOWN_FLAGS: u32 = BUNDLE_FLAG_STATE_INCLUDED;
 
-fn push_u32(out: &mut Vec<u8>, value: u32) {
+pub(crate) fn push_u32(out: &mut Vec<u8>, value: u32) {
     out.extend_from_slice(&value.to_le_bytes());
 }
 
-fn checked_u32(value: usize, context: &str) -> Result<u32, String> {
+pub(crate) fn checked_u32(value: usize, context: &str) -> Result<u32, String> {
     u32::try_from(value).map_err(|_| format!("{context}: length exceeds u32"))
 }
 
@@ -30,13 +34,13 @@ fn read_u32_at(bytes: &[u8], offset: usize, context: &str) -> Result<u32, String
     Ok(u32::from_le_bytes([slice[0], slice[1], slice[2], slice[3]]))
 }
 
-fn referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
+pub(crate) fn referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
     decode_graph_plan(plan)
         .map(|decoded| decoded.unique_first_use_layer_keys())
         .map_err(|error| format!("program bundle: {error}"))
 }
 
-fn multi_input_referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
+pub(crate) fn multi_input_referenced_layer_keys(plan: &[u8]) -> Result<Vec<(u8, u32)>, String> {
     let input_plan = MultiInputGraphPlan::from_bytes(plan)
         .map_err(|error| format!("multi-input program bundle: {error}"))?;
     referenced_layer_keys(input_plan.graph_plan())
@@ -63,7 +67,7 @@ fn field<'a>(part: &'a str, prefix: &str, context: &str) -> Result<&'a str, Stri
         .ok_or_else(|| format!("program bundle: malformed {context} fingerprint field {part:?}"))
 }
 
-fn parse_init_fingerprint(
+pub(crate) fn parse_init_fingerprint(
     fingerprint: &str,
     expected_type: u8,
     expected_id: u32,
@@ -136,20 +140,20 @@ impl<'a> BundleCursor<'a> {
     }
 }
 
-struct DecodedLayer {
-    layer_type: u8,
-    variant: u8,
-    flags: u8,
-    layer_id: u32,
-    init_payload: Vec<u8>,
-    state: Vec<u8>,
+pub(crate) struct DecodedLayer {
+    pub(crate) layer_type: u8,
+    pub(crate) variant: u8,
+    pub(crate) flags: u8,
+    pub(crate) layer_id: u32,
+    pub(crate) init_payload: Vec<u8>,
+    pub(crate) state: Vec<u8>,
 }
 
-struct DecodedBundle {
-    state_included: bool,
-    plan: Vec<u8>,
-    expected_identity: String,
-    layers: Vec<DecodedLayer>,
+pub(crate) struct DecodedBundle {
+    pub(crate) state_included: bool,
+    pub(crate) plan: Vec<u8>,
+    pub(crate) expected_identity: String,
+    pub(crate) layers: Vec<DecodedLayer>,
 }
 
 fn decode_bundle(
@@ -248,7 +252,7 @@ fn decode_bundle(
     })
 }
 
-fn decode_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, String> {
+pub(crate) fn decode_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, String> {
     decode_bundle(
         bundle,
         BUNDLE_MAGIC,
@@ -257,7 +261,7 @@ fn decode_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, String> {
     )
 }
 
-fn decode_multi_input_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, String> {
+pub(crate) fn decode_multi_input_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, String> {
     decode_bundle(
         bundle,
         MULTI_INPUT_BUNDLE_MAGIC,
@@ -266,299 +270,15 @@ fn decode_multi_input_program_bundle(bundle: &[u8]) -> Result<DecodedBundle, Str
     )
 }
 
-#[wasm_bindgen(js_name = programBundleCapabilities)]
-pub fn program_bundle_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.program-bundle.v1\",",
-        "\"schema_version\":1,",
-        "\"export\":\"exportProgramBundle\",",
-        "\"import\":\"importProgramBundle\",",
-        "\"structural_identity\":\"burn-research.program-identity.v1\",",
-        "\"structural_source\":\"program-identity.v1_layer_init_fingerprint\",",
-        "\"target_registry\":\"atomic_replace_on_success\",",
-        "\"import_commit\":\"atomic_after_identity_validation\",",
-        "\"mutable_state\":\"optional_separate_section\"",
-        "}"
-    )
-    .to_string()
-}
-
-#[wasm_bindgen(js_name = exportProgramBundle)]
-pub fn export_program_bundle(
-    graph: &CompiledGraph,
-    registry: &LayerRegistry,
-    include_state: bool,
-) -> Result<Vec<u8>, String> {
-    graph
-        .validate_registry_binding(registry)
-        .map_err(|error| format!("exportProgramBundle: {error}"))?;
-
-    let plan = graph.program_plan();
-    let identity = graph.program_identity();
-    let keys = referenced_layer_keys(&plan)?;
-    let mut records = Vec::with_capacity(keys.len());
-    for (layer_type, layer_id) in keys {
-        let fingerprint = registry
-            .layer_init_fingerprint(layer_type, layer_id)
-            .map_err(|error| format!("exportProgramBundle: {error}"))?;
-        let (variant, flags, init_payload) =
-            parse_init_fingerprint(&fingerprint, layer_type, layer_id)?;
-        let state = if include_state {
-            registry
-                .get_layer_state(layer_id, layer_type)
-                .map_err(|error| format!("exportProgramBundle: state for type 0x{layer_type:02X} id {layer_id}: {error}"))?
-        } else {
-            Vec::new()
-        };
-        records.push((layer_type, variant, flags, layer_id, init_payload, state));
-    }
-
-    let mut out = Vec::new();
-    out.extend_from_slice(BUNDLE_MAGIC);
-    push_u32(&mut out, BUNDLE_SCHEMA_VERSION);
-    push_u32(
-        &mut out,
-        if include_state {
-            BUNDLE_FLAG_STATE_INCLUDED
-        } else {
-            0
-        },
-    );
-    push_u32(&mut out, checked_u32(plan.len(), "exportProgramBundle plan")?);
-    push_u32(
-        &mut out,
-        checked_u32(identity.len(), "exportProgramBundle identity")?,
-    );
-    push_u32(
-        &mut out,
-        checked_u32(records.len(), "exportProgramBundle layer count")?,
-    );
-    out.extend_from_slice(&plan);
-    out.extend_from_slice(identity.as_bytes());
-
-    for (layer_type, variant, flags, layer_id, init_payload, state) in records {
-        out.push(layer_type);
-        out.push(variant);
-        out.push(flags);
-        out.push(0);
-        push_u32(&mut out, layer_id);
-        push_u32(
-            &mut out,
-            checked_u32(init_payload.len(), "exportProgramBundle init payload")?,
-        );
-        push_u32(
-            &mut out,
-            checked_u32(state.len(), "exportProgramBundle layer state")?,
-        );
-        out.extend_from_slice(&init_payload);
-        out.extend_from_slice(&state);
-    }
-    Ok(out)
-}
-
-#[wasm_bindgen(js_name = importProgramBundle)]
-pub fn import_program_bundle(
-    registry: &mut LayerRegistry,
-    bundle: &[u8],
-) -> Result<CompiledGraph, String> {
-    let decoded = decode_program_bundle(bundle)
-        .map_err(|error| format!("importProgramBundle: {error}"))?;
-    let mut staged = LayerRegistry::new();
-    for (index, layer) in decoded.layers.iter().enumerate() {
-        let payload_len = checked_u32(
-            layer.init_payload.len(),
-            "importProgramBundle init payload",
-        )?;
-        let header = PacketHeader {
-            opcode: OP_INIT,
-            layer_type: layer.layer_type,
-            variant: layer.variant,
-            flags: layer.flags,
-            payload_len,
-        };
-        staged
-            .init_layer(&header, &layer.init_payload)
-            .map_err(|error| format!("importProgramBundle: layer {index} init failed: {error}"))?;
-        if decoded.state_included {
-            staged
-                .load_layer_state(layer.layer_id, layer.layer_type, &layer.state)
-                .map_err(|error| format!("importProgramBundle: layer {index} state failed: {error}"))?;
-        }
-    }
-
-    let graph = staged
-        .compile_graph(&decoded.plan)
-        .map_err(|error| format!("importProgramBundle: compile failed: {error}"))?;
-    let actual_identity = graph.program_identity();
-    if actual_identity != decoded.expected_identity {
-        return Err(format!(
-            "importProgramBundle: structural identity mismatch: expected {}, got {}",
-            decoded.expected_identity, actual_identity
-        ));
-    }
-    graph
-        .validate_registry_binding(&staged)
-        .map_err(|error| format!("importProgramBundle: staged binding invalid: {error}"))?;
-
-    *registry = staged;
-    Ok(graph)
-}
-
-#[wasm_bindgen(js_name = multiInputProgramBundleCapabilities)]
-pub fn multi_input_program_bundle_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.multi-input-program-bundle.v1\",",
-        "\"schema_version\":1,",
-        "\"export\":\"exportMultiInputProgramBundle\",",
-        "\"import\":\"importMultiInputProgramBundle\",",
-        "\"structural_identity\":\"burn-research.multi-input-program-identity.v1\",",
-        "\"structural_source\":\"exact_multi_input_plan_and_layer_init_fingerprints\",",
-        "\"mutable_state\":\"optional_separate_layer_state_section\",",
-        "\"state_integrity\":\"no_signature_or_authentication\",",
-        "\"target_registry\":\"atomic_replace_on_success\",",
-        "\"import_commit\":\"atomic_after_identity_validation\",",
-        "\"authorization\":false",
-        "}"
-    )
-    .to_string()
-}
-
-#[wasm_bindgen(js_name = exportMultiInputProgramBundle)]
-pub fn export_multi_input_program_bundle(
-    graph: &CompiledMultiInputGraph,
-    registry: &LayerRegistry,
-    include_state: bool,
-) -> Result<Vec<u8>, String> {
-    graph
-        .validate_registry_binding(registry)
-        .map_err(|error| format!("exportMultiInputProgramBundle: {error}"))?;
-
-    let plan = graph.input_plan_v1();
-    let identity = graph.program_identity();
-    let keys = multi_input_referenced_layer_keys(&plan)?;
-    let mut records = Vec::with_capacity(keys.len());
-    for (layer_type, layer_id) in keys {
-        let fingerprint = registry
-            .layer_init_fingerprint(layer_type, layer_id)
-            .map_err(|error| format!("exportMultiInputProgramBundle: {error}"))?;
-        let (variant, flags, init_payload) =
-            parse_init_fingerprint(&fingerprint, layer_type, layer_id)?;
-        let state = if include_state {
-            registry
-                .get_layer_state(layer_id, layer_type)
-                .map_err(|error| format!("exportMultiInputProgramBundle: state for type 0x{layer_type:02X} id {layer_id}: {error}"))?
-        } else {
-            Vec::new()
-        };
-        records.push((layer_type, variant, flags, layer_id, init_payload, state));
-    }
-
-    let mut out = Vec::new();
-    out.extend_from_slice(MULTI_INPUT_BUNDLE_MAGIC);
-    push_u32(&mut out, BUNDLE_SCHEMA_VERSION);
-    push_u32(
-        &mut out,
-        if include_state {
-            BUNDLE_FLAG_STATE_INCLUDED
-        } else {
-            0
-        },
-    );
-    push_u32(
-        &mut out,
-        checked_u32(plan.len(), "exportMultiInputProgramBundle plan")?,
-    );
-    push_u32(
-        &mut out,
-        checked_u32(identity.len(), "exportMultiInputProgramBundle identity")?,
-    );
-    push_u32(
-        &mut out,
-        checked_u32(records.len(), "exportMultiInputProgramBundle layer count")?,
-    );
-    out.extend_from_slice(&plan);
-    out.extend_from_slice(identity.as_bytes());
-    for (layer_type, variant, flags, layer_id, init_payload, state) in records {
-        out.push(layer_type);
-        out.push(variant);
-        out.push(flags);
-        out.push(0);
-        push_u32(&mut out, layer_id);
-        push_u32(
-            &mut out,
-            checked_u32(
-                init_payload.len(),
-                "exportMultiInputProgramBundle init payload",
-            )?,
-        );
-        push_u32(
-            &mut out,
-            checked_u32(state.len(), "exportMultiInputProgramBundle layer state")?,
-        );
-        out.extend_from_slice(&init_payload);
-        out.extend_from_slice(&state);
-    }
-    Ok(out)
-}
-
-#[wasm_bindgen(js_name = importMultiInputProgramBundle)]
-pub fn import_multi_input_program_bundle(
-    registry: &mut LayerRegistry,
-    bundle: &[u8],
-) -> Result<crate::graph::CompiledMultiInputGraph, String> {
-    let decoded = decode_multi_input_program_bundle(bundle)
-        .map_err(|error| format!("importMultiInputProgramBundle: {error}"))?;
-    let input_plan = MultiInputGraphPlan::from_bytes(&decoded.plan)
-        .map_err(|error| format!("importMultiInputProgramBundle: {error}"))?;
-
-    let mut staged = LayerRegistry::new();
-    for (index, layer) in decoded.layers.iter().enumerate() {
-        let payload_len = checked_u32(
-            layer.init_payload.len(),
-            "importMultiInputProgramBundle init payload",
-        )?;
-        let header = PacketHeader {
-            opcode: OP_INIT,
-            layer_type: layer.layer_type,
-            variant: layer.variant,
-            flags: layer.flags,
-            payload_len,
-        };
-        staged
-            .init_layer(&header, &layer.init_payload)
-            .map_err(|error| format!("importMultiInputProgramBundle: layer {index} init failed: {error}"))?;
-        if decoded.state_included {
-            staged
-                .load_layer_state(layer.layer_id, layer.layer_type, &layer.state)
-                .map_err(|error| format!("importMultiInputProgramBundle: layer {index} state failed: {error}"))?;
-        }
-    }
-
-    let graph = staged
-        .compile_multi_input_graph(&input_plan)
-        .map_err(|error| format!("importMultiInputProgramBundle: compile failed: {error}"))?;
-    let actual_identity = graph.program_identity();
-    if actual_identity != decoded.expected_identity {
-        return Err(format!(
-            "importMultiInputProgramBundle: structural identity mismatch: expected {}, got {}",
-            decoded.expected_identity, actual_identity
-        ));
-    }
-    graph
-        .validate_registry_binding(&staged)
-        .map_err(|error| format!("importMultiInputProgramBundle: staged binding invalid: {error}"))?;
-
-    *registry = staged;
-    Ok(graph)
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{decode_multi_input_program_bundle, decode_program_bundle, export_multi_input_program_bundle,
-        export_program_bundle, import_multi_input_program_bundle, import_program_bundle,
-        multi_input_program_bundle_capabilities, parse_init_fingerprint, program_bundle_capabilities};
+    use super::{
+        decode_multi_input_program_bundle, decode_program_bundle,
+        export_multi_input_program_bundle, export_program_bundle,
+        import_multi_input_program_bundle, import_program_bundle,
+        multi_input_program_bundle_capabilities, parse_init_fingerprint,
+        program_bundle_capabilities,
+    };
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
     use crate::graph::CompiledMultiInputGraph;
     use crate::multi_input_graph::{MultiInputGraphPlan, MultiInputInputBundle};
@@ -566,7 +286,13 @@ mod tests {
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
 
-    fn linear_graph(registry: &mut LayerRegistry) -> (AgentLayerSpec, AgentGraphBuilder, crate::graph::CompiledGraph) {
+    fn linear_graph(
+        registry: &mut LayerRegistry,
+    ) -> (
+        AgentLayerSpec,
+        AgentGraphBuilder,
+        crate::graph::CompiledGraph,
+    ) {
         let spec = AgentLayerSpec::linear(7, 2, 2, true).unwrap();
         registry.init_agent_layer(&spec).unwrap();
         let mut builder = AgentGraphBuilder::new(2).unwrap();
@@ -578,7 +304,13 @@ mod tests {
 
     fn two_input_linear_graph(
         registry: &mut LayerRegistry,
-    ) -> (AgentLayerSpec, AgentLayerSpec, AgentGraphBuilder, MultiInputGraphPlan, CompiledMultiInputGraph) {
+    ) -> (
+        AgentLayerSpec,
+        AgentLayerSpec,
+        AgentGraphBuilder,
+        MultiInputGraphPlan,
+        CompiledMultiInputGraph,
+    ) {
         let add = AgentLayerSpec::add(21);
         let linear = AgentLayerSpec::linear(22, 2, 2, true).unwrap();
         registry.init_agent_layer(&add).unwrap();
@@ -658,8 +390,13 @@ mod tests {
             .unwrap();
         let (_variant, _flags, payload) =
             parse_init_fingerprint(&fingerprint, spec.layer_type(), spec.layer_id()).unwrap();
-        assert_eq!(u32::from_le_bytes(payload[0..4].try_into().unwrap()), spec.layer_id());
-        assert!(parse_init_fingerprint("future-format", spec.layer_type(), spec.layer_id()).is_err());
+        assert_eq!(
+            u32::from_le_bytes(payload[0..4].try_into().unwrap()),
+            spec.layer_id()
+        );
+        assert!(
+            parse_init_fingerprint("future-format", spec.layer_type(), spec.layer_id()).is_err()
+        );
     }
 
     #[test]
@@ -742,13 +479,9 @@ mod tests {
         // afterward and begins with num_steps:u32. Inflate the declared step count
         // while leaving the exact plan byte envelope unchanged.
         let plan_start = 28usize;
-        let original_steps = u32::from_le_bytes(
-            corrupt[plan_start..plan_start + 4]
-                .try_into()
-                .unwrap(),
-        );
-        corrupt[plan_start..plan_start + 4]
-            .copy_from_slice(&(original_steps + 1).to_le_bytes());
+        let original_steps =
+            u32::from_le_bytes(corrupt[plan_start..plan_start + 4].try_into().unwrap());
+        corrupt[plan_start..plan_start + 4].copy_from_slice(&(original_steps + 1).to_le_bytes());
 
         let mut target = LayerRegistry::new();
         let existing = AgentLayerSpec::relu(99);
@@ -806,7 +539,11 @@ mod tests {
             *value = (index + 1) as f32 * 0.125;
         }
         source.set_weights_flat(22, LAYER_LINEAR, &weights).unwrap();
-        assert_eq!(graph.program_identity(), identity, "mutable weights changed structural identity");
+        assert_eq!(
+            graph.program_identity(),
+            identity,
+            "mutable weights changed structural identity"
+        );
         let expected = multi_input_output(&source, &graph, &plan);
         let bundle = export_multi_input_program_bundle(&graph, &source, true).unwrap();
         let decoded = decode_multi_input_program_bundle(&bundle).unwrap();
@@ -829,7 +566,10 @@ mod tests {
         source.set_weights_flat(22, LAYER_LINEAR, &changed).unwrap();
         assert_eq!(graph.program_identity(), identity);
         let changed_state = export_multi_input_program_bundle(&graph, &source, true).unwrap();
-        assert_ne!(stateful, changed_state, "state checkpoint bytes did not track changed weights");
+        assert_ne!(
+            stateful, changed_state,
+            "state checkpoint bytes did not track changed weights"
+        );
     }
 
     #[test]

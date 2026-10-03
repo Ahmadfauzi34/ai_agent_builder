@@ -29,7 +29,9 @@ fn public_interaction_surface_is_projection_only_and_state_aware() {
     assert_eq!(builder.num_steps(), steps_before);
     assert_eq!(registry.total_params(), params_before);
 
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let output = workspace_init_unary(
         &mut workspace,

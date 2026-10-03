@@ -1,7 +1,6 @@
+use burn_research::agent::AgentGraphBuilder;
 use burn_research::authorization::AuthorizationPolicy;
-use burn_research::effective_spec::{
-    ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration,
-};
+use burn_research::effective_spec::{ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration};
 use burn_research::interaction_fault::interaction_check_compile;
 use burn_research::registry::LayerRegistry;
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
@@ -10,7 +9,6 @@ use burn_research::runtime_resolution_evidence::{
     runtime_resolution_evidence_capabilities, RejoinStatus, ResolutionEvidenceInbox,
     RuntimeEvidence,
 };
-use burn_research::agent::AgentGraphBuilder;
 
 fn forward_bridge_fixture() -> (
     burn_research::resolution::ResolutionSnapshot,
@@ -23,8 +21,7 @@ fn forward_bridge_fixture() -> (
     .unwrap();
 
     let subject = spec.approval_subject().unwrap();
-    let mut review =
-        SubjectBoundReviewSession::new("intent-evidence-rejoin", subject).unwrap();
+    let mut review = SubjectBoundReviewSession::new("intent-evidence-rejoin", subject).unwrap();
     review.submit("agent").unwrap();
     let approval = review.approve("owner").unwrap();
     let resolution_snapshot = review.snapshot().review.workflow;
@@ -36,10 +33,7 @@ fn forward_bridge_fixture() -> (
         RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization).unwrap();
 
     assert_eq!(resolution_snapshot.intent_id, projection.intent_id);
-    assert_eq!(
-        resolution_snapshot.revision,
-        projection.workflow_revision
-    );
+    assert_eq!(resolution_snapshot.revision, projection.workflow_revision);
     assert!(resolution_snapshot.compile_eligible());
 
     (resolution_snapshot, projection)
@@ -106,8 +100,7 @@ fn structured_agent_fault_fields_rejoin_without_legacy_error_parsing() {
     let envelope: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(envelope["status"], "fault");
 
-    let evidence =
-        RuntimeEvidence::from_bound_agent_fault_envelope(&projection, &raw).unwrap();
+    let evidence = RuntimeEvidence::from_bound_agent_fault_envelope(&projection, &raw).unwrap();
 
     assert_eq!(evidence.source_authority(), "agent_fault_preflight");
     assert_eq!(evidence.evidence_authority(), "observation_only");
@@ -163,13 +156,12 @@ fn stale_projection_cannot_receive_current_resolution_evidence() {
 #[test]
 fn canonical_inbox_revalidates_current_authorization_policy() {
     let spec = EffectiveSpec::root(vec![
-        SpecDeclaration::new("objective", "feature_transform").unwrap(),
+        SpecDeclaration::new("objective", "feature_transform").unwrap()
     ])
     .unwrap();
     let subject = spec.approval_subject().unwrap();
 
-    let mut review =
-        SubjectBoundReviewSession::new("intent-canonical-evidence", subject).unwrap();
+    let mut review = SubjectBoundReviewSession::new("intent-canonical-evidence", subject).unwrap();
     review.submit("agent").unwrap();
     let approval = review.approve("owner").unwrap();
     let resolution = review.snapshot().review.workflow;
@@ -178,17 +170,12 @@ fn canonical_inbox_revalidates_current_authorization_policy() {
     let policy = AuthorizationPolicy::new("runtime-policy", 21, "owner", vec![]).unwrap();
     let authorization = policy.authorize(&approval).unwrap();
 
-    let inbox = ResolutionEvidenceInbox::from_authorized(
-        &resolution,
-        &approved,
-        &policy,
-        &authorization,
-    )
-    .unwrap();
+    let inbox =
+        ResolutionEvidenceInbox::from_authorized(&resolution, &approved, &policy, &authorization)
+            .unwrap();
     assert!(inbox.is_empty());
 
-    let newer_policy =
-        AuthorizationPolicy::new("runtime-policy", 22, "owner", vec![]).unwrap();
+    let newer_policy = AuthorizationPolicy::new("runtime-policy", 22, "owner", vec![]).unwrap();
     let error = ResolutionEvidenceInbox::from_authorized(
         &resolution,
         &approved,
@@ -196,13 +183,8 @@ fn canonical_inbox_revalidates_current_authorization_policy() {
         &authorization,
     )
     .unwrap_err();
-    assert!(
-        error.contains("stale")
-            || error.contains("policy")
-            || error.contains("authorization")
-    );
+    assert!(error.contains("stale") || error.contains("policy") || error.contains("authorization"));
 }
-
 
 #[test]
 fn graph_receipt_adapter_accepts_exact_wasm_receipt_shape_without_host_field_mapping() {
@@ -313,8 +295,7 @@ fn direct_math_receipt_adapter_preserves_dual_runtime_authority_and_exact_subjec
     })
     .to_string();
 
-    let evidence =
-        RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+    let evidence = RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
     assert_eq!(evidence.kind(), "direct_math_verifier_receipt");
     assert_eq!(evidence.source_authority(), "wasm_verifier");
     assert_eq!(evidence.evidence_authority(), "observation_only");
@@ -341,7 +322,9 @@ fn direct_math_receipt_adapter_preserves_dual_runtime_authority_and_exact_subjec
         .as_str()
         .unwrap()
         .contains("burn-research.math-program-identity.v1"));
-    assert!(json["entries"][0]["payload"].get("program_identity").is_none());
+    assert!(json["entries"][0]["payload"]
+        .get("program_identity")
+        .is_none());
     assert_eq!(json["resolution_effect"]["state_transition"], "none");
 }
 
@@ -388,8 +371,7 @@ fn failed_direct_math_receipt_remains_observation_only() {
     })
     .to_string();
 
-    let evidence =
-        RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+    let evidence = RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
     assert_eq!(evidence.outcome(), "failed");
     assert_eq!(inbox.classify(&evidence), RejoinStatus::Exact);
     assert!(inbox.record(evidence).unwrap());

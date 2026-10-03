@@ -19,7 +19,10 @@ fn approved_root(spec: EffectiveSpec) -> ApprovedEffectiveSpec {
 }
 
 fn command_for(parent: &ApprovedEffectiveSpec) -> InheritRemainder {
-    InheritRemainder::new(parent.spec.identity.clone(), parent.approval_id().to_string())
+    InheritRemainder::new(
+        parent.spec.identity.clone(),
+        parent.approval_id().to_string(),
+    )
 }
 
 fn three_field_parent() -> ApprovedEffectiveSpec {
@@ -139,14 +142,12 @@ fn inherit_remainder_fails_closed_on_stale_parent_identity_or_approval() {
         parent.approval_id().to_string(),
     );
     let identity_err =
-        materialize_child_with_inherit_remainder(&parent, Vec::new(), &stale_identity)
-            .unwrap_err();
+        materialize_child_with_inherit_remainder(&parent, Vec::new(), &stale_identity).unwrap_err();
     assert!(identity_err.contains("parent spec identity mismatch"));
 
     let stale_approval = InheritRemainder::new(parent.spec.identity.clone(), "stale-approval");
     let approval_err =
-        materialize_child_with_inherit_remainder(&parent, Vec::new(), &stale_approval)
-            .unwrap_err();
+        materialize_child_with_inherit_remainder(&parent, Vec::new(), &stale_approval).unwrap_err();
     assert!(approval_err.contains("parent approval id mismatch"));
 }
 

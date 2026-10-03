@@ -17,9 +17,7 @@ use burn_research::runtime_evidence_interpretation::{
     interpret_recorded_evidence, EvidenceResponseAction,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -81,26 +79,21 @@ fn run() -> Result<(), String> {
         false,
         "mismatch",
     )?;
-    ensure(inbox.record(failed)?, "source failed evidence was not recorded");
+    ensure(
+        inbox.record(failed)?,
+        "source failed evidence was not recorded",
+    );
 
     let mut chain = ResolutionRevisionChain::from_approved(review.snapshot())?;
-    let intent = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::ProposeRevision,
-        "agent",
-    )?;
+    let intent =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::ProposeRevision, "agent")?;
     let request = create_revision_dispatch_request(&inbox, &intent, &chain, "r1", None)?;
     let receipt = execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain)?;
     let before_rejoin = inbox.len();
 
     ensure(
         record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )?,
         "committed execution receipt was not recorded",
     );
@@ -169,11 +162,7 @@ fn run() -> Result<(), String> {
 
     ensure(
         !record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )?,
         "duplicate execution receipt was not idempotent",
     );
@@ -183,11 +172,7 @@ fn run() -> Result<(), String> {
     let before_tamper = inbox.len();
     ensure(
         record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &tampered,
+            &mut inbox, &intent, &request, &chain, &tampered,
         )
         .is_err(),
         "tampered execution receipt was accepted",

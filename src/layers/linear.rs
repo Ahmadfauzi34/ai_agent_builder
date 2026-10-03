@@ -1,9 +1,10 @@
-use burn::prelude::*;
-use burn::nn::{Linear, LinearConfig};
 use super::state_record::deterministic_record_bytes;
-use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
+pub use crate::facade::wasm_types::WasmLinear;
 use crate::layers::shape_contract::{require_axis_size, require_singleton_spatial};
+use crate::{WasmBackend, WasmTensor};
+use burn::nn::{Linear, LinearConfig};
+use burn::prelude::*;
+use wasm_bindgen::prelude::*;
 
 // --- CONFIG & MODULE ---
 #[derive(Config, Debug)]
@@ -24,9 +25,9 @@ impl LinearLayerConfig {
     }
 }
 
-#[derive(Module, Debug)] 
+#[derive(Module, Debug)]
 pub struct LinearLayer<B: Backend> {
-    inner: Linear<B>,
+    pub(crate) inner: Linear<B>,
 }
 
 impl<B: Backend> LinearLayer<B> {
@@ -36,96 +37,6 @@ impl<B: Backend> LinearLayer<B> {
 }
 
 // --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmLinear {
-    inner: LinearLayer<WasmBackend>,
-    in_dim: usize,
-    out_dim: usize,
-}
-
-#[wasm_bindgen]
-impl WasmLinear {
-    #[wasm_bindgen(constructor)]
-    pub fn new(in_dim: usize, out_dim: usize, bias: bool) -> WasmLinear {
-        let device = Default::default();
-        let config = LinearLayerConfig { 
-            d_input: in_dim, 
-            d_output: out_dim,
-            bias 
-        };
-        WasmLinear {
-            inner: config.init(&device),
-            in_dim,
-            out_dim,
-        }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input)
-            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: LinearLayerRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "Linear loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        if record.inner.weight.dims() != current.inner.weight.dims() {
-            return Err(format!(
-                "Linear loadState: weight shape mismatch: expected {:?}, got {:?}",
-                current.inner.weight.dims(),
-                record.inner.weight.dims()
-            ));
-        }
-        match (&current.inner.bias, &record.inner.bias) {
-            (None, None) => {}
-            (Some(expected), Some(actual)) if expected.dims() == actual.dims() => {}
-            (Some(expected), Some(actual)) => {
-                return Err(format!(
-                    "Linear loadState: bias shape mismatch: expected {:?}, got {:?}",
-                    expected.dims(),
-                    actual.dims()
-                ));
-            }
-            (Some(_), None) | (None, Some(_)) => {
-                return Err("Linear loadState: bias presence mismatch".to_string());
-            }
-        }
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
-}
-
-impl WasmLinear {
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        let x = input.inner.clone();
-        let shape = x.dims();
-        require_singleton_spatial(shape, "Linear forward")?;
-        require_axis_size(shape, 1, self.in_dim, "Linear forward")?;
-
-        let [b, d, _, _] = shape;
-        // Complaint #18: the matmul below materializes [b, out_dim]; validate
-        // the output against the allocation budget first so an oversized run
-        // fails as a structured error instead of a raw `unreachable` trap.
-        crate::protocol::check_numel(&[b, self.out_dim], "Linear forward output")?;
-        let x_2d = x.reshape([b, d]);
-        let out = self.inner.forward(x_2d);
-        let [b_out, d_out] = out.dims();
-        let out_4d = out.reshape([b_out, d_out, 1, 1]);
-        Ok(WasmTensor { inner: out_4d })
-    }
-}
 
 // ============================================================
 // FLOAT-BRIDGE (B) — baca/tulis bobot sebagai Vec<f32> flat.
@@ -135,84 +46,10 @@ impl WasmLinear {
 // Urutan flat: weight row-major [in_dim * out_dim], lalu bias [out_dim] (kalau ada).
 // Implementasi via Module Record (bobot jadi tensor plain) -> menghindari Parameter API.
 // ============================================================
-#[wasm_bindgen]
-impl WasmLinear {
-    /// [in_dim, out_dim] — supaya JS tahu cara memotong vektor flat.
-    #[wasm_bindgen(js_name = weightDims)]
-    pub fn weight_dims(&self) -> Vec<usize> {
-        vec![self.in_dim, self.out_dim]
-    }
-
-    #[wasm_bindgen(js_name = getWeightsFlat)]
-    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
-        let rec = self.inner.inner.clone().into_record();
-        let w = <Tensor<WasmBackend, 2> as Clone>::clone(&rec.weight).into_data();
-        let mut out = w
-            .as_slice::<f32>()
-            .map_err(|_| "getWeightsFlat: weight not f32".to_string())?
-            .to_vec();
-        if let Some(b) = &rec.bias {
-            let bv = <Tensor<WasmBackend, 1> as Clone>::clone(b)
-                .into_data()
-                .as_slice::<f32>()
-                .map_err(|_| "getWeightsFlat: bias not f32".to_string())?
-                .to_vec();
-            out.extend(bv);
-        }
-        Ok(out)
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
-        let mut rec = self.inner.inner.clone().into_record();
-        let wd = rec.weight.dims(); // [in, out]
-        debug_assert_eq!(wd, [self.in_dim, self.out_dim]);
-        let in_d = self.in_dim;
-        let out_d = self.out_dim;
-        let has_bias = rec.bias.is_some();
-        let need = in_d * out_d + if has_bias { out_d } else { 0 };
-        if data.len() != need {
-            return Err(format!(
-                "setWeightsFlat: expected {} floats (in*out{}), got {}",
-                need,
-                if has_bias { "+out" } else { "" },
-                data.len()
-            ));
-        }
-        let device: <WasmBackend as Backend>::Device = Default::default();
-        rec.weight = burn::module::Param::from_data(
-            burn::tensor::TensorData::new(data[..in_d * out_d].to_vec(), [in_d, out_d]),
-            &device,
-        );
-        if has_bias {
-            rec.bias = Some(burn::module::Param::from_data(
-                burn::tensor::TensorData::new(data[in_d * out_d..].to_vec(), [out_d]),
-                &device,
-            ));
-        }
-        self.inner.inner = self.inner.inner.clone().load_record(rec);
-        Ok(())
-    }
-}
 
 // ============================================================
 // WEIGHT LAYOUT (M2) — linear. Mirror urutan getWeightsFlat.
 // ============================================================
-impl WasmLinear {
-    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
-        let rec = self.inner.inner.clone().into_record();
-        let wlen = rec.weight.dims().iter().product::<usize>();
-        let mut segs = vec![("weight", wlen)];
-        if let Some(b) = &rec.bias {
-            segs.push(("bias", b.dims().iter().product::<usize>()));
-        }
-        segs
-    }
-
-    pub fn weight_layout(&self) -> String {
-        crate::layers::layout::segs_json(&self.weight_segs())
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -255,7 +92,9 @@ mod tests {
     fn mismatched_state_is_rejected_without_mutation() {
         let mut target = WasmLinear::new(3, 2, true);
         let weights = deterministic_weights(3 * 2 + 2);
-        target.set_weights_flat(&weights).expect("set target weights");
+        target
+            .set_weights_flat(&weights)
+            .expect("set target weights");
         let before = target.get_weights_flat().expect("read target weights");
 
         let mismatched_shape = WasmLinear::new(4, 2, true)
@@ -263,13 +102,21 @@ mod tests {
             .expect("serialize mismatched state");
         assert!(target.load_state(&mismatched_shape).is_err());
         assert_eq!(target.weight_dims(), vec![3, 2]);
-        assert_eq!(target.get_weights_flat().expect("weights after rejection"), before);
+        assert_eq!(
+            target.get_weights_flat().expect("weights after rejection"),
+            before
+        );
 
         let mismatched_bias = WasmLinear::new(3, 2, false)
             .get_state()
             .expect("serialize bias-mismatched state");
         assert!(target.load_state(&mismatched_bias).is_err());
         assert_eq!(target.weight_dims(), vec![3, 2]);
-        assert_eq!(target.get_weights_flat().expect("weights after bias rejection"), before);
+        assert_eq!(
+            target
+                .get_weights_flat()
+                .expect("weights after bias rejection"),
+            before
+        );
     }
 }

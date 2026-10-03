@@ -15,9 +15,7 @@ use burn_research::response_dispatch_request::{
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -81,7 +79,10 @@ fn run() -> Result<(), String> {
         false,
         "candidate mismatch",
     )?;
-    ensure(inbox.record(failed)?, "failed graph evidence was not recorded");
+    ensure(
+        inbox.record(failed)?,
+        "failed graph evidence was not recorded",
+    );
     let before_inbox_len = inbox.len();
 
     let reverify_intent = create_agent_response_intent(
@@ -90,8 +91,7 @@ fn run() -> Result<(), String> {
         EvidenceResponseAction::Reverify,
         "agent-request-probe",
     )?;
-    let reverify_bindability =
-        response_dispatch_request_bindability(&inbox, &reverify_intent);
+    let reverify_bindability = response_dispatch_request_bindability(&inbox, &reverify_intent);
     ensure(
         !reverify_bindability.bindable
             && reverify_bindability.status == "runtime_handle_binding_deferred",
@@ -156,13 +156,8 @@ fn run() -> Result<(), String> {
     )?;
     let chain = ResolutionRevisionChain::from_approved(review_snapshot)?;
     let before_chain = chain.snapshot();
-    let revision_request = create_revision_dispatch_request(
-        &inbox,
-        &revision_intent,
-        &chain,
-        "fix-shape",
-        None,
-    )?;
+    let revision_request =
+        create_revision_dispatch_request(&inbox, &revision_intent, &chain, "fix-shape", None)?;
     ensure(
         preflight_response_dispatch_request(&inbox, &revision_intent, &revision_request).ready,
         "revision dispatch request preflight was not ready",
@@ -189,8 +184,7 @@ fn run() -> Result<(), String> {
         "ignore dispatch request preflight was not ready",
     );
     ensure(
-        ignore_request.executor_contract() == "none"
-            && ignore_request.operation() == "no_op",
+        ignore_request.executor_contract() == "none" && ignore_request.operation() == "no_op",
         "ignore request must remain explicit no-op",
     );
 
@@ -203,7 +197,10 @@ fn run() -> Result<(), String> {
         true,
         "match",
     )?;
-    ensure(changed_inbox.record(changed)?, "changed evidence was not recorded");
+    ensure(
+        changed_inbox.record(changed)?,
+        "changed evidence was not recorded",
+    );
     let stale_preflight =
         preflight_response_dispatch_request(&changed_inbox, &info_intent, &info_request);
     ensure(

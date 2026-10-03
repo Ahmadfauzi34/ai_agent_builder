@@ -1,22 +1,25 @@
+pub use crate::facade::semantic::{
+    semantic_ingress_manifest_capabilities, semantic_ingress_manifest_status,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::input_port::role_valid;
 use crate::workspace::AgentWorkspace;
 
-const SEMANTIC_INGRESS_MANIFEST_V1: &str =
+pub(crate) const SEMANTIC_INGRESS_MANIFEST_V1: &str =
     include_str!("../../docs/contracts/semantic-ingress-manifest.v1.json");
 const MAX_LOGICAL_PORT_ID_BYTES: usize = 64;
 const MAX_SOURCE_BYTES: usize = 256;
 const MAX_FINGERPRINT_BYTES: usize = 256;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-enum RuntimeBacking {
+pub(crate) enum RuntimeBacking {
     Slot0,
     Deferred,
 }
 
 impl RuntimeBacking {
-    fn as_str(&self) -> &'static str {
+    pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Slot0 => "graph_input_slot0",
             Self::Deferred => "deferred",
@@ -25,17 +28,17 @@ impl RuntimeBacking {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct SemanticIngressPort {
-    logical_port_id: String,
-    role: String,
-    source: String,
-    revision: u64,
-    fingerprint: String,
-    required: bool,
-    runtime_backing: RuntimeBacking,
+pub(crate) struct SemanticIngressPort {
+    pub(crate) logical_port_id: String,
+    pub(crate) role: String,
+    pub(crate) source: String,
+    pub(crate) revision: u64,
+    pub(crate) fingerprint: String,
+    pub(crate) required: bool,
+    pub(crate) runtime_backing: RuntimeBacking,
 }
 
-fn json_escape(value: &str) -> String {
+pub(crate) fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
     for ch in value.chars() {
         match ch {
@@ -51,8 +54,12 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn bool_json(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
+pub(crate) fn bool_json(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
 }
 
 fn validate_text(
@@ -81,9 +88,7 @@ pub(crate) fn validate_logical_port_id(value: &str) -> Result<(), String> {
         false,
     )?;
     if !value.bytes().all(|byte| {
-        byte.is_ascii_lowercase()
-            || byte.is_ascii_digit()
-            || matches!(byte, b'-' | b'_' | b'.')
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_' | b'.')
     }) {
         return Err(
             "SemanticIngressManifest.logical_port_id: use lowercase ascii letters, digits, '-', '_' or '.'"
@@ -153,12 +158,12 @@ fn port_json(port: &SemanticIngressPort) -> String {
             "\"logical_port_id\":\"{}\",",
             "\"role\":\"{}\",",
             "\"provenance\":{{",
-                "\"source\":\"{}\",",
-                "\"revision\":{},",
-                "\"fingerprint\":{}",
+            "\"source\":\"{}\",",
+            "\"revision\":{},",
+            "\"fingerprint\":{}",
             "}},",
             "\"required\":{},",
-            "\"runtime_backing\":\"{}\"" ,
+            "\"runtime_backing\":\"{}\"",
             "}}"
         ),
         json_escape(&port.logical_port_id),
@@ -178,7 +183,7 @@ fn port_json(port: &SemanticIngressPort) -> String {
 #[wasm_bindgen]
 #[derive(Clone)]
 pub struct SemanticIngressManifest {
-    ports: Vec<SemanticIngressPort>,
+    pub(crate) ports: Vec<SemanticIngressPort>,
 }
 
 impl Default for SemanticIngressManifest {
@@ -219,12 +224,8 @@ impl SemanticIngressManifest {
         Ok(true)
     }
 
-    fn manifest_fingerprint_internal(&self) -> String {
-        let mut canonical_ports = self
-            .ports
-            .iter()
-            .map(canonical_port)
-            .collect::<Vec<_>>();
+    pub(crate) fn manifest_fingerprint_internal(&self) -> String {
+        let mut canonical_ports = self.ports.iter().map(canonical_port).collect::<Vec<_>>();
         canonical_ports.sort();
         let canonical = format!(
             "v1|runtime_policy=single_graph_input_slot0|ports={}|{}",
@@ -345,7 +346,10 @@ impl SemanticIngressManifest {
     }
 }
 
-fn workspace_port_status(workspace: &AgentWorkspace, port: &SemanticIngressPort) -> &'static str {
+pub(crate) fn workspace_port_status(
+    workspace: &AgentWorkspace,
+    port: &SemanticIngressPort,
+) -> &'static str {
     match port.runtime_backing {
         RuntimeBacking::Deferred => "deferred_no_runtime_backing",
         RuntimeBacking::Slot0 => {
@@ -363,79 +367,6 @@ fn workspace_port_status(workspace: &AgentWorkspace, port: &SemanticIngressPort)
             }
         }
     }
-}
-
-#[wasm_bindgen(js_name = semanticIngressManifestCapabilities)]
-pub fn semantic_ingress_manifest_capabilities() -> String {
-    SEMANTIC_INGRESS_MANIFEST_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = semanticIngressManifestStatus)]
-pub fn semantic_ingress_manifest_status(
-    workspace: &AgentWorkspace,
-    manifest: &SemanticIngressManifest,
-) -> String {
-    let mut required_uncovered = 0usize;
-    let mut runtime_backed_count = 0usize;
-    let mut deferred_count = 0usize;
-
-    let port_status = manifest
-        .ports
-        .iter()
-        .map(|port| {
-            let status = workspace_port_status(workspace, port);
-            if port.runtime_backing == RuntimeBacking::Slot0 {
-                runtime_backed_count += 1;
-            } else {
-                deferred_count += 1;
-            }
-            if port.required && status != "runtime_backing_current" {
-                required_uncovered += 1;
-            }
-            format!(
-                concat!(
-                    "{{",
-                    "\"logical_port_id\":\"{}\",",
-                    "\"role\":\"{}\",",
-                    "\"required\":{},",
-                    "\"runtime_backing\":\"{}\",",
-                    "\"status\":\"{}\"" ,
-                    "}}"
-                ),
-                json_escape(&port.logical_port_id),
-                json_escape(&port.role),
-                bool_json(port.required),
-                port.runtime_backing.as_str(),
-                status,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-
-    format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.semantic-ingress-manifest-status.v1\",",
-            "\"manifest_fingerprint\":\"{}\",",
-            "\"port_count\":{},",
-            "\"runtime_backed_port_count\":{},",
-            "\"deferred_port_count\":{},",
-            "\"required_uncovered_count\":{},",
-            "\"runtime_coverage_complete\":{},",
-            "\"ports\":[{}],",
-            "\"execution_authorized\":false,",
-            "\"mutation\":\"none\"",
-            "}}"
-        ),
-        manifest.manifest_fingerprint_internal(),
-        manifest.ports.len(),
-        runtime_backed_count,
-        deferred_count,
-        required_uncovered,
-        bool_json(required_uncovered == 0),
-        port_status,
-    )
 }
 
 #[cfg(test)]
@@ -568,10 +499,7 @@ mod tests {
         assert_eq!(status["runtime_coverage_complete"], false);
         assert_eq!(status["required_uncovered_count"], 1);
         assert_eq!(status["ports"][0]["status"], "runtime_backing_current");
-        assert_eq!(
-            status["ports"][1]["status"],
-            "deferred_no_runtime_backing"
-        );
+        assert_eq!(status["ports"][1]["status"], "deferred_no_runtime_backing");
 
         workspace_bind_input_port_metadata(
             &mut workspace,

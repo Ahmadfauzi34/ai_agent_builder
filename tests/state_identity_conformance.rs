@@ -6,9 +6,7 @@ use burn_research::layers::custom::seblock::WasmSeBlock;
 use burn_research::layers::embedding::WasmEmbedding;
 use burn_research::layers::linear::WasmLinear;
 use burn_research::layers::norm::WasmNorm;
-use burn_research::protocol::{
-    LAYER_BINARY, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SHIFT,
-};
+use burn_research::protocol::{LAYER_BINARY, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SHIFT};
 use burn_research::registry::LayerRegistry;
 use burn_research::WasmTensor;
 
@@ -21,9 +19,7 @@ fn cross_config_linear_state_load_must_not_change_structural_identity() {
     let mut registry = LayerRegistry::new();
     registry.init_agent_layer(&spec).unwrap();
 
-    let fingerprint_before = registry
-        .layer_init_fingerprint(LAYER_LINEAR, 70)
-        .unwrap();
+    let fingerprint_before = registry.layer_init_fingerprint(LAYER_LINEAR, 70).unwrap();
     let state_before = registry.get_layer_state(70, LAYER_LINEAR).unwrap();
     let layout_before = registry.weight_layout(70, LAYER_LINEAR).unwrap();
     let params_before = registry.total_params();
@@ -66,9 +62,7 @@ fn same_config_linear_state_load_preserves_init_identity_and_structure() {
     let mut registry = LayerRegistry::new();
     registry.init_agent_layer(&spec).unwrap();
 
-    let fingerprint_before = registry
-        .layer_init_fingerprint(LAYER_LINEAR, 71)
-        .unwrap();
+    let fingerprint_before = registry.layer_init_fingerprint(LAYER_LINEAR, 71).unwrap();
     let layout_before = registry.weight_layout(71, LAYER_LINEAR).unwrap();
     let params_before = registry.total_params();
 
@@ -80,7 +74,10 @@ fn same_config_linear_state_load_preserves_init_identity_and_structure() {
         registry.layer_init_fingerprint(LAYER_LINEAR, 71).unwrap(),
         fingerprint_before
     );
-    assert_eq!(registry.weight_layout(71, LAYER_LINEAR).unwrap(), layout_before);
+    assert_eq!(
+        registry.weight_layout(71, LAYER_LINEAR).unwrap(),
+        layout_before
+    );
     assert_eq!(registry.total_params(), params_before);
 
     let input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
@@ -113,8 +110,14 @@ fn cross_variant_norm_state_must_fail_closed_without_panicking_or_mutating() {
         registry.layer_init_fingerprint(LAYER_NORM, 72).unwrap(),
         fingerprint_before
     );
-    assert_eq!(registry.get_layer_state(72, LAYER_NORM).unwrap(), state_before);
-    assert_eq!(registry.weight_layout(72, LAYER_NORM).unwrap(), layout_before);
+    assert_eq!(
+        registry.get_layer_state(72, LAYER_NORM).unwrap(),
+        state_before
+    );
+    assert_eq!(
+        registry.weight_layout(72, LAYER_NORM).unwrap(),
+        layout_before
+    );
     assert_eq!(registry.total_params(), params_before);
 
     registry
@@ -128,9 +131,7 @@ fn state_decoder_rejects_trailing_bytes_without_mutating_live_layer() {
     let mut registry = LayerRegistry::new();
     registry.init_agent_layer(&spec).unwrap();
 
-    let fingerprint_before = registry
-        .layer_init_fingerprint(LAYER_LINEAR, 73)
-        .unwrap();
+    let fingerprint_before = registry.layer_init_fingerprint(LAYER_LINEAR, 73).unwrap();
     let state_before = registry.get_layer_state(73, LAYER_LINEAR).unwrap();
     let layout_before = registry.weight_layout(73, LAYER_LINEAR).unwrap();
     let params_before = registry.total_params();
@@ -148,8 +149,14 @@ fn state_decoder_rejects_trailing_bytes_without_mutating_live_layer() {
         registry.layer_init_fingerprint(LAYER_LINEAR, 73).unwrap(),
         fingerprint_before
     );
-    assert_eq!(registry.get_layer_state(73, LAYER_LINEAR).unwrap(), state_before);
-    assert_eq!(registry.weight_layout(73, LAYER_LINEAR).unwrap(), layout_before);
+    assert_eq!(
+        registry.get_layer_state(73, LAYER_LINEAR).unwrap(),
+        state_before
+    );
+    assert_eq!(
+        registry.weight_layout(73, LAYER_LINEAR).unwrap(),
+        layout_before
+    );
     assert_eq!(registry.total_params(), params_before);
 
     registry
@@ -206,9 +213,7 @@ fn valid_same_length_weight_mutation_preserves_structural_identity() {
     let mut registry = LayerRegistry::new();
     registry.init_agent_layer(&spec).unwrap();
 
-    let fingerprint_before = registry
-        .layer_init_fingerprint(LAYER_LINEAR, 90)
-        .unwrap();
+    let fingerprint_before = registry.layer_init_fingerprint(LAYER_LINEAR, 90).unwrap();
     let layout_before = registry.weight_layout(90, LAYER_LINEAR).unwrap();
     let params_before = registry.total_params();
     let weights_before = registry.get_weights_flat(90, LAYER_LINEAR).unwrap();
@@ -226,9 +231,15 @@ fn valid_same_length_weight_mutation_preserves_structural_identity() {
         registry.layer_init_fingerprint(LAYER_LINEAR, 90).unwrap(),
         fingerprint_before
     );
-    assert_eq!(registry.weight_layout(90, LAYER_LINEAR).unwrap(), layout_before);
+    assert_eq!(
+        registry.weight_layout(90, LAYER_LINEAR).unwrap(),
+        layout_before
+    );
     assert_eq!(registry.total_params(), params_before);
-    assert_eq!(registry.get_weights_flat(90, LAYER_LINEAR).unwrap(), replacement);
+    assert_eq!(
+        registry.get_weights_flat(90, LAYER_LINEAR).unwrap(),
+        replacement
+    );
 }
 
 #[test]
@@ -243,7 +254,10 @@ fn direct_conv_rejects_cross_variant_state_without_panicking_or_mutating() {
         target.load_state(&foreign_state)
     }));
     assert!(call.is_ok(), "foreign valid Conv record must not panic");
-    assert!(call.unwrap().is_err(), "Conv2d state must not load into Conv1d");
+    assert!(
+        call.unwrap().is_err(),
+        "Conv2d state must not load into Conv1d"
+    );
     assert_eq!(target.get_state().unwrap(), before);
     assert_eq!(target.num_params(), params_before);
     target.load_state(&before).unwrap();
@@ -290,8 +304,14 @@ fn direct_activation_rejects_cross_variant_state_without_panicking_or_mutating()
     let call = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         target.load_state(&foreign_state)
     }));
-    assert!(call.is_ok(), "foreign valid Activation record must not panic");
-    assert!(call.unwrap().is_err(), "Relu state must not load into PRelu");
+    assert!(
+        call.is_ok(),
+        "foreign valid Activation record must not panic"
+    );
+    assert!(
+        call.unwrap().is_err(),
+        "Relu state must not load into PRelu"
+    );
     assert_eq!(target.get_state().unwrap(), before);
     assert_eq!(target.num_params(), params_before);
     target.load_state(&before).unwrap();

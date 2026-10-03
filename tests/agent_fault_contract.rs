@@ -47,7 +47,9 @@ fn compile_fault_preflight_tracks_real_graph_state_without_mutation() {
     let mut builder = AgentGraphBuilder::new(3).unwrap();
     let mut registry = LayerRegistry::new();
 
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let output = workspace_init_unary(
         &mut workspace,

@@ -4,9 +4,7 @@ use burn_research::effective_spec::{
     SpecDirective,
 };
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
-use burn_research::resolution_subject::{
-    SubjectBoundReviewSession, SubjectBoundRevisionChain,
-};
+use burn_research::resolution_subject::{SubjectBoundReviewSession, SubjectBoundRevisionChain};
 
 fn fail(message: impl AsRef<str>) -> ! {
     eprintln!(
@@ -36,24 +34,16 @@ fn run() -> Result<(), String> {
     ])?;
 
     let root_subject = root_spec.approval_subject()?;
-    let mut root_review = SubjectBoundReviewSession::new(
-        "intent-native-bridge-probe",
-        root_subject.clone(),
-    )?;
+    let mut root_review =
+        SubjectBoundReviewSession::new("intent-native-bridge-probe", root_subject.clone())?;
     root_review.submit("owner")?;
     let root_approval = root_review.approve("owner")?;
-    let approved_root = ApprovedEffectiveSpec::bind_root(
-        root_spec,
-        root_approval.clone(),
-    )?;
+    let approved_root = ApprovedEffectiveSpec::bind_root(root_spec, root_approval.clone())?;
 
     let policy = AuthorizationPolicy::new("runtime-policy", 7, "owner", vec![])?;
     let root_authorization = policy.authorize(&root_approval)?;
-    let root_projection = RuntimeSubjectProjection::from_authorized(
-        &approved_root,
-        &policy,
-        &root_authorization,
-    )?;
+    let root_projection =
+        RuntimeSubjectProjection::from_authorized(&approved_root, &policy, &root_authorization)?;
 
     ensure(
         root_projection.subject_identity == approved_root.spec.identity,
@@ -88,18 +78,16 @@ fn run() -> Result<(), String> {
         "stale authorization policy was accepted",
     );
 
-    let alternate_spec = EffectiveSpec::root(vec![
-        SpecDeclaration::new("objective", "different_transform")?,
-    ])?;
+    let alternate_spec = EffectiveSpec::root(vec![SpecDeclaration::new(
+        "objective",
+        "different_transform",
+    )?])?;
     let alternate_subject = alternate_spec.approval_subject()?;
-    let mut alternate_review = SubjectBoundReviewSession::new(
-        "intent-native-bridge-probe-alt",
-        alternate_subject,
-    )?;
+    let mut alternate_review =
+        SubjectBoundReviewSession::new("intent-native-bridge-probe-alt", alternate_subject)?;
     alternate_review.submit("owner")?;
     let alternate_approval = alternate_review.approve("owner")?;
-    let alternate_approved =
-        ApprovedEffectiveSpec::bind_root(alternate_spec, alternate_approval)?;
+    let alternate_approved = ApprovedEffectiveSpec::bind_root(alternate_spec, alternate_approval)?;
 
     ensure(
         RuntimeSubjectProjection::from_authorized(
@@ -115,10 +103,7 @@ fn run() -> Result<(), String> {
         .materialize_child(vec![
             SpecDirective::inherit("objective")?,
             SpecDirective::inherit("input.semantic")?,
-            SpecDirective::override_value(
-                "planner.note",
-                "agent_selects_revised_runtime_graph",
-            )?,
+            SpecDirective::override_value("planner.note", "agent_selects_revised_runtime_graph")?,
         ])?
         .resolved()?;
 

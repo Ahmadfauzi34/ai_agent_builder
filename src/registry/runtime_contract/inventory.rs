@@ -1,14 +1,15 @@
+pub use crate::facade::registry::layer_registry_inventory_capabilities;
 use sha2::{Digest, Sha256};
 use wasm_bindgen::prelude::*;
 
 use crate::protocol::{
-    LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM,
-    LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
+    LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
+    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
 };
 
 use super::super::LayerRegistry;
 
-const INVENTORY_CAPABILITIES_V1: &str =
+pub(crate) const INVENTORY_CAPABILITIES_V1: &str =
     include_str!("../../../docs/contracts/layer-registry-inventory.v1.json");
 const INVENTORY_SCHEMA: &str = "burn-research.layer-registry-inventory-snapshot.v1";
 const INVENTORY_SCOPE: &str =
@@ -125,11 +126,7 @@ pub(super) fn live_instance_records(
         ));
     }
 
-    let mut keys = registry
-        .init_identities
-        .keys()
-        .copied()
-        .collect::<Vec<_>>();
+    let mut keys = registry.init_identities.keys().copied().collect::<Vec<_>>();
     keys.sort_unstable();
 
     let mut records = Vec::with_capacity(keys.len());
@@ -227,11 +224,6 @@ fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
     ))
 }
 
-#[wasm_bindgen(js_name = layerRegistryInventoryCapabilities)]
-pub fn layer_registry_inventory_capabilities() -> String {
-    INVENTORY_CAPABILITIES_V1.to_string()
-}
-
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(js_name = inventorySnapshot)]
@@ -242,7 +234,9 @@ impl LayerRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::{inventory_fingerprint_of, inventory_snapshot, live_instance_records, INVENTORY_SCHEMA};
+    use super::{
+        inventory_fingerprint_of, inventory_snapshot, live_instance_records, INVENTORY_SCHEMA,
+    };
     use crate::agent::AgentLayerSpec;
     use crate::registry::LayerRegistry;
 

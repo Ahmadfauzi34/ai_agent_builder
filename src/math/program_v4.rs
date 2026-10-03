@@ -7,8 +7,7 @@ use crate::math::program_shape_params::{
     FixedShapeParams, PARAM_PERMUTE_RANK4, PARAM_RESHAPE_RANK4, PARAM_SLICE_RANK4,
 };
 use crate::math::program_v4_step::{
-    V4StepRecord, PARAM_CLAMP as V4_PARAM_CLAMP, PARAM_EPSILON as V4_PARAM_EPSILON,
-    PARAM_NONE,
+    V4StepRecord, PARAM_CLAMP as V4_PARAM_CLAMP, PARAM_EPSILON as V4_PARAM_EPSILON, PARAM_NONE,
 };
 use crate::math::WasmTensorTransform;
 use crate::WasmTensor;
@@ -117,8 +116,7 @@ fn compile_core_record(record: &V4StepRecord) -> Result<MathProgram, String> {
         V4_PARAM_EPSILON => {
             if record.op != OP_COSINE_SIMILARITY || record.arity != 2 {
                 return Err(
-                    "MathProgramV4: epsilon payload must use binary cosineSimilarity opcode"
-                        .into(),
+                    "MathProgramV4: epsilon payload must use binary cosineSimilarity opcode".into(),
                 );
             }
             let (epsilon, reserved) = parse_scalar_payload(&record.payload)?;
@@ -184,8 +182,7 @@ fn compile_record(record: &V4StepRecord) -> Result<ExecutableStep, String> {
     if record.param_kind == PARAM_SELECT_AXIS {
         if record.op != OP_SELECT_AXIS || record.arity != 1 || record.in_b != 0 {
             return Err(
-                "MathProgramV4: selectAxis requires unary opcode 0x24 with canonical in_b=0"
-                    .into(),
+                "MathProgramV4: selectAxis requires unary opcode 0x24 with canonical in_b=0".into(),
             );
         }
         let params = SelectAxisParams::decode(&record.payload)?;
@@ -262,10 +259,12 @@ fn encode_plan(
             records.len()
         ));
     }
-    if !records.iter().any(|record| record.param_kind == PARAM_SELECT_AXIS) {
+    if !records
+        .iter()
+        .any(|record| record.param_kind == PARAM_SELECT_AXIS)
+    {
         return Err(
-            "MathProgramV4: v4 is noncanonical without selectAxis; use MathProgram v1-v3"
-                .into(),
+            "MathProgramV4: v4 is noncanonical without selectAxis; use MathProgram v1-v3".into(),
         );
     }
 
@@ -352,13 +351,8 @@ impl MathProgramV4Builder {
             return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
         compile_record(&record)?;
-        let (filled, written) = validate_topology(
-            &record,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_topology(&record, self.num_slots, self.filled, self.written, context)?;
         self.records.push(record);
         self.filled = filled;
         self.written = written;
@@ -372,26 +366,14 @@ impl MathProgramV4Builder {
         )
     }
 
-    pub fn add_binary(
-        &mut self,
-        op: u8,
-        lhs: u8,
-        rhs: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
         self.push_record(
             V4StepRecord::new(op, 2, lhs, rhs, output, PARAM_NONE, vec![])?,
             "MathProgramV4Builder.addBinary",
         )
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
         self.push_record(
             V4StepRecord::new(
                 OP_CLAMP,
@@ -427,12 +409,7 @@ impl MathProgramV4Builder {
         )
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::reshape(shape)?;
         self.push_record(
             V4StepRecord::new(
@@ -448,12 +425,7 @@ impl MathProgramV4Builder {
         )
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::permute(axes)?;
         self.push_record(
             V4StepRecord::new(

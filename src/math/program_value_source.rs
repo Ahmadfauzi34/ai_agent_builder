@@ -69,9 +69,7 @@ pub(crate) fn fill_like(
     let dims = reference.inner.dims();
     let count = dims.into_iter().try_fold(1usize, |count, dim| {
         count.checked_mul(dim).ok_or_else(|| {
-            format!(
-                "MathProgram.fillLike: element-count overflow for reference shape {dims:?}"
-            )
+            format!("MathProgram.fillLike: element-count overflow for reference shape {dims:?}")
         })
     })?;
     let device = reference.inner.device();
@@ -91,7 +89,10 @@ mod tests {
         let negative = FillLikeParams::new(-0.0).unwrap();
         assert_eq!(positive, negative);
         assert_eq!(positive.encode(), [0; 4]);
-        assert_eq!(FillLikeParams::decode(&negative.encode()).unwrap(), positive);
+        assert_eq!(
+            FillLikeParams::decode(&negative.encode()).unwrap(),
+            positive
+        );
         assert!(FillLikeParams::new(f32::NAN).is_err());
         assert!(FillLikeParams::new(f32::INFINITY).is_err());
         assert!(FillLikeParams::new(f32::NEG_INFINITY).is_err());

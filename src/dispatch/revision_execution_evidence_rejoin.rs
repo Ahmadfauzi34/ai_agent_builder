@@ -71,7 +71,9 @@ pub fn record_revision_dispatch_execution_receipt(
         parent_revision_id,
     } = request.payload()
     else {
-        return Err(format!("{CONTEXT}: request payload is not propose_revision"));
+        return Err(format!(
+            "{CONTEXT}: request payload is not propose_revision"
+        ));
     };
 
     if receipt.request_fingerprint != request.request_fingerprint() {
@@ -119,7 +121,9 @@ pub fn record_revision_dispatch_execution_receipt(
     if committed.revision_key.as_str() != receipt.revision_key.as_str()
         || committed.parent_revision_id.as_deref() != receipt.parent_revision_id.as_deref()
     {
-        return Err(format!("{CONTEXT}: current chain revision does not match receipt"));
+        return Err(format!(
+            "{CONTEXT}: current chain revision does not match receipt"
+        ));
     }
     if chain_snapshot.revisions.len() < receipt.after_revision_count {
         return Err(format!(
@@ -147,8 +151,7 @@ pub fn record_revision_dispatch_execution_receipt(
 #[cfg(test)]
 mod tests {
     use super::{
-        record_revision_dispatch_execution_receipt,
-        revision_execution_evidence_rejoin_capabilities,
+        record_revision_dispatch_execution_receipt, revision_execution_evidence_rejoin_capabilities,
     };
     use crate::agent_response_intent::create_agent_response_intent;
     use crate::resolution_review::ResolutionReviewSession;
@@ -223,11 +226,7 @@ mod tests {
         let before = inbox.len();
 
         assert!(record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )
         .unwrap());
         assert_eq!(inbox.len(), before + 1);
@@ -254,19 +253,11 @@ mod tests {
     fn duplicate_execution_receipt_recording_is_idempotent() {
         let (mut inbox, intent, request, chain, receipt) = fixture();
         assert!(record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )
         .unwrap());
         assert!(!record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )
         .unwrap());
     }
@@ -278,11 +269,7 @@ mod tests {
         receipt.receipt_fingerprint = "fnv1a64:0000000000000000".to_string();
 
         let error = record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )
         .unwrap_err();
         assert!(error.contains("receipt fingerprint mismatch"));
@@ -296,11 +283,7 @@ mod tests {
         let before = inbox.len();
 
         assert!(record_revision_dispatch_execution_receipt(
-            &mut inbox,
-            &intent,
-            &request,
-            &chain,
-            &receipt,
+            &mut inbox, &intent, &request, &chain, &receipt,
         )
         .is_err());
         assert_eq!(inbox.len(), before);

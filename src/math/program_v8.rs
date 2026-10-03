@@ -250,7 +250,10 @@ fn validate_topology(
         ));
     }
     if filled & bit(record.in_a) == 0 {
-        return Err(format!("{context}: input slot {} is read before write", record.in_a));
+        return Err(format!(
+            "{context}: input slot {} is read before write",
+            record.in_a
+        ));
     }
     if record.arity == 2 && filled & bit(record.in_b) == 0 {
         return Err(format!(
@@ -381,7 +384,9 @@ fn decode_plan(plan: &[u8]) -> Result<DecodedPlan, String> {
 
     for index in 0..num_steps {
         if offset >= plan.len().saturating_sub(PLAN_OUTPUT_BYTES) {
-            return Err(format!("MathProgramV8: plan is truncated before step {index}"));
+            return Err(format!(
+                "MathProgramV8: plan is truncated before step {index}"
+            ));
         }
         let (record, consumed) = decode_raw_step_prefix(&plan[offset..])?;
         let step = compile_record(&record)?;
@@ -487,13 +492,8 @@ impl MathProgramV8Builder {
             return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
         compile_record(&record)?;
-        let (filled, written) = validate_topology(
-            &record,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_topology(&record, self.num_slots, self.filled, self.written, context)?;
         self.records.push(record);
         self.filled = filled;
         self.written = written;
@@ -506,22 +506,12 @@ impl MathProgramV8Builder {
     }
 
     pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
-        let record = v7_binary_record(lhs, rhs, output, |builder| {
-            builder.add_binary(op, 0, 1, 2)
-        })?;
+        let record = v7_binary_record(lhs, rhs, output, |builder| builder.add_binary(op, 0, 1, 2))?;
         self.push_record(record, "MathProgramV8Builder.addBinary")
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
-        let record = v7_unary_record(input, output, |builder| {
-            builder.add_clamp(0, 1, min, max)
-        })?;
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
+        let record = v7_unary_record(input, output, |builder| builder.add_clamp(0, 1, min, max))?;
         self.push_record(record, "MathProgramV8Builder.addClamp")
     }
 
@@ -538,27 +528,13 @@ impl MathProgramV8Builder {
         self.push_record(record, "MathProgramV8Builder.addCosineSimilarity")
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
-        let record = v7_unary_record(input, output, |builder| {
-            builder.add_reshape(0, 1, shape)
-        })?;
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
+        let record = v7_unary_record(input, output, |builder| builder.add_reshape(0, 1, shape))?;
         self.push_record(record, "MathProgramV8Builder.addReshape")
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
-        let record = v7_unary_record(input, output, |builder| {
-            builder.add_permute(0, 1, axes)
-        })?;
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
+        let record = v7_unary_record(input, output, |builder| builder.add_permute(0, 1, axes))?;
         self.push_record(record, "MathProgramV8Builder.addPermute")
     }
 
@@ -588,24 +564,14 @@ impl MathProgramV8Builder {
         self.push_record(record, "MathProgramV8Builder.addSelectAxis")
     }
 
-    pub fn add_fill_like(
-        &mut self,
-        reference: u8,
-        output: u8,
-        scalar: f32,
-    ) -> Result<(), String> {
+    pub fn add_fill_like(&mut self, reference: u8, output: u8, scalar: f32) -> Result<(), String> {
         let record = v7_unary_record(reference, output, |builder| {
             builder.add_fill_like(0, 1, scalar)
         })?;
         self.push_record(record, "MathProgramV8Builder.addFillLike")
     }
 
-    pub fn add_expand_like(
-        &mut self,
-        source: u8,
-        reference: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_expand_like(&mut self, source: u8, reference: u8, output: u8) -> Result<(), String> {
         let record = v7_binary_record(source, reference, output, |builder| {
             builder.add_expand_like(0, 1, 2)
         })?;
@@ -636,19 +602,43 @@ impl MathProgramV8Builder {
     }
 
     pub fn add_sum_axis(&mut self, input: u8, output: u8, axis: u32) -> Result<(), String> {
-        self.add_reduction(OP_SUM_AXIS, input, output, axis, "MathProgramV8Builder.addSumAxis")
+        self.add_reduction(
+            OP_SUM_AXIS,
+            input,
+            output,
+            axis,
+            "MathProgramV8Builder.addSumAxis",
+        )
     }
 
     pub fn add_mean_axis(&mut self, input: u8, output: u8, axis: u32) -> Result<(), String> {
-        self.add_reduction(OP_MEAN_AXIS, input, output, axis, "MathProgramV8Builder.addMeanAxis")
+        self.add_reduction(
+            OP_MEAN_AXIS,
+            input,
+            output,
+            axis,
+            "MathProgramV8Builder.addMeanAxis",
+        )
     }
 
     pub fn add_min_axis(&mut self, input: u8, output: u8, axis: u32) -> Result<(), String> {
-        self.add_reduction(OP_MIN_AXIS, input, output, axis, "MathProgramV8Builder.addMinAxis")
+        self.add_reduction(
+            OP_MIN_AXIS,
+            input,
+            output,
+            axis,
+            "MathProgramV8Builder.addMinAxis",
+        )
     }
 
     pub fn add_max_axis(&mut self, input: u8, output: u8, axis: u32) -> Result<(), String> {
-        self.add_reduction(OP_MAX_AXIS, input, output, axis, "MathProgramV8Builder.addMaxAxis")
+        self.add_reduction(
+            OP_MAX_AXIS,
+            input,
+            output,
+            axis,
+            "MathProgramV8Builder.addMaxAxis",
+        )
     }
 
     pub fn set_output(&mut self, slot: u8) -> Result<(), String> {
@@ -758,9 +748,7 @@ impl MathProgramV8 {
                     out,
                 } => {
                     let a = slots[*in_a as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV8.runInputs: step {index} input slot {in_a} is empty"
-                        )
+                        format!("MathProgramV8.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = if *arity == 1 {
                         program.run_inputs(&[a.clone()])?
@@ -781,9 +769,7 @@ impl MathProgramV8 {
                     axis,
                 } => {
                     let input_value = slots[*input as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV8.runInputs: step {index} input slot {input} is empty"
-                        )
+                        format!("MathProgramV8.runInputs: step {index} input slot {input} is empty")
                     })?;
                     let value = match op {
                         ReductionOp::Sum => reduction.sum_axis(input_value, *axis)?,
@@ -797,9 +783,12 @@ impl MathProgramV8 {
             slots[out as usize] = Some(value);
         }
 
-        slots[self.out_slot as usize]
-            .take()
-            .ok_or_else(|| format!("MathProgramV8.runInputs: output slot {} is empty", self.out_slot))
+        slots[self.out_slot as usize].take().ok_or_else(|| {
+            format!(
+                "MathProgramV8.runInputs: output slot {} is empty",
+                self.out_slot
+            )
+        })
     }
 
     pub fn program_plan(&self) -> Vec<u8> {
@@ -878,21 +867,33 @@ mod tests {
         let mut mean_builder = MathProgramV8Builder::new(1, 2).unwrap();
         mean_builder.add_mean_axis(0, 1, 0).unwrap();
         mean_builder.set_output(1).unwrap();
-        let mean = mean_builder.compile().unwrap().run_inputs(&[input.clone()]).unwrap();
+        let mean = mean_builder
+            .compile()
+            .unwrap()
+            .run_inputs(&[input.clone()])
+            .unwrap();
         assert_eq!(mean.shape(), vec![1, 2, 2, 1]);
         assert_close(&mean.to_array(), &[3.0, 4.0, 5.0, 6.0], 1e-6);
 
         let mut min_builder = MathProgramV8Builder::new(1, 2).unwrap();
         min_builder.add_min_axis(0, 1, 1).unwrap();
         min_builder.set_output(1).unwrap();
-        let min = min_builder.compile().unwrap().run_inputs(&[input.clone()]).unwrap();
+        let min = min_builder
+            .compile()
+            .unwrap()
+            .run_inputs(&[input.clone()])
+            .unwrap();
         assert_eq!(min.shape(), vec![2, 1, 2, 1]);
         assert_eq!(min.to_array(), vec![1.0, 2.0, 5.0, 6.0]);
 
         let mut max_builder = MathProgramV8Builder::new(1, 2).unwrap();
         max_builder.add_max_axis(0, 1, 2).unwrap();
         max_builder.set_output(1).unwrap();
-        let max = max_builder.compile().unwrap().run_inputs(&[input.clone()]).unwrap();
+        let max = max_builder
+            .compile()
+            .unwrap()
+            .run_inputs(&[input.clone()])
+            .unwrap();
         assert_eq!(max.shape(), vec![2, 2, 1, 1]);
         assert_eq!(max.to_array(), vec![2.0, 4.0, 6.0, 8.0]);
 
@@ -960,7 +961,11 @@ mod tests {
         builder.set_output(5).unwrap();
         let program = builder.compile().unwrap();
         let input = tensor(&[2.0, 4.0, 6.0], &[1, 3, 1, 1]);
-        assert_close(&program.run_inputs(&[input]).unwrap().to_array(), &[15.0], 1e-6);
+        assert_close(
+            &program.run_inputs(&[input]).unwrap().to_array(),
+            &[15.0],
+            1e-6,
+        );
     }
 
     #[test]

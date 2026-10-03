@@ -199,16 +199,7 @@ pub fn execute_graph_reverify_binding(
     }
 
     let preflight = preflight_graph_reverify_runtime_binding(
-        inbox,
-        intent,
-        binding,
-        workspace,
-        graph,
-        registry,
-        input,
-        candidate,
-        abs_tol,
-        rel_tol,
+        inbox, intent, binding, workspace, graph, registry, input, candidate, abs_tol, rel_tol,
         label,
     );
     if !preflight.ready {
@@ -219,9 +210,10 @@ pub fn execute_graph_reverify_binding(
     }
 
     let before_next_receipt_id = workspace.next_verifier_receipt_id();
-    let expected_after_next_receipt_id = before_next_receipt_id.checked_add(1).ok_or_else(|| {
-        "GraphReverifyExecutionAdapter: verifier receipt allocator exhausted".to_string()
-    })?;
+    let expected_after_next_receipt_id =
+        before_next_receipt_id.checked_add(1).ok_or_else(|| {
+            "GraphReverifyExecutionAdapter: verifier receipt allocator exhausted".to_string()
+        })?;
     let before_counts = workspace.introspection_verifier_receipt_counts();
     let before_total = receipt_total(before_counts);
     let rollback = workspace.clone();
@@ -331,9 +323,8 @@ pub fn rejoin_graph_reverify_execution_result(
         return Err(format!("{CONTEXT}: execution fingerprint mismatch"));
     }
 
-    let evidence = RuntimeEvidence::from_graph_verifier_receipt_json(
-        &result.verifier_receipt_json,
-    )?;
+    let evidence =
+        RuntimeEvidence::from_graph_verifier_receipt_json(&result.verifier_receipt_json)?;
     if evidence.kind() != "graph_verifier_receipt"
         || evidence.source_authority() != "wasm_verifier"
         || evidence.evidence_authority() != "observation_only"
@@ -424,13 +415,9 @@ mod tests {
         assert_eq!(source.outcome(), "failed");
         assert!(inbox.record(source).unwrap());
 
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         (inbox, intent, workspace, registry, graph, input)
     }
@@ -475,18 +462,17 @@ mod tests {
             result.before_verifier_receipt_count() + 1
         );
         assert_eq!(inbox.len(), inbox_before);
-        assert!(result.verifier_receipt_json().contains("\"authority\":\"wasm_verifier\""));
+        assert!(result
+            .verifier_receipt_json()
+            .contains("\"authority\":\"wasm_verifier\""));
         assert!(result
             .verifier_receipt_json()
             .contains("\"verifier\":\"CompiledGraph.verifyFlat\""));
 
-        assert!(rejoin_graph_reverify_execution_result(
-            &mut inbox,
-            &intent,
-            &binding,
-            &result,
-        )
-        .unwrap());
+        assert!(
+            rejoin_graph_reverify_execution_result(&mut inbox, &intent, &binding, &result,)
+                .unwrap()
+        );
         assert_eq!(inbox.len(), inbox_before + 1);
 
         let json = inbox.to_json();
@@ -530,13 +516,10 @@ mod tests {
         .unwrap();
         assert_eq!(result.verifier_outcome(), "failed");
 
-        assert!(rejoin_graph_reverify_execution_result(
-            &mut inbox,
-            &intent,
-            &binding,
-            &result,
-        )
-        .unwrap());
+        assert!(
+            rejoin_graph_reverify_execution_result(&mut inbox, &intent, &binding, &result,)
+                .unwrap()
+        );
 
         let json = inbox.to_json();
         assert!(json.contains("\"graph_verifier_failed\":2"));
@@ -629,8 +612,14 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(second.verifier_receipt_id(), first.verifier_receipt_id() + 1);
-        assert_ne!(first.execution_fingerprint(), second.execution_fingerprint());
+        assert_eq!(
+            second.verifier_receipt_id(),
+            first.verifier_receipt_id() + 1
+        );
+        assert_ne!(
+            first.execution_fingerprint(),
+            second.execution_fingerprint()
+        );
     }
 
     #[test]
@@ -641,7 +630,10 @@ mod tests {
             contract["execution"]["canonical_surface"],
             "workspaceVerifyGraphReceipt"
         );
-        assert_eq!(contract["execution"]["canonical_authority"], "wasm_verifier");
+        assert_eq!(
+            contract["execution"]["canonical_authority"],
+            "wasm_verifier"
+        );
         assert_eq!(contract["semantics"]["automatic_action_selection"], false);
         assert_eq!(contract["rejoin"]["evidence_authority"], "observation_only");
     }

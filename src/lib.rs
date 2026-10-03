@@ -13,14 +13,12 @@ pub mod resolution;
 pub mod semantic;
 // --- root re-exports: old `burn_research::<module>::` paths keep working ---
 pub use dispatch::{
-    agent_response_intent, response_dispatch_executor_preflight,
-    response_dispatch_request, response_dispatch_requirements,
-    response_intent_execution_gate, revision_dispatch_execution_adapter,
-    revision_execution_evidence_rejoin,
+    agent_response_intent, response_dispatch_executor_preflight, response_dispatch_request,
+    response_dispatch_requirements, response_intent_execution_gate,
+    revision_dispatch_execution_adapter, revision_execution_evidence_rejoin,
 };
 pub use evidence::{
-    program_bundle, proof_provenance, runtime_evidence_interpretation,
-    runtime_resolution_evidence,
+    program_bundle, proof_provenance, runtime_evidence_interpretation, runtime_resolution_evidence,
 };
 pub use graph::{
     graph_candidate_verification, graph_execution_trace, graph_mutation_transaction,
@@ -28,23 +26,112 @@ pub use graph::{
     graph_reverify_execution_adapter, graph_reverify_runtime_binding, multi_input_graph,
 };
 pub use ingress::{
-    input_contract, input_port, input_port_consumer, input_port_edge_binding,
-    input_port_routing,
+    input_contract, input_port, input_port_consumer, input_port_edge_binding, input_port_routing,
 };
 pub use resolution::{
-    resolution_review, resolution_revision, resolution_runtime_bridge,
-    resolution_subject,
+    resolution_review, resolution_revision, resolution_runtime_bridge, resolution_subject,
 };
 pub use semantic::{
     semantic_execution_context, semantic_ingress_manifest, semantic_ingress_manifest_v2,
     semantic_lifecycle,
 };
+// --- root re-exports: items moved to the WASM facade (Opsi C, Fase 1) ---
+// `burn_research::<item>` root paths keep working; JS surface unchanged.
+pub use facade::tensor::{TensorView, WasmTensor};
+pub use facade::wasm_types::{
+    WasmActivation, WasmBinary, WasmComparison, WasmConv, WasmEmbedding, WasmFeatureNorm,
+    WasmGhostModule, WasmIndexSource, WasmLinear, WasmLinearAlgebra, WasmMathProgram,
+    WasmMathProgramBuilder, WasmMathProgramV4, WasmMathProgramV4Builder, WasmMathProgramV5,
+    WasmMathProgramV5Builder, WasmMathProgramV6, WasmMathProgramV6Builder, WasmMathProgramV7,
+    WasmMathProgramV7Builder, WasmMathProgramV8, WasmMathProgramV8Builder, WasmMathProgramV9,
+    WasmMathProgramV9Builder, WasmNorm, WasmNumericKernel, WasmPool, WasmProbability,
+    WasmReduction, WasmSeBlock, WasmShift, WasmStatistics, WasmTensorTransform,
+};
+// --- root re-exports: #[wasm_bindgen] free functions moved to the facade (Opsi C, Fase 1) ---
+pub use facade::agent::{agent_capabilities};
+pub use facade::contracts::{
+    agent_contract_schema, agent_contract_schema_version, agent_layout_compatibility,
+    agent_layout_contract, agent_layout_contract_version, agent_spec_layout,
+    validate_agent_layout_edge,
+};
+pub use facade::coprocessor::math_verify_vectors;
+pub use facade::es::es_capabilities;
+pub use facade::evidence::{
+    export_multi_input_program_bundle, export_program_bundle, import_multi_input_program_bundle,
+    import_program_bundle, math_proof_capabilities, multi_input_program_bundle_capabilities,
+    program_bundle_capabilities, proof_provenance_capabilities,
+    runtime_resolution_evidence_capabilities, workspace_bind_runtime_direct_math_operation,
+    workspace_bind_runtime_math_program_plan, workspace_proof_ledger, workspace_record_attestation,
+    workspace_verify_direct_math_1_receipt, workspace_verify_direct_math_2_receipt,
+    workspace_verify_graph_receipt, workspace_verify_math_program_1_receipt,
+    workspace_verify_math_program_2_receipt, workspace_verify_semantic_graph_receipt,
+    workspace_verify_vector_receipt,
+};
+pub use facade::graph::{
+    checkpoint_branch_capabilities, get_graph_parameters_flat, graph_parameter_capabilities,
+    graph_parameter_identity, graph_parameter_layout, multi_input_graph_capabilities,
+    program_capabilities, set_graph_parameters_flat,
+};
+pub use facade::ingress::{
+    bind_input_port_consumer_edge, input_contract_capabilities, input_contract_compatibility,
+    input_port_capabilities, input_port_consumer_capabilities, input_port_consumer_compatibility,
+    input_port_consumer_edge_binding, input_port_consumer_edge_compatibility,
+    input_port_edge_binding_capabilities, input_port_routing_capabilities,
+    interaction_valid_actions_for_input_consumer, semantic_graph_identity,
+    workspace_bind_input_contract, workspace_bind_input_port_metadata,
+    workspace_clear_input_contract, workspace_clear_input_port_metadata, workspace_input_contract,
+    workspace_input_port_metadata,
+};
+pub use facade::interaction::{
+    interaction_capabilities, interaction_check_compile, interaction_check_init_binary,
+    interaction_check_init_unary, interaction_check_release_slot, interaction_check_reserve_slot,
+    interaction_fault_capabilities, interaction_snapshot, interaction_valid_actions,
+};
+pub use facade::introspection::{
+    agent_layer_catalog, describe_graph, describe_workspace, introspection_capabilities,
+};
+pub use facade::math::{
+    linear_algebra_capabilities, math_check_operation, math_describe_operation,
+    math_interaction_capabilities, math_operation_catalog, math_plan_binding,
+    math_valid_operations, numeric_kernel_capabilities, probability_capabilities,
+    statistics_capabilities, tensor_transform_capabilities, wasm_comparison_capabilities,
+    wasm_index_source_capabilities, wasm_math_program_capabilities,
+    wasm_math_program_v4_capabilities, wasm_math_program_v5_capabilities,
+    wasm_math_program_v6_capabilities, wasm_math_program_v7_capabilities,
+    wasm_math_program_v8_capabilities, wasm_math_program_v9_capabilities,
+    wasm_reduction_capabilities,
+};
+pub use facade::registry::{
+    layer_registry_inventory_capabilities, layer_registry_operation_binding_capabilities,
+};
+pub use facade::resolution::{
+    bind_runtime_subject_projection, resolution_runtime_bridge_capabilities,
+    workspace_bind_runtime_subject, workspace_runtime_program_binding, workspace_runtime_subject,
+};
+pub use facade::semantic::{
+    bind_semantic_lifecycle_transition, semantic_execution_context,
+    semantic_execution_context_capabilities, semantic_ingress_manifest_capabilities,
+    semantic_ingress_manifest_status, semantic_ingress_manifest_v2_capabilities,
+    semantic_lifecycle_capabilities, semantic_lifecycle_identity, semantic_lifecycle_projection,
+    semantic_lifecycle_transition,
+};
+pub use facade::workspace::{
+    workspace_capabilities, workspace_compile, workspace_compile_for_runtime_subject,
+    workspace_init_binary, workspace_init_unary, workspace_wire_binary, workspace_wire_unary,
+};
 pub mod authorization;
-pub mod coprocessor;
+#[cfg(test)]
+mod contract_matrix_tests;
 pub mod contracts;
+pub mod coprocessor;
 pub mod effective_spec;
 pub mod effective_spec_inherit_remainder;
 pub mod es;
+pub mod facade;
+#[cfg(test)]
+mod feature_norm_integration_tests;
+#[cfg(test)]
+mod hardening_tests;
 pub mod interaction;
 pub mod interaction_fault;
 pub mod introspection;
@@ -52,18 +139,12 @@ pub mod layers;
 pub mod math;
 pub mod protocol;
 pub mod registry;
-pub mod workspace;
-pub mod workspace_ops;
-#[cfg(test)]
-mod contract_matrix_tests;
 #[cfg(test)]
 mod stateless_lifecycle_tests;
 #[cfg(test)]
-mod feature_norm_integration_tests;
-#[cfg(test)]
 mod tests;
-#[cfg(test)]
-mod hardening_tests;
+pub mod workspace;
+pub mod workspace_ops;
 
 pub type WasmBackend = burn_ndarray::NdArray<f32>;
 
@@ -104,11 +185,7 @@ fn checked_element_count(dims: [usize; 4], context: &str) -> Result<usize, Strin
     })
 }
 
-fn validate_element_count(
-    dims: [usize; 4],
-    actual: usize,
-    context: &str,
-) -> Result<(), String> {
+fn validate_element_count(dims: [usize; 4], actual: usize, context: &str) -> Result<(), String> {
     let expected = checked_element_count(dims, context)?;
     if actual != expected {
         return Err(format!(
@@ -128,155 +205,6 @@ fn checked_sab_byte_length(total_elements: usize) -> Result<u32, String> {
             total_elements, bytes
         )
     })
-}
-
-// -------------------------------------------------------------
-// WASM TENSOR — 4D tensor bridge
-// -------------------------------------------------------------
-#[wasm_bindgen]
-#[derive(Clone)]
-pub struct WasmTensor {
-    pub(crate) inner: Tensor<WasmBackend, 4>,
-}
-
-#[wasm_bindgen]
-impl WasmTensor {
-    #[wasm_bindgen(constructor)]
-    pub fn new(data: &[f32], shape: &[usize]) -> WasmTensor {
-        let dims = normalize_rank4_shape(shape, "WasmTensor::new")
-            .unwrap_or_else(|err| boundary_fail(err));
-        validate_element_count(dims, data.len(), "WasmTensor::new")
-            .unwrap_or_else(|err| boundary_fail(err));
-
-        let device = Default::default();
-        let tensor_data = TensorData::new(data.to_vec(), dims);
-        let tensor = Tensor::from_data(tensor_data, &device);
-        WasmTensor { inner: tensor }
-    }
-
-    pub fn to_array(&self) -> Vec<f32> {
-        let data = self.inner.to_data();
-        data.as_slice::<f32>().unwrap().to_vec()
-    }
-
-    pub fn shape(&self) -> Vec<usize> {
-        self.inner.dims().into()
-    }
-
-    pub fn byte_length(&self) -> usize {
-        checked_element_count(self.inner.dims(), "WasmTensor::byte_length")
-            .and_then(|count| {
-                count
-                    .checked_mul(std::mem::size_of::<f32>())
-                    .ok_or_else(|| "WasmTensor::byte_length: byte length overflow".to_string())
-            })
-            .unwrap_or_else(|err| boundary_fail(err))
-    }
-}
-
-// -------------------------------------------------------------
-// TENSOR VIEW — SharedArrayBuffer bridge (zero-copy JS side)
-// -------------------------------------------------------------
-#[wasm_bindgen]
-pub struct TensorView {
-    sab: JsValue,
-    shape: Vec<usize>,
-}
-
-#[wasm_bindgen]
-impl TensorView {
-    #[wasm_bindgen(constructor)]
-    pub fn new(total_elements: usize) -> Self {
-        let byte_length = checked_sab_byte_length(total_elements)
-            .unwrap_or_else(|err| boundary_fail(err));
-        let sab = js_sys::SharedArrayBuffer::new(byte_length);
-        TensorView {
-            sab: JsValue::from(sab),
-            shape: vec![total_elements, 1, 1, 1],
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        let arr = Float32Array::new(&self.sab);
-        arr.length() as usize
-    }
-
-    #[wasm_bindgen(js_name = setShape)]
-    pub fn set_shape(&mut self, shape: Vec<usize>) -> Result<(), String> {
-        let dims = normalize_rank4_shape(&shape, "TensorView::setShape")?;
-        validate_element_count(dims, self.len(), "TensorView::setShape")?;
-        self.shape = dims.to_vec();
-        Ok(())
-    }
-
-    pub fn shape(&self) -> Vec<usize> {
-        self.shape.clone()
-    }
-
-    fn as_f32_array(&self) -> Float32Array {
-        Float32Array::new(&self.sab)
-    }
-
-    /// Copy data dari SAB ke slice Rust (Rust baca data JS)
-    pub fn read(&self, dst: &mut [f32]) {
-        if dst.len() != self.len() {
-            boundary_fail(format!(
-                "TensorView::read: destination length {} does not match view length {}",
-                dst.len(),
-                self.len()
-            ));
-        }
-        let arr = self.as_f32_array();
-        arr.copy_to(dst);
-    }
-
-    /// Copy data dari slice Rust ke SAB (Rust tulis data untuk JS)
-    pub fn write(&self, src: &[f32]) {
-        if src.len() != self.len() {
-            boundary_fail(format!(
-                "TensorView::write: source length {} does not match view length {}",
-                src.len(),
-                self.len()
-            ));
-        }
-        let arr = self.as_f32_array();
-        arr.copy_from(src);
-    }
-}
-
-// -------------------------------------------------------------
-// WASM TENSOR ↔ TENSOR VIEW
-// -------------------------------------------------------------
-#[wasm_bindgen]
-impl WasmTensor {
-    #[wasm_bindgen(js_name = fromTensorView)]
-    pub fn from_tensor_view(view: &TensorView) -> WasmTensor {
-        let dims = normalize_rank4_shape(&view.shape, "WasmTensor::fromTensorView")
-            .unwrap_or_else(|err| boundary_fail(err));
-        validate_element_count(dims, view.len(), "WasmTensor::fromTensorView")
-            .unwrap_or_else(|err| boundary_fail(err));
-
-        let mut buf = vec![0f32; view.len()];
-        view.read(&mut buf);
-
-        let device = Default::default();
-        let tensor_data = TensorData::new(buf, dims);
-        WasmTensor {
-            inner: Tensor::from_data(tensor_data, &device),
-        }
-    }
-
-    #[wasm_bindgen(js_name = toTensorView)]
-    pub fn to_tensor_view(&self, view: &mut TensorView) -> Result<(), String> {
-        let dims = self.inner.dims();
-        validate_element_count(dims, view.len(), "WasmTensor::toTensorView")?;
-
-        let data = self.inner.to_data();
-        let slice = data.as_slice::<f32>().unwrap();
-        view.write(slice);
-        view.set_shape(dims.into())?;
-        Ok(())
-    }
 }
 
 #[cfg(test)]

@@ -293,9 +293,10 @@ impl AgentWorkspace {
             return false;
         }
         let has_layer_state = self.rows.iter().any(|row| row.table == TABLE_LAYERS);
-        let has_reserved_runtime_slot = self.rows.iter().any(|row| {
-            row.table == TABLE_SLOTS && row.key != "0" && row.state != "free"
-        });
+        let has_reserved_runtime_slot = self
+            .rows
+            .iter()
+            .any(|row| row.table == TABLE_SLOTS && row.key != "0" && row.state != "free");
         let has_proof_state = self.rows.iter().any(|row| {
             matches!(
                 row.table.as_str(),
@@ -383,7 +384,8 @@ impl AgentWorkspace {
         identity: &str,
         context: &str,
     ) -> Result<(), String> {
-        if self.runtime_subject_binding.is_some() && !self.runtime_program_identity_bound(identity) {
+        if self.runtime_subject_binding.is_some() && !self.runtime_program_identity_bound(identity)
+        {
             return Err(format!(
                 "{context}: graph programIdentity is not bound to this runtime subject; compile it with workspaceCompileForRuntimeSubject first"
             ));
@@ -455,11 +457,14 @@ impl AgentWorkspace {
             .iter()
             .filter(|row| row.table == TABLE_SLOTS)
             .filter_map(|row| {
-                row.key.parse::<u8>().ok().map(|slot| WorkspaceSlotIntrospection {
-                    slot,
-                    state: row.state.clone(),
-                    owner: row.value.clone(),
-                })
+                row.key
+                    .parse::<u8>()
+                    .ok()
+                    .map(|slot| WorkspaceSlotIntrospection {
+                        slot,
+                        state: row.state.clone(),
+                        owner: row.value.clone(),
+                    })
             })
             .collect::<Vec<_>>();
         slots.sort_by_key(|row| row.slot);
@@ -467,33 +472,42 @@ impl AgentWorkspace {
     }
 
     pub(crate) fn introspection_layers(&self) -> Vec<WorkspaceLayerIntrospection> {
-        let mut layers = self
-            .rows
-            .iter()
-            .filter(|row| row.table == TABLE_LAYERS)
-            .filter_map(|row| {
-                let layer_id = row.key.parse::<u32>().ok()?;
-                if row.state == "initialized" {
-                    let parsed = row
-                        .value
-                        .rsplit_once(";variant=")
-                        .and_then(|(before_variant, variant)| {
-                            before_variant
-                                .rsplit_once(";type=")
-                                .map(|(before_type, layer_type)| (before_type, layer_type, variant))
-                        });
-                    if let Some((before_type, layer_type, variant)) = parsed {
-                        let parsed_type = layer_type.parse::<u8>().ok();
-                        let parsed_variant = variant.parse::<u8>().ok();
-                        let label = before_type.strip_prefix("label=").unwrap_or(before_type);
-                        Some(WorkspaceLayerIntrospection {
-                            layer_id,
-                            state: row.state.clone(),
-                            label: label.to_string(),
-                            layer_type: parsed_type,
-                            variant: parsed_variant,
-                            metadata_valid: parsed_type.is_some() && parsed_variant.is_some(),
-                        })
+        let mut layers =
+            self.rows
+                .iter()
+                .filter(|row| row.table == TABLE_LAYERS)
+                .filter_map(|row| {
+                    let layer_id = row.key.parse::<u32>().ok()?;
+                    if row.state == "initialized" {
+                        let parsed = row.value.rsplit_once(";variant=").and_then(
+                            |(before_variant, variant)| {
+                                before_variant.rsplit_once(";type=").map(
+                                    |(before_type, layer_type)| (before_type, layer_type, variant),
+                                )
+                            },
+                        );
+                        if let Some((before_type, layer_type, variant)) = parsed {
+                            let parsed_type = layer_type.parse::<u8>().ok();
+                            let parsed_variant = variant.parse::<u8>().ok();
+                            let label = before_type.strip_prefix("label=").unwrap_or(before_type);
+                            Some(WorkspaceLayerIntrospection {
+                                layer_id,
+                                state: row.state.clone(),
+                                label: label.to_string(),
+                                layer_type: parsed_type,
+                                variant: parsed_variant,
+                                metadata_valid: parsed_type.is_some() && parsed_variant.is_some(),
+                            })
+                        } else {
+                            Some(WorkspaceLayerIntrospection {
+                                layer_id,
+                                state: row.state.clone(),
+                                label: row.value.clone(),
+                                layer_type: None,
+                                variant: None,
+                                metadata_valid: false,
+                            })
+                        }
                     } else {
                         Some(WorkspaceLayerIntrospection {
                             layer_id,
@@ -501,21 +515,11 @@ impl AgentWorkspace {
                             label: row.value.clone(),
                             layer_type: None,
                             variant: None,
-                            metadata_valid: false,
+                            metadata_valid: true,
                         })
                     }
-                } else {
-                    Some(WorkspaceLayerIntrospection {
-                        layer_id,
-                        state: row.state.clone(),
-                        label: row.value.clone(),
-                        layer_type: None,
-                        variant: None,
-                        metadata_valid: true,
-                    })
-                }
-            })
-            .collect::<Vec<_>>();
+                })
+                .collect::<Vec<_>>();
         layers.sort_by_key(|row| row.layer_id);
         layers
     }
@@ -607,7 +611,10 @@ impl AgentWorkspace {
     }
 
     pub(crate) fn introspection_event_count(&self) -> usize {
-        self.rows.iter().filter(|row| row.table == TABLE_EVENTS).count()
+        self.rows
+            .iter()
+            .filter(|row| row.table == TABLE_EVENTS)
+            .count()
     }
 
     pub(crate) fn introspection_custom_tables(&self) -> Vec<String> {
@@ -721,12 +728,7 @@ impl AgentWorkspace {
     }
 
     /// Query any table, including read-only inspection of internal tables.
-    pub fn query(
-        &self,
-        table: String,
-        kind: Option<String>,
-        state: Option<String>,
-    ) -> String {
+    pub fn query(&self, table: String, kind: Option<String>, state: Option<String>) -> String {
         self.query_rows(&table, kind.as_deref(), state.as_deref())
     }
 
@@ -752,7 +754,11 @@ impl AgentWorkspace {
 
     #[wasm_bindgen(js_name = tableNames)]
     pub fn table_names(&self) -> String {
-        let mut names = self.rows.iter().map(|row| row.table.as_str()).collect::<Vec<_>>();
+        let mut names = self
+            .rows
+            .iter()
+            .map(|row| row.table.as_str())
+            .collect::<Vec<_>>();
         names.sort_unstable();
         names.dedup();
         let body = names
@@ -839,9 +845,9 @@ impl AgentWorkspace {
                     "reserved".into(),
                     label,
                 )?;
-                self.next_layer_id = candidate
-                    .checked_add(1)
-                    .ok_or_else(|| "AgentWorkspace.reserveLayerId: allocator exhausted".to_string())?;
+                self.next_layer_id = candidate.checked_add(1).ok_or_else(|| {
+                    "AgentWorkspace.reserveLayerId: allocator exhausted".to_string()
+                })?;
                 return Ok(candidate);
             }
             candidate = candidate
@@ -869,7 +875,8 @@ impl AgentWorkspace {
         let actual = registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
         let mut expected_registry = LayerRegistry::new();
         expected_registry.init_agent_layer(spec)?;
-        let expected = expected_registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+        let expected =
+            expected_registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
         if actual != expected {
             return Err(format!(
                 "AgentWorkspace.syncLayer: registry init identity mismatch for layer type 0x{:02X} id {}; supplied AgentLayerSpec does not match the live layer",
@@ -1140,7 +1147,9 @@ mod tests {
         let mut workspace = AgentWorkspace::new(3).unwrap();
         let first = workspace.reserve_slot("relu-output".into()).unwrap();
         assert_eq!(first, 1);
-        assert!(workspace.get("_slots".into(), "1".into()).contains("reserved"));
+        assert!(workspace
+            .get("_slots".into(), "1".into())
+            .contains("reserved"));
         workspace.release_slot(first).unwrap();
         assert!(workspace.get("_slots".into(), "1".into()).contains("free"));
         assert_eq!(workspace.reserve_slot("other".into()).unwrap(), 1);
@@ -1197,8 +1206,12 @@ mod tests {
         registry.init_agent_layer(&existing).unwrap();
 
         let mut workspace = AgentWorkspace::new(4).unwrap();
-        let first = workspace.reserve_layer_id(&registry, "candidate".into()).unwrap();
-        let second = workspace.reserve_layer_id(&registry, "candidate-2".into()).unwrap();
+        let first = workspace
+            .reserve_layer_id(&registry, "candidate".into())
+            .unwrap();
+        let second = workspace
+            .reserve_layer_id(&registry, "candidate-2".into())
+            .unwrap();
         assert_eq!(first, 2);
         assert_eq!(second, 3);
     }
@@ -1208,12 +1221,18 @@ mod tests {
         let mut workspace = AgentWorkspace::new(4).unwrap();
         let mut registry = LayerRegistry::new();
         let spec = AgentLayerSpec::relu(7);
-        assert!(workspace.sync_layer(&registry, &spec, "relu".into()).is_err());
+        assert!(workspace
+            .sync_layer(&registry, &spec, "relu".into())
+            .is_err());
         assert_eq!(workspace.get("_layers".into(), "7".into()), "null");
 
         registry.init_agent_layer(&spec).unwrap();
-        workspace.sync_layer(&registry, &spec, "relu".into()).unwrap();
-        assert!(workspace.get("_layers".into(), "7".into()).contains("initialized"));
+        workspace
+            .sync_layer(&registry, &spec, "relu".into())
+            .unwrap();
+        assert!(workspace
+            .get("_layers".into(), "7".into())
+            .contains("initialized"));
         assert!(registry.layer_exists(LAYER_ACTIVATION, 7));
     }
 
@@ -1223,7 +1242,9 @@ mod tests {
         let mut registry = LayerRegistry::new();
         let spec = AgentLayerSpec::relu(9);
         registry.init_agent_layer(&spec).unwrap();
-        workspace.sync_layer(&registry, &spec, "relu".into()).unwrap();
+        workspace
+            .sync_layer(&registry, &spec, "relu".into())
+            .unwrap();
         assert!(workspace.forget_layer(9));
         assert!(registry.layer_exists(LAYER_ACTIVATION, 9));
     }
@@ -1246,7 +1267,12 @@ mod tests {
     fn proofs_and_events_are_queryable_state() {
         let mut workspace = AgentWorkspace::new(4).unwrap();
         workspace
-            .record_proof("python-vs-burn".into(), false, 0.25, "first_failure=3".into())
+            .record_proof(
+                "python-vs-burn".into(),
+                false,
+                0.25,
+                "first_failure=3".into(),
+            )
             .unwrap();
         assert_eq!(
             workspace
@@ -1254,8 +1280,12 @@ mod tests {
                 .unwrap(),
             1
         );
-        assert!(workspace.query("_proofs".into(), None, Some("failed".into())).contains("0.25"));
-        assert!(workspace.query("_events".into(), Some("candidate".into()), None).contains("python-a"));
+        assert!(workspace
+            .query("_proofs".into(), None, Some("failed".into()))
+            .contains("0.25"));
+        assert!(workspace
+            .query("_events".into(), Some("candidate".into()), None)
+            .contains("python-a"));
     }
 
     fn bind_test_runtime_subject(workspace: &mut AgentWorkspace) {
@@ -1316,5 +1346,4 @@ mod tests {
         assert!(error.contains("exceeds limit"));
         assert_eq!(workspace.snapshot(), before);
     }
-
 }

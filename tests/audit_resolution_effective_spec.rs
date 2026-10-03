@@ -83,7 +83,8 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
 
     // 2) Current actor values are provenance labels, not authorization. Demonstrate the gap explicitly.
     {
-        let spec = EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
+        let spec =
+            EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
         let mut review = SubjectBoundReviewSession::new(
             "intent-self-approved",
             spec.approval_subject().unwrap(),
@@ -116,8 +117,7 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
     let (approved_large, large_root_snapshot) = {
         let declarations = (0..64)
             .map(|index| {
-                SpecDeclaration::new(format!("k{index:02}"), format!("v{index:02}"))
-                    .unwrap()
+                SpecDeclaration::new(format!("k{index:02}"), format!("v{index:02}")).unwrap()
             })
             .collect::<Vec<_>>();
         let root = EffectiveSpec::root(declarations).unwrap();
@@ -127,7 +127,7 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
     {
         let sparse = approved_large
             .materialize_child(vec![
-                SpecDirective::override_value("k00", "changed").unwrap(),
+                SpecDirective::override_value("k00", "changed").unwrap()
             ])
             .unwrap();
         let diagnostics = match sparse {
@@ -198,7 +198,8 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
 
     // 5) Exact approval subject prevents swapping a sibling spec under another approval.
     {
-        let root = EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
+        let root =
+            EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
         let (approved_root, root_snapshot) = approve_root("intent-binding-root", root, "customer");
 
         let child_a = approved_root
@@ -233,7 +234,8 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
 
     // 6) Parent-approval lineage is independently enforced even when the subject identity matches.
     {
-        let root = EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
+        let root =
+            EffectiveSpec::root(vec![SpecDeclaration::new("mode", "stable").unwrap()]).unwrap();
         let (approved_root, root_snapshot) = approve_root("intent-lineage-root", root, "customer");
 
         let child = approved_root
@@ -247,9 +249,7 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
             .open_revision(None, "child", child.approval_subject().unwrap())
             .unwrap();
         chain.submit_revision(&child_revision, "agent").unwrap();
-        let child_approval = chain
-            .approve_revision(&child_revision, "customer")
-            .unwrap();
+        let child_approval = chain.approve_revision(&child_revision, "customer").unwrap();
         let approved_child = ApprovedEffectiveSpec::bind_revision(child, child_approval).unwrap();
 
         let grandchild = approved_child
@@ -273,8 +273,8 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
             .approve_revision(&wrong_lineage_revision, "customer")
             .unwrap();
 
-        let err = ApprovedEffectiveSpec::bind_revision(grandchild, wrong_lineage_approval)
-            .unwrap_err();
+        let err =
+            ApprovedEffectiveSpec::bind_revision(grandchild, wrong_lineage_approval).unwrap_err();
         assert!(err.contains("parent approval mismatch"));
 
         findings.push(Finding {
@@ -292,7 +292,9 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
             let mut workflow = ResolutionWorkflow::new(format!("intent-{terminal}")).unwrap();
             workflow.submit().unwrap();
             match terminal {
-                "contradiction" => workflow.mark_contradiction("conflicting constraints").unwrap(),
+                "contradiction" => workflow
+                    .mark_contradiction("conflicting constraints")
+                    .unwrap(),
                 "unsupported" => workflow.mark_unsupported("capability absent").unwrap(),
                 "invalid" => workflow.mark_invalid("malformed request").unwrap(),
                 _ => unreachable!(),
@@ -349,8 +351,7 @@ fn audit_resolution_and_effective_spec_communication_boundaries() {
     {
         let too_many = (0..65)
             .map(|index| {
-                SpecDeclaration::new(format!("z{index:02}"), format!("v{index:02}"))
-                    .unwrap()
+                SpecDeclaration::new(format!("z{index:02}"), format!("v{index:02}")).unwrap()
             })
             .collect::<Vec<_>>();
         assert!(EffectiveSpec::root(too_many).is_err());

@@ -25,10 +25,7 @@ fn checked_axis(axis: u32, context: &str) -> Result<usize, String> {
     Ok(axis as usize)
 }
 
-pub(crate) fn validate_indices_like_shape(
-    shape: [usize; 4],
-    axis: usize,
-) -> Result<usize, String> {
+pub(crate) fn validate_indices_like_shape(shape: [usize; 4], axis: usize) -> Result<usize, String> {
     for (shape_axis, dim) in shape.iter().copied().enumerate() {
         if dim == 0 {
             return Err(format!(
@@ -46,9 +43,7 @@ pub(crate) fn validate_indices_like_shape(
 
     shape.into_iter().try_fold(1usize, |count, dim| {
         count.checked_mul(dim).ok_or_else(|| {
-            format!(
-                "IndexSource.indicesLike: element-count overflow for reference shape {shape:?}"
-            )
+            format!("IndexSource.indicesLike: element-count overflow for reference shape {shape:?}")
         })
     })
 }
@@ -90,11 +85,7 @@ impl TensorIndexSource {
     }
 
     /// Materialize exact f32 coordinates along one axis while preserving the reference shape.
-    pub fn indices_like(
-        &self,
-        reference: &WasmTensor,
-        axis: u32,
-    ) -> Result<WasmTensor, String> {
+    pub fn indices_like(&self, reference: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
         // Validate the scalar parameter before consulting tensor metadata or executing backend work.
         let axis = checked_axis(axis, "IndexSource.indicesLike")?;
         let shape = reference.inner.dims();
@@ -152,10 +143,7 @@ mod tests {
 
         let axis0 = source().indices_like(&reference, 0).unwrap();
         assert_eq!(axis0.shape(), vec![2, 3, 2, 2]);
-        assert_eq!(
-            axis0.to_array(),
-            [vec![0.0; 12], vec![1.0; 12]].concat()
-        );
+        assert_eq!(axis0.to_array(), [vec![0.0; 12], vec![1.0; 12]].concat());
 
         let axis1 = source().indices_like(&reference, 1).unwrap();
         assert_eq!(
@@ -172,10 +160,7 @@ mod tests {
         );
 
         let axis2 = source().indices_like(&reference, 2).unwrap();
-        assert_eq!(
-            axis2.to_array(),
-            vec![0.0, 0.0, 1.0, 1.0].repeat(6)
-        );
+        assert_eq!(axis2.to_array(), vec![0.0, 0.0, 1.0, 1.0].repeat(6));
 
         let axis3 = source().indices_like(&reference, 3).unwrap();
         assert_eq!(axis3.to_array(), vec![0.0, 1.0].repeat(12));
@@ -211,16 +196,10 @@ mod tests {
         assert_eq!(MAX_EXACT_F32_COORDINATE, 16_777_216);
         assert_eq!(MAX_INDICES_LIKE_AXIS_LENGTH, 16_777_217);
         assert_eq!(MAX_EXACT_F32_COORDINATE as f32, 16_777_216.0);
-        assert!(validate_indices_like_shape(
-            [1, MAX_INDICES_LIKE_AXIS_LENGTH, 1, 1],
-            1
-        )
-        .is_ok());
-        assert!(validate_indices_like_shape(
-            [1, MAX_INDICES_LIKE_AXIS_LENGTH + 1, 1, 1],
-            1
-        )
-        .is_err());
+        assert!(validate_indices_like_shape([1, MAX_INDICES_LIKE_AXIS_LENGTH, 1, 1], 1).is_ok());
+        assert!(
+            validate_indices_like_shape([1, MAX_INDICES_LIKE_AXIS_LENGTH + 1, 1, 1], 1).is_err()
+        );
     }
 
     #[test]

@@ -1,11 +1,12 @@
-use burn::prelude::*;
-use burn::nn::{Embedding, EmbeddingConfig};
 use super::state_record::deterministic_record_bytes;
-use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
+pub use crate::facade::wasm_types::WasmEmbedding;
 use crate::layers::shape_contract::require_singleton_spatial;
+use crate::{WasmBackend, WasmTensor};
+use burn::nn::{Embedding, EmbeddingConfig};
+use burn::prelude::*;
+use wasm_bindgen::prelude::*;
 
-fn validate_embedding_indices(values: &[f32], vocab_size: usize) -> Result<(), String> {
+pub(crate) fn validate_embedding_indices(values: &[f32], vocab_size: usize) -> Result<(), String> {
     for (position, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
@@ -79,7 +80,7 @@ impl<B: Backend> EmbeddingLayer<B> {
     }
 }
 
-fn validate_embedding_state_structure(
+pub(crate) fn validate_embedding_state_structure(
     current: &EmbeddingLayerRecord<WasmBackend>,
     incoming: &EmbeddingLayerRecord<WasmBackend>,
 ) -> Result<(), String> {
@@ -97,152 +98,13 @@ fn validate_embedding_state_structure(
     }
 }
 
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmEmbedding {
-    inner: EmbeddingLayer<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmEmbedding {
-    #[wasm_bindgen(constructor)]
-    pub fn new(vocab_size: usize, d_model: usize) -> WasmEmbedding {
-        let device = Default::default();
-        // Complaint #15: deterministic zero initial weights (no implicit RNG).
-        let config = EmbeddingConfig::new(vocab_size, d_model)
-            .with_initializer(burn::module::Initializer::Zeros);
-        WasmEmbedding {
-            inner: EmbeddingConfigEnum::Basic(config).init(&device),
-        }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input)
-            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: EmbeddingLayerRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "Embedding loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_embedding_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
-}
-
-impl WasmEmbedding {
-    fn vocab_size(&self) -> usize {
-        let rec = self.inner.clone().into_record();
-        match rec {
-            EmbeddingLayerRecord::Basic(r) => r.weight.dims()[0],
-        }
-    }
-
-    fn d_model(&self) -> usize {
-        let rec = self.inner.clone().into_record();
-        match rec {
-            EmbeddingLayerRecord::Basic(r) => r.weight.dims()[1],
-        }
-    }
-
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        require_singleton_spatial(input.inner.dims(), "Embedding forward")?;
-        // Complaint #18: output is [b, s, d_model], i.e. input_numel * d_model
-        // elements — it can dwarf the input. Validate the budget before the
-        // lookup materializes it, so the run fails structured.
-        let input_numel: usize = input.inner.dims().iter().product();
-        crate::protocol::check_numel(
-            &[input_numel, self.d_model()],
-            "Embedding forward output",
-        )?;
-        let input_data = input.inner.to_data();
-        let values = input_data
-            .as_slice::<f32>()
-            .map_err(|_| "Embedding forward: input tensor is not f32".to_string())?;
-        validate_embedding_indices(values, self.vocab_size())?;
-        let out = self.inner.forward(input.inner.clone());
-        Ok(WasmTensor { inner: out })
-    }
-}
-
 // ============================================================
 // FLOAT-BRIDGE (M1) — embedding. Record = { weight: Param<T2> } (tanpa bias).
 // ============================================================
-#[wasm_bindgen]
-impl WasmEmbedding {
-    #[wasm_bindgen(js_name = weightDims)]
-    pub fn weight_dims(&self) -> Vec<usize> {
-        let rec = self.inner.clone().into_record();
-        match rec {
-            EmbeddingLayerRecord::Basic(r) => r.weight.dims().to_vec(),
-        }
-    }
-
-    #[wasm_bindgen(js_name = getWeightsFlat)]
-    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
-        let rec = self.inner.clone().into_record();
-        match rec {
-            EmbeddingLayerRecord::Basic(r) => {
-                let w = <Tensor<WasmBackend, 2> as Clone>::clone(&r.weight).into_data();
-                w.as_slice::<f32>()
-                    .map_err(|_| "getWeightsFlat: embedding weight not f32".to_string())
-                    .map(|s| s.to_vec())
-            }
-        }
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
-        let mut rec = self.inner.clone().into_record();
-        match &mut rec {
-            EmbeddingLayerRecord::Basic(r) => {
-                let wd = r.weight.dims(); // [vocab, d_model]
-                let need = wd[0] * wd[1];
-                if data.len() != need {
-                    return Err(format!("setWeightsFlat: expected {} floats, got {}", need, data.len()));
-                }
-                let device: <WasmBackend as Backend>::Device = Default::default();
-                r.weight = burn::module::Param::from_data(
-                    burn::tensor::TensorData::new(data[..need].to_vec(), wd),
-                    &device,
-                );
-            }
-        }
-        self.inner = self.inner.clone().load_record(rec);
-        Ok(())
-    }
-}
 
 // ============================================================
 // WEIGHT LAYOUT (M2) — embedding. Hanya weight (tanpa bias).
 // ============================================================
-impl WasmEmbedding {
-    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
-        let rec = self.inner.clone().into_record();
-        match rec {
-            EmbeddingLayerRecord::Basic(r) => {
-                vec![("weight", r.weight.dims().iter().product::<usize>())]
-            }
-        }
-    }
-
-    pub fn weight_layout(&self) -> String {
-        crate::layers::layout::segs_json(&self.weight_segs())
-    }
-}
 
 #[cfg(test)]
 mod tests {

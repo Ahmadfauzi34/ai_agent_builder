@@ -4,9 +4,9 @@
 //! through a canonical one-step Math Program v6 replay, so this version introduces exactly one new
 //! execution semantic: explicit singleton expansion to a reference tensor shape.
 
-use crate::math::program_v6::{MathProgramV6, MathProgramV6Builder};
 use crate::math::program_runtime_shape::expand_like;
 use crate::math::program_step_record::{ProgramStepRecord, STEP_HEADER_BYTES};
+use crate::math::program_v6::{MathProgramV6, MathProgramV6Builder};
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
@@ -183,13 +183,9 @@ fn canonical_one_step_v6_plan(record: &RawStepRecord) -> Result<Vec<u8>, String>
 
 fn compile_record(record: &RawStepRecord) -> Result<ExecutableStep, String> {
     if record.op == OP_EXPAND_LIKE {
-        if record.arity != 2
-            || record.param_kind != PARAM_NONE
-            || !record.payload.is_empty()
-        {
+        if record.arity != 2 || record.param_kind != PARAM_NONE || !record.payload.is_empty() {
             return Err(
-                "MathProgramV7: expandLike requires binary arity and empty plain parameters"
-                    .into(),
+                "MathProgramV7: expandLike requires binary arity and empty plain parameters".into(),
             );
         }
         return Ok(ExecutableStep::ExpandLike {
@@ -470,13 +466,8 @@ impl MathProgramV7Builder {
             return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
         compile_record(&record)?;
-        let (filled, written) = validate_topology(
-            &record,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_topology(&record, self.num_slots, self.filled, self.written, context)?;
         self.records.push(record);
         self.filled = filled;
         self.written = written;
@@ -488,29 +479,13 @@ impl MathProgramV7Builder {
         self.push_record(record, "MathProgramV7Builder.addUnary")
     }
 
-    pub fn add_binary(
-        &mut self,
-        op: u8,
-        lhs: u8,
-        rhs: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        let record = v6_binary_record(lhs, rhs, output, |builder| {
-            builder.add_binary(op, 0, 1, 2)
-        })?;
+    pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
+        let record = v6_binary_record(lhs, rhs, output, |builder| builder.add_binary(op, 0, 1, 2))?;
         self.push_record(record, "MathProgramV7Builder.addBinary")
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
-        let record = v6_unary_record(input, output, |builder| {
-            builder.add_clamp(0, 1, min, max)
-        })?;
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
+        let record = v6_unary_record(input, output, |builder| builder.add_clamp(0, 1, min, max))?;
         self.push_record(record, "MathProgramV7Builder.addClamp")
     }
 
@@ -527,27 +502,13 @@ impl MathProgramV7Builder {
         self.push_record(record, "MathProgramV7Builder.addCosineSimilarity")
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
-        let record = v6_unary_record(input, output, |builder| {
-            builder.add_reshape(0, 1, shape)
-        })?;
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
+        let record = v6_unary_record(input, output, |builder| builder.add_reshape(0, 1, shape))?;
         self.push_record(record, "MathProgramV7Builder.addReshape")
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
-        let record = v6_unary_record(input, output, |builder| {
-            builder.add_permute(0, 1, axes)
-        })?;
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
+        let record = v6_unary_record(input, output, |builder| builder.add_permute(0, 1, axes))?;
         self.push_record(record, "MathProgramV7Builder.addPermute")
     }
 
@@ -577,24 +538,14 @@ impl MathProgramV7Builder {
         self.push_record(record, "MathProgramV7Builder.addSelectAxis")
     }
 
-    pub fn add_fill_like(
-        &mut self,
-        reference: u8,
-        output: u8,
-        scalar: f32,
-    ) -> Result<(), String> {
+    pub fn add_fill_like(&mut self, reference: u8, output: u8, scalar: f32) -> Result<(), String> {
         let record = v6_unary_record(reference, output, |builder| {
             builder.add_fill_like(0, 1, scalar)
         })?;
         self.push_record(record, "MathProgramV7Builder.addFillLike")
     }
 
-    pub fn add_expand_like(
-        &mut self,
-        source: u8,
-        reference: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_expand_like(&mut self, source: u8, reference: u8, output: u8) -> Result<(), String> {
         self.push_record(
             raw_step_record(
                 OP_EXPAND_LIKE,
@@ -715,9 +666,7 @@ impl MathProgramV7 {
                     out,
                 } => {
                     let a = slots[*in_a as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV7.runInputs: step {index} input slot {in_a} is empty"
-                        )
+                        format!("MathProgramV7.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = if *arity == 1 {
                         program.run_inputs(&[a.clone()])?
@@ -752,9 +701,12 @@ impl MathProgramV7 {
             slots[out as usize] = Some(value);
         }
 
-        slots[self.out_slot as usize]
-            .take()
-            .ok_or_else(|| format!("MathProgramV7.runInputs: output slot {} is empty", self.out_slot))
+        slots[self.out_slot as usize].take().ok_or_else(|| {
+            format!(
+                "MathProgramV7.runInputs: output slot {} is empty",
+                self.out_slot
+            )
+        })
     }
 
     pub fn program_plan(&self) -> Vec<u8> {
@@ -820,7 +772,14 @@ mod tests {
         let e2 = 2.0f32.exp();
         let e3 = 3.0f32.exp();
         let sum = e1 + e2 + e3;
-        let expected = [e1 / sum, e2 / sum, e3 / sum, 1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0];
+        let expected = [
+            e1 / sum,
+            e2 / sum,
+            e3 / sum,
+            1.0 / 3.0,
+            1.0 / 3.0,
+            1.0 / 3.0,
+        ];
         assert_close(&output.to_array(), &expected, 2e-6);
         let values = output.to_array();
         assert!((values[0..3].iter().sum::<f32>() - 1.0).abs() <= 2e-6);
@@ -837,7 +796,9 @@ mod tests {
 
         let bad_source = tensor(&[1.0, 2.0], &[1, 2, 1, 1]);
         let reference = tensor(&[0.0, 0.0, 0.0], &[1, 3, 1, 1]);
-        assert!(program.run_inputs(&[bad_source, reference.clone()]).is_err());
+        assert!(program
+            .run_inputs(&[bad_source, reference.clone()])
+            .is_err());
         assert_eq!(program.program_identity(), identity);
 
         let good_source = tensor(&[4.0], &[1, 1, 1, 1]);

@@ -58,20 +58,8 @@ fn persistent_edge_binding_changes_semantic_identity_not_program_identity() {
     )
     .unwrap();
 
-    assert!(bind_input_port_consumer_edge(
-        &workspace,
-        &mut builder,
-        &consumer,
-        0,
-    )
-    .unwrap());
-    assert!(!bind_input_port_consumer_edge(
-        &workspace,
-        &mut builder,
-        &consumer,
-        0,
-    )
-    .unwrap());
+    assert!(bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0,).unwrap());
+    assert!(!bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0,).unwrap());
 
     let program_after = builder
         .compile_with_output(&registry, output)
@@ -131,28 +119,17 @@ fn conflicting_rebind_fails_closed_without_rewriting_first_binding() {
     )
     .unwrap();
 
-    let first = InputPortConsumerSpec::new(
-        "first".into(),
-        "[\"observation\"]".into(),
-        false,
-        false,
-        0,
-    )
-    .unwrap();
-    let second = InputPortConsumerSpec::new(
-        "second".into(),
-        "[\"observation\"]".into(),
-        false,
-        false,
-        0,
-    )
-    .unwrap();
+    let first =
+        InputPortConsumerSpec::new("first".into(), "[\"observation\"]".into(), false, false, 0)
+            .unwrap();
+    let second =
+        InputPortConsumerSpec::new("second".into(), "[\"observation\"]".into(), false, false, 0)
+            .unwrap();
 
     bind_input_port_consumer_edge(&workspace, &mut builder, &first, 0).unwrap();
     let before = input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap();
 
-    let err = bind_input_port_consumer_edge(&workspace, &mut builder, &second, 0)
-        .unwrap_err();
+    let err = bind_input_port_consumer_edge(&workspace, &mut builder, &second, 0).unwrap_err();
     assert!(err.contains("different immutable semantic binding"));
 
     let after = input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap();
@@ -235,10 +212,7 @@ fn provenance_drift_is_reported_without_mutating_binding_history() {
     let incompatible_drift: serde_json::Value =
         serde_json::from_str(&input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap())
             .unwrap();
-    assert_eq!(
-        incompatible_drift["binding_state"],
-        "drifted_incompatible"
-    );
+    assert_eq!(incompatible_drift["binding_state"], "drifted_incompatible");
     assert_eq!(incompatible_drift["current_compatible"], false);
     assert_eq!(
         incompatible_drift["binding"]["binding_fingerprint"],
@@ -302,44 +276,28 @@ fn topology_origin_is_enforced_while_consumer_compatibility_remains_advisory() {
             .unwrap_err()
             .contains("does not consume external slot 0")
     );
-    let internal_status: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_binding(&workspace, &builder, 1).unwrap(),
-    )
-    .unwrap();
+    let internal_status: serde_json::Value =
+        serde_json::from_str(&input_port_consumer_edge_binding(&workspace, &builder, 1).unwrap())
+            .unwrap();
     assert_eq!(internal_status["status"], "not_applicable");
 
-    let reward_consumer = InputPortConsumerSpec::new(
-        "reward-only".into(),
-        "[\"reward\"]".into(),
-        false,
-        false,
-        0,
-    )
-    .unwrap();
+    let reward_consumer =
+        InputPortConsumerSpec::new("reward-only".into(), "[\"reward\"]".into(), false, false, 0)
+            .unwrap();
 
     let program_before = builder
         .compile_with_output(&registry, second_output)
         .unwrap()
         .program_identity();
 
-    assert!(bind_input_port_consumer_edge(
-        &workspace,
-        &mut builder,
-        &reward_consumer,
-        0,
-    )
-    .unwrap());
+    assert!(bind_input_port_consumer_edge(&workspace, &mut builder, &reward_consumer, 0,).unwrap());
 
-    let bound: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap(),
-    )
-    .unwrap();
+    let bound: serde_json::Value =
+        serde_json::from_str(&input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap())
+            .unwrap();
     assert_eq!(bound["binding"]["compatibility_at_bind"], "incompatible");
     assert_eq!(bound["current_compatible"], false);
-    assert_eq!(
-        bound["binding"]["consumer"]["consumer_id"],
-        "reward-only"
-    );
+    assert_eq!(bound["binding"]["consumer"]["consumer_id"], "reward-only");
 
     let program_after = builder
         .compile_with_output(&registry, second_output)

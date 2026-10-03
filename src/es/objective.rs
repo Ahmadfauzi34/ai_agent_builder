@@ -58,8 +58,7 @@ impl Objective for LinearMseObjective {
             for o in 0..self.out_dim {
                 let mut pred = 0.0f64;
                 for k in 0..self.in_dim {
-                    pred += self.x[i * self.in_dim + k] as f64
-                        * w[k * self.out_dim + o] as f64;
+                    pred += self.x[i * self.in_dim + k] as f64 * w[k * self.out_dim + o] as f64;
                 }
                 let target = self.y[i * self.out_dim + o] as f64;
                 let err = pred - target;

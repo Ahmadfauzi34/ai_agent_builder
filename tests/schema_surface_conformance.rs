@@ -31,7 +31,9 @@ fn workspace_discovery_matches_schema_surface_inventory_exactly() {
     let mut inventoried = BTreeSet::new();
     let mut inventoried_count = 0usize;
     for class in classes {
-        let entries = workspace[class].as_array().expect("surface class must be an array");
+        let entries = workspace[class]
+            .as_array()
+            .expect("surface class must be an array");
         inventoried_count += entries.len();
         for entry in entries {
             assert!(
@@ -100,7 +102,10 @@ fn canonical_operations_expose_builder_range_guards_at_the_real_boundaries() {
                 guard["bind"]["slot"].as_str().unwrap()
             })
             .collect::<Vec<_>>();
-        assert_eq!(actual, expected_slots, "wrong builder-range bindings for {operation}");
+        assert_eq!(
+            actual, expected_slots,
+            "wrong builder-range bindings for {operation}"
+        );
     }
 
     for operation in [
@@ -133,7 +138,9 @@ fn builder_input_range_guard_fails_before_init_or_metadata_mutation() {
     let mut workspace = AgentWorkspace::new(3).unwrap();
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(1).unwrap();
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let input_slot = workspace.reserve_slot("readable-input".into()).unwrap();
     assert_eq!(input_slot, 1);
@@ -199,7 +206,9 @@ fn auto_reserved_output_guard_rolls_back_without_restricting_the_api() {
     let mut workspace = AgentWorkspace::new(3).unwrap();
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(1).unwrap();
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let before = workspace.snapshot();
 

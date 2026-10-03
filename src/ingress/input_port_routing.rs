@@ -1,176 +1,33 @@
+pub use crate::facade::ingress::{
+    input_port_consumer_edge_compatibility, input_port_routing_capabilities,
+    interaction_valid_actions_for_input_consumer,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
-use crate::input_port_consumer::{
-    input_port_consumer_compatibility, InputPortConsumerSpec,
-};
+use crate::input_port_consumer::{input_port_consumer_compatibility, InputPortConsumerSpec};
 use crate::interaction::{valid_actions_json, validate_projection_inputs};
 use crate::registry::LayerRegistry;
 use crate::workspace::AgentWorkspace;
 
-const INPUT_PORT_ROUTING_V1: &str =
+pub(crate) const INPUT_PORT_ROUTING_V1: &str =
     include_str!("../../docs/contracts/agent-input-port-routing.v1.json");
 
-fn bool_json(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
+pub(crate) fn bool_json(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
 }
 
-fn positions_json(positions: &[&str]) -> String {
+pub(crate) fn positions_json(positions: &[&str]) -> String {
     let body = positions
         .iter()
         .map(|value| format!("\"{value}\""))
         .collect::<Vec<_>>()
         .join(",");
     format!("[{body}]")
-}
-
-#[wasm_bindgen(js_name = inputPortRoutingCapabilities)]
-pub fn input_port_routing_capabilities() -> String {
-    INPUT_PORT_ROUTING_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = interactionValidActionsForInputConsumer)]
-pub fn interaction_valid_actions_for_input_consumer(
-    workspace: &AgentWorkspace,
-    builder: &AgentGraphBuilder,
-    registry: &LayerRegistry,
-    consumer: &InputPortConsumerSpec,
-) -> Result<String, String> {
-    validate_projection_inputs(workspace, builder)?;
-
-    let slot_zero_is_canonical_candidate = workspace.interaction_readable_slots().contains(&0);
-    let compatibility = input_port_consumer_compatibility(workspace, consumer);
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.input-port-routing-actions.v1\",",
-            "\"projection_only\":true,",
-            "\"execution_authorized\":false,",
-            "\"decision_authority\":\"agent\",",
-            "\"canonical_valid_actions\":{},",
-            "\"semantic_overlay\":{{",
-                "\"input_slot\":0,",
-                "\"candidate_present\":{},",
-                "\"candidate_retained\":true,",
-                "\"consumer\":{},",
-                "\"compatibility\":{},",
-                "\"affected_operations\":[",
-                    "{{\"operation\":\"workspaceInitUnary\",\"positions\":[\"input\"],\"effect\":\"advisory_only\"}},",
-                    "{{\"operation\":\"workspaceInitBinary\",\"positions\":[\"left\",\"right\"],\"effect\":\"advisory_only\"}}",
-                "],",
-                "\"policy\":\"semantic_status_never_rewrites_canonical_action_availability\"",
-            "}}",
-            "}}"
-        ),
-        valid_actions_json(workspace, builder, registry),
-        bool_json(slot_zero_is_canonical_candidate),
-        consumer.describe(),
-        compatibility,
-    ))
-}
-
-#[wasm_bindgen(js_name = inputPortConsumerEdgeCompatibility)]
-pub fn input_port_consumer_edge_compatibility(
-    workspace: &AgentWorkspace,
-    builder: &AgentGraphBuilder,
-    consumer: &InputPortConsumerSpec,
-    step_index: u32,
-) -> Result<String, String> {
-    if workspace.interaction_num_slots() != builder.num_slots() {
-        return Err(format!(
-            "inputPortConsumerEdgeCompatibility: workspace num_slots {} does not match builder num_slots {}",
-            workspace.interaction_num_slots(),
-            builder.num_slots()
-        ));
-    }
-
-    let steps = builder.introspection_steps();
-    let index = usize::try_from(step_index)
-        .map_err(|_| "inputPortConsumerEdgeCompatibility: step index conversion failed".to_string())?;
-    let Some((arity, layer_type, layer_id, in_slot, in_slot2, out_slot)) = steps.get(index).copied()
-    else {
-        return Err(format!(
-            "inputPortConsumerEdgeCompatibility: step index {step_index} is outside num_steps {}",
-            steps.len()
-        ));
-    };
-
-    let positions = builder
-        .external_input_positions_for_step(step_index)
-        .map_err(|error| format!("inputPortConsumerEdgeCompatibility: {error}"))?;
-
-    if positions.is_empty() {
-        return Ok(format!(
-            concat!(
-                "{{",
-                "\"schema_version\":1,",
-                "\"schema_id\":\"burn-research.input-port-routing-edge.v1\",",
-                "\"projection_only\":true,",
-                "\"status\":\"not_applicable\",",
-                "\"execution_authorized\":false,",
-                "\"decision_authority\":\"agent\",",
-                "\"consumer\":{},",
-                "\"edge\":{{",
-                    "\"step_index\":{},",
-                    "\"arity\":{},",
-                    "\"layer_type\":{},",
-                    "\"layer_id\":{},",
-                    "\"input_slots\":[{},{}],",
-                    "\"output_slot\":{},",
-                    "\"external_input_positions\":[]",
-                "}},",
-                "\"compatibility\":null,",
-                "\"reason\":\"step_does_not_consume_external_slot_0\"",
-            "}}"
-            ),
-            consumer.describe(),
-            step_index,
-            arity,
-            layer_type,
-            layer_id,
-            in_slot,
-            in_slot2,
-            out_slot,
-        ));
-    }
-
-    let compatibility = input_port_consumer_compatibility(workspace, consumer);
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.input-port-routing-edge.v1\",",
-            "\"projection_only\":true,",
-            "\"status\":\"applicable\",",
-            "\"execution_authorized\":false,",
-            "\"decision_authority\":\"agent\",",
-            "\"consumer\":{},",
-            "\"edge\":{{",
-                "\"step_index\":{},",
-                "\"arity\":{},",
-                "\"layer_type\":{},",
-                "\"layer_id\":{},",
-                "\"input_slots\":[{},{}],",
-                "\"output_slot\":{},",
-                "\"external_input_positions\":{}",
-            "}},",
-            "\"compatibility\":{},",
-            "\"policy\":\"edge_semantics_are_caller_declared_not_inferred_from_layer_type\"",
-            "}}"
-        ),
-        consumer.describe(),
-        step_index,
-        arity,
-        layer_type,
-        layer_id,
-        in_slot,
-        in_slot2,
-        out_slot,
-        positions_json(&positions),
-        compatibility,
-    ))
 }
 
 #[cfg(test)]
@@ -211,10 +68,7 @@ mod tests {
         let before = workspace.snapshot();
         let result: serde_json::Value = serde_json::from_str(
             &interaction_valid_actions_for_input_consumer(
-                &workspace,
-                &builder,
-                &registry,
-                &consumer,
+                &workspace, &builder, &registry, &consumer,
             )
             .unwrap(),
         )
@@ -273,13 +127,7 @@ mod tests {
         let before_params = registry.total_params();
 
         let result: serde_json::Value = serde_json::from_str(
-            &input_port_consumer_edge_compatibility(
-                &workspace,
-                &builder,
-                &consumer,
-                0,
-            )
-            .unwrap(),
+            &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 0).unwrap(),
         )
         .unwrap();
 
@@ -336,13 +184,7 @@ mod tests {
         .unwrap();
 
         let result: serde_json::Value = serde_json::from_str(
-            &input_port_consumer_edge_compatibility(
-                &workspace,
-                &builder,
-                &consumer,
-                1,
-            )
-            .unwrap(),
+            &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 1).unwrap(),
         )
         .unwrap();
 

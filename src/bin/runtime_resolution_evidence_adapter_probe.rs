@@ -32,9 +32,7 @@ fn run() -> Result<(), String> {
         .read_to_string(&mut raw)
         .map_err(|error| format!("stdin read failed: {error}"))?;
     if raw.trim().is_empty() {
-        return Err(
-            "stdin must contain one supported verifier receipt JSON object".to_string(),
-        );
+        return Err("stdin must contain one supported verifier receipt JSON object".to_string());
     }
 
     let receipt: serde_json::Value = serde_json::from_str(raw.trim())

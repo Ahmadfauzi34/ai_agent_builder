@@ -23,7 +23,14 @@ pub struct OpenEs {
 impl OpenEs {
     pub fn new(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut Rng) -> Self {
         let mean = (0..dim).map(|_| rng.gaussian() * 0.1).collect();
-        Self { dim, half, sigma, lr, mean, eps: Vec::new() }
+        Self {
+            dim,
+            half,
+            sigma,
+            lr,
+            mean,
+            eps: Vec::new(),
+        }
     }
 
     pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
@@ -38,18 +45,36 @@ impl OpenEs {
 }
 
 impl EsStrategy for OpenEs {
-    fn name(&self) -> &'static str { "openes_antithetic" }
-    fn dim(&self) -> usize { self.dim }
-    fn sigma(&self) -> f32 { self.sigma }
-    fn lr(&self) -> f32 { self.lr }
+    fn name(&self) -> &'static str {
+        "openes_antithetic"
+    }
+    fn dim(&self) -> usize {
+        self.dim
+    }
+    fn sigma(&self) -> f32 {
+        self.sigma
+    }
+    fn lr(&self) -> f32 {
+        self.lr
+    }
 
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
         self.eps.clear();
         let mut cands = Vec::with_capacity(self.half * 2);
         for _ in 0..self.half {
             let e: Vec<f32> = (0..self.dim).map(|_| rng.gaussian() * self.sigma).collect();
-            let plus: Vec<f32> = self.mean.iter().zip(e.iter()).map(|(m, &ei)| m + ei).collect();
-            let minus: Vec<f32> = self.mean.iter().zip(e.iter()).map(|(m, &ei)| m - ei).collect();
+            let plus: Vec<f32> = self
+                .mean
+                .iter()
+                .zip(e.iter())
+                .map(|(m, &ei)| m + ei)
+                .collect();
+            let minus: Vec<f32> = self
+                .mean
+                .iter()
+                .zip(e.iter())
+                .map(|(m, &ei)| m - ei)
+                .collect();
             self.eps.push(e);
             cands.push(plus);
             cands.push(minus);
@@ -78,16 +103,22 @@ impl EsStrategy for OpenEs {
         let mut g = vec![0.0f64; self.dim];
         for j in 0..self.half {
             let diff = centered[2 * j] - centered[2 * j + 1];
-            for d in 0..self.dim { g[d] += diff * self.eps[j][d] as f64; }
+            for d in 0..self.dim {
+                g[d] += diff * self.eps[j][d] as f64;
+            }
         }
-        for d in 0..self.dim { self.mean[d] += ((self.lr as f64) * (g[d] / denom)) as f32; }
+        for d in 0..self.dim {
+            self.mean[d] += ((self.lr as f64) * (g[d] / denom)) as f32;
+        }
 
         // One ask batch may be consumed only once. Invalid tell calls above do not consume it,
         // so callers can correct the fitness vector and retry safely.
         self.eps.clear();
     }
 
-    fn mean(&self) -> Vec<f32> { self.mean.clone() }
+    fn mean(&self) -> Vec<f32> {
+        self.mean.clone()
+    }
 }
 
 // ---------------- (mu, lambda) elitist Gaussian mutation ----------------
@@ -105,15 +136,30 @@ impl MuLambda {
         let parents = (0..mu)
             .map(|_| (0..dim).map(|_| rng.gaussian() * 0.5).collect())
             .collect();
-        Self { dim, mu, lambda, sigma, parents, last_children: Vec::new() }
+        Self {
+            dim,
+            mu,
+            lambda,
+            sigma,
+            parents,
+            last_children: Vec::new(),
+        }
     }
 }
 
 impl EsStrategy for MuLambda {
-    fn name(&self) -> &'static str { "mu_lambda" }
-    fn dim(&self) -> usize { self.dim }
-    fn sigma(&self) -> f32 { self.sigma }
-    fn lr(&self) -> f32 { 0.0 } // tidak ada lr eksplisit; dilaporkan 0 supaya JSON seragam
+    fn name(&self) -> &'static str {
+        "mu_lambda"
+    }
+    fn dim(&self) -> usize {
+        self.dim
+    }
+    fn sigma(&self) -> f32 {
+        self.sigma
+    }
+    fn lr(&self) -> f32 {
+        0.0
+    } // tidak ada lr eksplisit; dilaporkan 0 supaya JSON seragam
 
     fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
         if self.mu == 0 || self.parents.len() != self.mu || !self.sigma.is_finite() {
@@ -140,18 +186,29 @@ impl EsStrategy for MuLambda {
             return;
         }
 
-        let mut pairs: Vec<(f64, Vec<f32>)> =
-            fitness.iter().copied().zip(self.last_children.iter().cloned()).collect();
+        let mut pairs: Vec<(f64, Vec<f32>)> = fitness
+            .iter()
+            .copied()
+            .zip(self.last_children.iter().cloned())
+            .collect();
         pairs.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(core::cmp::Ordering::Equal)); // desc
         self.parents = pairs.into_iter().take(self.mu).map(|(_, c)| c).collect();
         self.last_children.clear();
     }
 
     fn mean(&self) -> Vec<f32> {
-        if self.parents.is_empty() { return vec![0.0; self.dim]; }
+        if self.parents.is_empty() {
+            return vec![0.0; self.dim];
+        }
         let mut m = vec![0.0f64; self.dim];
-        for p in &self.parents { for d in 0..self.dim { m[d] += p[d] as f64; } }
-        for d in 0..self.dim { m[d] /= self.parents.len() as f64; }
+        for p in &self.parents {
+            for d in 0..self.dim {
+                m[d] += p[d] as f64;
+            }
+        }
+        for d in 0..self.dim {
+            m[d] /= self.parents.len() as f64;
+        }
         m.into_iter().map(|v| v as f32).collect()
     }
 }
@@ -173,21 +230,56 @@ impl Strategy {
     pub fn set_learning_rate(&mut self, lr: f32) -> Result<(), String> {
         match self {
             Strategy::OpenEs(strategy) => strategy.set_learning_rate(lr),
-            Strategy::MuLambda(_) => Err(
-                "setLearningRate: learning rate is only supported by OpenES".into(),
-            ),
+            Strategy::MuLambda(_) => {
+                Err("setLearningRate: learning rate is only supported by OpenES".into())
+            }
         }
     }
 }
 
 impl EsStrategy for Strategy {
-    fn name(&self) -> &'static str { match self { Strategy::OpenEs(s) => s.name(), Strategy::MuLambda(s) => s.name() } }
-    fn dim(&self) -> usize { match self { Strategy::OpenEs(s) => s.dim(), Strategy::MuLambda(s) => s.dim() } }
-    fn sigma(&self) -> f32 { match self { Strategy::OpenEs(s) => s.sigma(), Strategy::MuLambda(s) => s.sigma() } }
-    fn lr(&self) -> f32 { match self { Strategy::OpenEs(s) => s.lr(), Strategy::MuLambda(s) => s.lr() } }
-    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> { match self { Strategy::OpenEs(s) => s.ask(rng), Strategy::MuLambda(s) => s.ask(rng) } }
-    fn tell(&mut self, fitness: &[f64]) { match self { Strategy::OpenEs(s) => s.tell(fitness), Strategy::MuLambda(s) => s.tell(fitness) } }
-    fn mean(&self) -> Vec<f32> { match self { Strategy::OpenEs(s) => s.mean(), Strategy::MuLambda(s) => s.mean() } }
+    fn name(&self) -> &'static str {
+        match self {
+            Strategy::OpenEs(s) => s.name(),
+            Strategy::MuLambda(s) => s.name(),
+        }
+    }
+    fn dim(&self) -> usize {
+        match self {
+            Strategy::OpenEs(s) => s.dim(),
+            Strategy::MuLambda(s) => s.dim(),
+        }
+    }
+    fn sigma(&self) -> f32 {
+        match self {
+            Strategy::OpenEs(s) => s.sigma(),
+            Strategy::MuLambda(s) => s.sigma(),
+        }
+    }
+    fn lr(&self) -> f32 {
+        match self {
+            Strategy::OpenEs(s) => s.lr(),
+            Strategy::MuLambda(s) => s.lr(),
+        }
+    }
+    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
+        match self {
+            Strategy::OpenEs(s) => s.ask(rng),
+            Strategy::MuLambda(s) => s.ask(rng),
+        }
+    }
+    fn tell(&mut self, fitness: &[f64]) {
+        match self {
+            Strategy::OpenEs(s) => s.tell(fitness),
+            Strategy::MuLambda(s) => s.tell(fitness),
+        }
+    }
+    fn mean(&self) -> Vec<f32> {
+        match self {
+            Strategy::OpenEs(s) => s.mean(),
+            Strategy::MuLambda(s) => s.mean(),
+        }
+    }
 }
 
 #[cfg(test)]

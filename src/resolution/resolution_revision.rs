@@ -375,7 +375,12 @@ mod tests {
         assert_eq!(chain.root_snapshot(), &original);
         assert!(!chain.revision_compile_eligible(&child).unwrap());
         assert_eq!(
-            chain.revision_snapshot(&child).unwrap().review.workflow.state,
+            chain
+                .revision_snapshot(&child)
+                .unwrap()
+                .review
+                .workflow
+                .state,
             ResolutionState::Draft
         );
     }
@@ -410,7 +415,12 @@ mod tests {
         assert!(chain.revision_compile_eligible(&left).unwrap());
         assert!(!chain.revision_compile_eligible(&right).unwrap());
         assert_eq!(
-            chain.revision_snapshot(&right).unwrap().review.workflow.state,
+            chain
+                .revision_snapshot(&right)
+                .unwrap()
+                .review
+                .workflow
+                .state,
             ResolutionState::Draft
         );
     }
@@ -435,7 +445,12 @@ mod tests {
             .is_err());
         assert_eq!(chain.snapshot(), before);
         assert_eq!(
-            chain.revision_snapshot(&right).unwrap().review.workflow.state,
+            chain
+                .revision_snapshot(&right)
+                .unwrap()
+                .review
+                .workflow
+                .state,
             ResolutionState::Draft
         );
     }
@@ -466,7 +481,10 @@ mod tests {
             .unwrap();
 
         let child_snapshot = chain.revision_snapshot(&child).unwrap();
-        assert_eq!(child_snapshot.review.workflow.state, ResolutionState::Unsupported);
+        assert_eq!(
+            child_snapshot.review.workflow.state,
+            ResolutionState::Unsupported
+        );
         assert!(!child_snapshot.compile_eligible());
         assert_eq!(chain.root_snapshot(), &original);
         assert!(chain.root_snapshot().compile_eligible());
@@ -481,7 +499,10 @@ mod tests {
 
         let grandchild = chain.open_revision(Some(&child), "grandchild").unwrap();
         let grandchild_snapshot = chain.revision_snapshot(&grandchild).unwrap();
-        assert_eq!(grandchild_snapshot.parent_revision_id.as_deref(), Some(child.as_str()));
+        assert_eq!(
+            grandchild_snapshot.parent_revision_id.as_deref(),
+            Some(child.as_str())
+        );
         assert_eq!(
             grandchild_snapshot.parent_approval_id,
             child_approval.revision_approval_id

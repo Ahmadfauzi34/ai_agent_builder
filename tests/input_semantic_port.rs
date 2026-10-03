@@ -65,7 +65,10 @@ fn introspection_exposes_semantic_input_port_without_inference() {
 
     let unbound_workspace: serde_json::Value =
         serde_json::from_str(&describe_workspace(&workspace, &registry)).unwrap();
-    assert_eq!(unbound_workspace["external_input_port"]["status"], "unbound");
+    assert_eq!(
+        unbound_workspace["external_input_port"]["status"],
+        "unbound"
+    );
 
     workspace_bind_input_port_metadata(
         &mut workspace,
@@ -78,7 +81,10 @@ fn introspection_exposes_semantic_input_port_without_inference() {
 
     let workspace_json: serde_json::Value =
         serde_json::from_str(&describe_workspace(&workspace, &registry)).unwrap();
-    assert_eq!(workspace_json["external_input_port"]["role"], "x-market-regime");
+    assert_eq!(
+        workspace_json["external_input_port"]["role"],
+        "x-market-regime"
+    );
     assert!(workspace_json["external_input_port"]["provenance"]["fingerprint"].is_null());
 
     let graph_json: serde_json::Value =

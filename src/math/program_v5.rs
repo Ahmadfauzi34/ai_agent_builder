@@ -139,8 +139,7 @@ fn compile_core_record(record: &V4StepRecord) -> Result<MathProgram, String> {
         RECORD_PARAM_EPSILON => {
             if record.op != OP_COSINE_SIMILARITY || record.arity != 2 {
                 return Err(
-                    "MathProgramV5: epsilon payload must use binary cosineSimilarity opcode"
-                        .into(),
+                    "MathProgramV5: epsilon payload must use binary cosineSimilarity opcode".into(),
                 );
             }
             let (epsilon, reserved) = parse_scalar_payload(&record.payload)?;
@@ -206,8 +205,7 @@ fn compile_record(record: &V4StepRecord) -> Result<ExecutableStep, String> {
     if record.param_kind == PARAM_SELECT_AXIS {
         if record.op != OP_SELECT_AXIS || record.arity != 1 || record.in_b != 0 {
             return Err(
-                "MathProgramV5: selectAxis requires unary opcode 0x24 with canonical in_b=0"
-                    .into(),
+                "MathProgramV5: selectAxis requires unary opcode 0x24 with canonical in_b=0".into(),
             );
         }
         let params = SelectAxisParams::decode(&record.payload)?;
@@ -319,13 +317,7 @@ fn encode_plan(
     records: &[V4StepRecord],
     out_slot: u8,
 ) -> Result<Vec<u8>, String> {
-    validate_records(
-        num_inputs,
-        num_slots,
-        records,
-        out_slot,
-        "MathProgramV5",
-    )?;
+    validate_records(num_inputs, num_slots, records, out_slot, "MathProgramV5")?;
 
     let records_bytes = records.iter().try_fold(0usize, |total, record| {
         total
@@ -490,13 +482,8 @@ impl MathProgramV5Builder {
             return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
         compile_record(&record)?;
-        let (filled, written) = validate_topology(
-            &record,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_topology(&record, self.num_slots, self.filled, self.written, context)?;
         self.records.push(record);
         self.filled = filled;
         self.written = written;
@@ -510,26 +497,14 @@ impl MathProgramV5Builder {
         )
     }
 
-    pub fn add_binary(
-        &mut self,
-        op: u8,
-        lhs: u8,
-        rhs: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
         self.push_record(
             V4StepRecord::new(op, 2, lhs, rhs, output, PARAM_NONE, vec![])?,
             "MathProgramV5Builder.addBinary",
         )
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
         self.push_record(
             V4StepRecord::new(
                 OP_CLAMP,
@@ -565,12 +540,7 @@ impl MathProgramV5Builder {
         )
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::reshape(shape)?;
         self.push_record(
             V4StepRecord::new(
@@ -586,12 +556,7 @@ impl MathProgramV5Builder {
         )
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::permute(axes)?;
         self.push_record(
             V4StepRecord::new(
@@ -757,9 +722,7 @@ impl MathProgramV5 {
                     out,
                 } => {
                     let a = slots[*in_a as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV5.runInputs: step {index} input slot {in_a} is empty"
-                        )
+                        format!("MathProgramV5.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = match *arity {
                         1 => program.run1(a),
@@ -783,9 +746,7 @@ impl MathProgramV5 {
                     out,
                 } => {
                     let value = slots[*input as usize].as_ref().ok_or_else(|| {
-                        format!(
-                            "MathProgramV5.runInputs: step {index} input slot {input} is empty"
-                        )
+                        format!("MathProgramV5.runInputs: step {index} input slot {input} is empty")
                     })?;
                     (*out, program.run1(value)?)
                 }
@@ -793,9 +754,12 @@ impl MathProgramV5 {
             slots[out as usize] = Some(value);
         }
 
-        slots[self.out_slot as usize]
-            .take()
-            .ok_or_else(|| format!("MathProgramV5.runInputs: output slot {} is empty", self.out_slot))
+        slots[self.out_slot as usize].take().ok_or_else(|| {
+            format!(
+                "MathProgramV5.runInputs: output slot {} is empty",
+                self.out_slot
+            )
+        })
     }
 
     pub fn program_plan(&self) -> Vec<u8> {

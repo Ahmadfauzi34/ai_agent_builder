@@ -2,6 +2,7 @@ use burn::prelude::*;
 use burn::tensor::linalg::{vector_normalize, Norm};
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmFeatureNorm;
 use crate::WasmTensor;
 
 pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;
@@ -21,9 +22,7 @@ fn validate_feature_shape(shape: [usize; 4]) -> Result<(), String> {
         return Err("FeatureNorm: feature axis 1 must be non-empty".into());
     }
     if h != 1 || w != 1 {
-        return Err(format!(
-            "FeatureNorm: expected [B,F,1,1], got {shape:?}"
-        ));
+        return Err(format!("FeatureNorm: expected [B,F,1,1], got {shape:?}"));
     }
     Ok(())
 }
@@ -45,30 +44,6 @@ impl FeatureNorm {
     pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Result<Tensor<B, 4>, String> {
         validate_feature_shape(input.dims())?;
         Ok(vector_normalize(input, Norm::L2, 1, self.epsilon))
-    }
-}
-
-#[wasm_bindgen]
-pub struct WasmFeatureNorm {
-    inner: FeatureNorm,
-}
-
-#[wasm_bindgen]
-impl WasmFeatureNorm {
-    #[wasm_bindgen(js_name = newFeatureNorm)]
-    pub fn new_feature_norm(epsilon: Option<f64>) -> Result<WasmFeatureNorm, String> {
-        Ok(Self {
-            inner: FeatureNorm::try_new(epsilon)?,
-        })
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        let out = self.inner.forward(input.inner.clone())?;
-        Ok(WasmTensor { inner: out })
-    }
-
-    pub fn num_params(&self) -> usize {
-        0
     }
 }
 

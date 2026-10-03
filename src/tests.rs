@@ -1,30 +1,41 @@
 #[cfg(test)]
 mod tests {
+    use crate::es::diag::{diversity, mean_std};
+    use crate::es::objective::{LinearMseObjective, Objective};
+    use crate::es::optimizer::EsOptimizer;
+    use crate::es::rng::Rng;
     use crate::protocol::{
-        PacketHeader, PayloadCursor, OP_INIT, VARIANT_NONE, LAYER_LINEAR, LAYER_ACTIVATION,
-        ACT_RELU, LAYER_BINARY, BINARY_ADD, LAYER_EMBEDDING, LAYER_CONV, CONV_CONV2D,
-        LAYER_NORM, NORM_LAYER,
+        PacketHeader, PayloadCursor, ACT_RELU, BINARY_ADD, CONV_CONV2D, LAYER_ACTIVATION,
+        LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_LINEAR, LAYER_NORM, NORM_LAYER, OP_INIT,
+        VARIANT_NONE,
     };
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
-    use crate::es::rng::Rng;
-    use crate::es::diag::{mean_std, diversity};
-    use crate::es::objective::{LinearMseObjective, Objective};
-    use crate::es::optimizer::EsOptimizer;
 
     fn mk_header(layer_type: u8, variant: u8, payload_len: usize) -> PacketHeader {
         let mut h = [0u8; 8];
-        h[0] = OP_INIT; h[1] = layer_type; h[2] = variant; h[3] = 0;
+        h[0] = OP_INIT;
+        h[1] = layer_type;
+        h[2] = variant;
+        h[3] = 0;
         h[4..8].copy_from_slice(&(payload_len as u32).to_le_bytes());
         PacketHeader::from_bytes(&h).unwrap()
     }
     fn push_unary(plan: &mut Vec<u8>, lt: u8, id: u32, in_slot: u8, out_slot: u8) {
-        plan.push(1); plan.push(lt); plan.extend_from_slice(&id.to_le_bytes());
-        plan.push(in_slot); plan.push(0); plan.push(out_slot);
+        plan.push(1);
+        plan.push(lt);
+        plan.extend_from_slice(&id.to_le_bytes());
+        plan.push(in_slot);
+        plan.push(0);
+        plan.push(out_slot);
     }
     fn push_binary(plan: &mut Vec<u8>, lt: u8, id: u32, a: u8, b: u8, out_slot: u8) {
-        plan.push(2); plan.push(lt); plan.extend_from_slice(&id.to_le_bytes());
-        plan.push(a); plan.push(b); plan.push(out_slot);
+        plan.push(2);
+        plan.push(lt);
+        plan.extend_from_slice(&id.to_le_bytes());
+        plan.push(a);
+        plan.push(b);
+        plan.push(out_slot);
     }
 
     // ---- jangkar lama (direkonstruksi utuh) ----
@@ -33,7 +44,8 @@ mod tests {
         let mut data = Vec::new();
         data.extend_from_slice(&42u32.to_le_bytes());
         data.extend_from_slice(&3.125f64.to_le_bytes());
-        data.push(1); data.push(1);
+        data.push(1);
+        data.push(1);
         data.extend_from_slice(&100u32.to_le_bytes());
         data.push(0);
         data.extend_from_slice(&0.0f64.to_le_bytes());
@@ -48,11 +60,17 @@ mod tests {
     #[test]
     fn test_packet_header_validate() {
         let mut hb = [0u8; 8];
-        hb[0] = 0x01; hb[1] = 0x02; hb[2] = 0x03; hb[3] = 0x04;
+        hb[0] = 0x01;
+        hb[1] = 0x02;
+        hb[2] = 0x03;
+        hb[3] = 0x04;
         hb[4..8].copy_from_slice(&12u32.to_le_bytes());
         let h = PacketHeader::from_bytes(&hb).unwrap();
-        assert_eq!(h.opcode, 0x01); assert_eq!(h.layer_type, 0x02);
-        assert_eq!(h.variant, 0x03); assert_eq!(h.flags, 0x04); assert_eq!(h.payload_len, 12);
+        assert_eq!(h.opcode, 0x01);
+        assert_eq!(h.layer_type, 0x02);
+        assert_eq!(h.variant, 0x03);
+        assert_eq!(h.flags, 0x04);
+        assert_eq!(h.payload_len, 12);
         assert_eq!(h.validate_payload(&vec![0u8; 12]).unwrap().len(), 12);
         assert!(h.validate_payload(&vec![0u8; 10]).is_err());
     }
@@ -65,7 +83,8 @@ mod tests {
         p.extend_from_slice(&10u32.to_le_bytes());
         p.extend_from_slice(&5u32.to_le_bytes());
         p.push(1);
-        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p).unwrap();
+        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p)
+            .unwrap();
         assert_eq!(reg.total_params(), 55);
         assert!(reg.destroy_layer(1, LAYER_LINEAR));
         assert_eq!(reg.total_params(), 0);
@@ -77,10 +96,12 @@ mod tests {
         p.extend_from_slice(&3u32.to_le_bytes());
         p.extend_from_slice(&4u32.to_le_bytes());
         p.push(1);
-        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p).unwrap();
+        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p)
+            .unwrap();
         let mut p2 = Vec::new();
         p2.extend_from_slice(&2u32.to_le_bytes());
-        reg.init_layer(&mk_header(LAYER_ACTIVATION, ACT_RELU, p2.len()), &p2).unwrap();
+        reg.init_layer(&mk_header(LAYER_ACTIVATION, ACT_RELU, p2.len()), &p2)
+            .unwrap();
         (reg, WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]))
     }
     #[test]
@@ -125,12 +146,14 @@ mod tests {
             p.extend_from_slice(&3u32.to_le_bytes());
             p.extend_from_slice(&4u32.to_le_bytes());
             p.push(1);
-            reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p).unwrap();
+            reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p)
+                .unwrap();
         }
         let mut pb = Vec::new();
         pb.extend_from_slice(&3u32.to_le_bytes());
         pb.extend_from_slice(&0u32.to_le_bytes());
-        reg.init_layer(&mk_header(LAYER_BINARY, BINARY_ADD, pb.len()), &pb).unwrap();
+        reg.init_layer(&mk_header(LAYER_BINARY, BINARY_ADD, pb.len()), &pb)
+            .unwrap();
         (reg, WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]))
     }
     fn binary_plan() -> Vec<u8> {
@@ -151,7 +174,10 @@ mod tests {
     #[test]
     fn test_run_graph_binary_add() {
         let (reg, input) = build_binary();
-        assert_eq!(reg.run_graph(&binary_plan(), &input).unwrap().to_array(), binary_manual(&reg, &input));
+        assert_eq!(
+            reg.run_graph(&binary_plan(), &input).unwrap().to_array(),
+            binary_manual(&reg, &input)
+        );
     }
     #[test]
     fn test_compile_graph_binary_add() {
@@ -160,11 +186,15 @@ mod tests {
         assert_eq!(c.step_count(), 3);
         assert_eq!(c.slot_count(), 4);
         assert_eq!(c.output_slot(), 3);
-        assert_eq!(c.run(&reg, &input).unwrap().to_array(), binary_manual(&reg, &input));
+        assert_eq!(
+            c.run(&reg, &input).unwrap().to_array(),
+            binary_manual(&reg, &input)
+        );
     }
     #[test]
     fn es_rng_is_deterministic() {
-        let mut a = Rng::new(42); let mut b = Rng::new(42);
+        let mut a = Rng::new(42);
+        let mut b = Rng::new(42);
         let va: Vec<f32> = (0..100).map(|_| a.gaussian()).collect();
         let vb: Vec<f32> = (0..100).map(|_| b.gaussian()).collect();
         assert_eq!(va, vb);
@@ -191,7 +221,9 @@ mod tests {
             let n = es.batch_size() as usize;
             let d = es.dim() as usize;
             let mut f = Vec::with_capacity(n);
-            for i in 0..n { f.push(obj.fitness(&flat[i * d..(i + 1) * d]) as f32); }
+            for i in 0..n {
+                f.push(obj.fitness(&flat[i * d..(i + 1) * d]) as f32);
+            }
             let _ = es.tell(&f);
         }
         (es.best(), es.report())
@@ -221,16 +253,23 @@ mod tests {
         p.extend_from_slice(&3u32.to_le_bytes());
         p.extend_from_slice(&2u32.to_le_bytes());
         p.push(1);
-        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p).unwrap();
+        reg.init_layer(&mk_header(LAYER_LINEAR, VARIANT_NONE, p.len()), &p)
+            .unwrap();
         let w = reg.get_weights_flat(1, LAYER_LINEAR).unwrap();
         assert_eq!(w.len(), 3 * 2 + 2);
         reg.set_weights_flat(1, LAYER_LINEAR, &w).unwrap();
         assert_eq!(reg.get_weights_flat(1, LAYER_LINEAR).unwrap(), w);
         let input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
-        let out1 = reg.forward_layer(1, LAYER_LINEAR, &input).unwrap().to_array();
+        let out1 = reg
+            .forward_layer(1, LAYER_LINEAR, &input)
+            .unwrap()
+            .to_array();
         let w2: Vec<f32> = w.iter().map(|v| v + 1.0).collect();
         reg.set_weights_flat(1, LAYER_LINEAR, &w2).unwrap();
-        let out2 = reg.forward_layer(1, LAYER_LINEAR, &input).unwrap().to_array();
+        let out2 = reg
+            .forward_layer(1, LAYER_LINEAR, &input)
+            .unwrap()
+            .to_array();
         assert_ne!(out1, out2);
     }
     #[test]
@@ -246,17 +285,24 @@ mod tests {
         p.extend_from_slice(&1u32.to_le_bytes());
         p.extend_from_slice(&3u32.to_le_bytes());
         p.extend_from_slice(&2u32.to_le_bytes());
-        reg.init_layer(&mk_header(LAYER_EMBEDDING, VARIANT_NONE, p.len()), &p).unwrap();
+        reg.init_layer(&mk_header(LAYER_EMBEDDING, VARIANT_NONE, p.len()), &p)
+            .unwrap();
         let w = reg.get_weights_flat(1, LAYER_EMBEDDING).unwrap();
         assert_eq!(w.len(), 3 * 2);
         reg.set_weights_flat(1, LAYER_EMBEDDING, &w).unwrap();
         assert_eq!(reg.get_weights_flat(1, LAYER_EMBEDDING).unwrap(), w);
         let input = WasmTensor::new(&[0.0, 1.0, 2.0, 0.0], &[1, 4, 1, 1]);
-        let out1 = reg.forward_layer(1, LAYER_EMBEDDING, &input).unwrap().to_array();
+        let out1 = reg
+            .forward_layer(1, LAYER_EMBEDDING, &input)
+            .unwrap()
+            .to_array();
         assert_eq!(out1.len(), 4 * 2);
         let w2: Vec<f32> = w.iter().map(|v| v + 1.0).collect();
         reg.set_weights_flat(1, LAYER_EMBEDDING, &w2).unwrap();
-        let out2 = reg.forward_layer(1, LAYER_EMBEDDING, &input).unwrap().to_array();
+        let out2 = reg
+            .forward_layer(1, LAYER_EMBEDDING, &input)
+            .unwrap()
+            .to_array();
         assert_ne!(out1, out2);
     }
     #[test]
@@ -268,8 +314,12 @@ mod tests {
         p.extend_from_slice(&1u32.to_le_bytes());
         p.extend_from_slice(&1u32.to_le_bytes());
         p.extend_from_slice(&1u32.to_le_bytes());
-        for _ in 0..4 { p.push(0); p.extend_from_slice(&0u32.to_le_bytes()); }
-        reg.init_layer(&mk_header(LAYER_CONV, CONV_CONV2D, p.len()), &p).unwrap();
+        for _ in 0..4 {
+            p.push(0);
+            p.extend_from_slice(&0u32.to_le_bytes());
+        }
+        reg.init_layer(&mk_header(LAYER_CONV, CONV_CONV2D, p.len()), &p)
+            .unwrap();
         let w = reg.get_weights_flat(1, LAYER_CONV).unwrap();
         assert_eq!(w.len(), 1 * 1 * 1 * 1 + 1);
         reg.set_weights_flat(1, LAYER_CONV, &w).unwrap();
@@ -283,29 +333,61 @@ mod tests {
     }
     #[test]
     fn weight_layout_consistent_with_flat() {
-        use crate::layers::linear::WasmLinear;
         use crate::layers::conv::WasmConv;
         use crate::layers::embedding::WasmEmbedding;
         use crate::layers::layout::segs_json;
+        use crate::layers::linear::WasmLinear;
         fn check(segs: &[(&'static str, usize)], flat_len: usize, json: &str) {
             let sum: usize = segs.iter().map(|s| s.1).sum();
             assert_eq!(sum, flat_len, "Σ layout len != getWeightsFlat len");
-            assert!(segs.iter().any(|s| s.0 == "weight"), "wajib ada segmen weight");
-            assert_eq!(json, segs_json(segs).as_str(), "wrapper json != segs_json(segs)");
-            assert!(json.starts_with('[') && json.ends_with(']'), "json harus array");
+            assert!(
+                segs.iter().any(|s| s.0 == "weight"),
+                "wajib ada segmen weight"
+            );
+            assert_eq!(
+                json,
+                segs_json(segs).as_str(),
+                "wrapper json != segs_json(segs)"
+            );
+            assert!(
+                json.starts_with('[') && json.ends_with(']'),
+                "json harus array"
+            );
         }
         let lin = WasmLinear::new(3, 2, true);
-        check(&lin.weight_segs(), lin.get_weights_flat().unwrap().len(), &lin.weight_layout());
+        check(
+            &lin.weight_segs(),
+            lin.get_weights_flat().unwrap().len(),
+            &lin.weight_layout(),
+        );
         let lin_nb = WasmLinear::new(3, 2, false);
         let segs_nb = lin_nb.weight_segs();
-        assert!(!segs_nb.iter().any(|s| s.0 == "bias"), "linear no-bias: segmen bias harus absen");
-        check(&segs_nb, lin_nb.get_weights_flat().unwrap().len(), &lin_nb.weight_layout());
+        assert!(
+            !segs_nb.iter().any(|s| s.0 == "bias"),
+            "linear no-bias: segmen bias harus absen"
+        );
+        check(
+            &segs_nb,
+            lin_nb.get_weights_flat().unwrap().len(),
+            &lin_nb.weight_layout(),
+        );
         let emb = WasmEmbedding::new(3, 2);
         let segs_e = emb.weight_segs();
-        assert!(!segs_e.iter().any(|s| s.0 == "bias"), "embedding: segmen bias harus absen");
-        check(&segs_e, emb.get_weights_flat().unwrap().len(), &emb.weight_layout());
+        assert!(
+            !segs_e.iter().any(|s| s.0 == "bias"),
+            "embedding: segmen bias harus absen"
+        );
+        check(
+            &segs_e,
+            emb.get_weights_flat().unwrap().len(),
+            &emb.weight_layout(),
+        );
         let conv = WasmConv::new_conv2d(1, 1, 1, 1, None, None, None, None);
-        check(&conv.weight_segs(), conv.get_weights_flat().unwrap().len(), &conv.weight_layout());
+        check(
+            &conv.weight_segs(),
+            conv.get_weights_flat().unwrap().len(),
+            &conv.weight_layout(),
+        );
     }
 
     // ---- JANGKAR M1b BARU: float-bridge + layout norm (trainable-only) ----
@@ -335,7 +417,11 @@ mod tests {
         // BatchNorm: trainable = gamma+beta = 2*size; running_mean/var EXCLUDED.
         let mut bn = WasmNorm::new_batch_norm(4, None);
         let w = bn.get_weights_flat().unwrap();
-        assert_eq!(w.len(), 8, "batch norm harus ekspos hanya gamma+beta (2*size); running stats excluded");
+        assert_eq!(
+            w.len(),
+            8,
+            "batch norm harus ekspos hanya gamma+beta (2*size); running stats excluded"
+        );
         let segs = bn.weight_segs();
         assert_eq!(segs.len(), 2);
         bn.set_weights_flat(&w).unwrap();
@@ -356,11 +442,12 @@ mod tests {
         p.extend_from_slice(&4u32.to_le_bytes()); // size
         p.push(0); // eps = None (tag)
         p.extend_from_slice(&0.0f64.to_le_bytes()); // eps dummy value
-        reg.init_layer(&mk_header(LAYER_NORM, NORM_LAYER, p.len()), &p).unwrap();
+        reg.init_layer(&mk_header(LAYER_NORM, NORM_LAYER, p.len()), &p)
+            .unwrap();
         let w = reg.get_weights_flat(1, LAYER_NORM).unwrap();
         assert_eq!(w.len(), 8);
         let layout = reg.weight_layout(1, LAYER_NORM).unwrap();
         assert!(layout.contains("\"name\":\"gamma\""));
         assert!(layout.contains("\"name\":\"beta\""));
     }
-                   }
+}

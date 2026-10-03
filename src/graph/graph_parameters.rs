@@ -1,11 +1,10 @@
 use crate::graph::CompiledGraph;
 use crate::graph_plan::decode_graph_plan;
 use crate::protocol::{
-    ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
-    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
-    ACT_TANH, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
-    LAYER_SHIFT,
+    ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH,
+    LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
+    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
 };
 use crate::registry::LayerRegistry;
 
@@ -491,9 +490,17 @@ mod tests {
         let mut malformed = binding.read_flat(&graph, &registry).unwrap();
         malformed.pop();
 
-        assert!(binding.apply_flat(&graph, &mut registry, &malformed).is_err());
-        assert_eq!(registry.get_weights_flat(11, LAYER_LINEAR).unwrap(), before_first);
-        assert_eq!(registry.get_weights_flat(13, LAYER_LINEAR).unwrap(), before_second);
+        assert!(binding
+            .apply_flat(&graph, &mut registry, &malformed)
+            .is_err());
+        assert_eq!(
+            registry.get_weights_flat(11, LAYER_LINEAR).unwrap(),
+            before_first
+        );
+        assert_eq!(
+            registry.get_weights_flat(13, LAYER_LINEAR).unwrap(),
+            before_second
+        );
     }
 
     #[test]
@@ -505,8 +512,13 @@ mod tests {
 
         let replacement = AgentLayerSpec::linear(13, 2, 2, true).unwrap();
         init(&mut registry, &replacement);
-        assert!(binding.apply_flat(&graph, &mut registry, &candidate).is_err());
-        assert_eq!(registry.get_weights_flat(11, LAYER_LINEAR).unwrap(), before_first);
+        assert!(binding
+            .apply_flat(&graph, &mut registry, &candidate)
+            .is_err());
+        assert_eq!(
+            registry.get_weights_flat(11, LAYER_LINEAR).unwrap(),
+            before_first
+        );
     }
 
     #[test]

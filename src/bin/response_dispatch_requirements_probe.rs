@@ -9,9 +9,7 @@ use burn_research::response_dispatch_requirements::response_dispatch_requirement
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -87,7 +85,10 @@ fn run() -> Result<(), String> {
         false,
         "candidate mismatch",
     )?;
-    ensure(inbox.record(failed)?, "failed graph evidence was not recorded");
+    ensure(
+        inbox.record(failed)?,
+        "failed graph evidence was not recorded",
+    );
     let before_len = inbox.len();
 
     let reverify_intent = create_agent_response_intent(
@@ -182,7 +183,10 @@ fn run() -> Result<(), String> {
         true,
         "match",
     )?;
-    ensure(changed_inbox.record(passed)?, "changed evidence was not recorded");
+    ensure(
+        changed_inbox.record(passed)?,
+        "changed evidence was not recorded",
+    );
     let stale = response_dispatch_requirements(&changed_inbox, &reverify_intent);
     ensure(!stale.ready, "stale response intent reopened requirements");
     ensure(
@@ -194,7 +198,10 @@ fn run() -> Result<(), String> {
         "closed requirements unexpectedly authorize execution",
     );
 
-    ensure(inbox.len() == before_len, "requirements projection mutated inbox");
+    ensure(
+        inbox.len() == before_len,
+        "requirements projection mutated inbox",
+    );
     ensure(
         resolution == before_resolution,
         "requirements projection mutated Resolution snapshot",

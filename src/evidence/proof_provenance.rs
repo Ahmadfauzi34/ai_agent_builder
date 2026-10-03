@@ -13,35 +13,43 @@
 //! ## Bukan tanggung jawab modul ini
 //! - Menyimpan bukti mentah → host/packager; mengeksekusi klaim → `math`.
 
+pub use crate::facade::evidence::{
+    math_proof_capabilities, proof_provenance_capabilities,
+    workspace_bind_runtime_direct_math_operation, workspace_bind_runtime_math_program_plan,
+    workspace_proof_ledger, workspace_record_attestation, workspace_verify_direct_math_1_receipt,
+    workspace_verify_direct_math_2_receipt, workspace_verify_graph_receipt,
+    workspace_verify_math_program_1_receipt, workspace_verify_math_program_2_receipt,
+    workspace_verify_semantic_graph_receipt, workspace_verify_vector_receipt,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
 use crate::coprocessor::verify_vectors_metrics;
-use crate::semantic_execution_context::semantic_execution_context_for;
 use crate::graph::CompiledGraph;
 use crate::math::program::{
-    OP_ABS, OP_ADD, OP_CROSS_ENTROPY, OP_DIV, OP_DOT, OP_ENTROPY, OP_EXP,
-    OP_KL_DIVERGENCE, OP_L2_DISTANCE, OP_L2_NORM, OP_LOG, OP_MATMUL, OP_MAX, OP_MEAN,
-    OP_MIN, OP_MUL, OP_NORMALIZE, OP_SQRT, OP_STD_POPULATION, OP_SUB, OP_SUM,
-    OP_TRANSPOSE, OP_VARIANCE_POPULATION,
+    OP_ABS, OP_ADD, OP_CROSS_ENTROPY, OP_DIV, OP_DOT, OP_ENTROPY, OP_EXP, OP_KL_DIVERGENCE,
+    OP_L2_DISTANCE, OP_L2_NORM, OP_LOG, OP_MATMUL, OP_MAX, OP_MEAN, OP_MIN, OP_MUL, OP_NORMALIZE,
+    OP_SQRT, OP_STD_POPULATION, OP_SUB, OP_SUM, OP_TRANSPOSE, OP_VARIANCE_POPULATION,
 };
 use crate::math::{
-    math_check_operation, MathProgram, MathProgramV4, MathProgramV5, MathProgramV6,
-    MathProgramV7, MathProgramV8, MathProgramV9, MathProgramV9Builder, WasmComparison,
-    WasmIndexSource, WasmLinearAlgebra, WasmNumericKernel, WasmProbability, WasmReduction,
-    WasmStatistics, WasmTensorTransform,
+    math_check_operation, MathProgram, MathProgramV4, MathProgramV5, MathProgramV6, MathProgramV7,
+    MathProgramV8, MathProgramV9, MathProgramV9Builder, WasmComparison, WasmIndexSource,
+    WasmLinearAlgebra, WasmNumericKernel, WasmProbability, WasmReduction, WasmStatistics,
+    WasmTensorTransform,
 };
 use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
+use crate::semantic_execution_context::semantic_execution_context_for;
 use crate::workspace::AgentWorkspace;
 use crate::WasmTensor;
 
-const PROOF_PROVENANCE_V1: &str = include_str!("../../docs/contracts/proof-provenance.v1.json");
-const MATH_PROOF_V1: &str = include_str!("../../docs/contracts/math-proof.v1.json");
+pub(crate) const PROOF_PROVENANCE_V1: &str =
+    include_str!("../../docs/contracts/proof-provenance.v1.json");
+pub(crate) const MATH_PROOF_V1: &str = include_str!("../../docs/contracts/math-proof.v1.json");
 const MAX_PROOF_LABEL_BYTES: usize = 256;
-const MAX_ATTESTATION_DETAIL_BYTES: usize = 1024;
+pub(crate) const MAX_ATTESTATION_DETAIL_BYTES: usize = 1024;
 
-fn json_escape(value: &str) -> String {
+pub(crate) fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
     for ch in value.chars() {
         match ch {
@@ -79,7 +87,7 @@ fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> u64 {
     hash
 }
 
-fn bytes_fingerprint(bytes: &[u8]) -> String {
+pub(crate) fn bytes_fingerprint(bytes: &[u8]) -> String {
     format!("fnv1a64:{:016x}", fnv1a64(bytes.iter().copied()))
 }
 
@@ -101,7 +109,6 @@ pub(crate) fn tensor_fingerprint(tensor: &WasmTensor) -> String {
     }
     bytes_fingerprint(&bytes)
 }
-
 
 fn tensors_fingerprint(inputs: &[WasmTensor]) -> String {
     let mut bytes = Vec::new();
@@ -138,7 +145,7 @@ fn math_program_declared_inputs(plan: &[u8]) -> Result<usize, String> {
     Ok(plan[5] as usize)
 }
 
-fn math_program_identity_from_plan(plan: &[u8]) -> Result<(u8, String), String> {
+pub(crate) fn math_program_identity_from_plan(plan: &[u8]) -> Result<(u8, String), String> {
     let version = math_program_version(plan)?;
     let identity = match version {
         1..=3 => MathProgram::from_plan(plan)?.program_identity(),
@@ -217,14 +224,12 @@ fn run_math_program_plan(
     Ok((version, identity, output.to_array()))
 }
 
-
 fn tensor_shape_u32(tensor: &WasmTensor, context: &str) -> Result<Vec<u32>, String> {
     tensor
         .shape()
         .into_iter()
         .map(|dim| {
-            u32::try_from(dim)
-                .map_err(|_| format!("{context}: tensor dimension {dim} exceeds u32"))
+            u32::try_from(dim).map_err(|_| format!("{context}: tensor dimension {dim} exceeds u32"))
         })
         .collect()
 }
@@ -344,16 +349,12 @@ fn build_direct_math_reference_v9(
         "linalg.matmul" => builder.add_binary(OP_MATMUL, 0, 1, output)?,
         "linalg.dot" => builder.add_binary(OP_DOT, 0, 1, output)?,
         "linalg.l2_norm" => builder.add_unary(OP_L2_NORM, 0, output)?,
-        "linalg.cosine_similarity" => {
-            builder.add_cosine_similarity(0, 1, output, f32_params[0])?
-        }
+        "linalg.cosine_similarity" => builder.add_cosine_similarity(0, 1, output, f32_params[0])?,
         "linalg.l2_distance" => builder.add_binary(OP_L2_DISTANCE, 0, 1, output)?,
 
         "statistics.sum" => builder.add_unary(OP_SUM, 0, output)?,
         "statistics.mean" => builder.add_unary(OP_MEAN, 0, output)?,
-        "statistics.variance_population" => {
-            builder.add_unary(OP_VARIANCE_POPULATION, 0, output)?
-        }
+        "statistics.variance_population" => builder.add_unary(OP_VARIANCE_POPULATION, 0, output)?,
         "statistics.std_population" => builder.add_unary(OP_STD_POPULATION, 0, output)?,
         "statistics.min" => builder.add_unary(OP_MIN, 0, output)?,
         "statistics.max" => builder.add_unary(OP_MAX, 0, output)?,
@@ -361,9 +362,7 @@ fn build_direct_math_reference_v9(
         "probability.normalize" => builder.add_unary(OP_NORMALIZE, 0, output)?,
         "probability.entropy" => builder.add_unary(OP_ENTROPY, 0, output)?,
         "probability.cross_entropy" => builder.add_binary(OP_CROSS_ENTROPY, 0, 1, output)?,
-        "probability.kl_divergence" => {
-            builder.add_binary(OP_KL_DIVERGENCE, 0, 1, output)?
-        }
+        "probability.kl_divergence" => builder.add_binary(OP_KL_DIVERGENCE, 0, 1, output)?,
 
         "reduction.sum_axis" => builder.add_sum_axis(0, output, u32_params[0])?,
         "reduction.mean_axis" => builder.add_mean_axis(0, output, u32_params[0])?,
@@ -401,9 +400,7 @@ fn run_direct_math_operation(
         "numeric.sqrt" => WasmNumericKernel::new().sqrt(unary),
         "numeric.exp" => WasmNumericKernel::new().exp(unary),
         "numeric.log" => WasmNumericKernel::new().log(unary),
-        "numeric.clamp" => {
-            WasmNumericKernel::new().clamp(unary, f32_params[0], f32_params[1])
-        }
+        "numeric.clamp" => WasmNumericKernel::new().clamp(unary, f32_params[0], f32_params[1]),
         "numeric.add" => WasmNumericKernel::new().add(unary, binary_rhs()?),
         "numeric.sub" => WasmNumericKernel::new().sub(unary, binary_rhs()?),
         "numeric.mul" => WasmNumericKernel::new().mul(unary, binary_rhs()?),
@@ -411,11 +408,17 @@ fn run_direct_math_operation(
 
         "tensor.transpose" => Ok(WasmTensorTransform::new().transpose(unary)),
         "tensor.reshape" => {
-            let shape = u32_params.iter().map(|&value| value as usize).collect::<Vec<_>>();
+            let shape = u32_params
+                .iter()
+                .map(|&value| value as usize)
+                .collect::<Vec<_>>();
             WasmTensorTransform::new().reshape(unary, &shape)
         }
         "tensor.permute" => {
-            let axes = u32_params.iter().map(|&value| value as usize).collect::<Vec<_>>();
+            let axes = u32_params
+                .iter()
+                .map(|&value| value as usize)
+                .collect::<Vec<_>>();
             WasmTensorTransform::new().permute(unary, &axes)
         }
         "tensor.slice" => {
@@ -456,21 +459,15 @@ fn run_direct_math_operation(
 
         "probability.normalize" => WasmProbability::new().normalize(unary),
         "probability.entropy" => WasmProbability::new().entropy(unary),
-        "probability.cross_entropy" => {
-            WasmProbability::new().cross_entropy(unary, binary_rhs()?)
-        }
-        "probability.kl_divergence" => {
-            WasmProbability::new().kl_divergence(unary, binary_rhs()?)
-        }
+        "probability.cross_entropy" => WasmProbability::new().cross_entropy(unary, binary_rhs()?),
+        "probability.kl_divergence" => WasmProbability::new().kl_divergence(unary, binary_rhs()?),
 
         "reduction.sum_axis" => WasmReduction::new().sum_axis(unary, u32_params[0]),
         "reduction.mean_axis" => WasmReduction::new().mean_axis(unary, u32_params[0]),
         "reduction.min_axis" => WasmReduction::new().min_axis(unary, u32_params[0]),
         "reduction.max_axis" => WasmReduction::new().max_axis(unary, u32_params[0]),
 
-        "comparison.less_equal_01" => {
-            WasmComparison::new().less_equal_01(unary, binary_rhs()?)
-        }
+        "comparison.less_equal_01" => WasmComparison::new().less_equal_01(unary, binary_rhs()?),
         "index.indices_like" => WasmIndexSource::new().indices_like(unary, u32_params[0]),
         _ => Err(format!(
             "DirectMath verifier: no direct execution mapping for {operation_id}"
@@ -478,7 +475,7 @@ fn run_direct_math_operation(
     }
 }
 
-fn direct_math_reference_identity(
+pub(crate) fn direct_math_reference_identity(
     operation_id: &str,
     u32_params: &[u32],
     f32_params: &[f32],
@@ -488,11 +485,11 @@ fn direct_math_reference_identity(
     Ok((program, identity))
 }
 
-fn tolerances_json(abs_tol: f64, rel_tol: f64) -> String {
+pub(crate) fn tolerances_json(abs_tol: f64, rel_tol: f64) -> String {
     format!("{{\"abs\":{abs_tol},\"rel\":{rel_tol}}}")
 }
 
-fn ledger_receipt_json(
+pub(crate) fn ledger_receipt_json(
     receipt_id: u32,
     authority: &str,
     verifier: &str,
@@ -508,7 +505,12 @@ fn ledger_receipt_json(
     result_json: &str,
 ) -> String {
     let program = program_identity_fingerprint
-        .map(|value| format!(",\"program_identity_fingerprint\":\"{}\"", json_escape(value)))
+        .map(|value| {
+            format!(
+                ",\"program_identity_fingerprint\":\"{}\"",
+                json_escape(value)
+            )
+        })
         .unwrap_or_default();
     let runtime_subject = runtime_subject_json
         .map(|value| format!(",\"runtime_subject\":{value}"))
@@ -547,7 +549,7 @@ fn ledger_receipt_json(
     )
 }
 
-fn semantic_graph_ledger_receipt_json(
+pub(crate) fn semantic_graph_ledger_receipt_json(
     receipt_id: u32,
     label: &str,
     input_fingerprint: &str,
@@ -591,343 +593,7 @@ fn semantic_graph_ledger_receipt_json(
     )
 }
 
-/// Return the embedded proof-provenance contract.
-#[wasm_bindgen(js_name = proofProvenanceCapabilities)]
-pub fn proof_provenance_capabilities() -> String {
-    PROOF_PROVENANCE_V1.to_string()
-}
-
-
-/// Return the MathProgram proof/correlation authority contract.
-#[wasm_bindgen(js_name = mathProofCapabilities)]
-pub fn math_proof_capabilities() -> String {
-    MATH_PROOF_V1.to_string()
-}
-
-/// Record an explicit caller claim. This never upgrades into verifier authority.
-#[wasm_bindgen(js_name = workspaceRecordAttestation)]
-pub fn workspace_record_attestation(
-    workspace: &mut AgentWorkspace,
-    label: String,
-    claimed_passed: bool,
-    detail: String,
-) -> Result<String, String> {
-    validate_label(&label, "workspaceRecordAttestation")?;
-    if detail.len() > MAX_ATTESTATION_DETAIL_BYTES {
-        return Err(format!(
-            "workspaceRecordAttestation: detail {} bytes exceeds limit {MAX_ATTESTATION_DETAIL_BYTES}",
-            detail.len()
-        ));
-    }
-
-    let attestation_id =
-        workspace.record_attestation_internal(label.clone(), claimed_passed, detail.clone())?;
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.caller-attestation.v1\",",
-            "\"attestation_id\":{},",
-            "\"authority\":\"caller_attestation\",",
-            "\"label\":\"{}\",",
-            "\"claimed_passed\":{},",
-            "\"detail\":\"{}\"",
-            "}}"
-        ),
-        attestation_id,
-        json_escape(&label),
-        claimed_passed,
-        json_escape(&detail),
-    ))
-}
-
-/// Verify against a caller-supplied reference and record a lower-authority comparator receipt.
-#[wasm_bindgen(js_name = workspaceVerifyVectorReceipt)]
-pub fn workspace_verify_vector_receipt(
-    workspace: &mut AgentWorkspace,
-    reference: &[f32],
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    validate_label(&label, "workspaceVerifyVectorReceipt")?;
-
-    let report = verify_vectors_metrics(reference, candidate, abs_tol, rel_tol)?;
-    let receipt_id = workspace.next_verifier_receipt_id();
-    let reference_fingerprint = f32_fingerprint(reference);
-    let candidate_fingerprint = f32_fingerprint(candidate);
-    let result_json = report.to_json();
-
-    let compact = ledger_receipt_json(
-        receipt_id,
-        "wasm_comparator",
-        "mathVerifyVectors",
-        "caller_supplied",
-        &label,
-        "reference_fingerprint",
-        &reference_fingerprint,
-        &candidate_fingerprint,
-        None,
-        None,
-        abs_tol,
-        rel_tol,
-        &result_json,
-    );
-
-    let stored = workspace.record_verifier_receipt_internal(
-        "mathVerifyVectors".into(),
-        report.passed,
-        compact,
-    )?;
-    debug_assert_eq!(stored, receipt_id);
-
-    let runtime_subject = runtime_subject_binding_json(workspace);
-    Ok(ledger_receipt_json(
-        receipt_id,
-        "wasm_comparator",
-        "mathVerifyVectors",
-        "caller_supplied",
-        &label,
-        "reference_fingerprint",
-        &reference_fingerprint,
-        &candidate_fingerprint,
-        None,
-        Some(&runtime_subject),
-        abs_tol,
-        rel_tol,
-        &result_json,
-    ))
-}
-
-/// Execute the compiled Burn graph as reference, compare the candidate, and record the receipt.
-///
-/// The returned receipt includes the exact programIdentity object. The workspace ledger stores a
-/// compact receipt keyed by the deterministic program-identity fingerprint.
-#[wasm_bindgen(js_name = workspaceVerifyGraphReceipt)]
-pub fn workspace_verify_graph_receipt(
-    workspace: &mut AgentWorkspace,
-    graph: &CompiledGraph,
-    registry: &LayerRegistry,
-    input: &WasmTensor,
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    validate_label(&label, "workspaceVerifyGraphReceipt")?;
-
-    let program_identity = graph.program_identity();
-    workspace.require_runtime_program_identity_if_bound(
-        &program_identity,
-        "workspaceVerifyGraphReceipt",
-    )?;
-
-    let reference = graph.run(registry, input)?.to_array();
-    let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
-    let receipt_id = workspace.next_verifier_receipt_id();
-
-    let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
-    let input_fingerprint = tensor_fingerprint(input);
-    let reference_fingerprint = f32_fingerprint(&reference);
-    let candidate_fingerprint = f32_fingerprint(candidate);
-    let result_json = report.to_json();
-
-    let compact = ledger_receipt_json(
-        receipt_id,
-        "wasm_verifier",
-        "CompiledGraph.verifyFlat",
-        "burn_compiled_graph",
-        &label,
-        "input_fingerprint",
-        &input_fingerprint,
-        &candidate_fingerprint,
-        Some(&program_identity_fingerprint),
-        None,
-        abs_tol,
-        rel_tol,
-        &result_json,
-    );
-
-    let stored = workspace.record_verifier_receipt_internal(
-        "CompiledGraph.verifyFlat".into(),
-        report.passed,
-        compact,
-    )?;
-    debug_assert_eq!(stored, receipt_id);
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
-            "\"receipt_id\":{},",
-            "\"authority\":\"wasm_verifier\",",
-            "\"verifier\":\"CompiledGraph.verifyFlat\",",
-            "\"reference_authority\":\"burn_compiled_graph\",",
-            "\"label\":\"{}\",",
-            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
-            "\"program_identity\":{},",
-            "\"program_identity_fingerprint\":\"{}\",",
-            "\"mutable_state_in_program_identity\":false,",
-            "\"runtime_subject\":{},",
-            "\"input_fingerprint\":\"{}\",",
-            "\"reference_fingerprint\":\"{}\",",
-            "\"candidate_fingerprint\":\"{}\",",
-            "\"tolerances\":{},",
-            "\"result\":{}",
-            "}}"
-        ),
-        receipt_id,
-        json_escape(&label),
-        program_identity,
-        json_escape(&program_identity_fingerprint),
-        runtime_subject_binding_json(workspace),
-        json_escape(&input_fingerprint),
-        json_escape(&reference_fingerprint),
-        json_escape(&candidate_fingerprint),
-        tolerances_json(abs_tol, rel_tol),
-        result_json,
-    ))
-}
-
-
-
-/// Verify a Burn graph while binding the current semantic graph/lifecycle identities
-/// into the returned proof context. Numerical authority remains CompiledGraph.verifyFlat.
-#[wasm_bindgen(js_name = workspaceVerifySemanticGraphReceipt)]
-pub fn workspace_verify_semantic_graph_receipt(
-    workspace: &mut AgentWorkspace,
-    builder: &AgentGraphBuilder,
-    graph: &CompiledGraph,
-    registry: &LayerRegistry,
-    input: &WasmTensor,
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    validate_label(&label, "workspaceVerifySemanticGraphReceipt")?;
-
-    let semantic_context = semantic_execution_context_for(builder, graph, registry)?;
-    let program_identity = graph.program_identity();
-    workspace.require_runtime_program_identity_if_bound(
-        &program_identity,
-        "workspaceVerifySemanticGraphReceipt",
-    )?;
-
-    let reference = graph.run(registry, input)?.to_array();
-    let report = verify_vectors_metrics(&reference, candidate, abs_tol, rel_tol)?;
-
-    let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
-    let input_fingerprint = tensor_fingerprint(input);
-    let reference_fingerprint = f32_fingerprint(&reference);
-    let candidate_fingerprint = f32_fingerprint(candidate);
-    let result_json = report.to_json();
-    let runtime_subject = runtime_subject_binding_json(workspace);
-    let receipt_id = workspace.next_verifier_receipt_id();
-
-    let compact = semantic_graph_ledger_receipt_json(
-        receipt_id,
-        &label,
-        &input_fingerprint,
-        &candidate_fingerprint,
-        &program_identity_fingerprint,
-        &semantic_context.context_fingerprint,
-        &runtime_subject,
-        abs_tol,
-        rel_tol,
-        &result_json,
-    );
-
-    let stored = workspace.record_verifier_receipt_internal(
-        "CompiledGraph.verifyFlat".into(),
-        report.passed,
-        compact,
-    )?;
-    debug_assert_eq!(stored, receipt_id);
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.verifier-receipt.v1\",",
-            "\"receipt_id\":{},",
-            "\"authority\":\"wasm_verifier\",",
-            "\"verifier\":\"CompiledGraph.verifyFlat\",",
-            "\"reference_authority\":\"burn_compiled_graph\",",
-            "\"label\":\"{}\",",
-            "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
-            "\"program_identity\":{},",
-            "\"program_identity_fingerprint\":\"{}\",",
-            "\"mutable_state_in_program_identity\":false,",
-            "\"runtime_subject\":{},",
-            "\"semantic_execution_context\":{},",
-            "\"semantic_context_fingerprint\":\"{}\",",
-            "\"input_fingerprint\":\"{}\",",
-            "\"reference_fingerprint\":\"{}\",",
-            "\"candidate_fingerprint\":\"{}\",",
-            "\"tolerances\":{},",
-            "\"result\":{}",
-            "}}"
-        ),
-        receipt_id,
-        json_escape(&label),
-        program_identity,
-        json_escape(&program_identity_fingerprint),
-        runtime_subject,
-        semantic_context.json(),
-        json_escape(&semantic_context.context_fingerprint),
-        json_escape(&input_fingerprint),
-        json_escape(&reference_fingerprint),
-        json_escape(&candidate_fingerprint),
-        tolerances_json(abs_tol, rel_tol),
-        result_json,
-    ))
-}
-
-
-/// Bind a replay-derived MathProgram programIdentity to an already-bound runtime subject.
-///
-/// Callers supply canonical plan bytes, never a free-form identity string. Replay validation
-/// derives the authoritative exact programIdentity before any binding mutation occurs.
-#[wasm_bindgen(js_name = workspaceBindRuntimeMathProgramPlan)]
-pub fn workspace_bind_runtime_math_program_plan(
-    workspace: &mut AgentWorkspace,
-    plan: &[u8],
-) -> Result<String, String> {
-    if workspace.runtime_subject_binding().is_none() {
-        return Err(
-            "workspaceBindRuntimeMathProgramPlan: runtime subject must be bound first".to_string(),
-        );
-    }
-
-    let (version, program_identity) = math_program_identity_from_plan(plan)?;
-    let newly_bound = workspace.bind_runtime_program_identity(program_identity.clone())?;
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.runtime-math-program-binding.v1\",",
-            "\"program_plan_version\":{},",
-            "\"program_identity\":{},",
-            "\"identity_policy\":\"exact_program_identity\",",
-            "\"identity_source\":\"canonical_plan_replay\",",
-            "\"newly_bound\":{},",
-            "\"binding_count\":{},",
-            "\"mutation\":\"runtime_program_binding_metadata_only\"",
-            "}}"
-        ),
-        version,
-        program_identity,
-        newly_bound,
-        workspace.runtime_program_binding_count(),
-    ))
-}
-
-fn workspace_verify_math_program_receipt(
+pub(crate) fn workspace_verify_math_program_receipt(
     workspace: &mut AgentWorkspace,
     plan: &[u8],
     inputs: &[WasmTensor],
@@ -1038,123 +704,7 @@ fn workspace_verify_math_program_receipt(
     ))
 }
 
-/// Replay a canonical 1-input MathProgram as the independent numerical reference.
-#[wasm_bindgen(js_name = workspaceVerifyMathProgram1Receipt)]
-pub fn workspace_verify_math_program_1_receipt(
-    workspace: &mut AgentWorkspace,
-    plan: &[u8],
-    input: &WasmTensor,
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    workspace_verify_math_program_receipt(
-        workspace,
-        plan,
-        &[input.clone()],
-        candidate,
-        abs_tol,
-        rel_tol,
-        label,
-        "workspaceVerifyMathProgram1Receipt",
-    )
-}
-
-/// Replay a canonical 2-input MathProgram as the independent numerical reference.
-#[wasm_bindgen(js_name = workspaceVerifyMathProgram2Receipt)]
-pub fn workspace_verify_math_program_2_receipt(
-    workspace: &mut AgentWorkspace,
-    plan: &[u8],
-    lhs: &WasmTensor,
-    rhs: &WasmTensor,
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    workspace_verify_math_program_receipt(
-        workspace,
-        plan,
-        &[lhs.clone(), rhs.clone()],
-        candidate,
-        abs_tol,
-        rel_tol,
-        label,
-        "workspaceVerifyMathProgram2Receipt",
-    )
-}
-
-
-/// Bind the canonical one-step MathProgramV9 reference identity for a direct math operation.
-///
-/// This does not execute the direct operation. It validates metadata through mathCheckOperation,
-/// builds the verifier-owned V9 reference program, and binds only that exact replayable identity
-/// to the already-bound runtime subject.
-#[wasm_bindgen(js_name = workspaceBindRuntimeDirectMathOperation)]
-pub fn workspace_bind_runtime_direct_math_operation(
-    workspace: &mut AgentWorkspace,
-    operation_id: String,
-    lhs_shape: &[u32],
-    rhs_shape: &[u32],
-    u32_params: &[u32],
-    f32_params: &[f32],
-) -> Result<String, String> {
-    if workspace.runtime_subject_binding().is_none() {
-        return Err(
-            "workspaceBindRuntimeDirectMathOperation: runtime subject must be bound first"
-                .to_string(),
-        );
-    }
-
-    if operation_id == "linalg.cosine_similarity" && f32_params.len() != 1 {
-        return Err(
-            "workspaceBindRuntimeDirectMathOperation: cosine verification requires explicit f32_params=[epsilon]"
-                .to_string(),
-        );
-    }
-
-    let preflight = math_check_operation(
-        operation_id.clone(),
-        lhs_shape,
-        rhs_shape,
-        u32_params,
-        f32_params,
-    )?;
-    if !preflight.contains("\"status\":\"admissible\"") {
-        return Err(format!(
-            "workspaceBindRuntimeDirectMathOperation: operation metadata rejected: {preflight}"
-        ));
-    }
-
-    let (_, program_identity) =
-        direct_math_reference_identity(&operation_id, u32_params, f32_params)?;
-    let newly_bound = workspace.bind_runtime_program_identity(program_identity.clone())?;
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.runtime-direct-math-binding.v1\",",
-            "\"operation_id\":\"{}\",",
-            "\"candidate_authority\":\"burn_direct_math\",",
-            "\"reference_authority\":\"burn_math_program\",",
-            "\"reference_program_generation\":\"v9\",",
-            "\"reference_program_identity\":{},",
-            "\"identity_source\":\"canonical_operation_to_math_program_v9\",",
-            "\"newly_bound\":{},",
-            "\"binding_count\":{},",
-            "\"mutation\":\"runtime_program_binding_metadata_only\"",
-            "}}"
-        ),
-        json_escape(&operation_id),
-        program_identity,
-        newly_bound,
-        workspace.runtime_program_binding_count(),
-    ))
-}
-
-fn workspace_verify_direct_math_receipt(
+pub(crate) fn workspace_verify_direct_math_receipt(
     workspace: &mut AgentWorkspace,
     operation_id: &str,
     inputs: &[WasmTensor],
@@ -1166,13 +716,7 @@ fn workspace_verify_direct_math_receipt(
     context: &str,
 ) -> Result<String, String> {
     validate_label(&label, context)?;
-    direct_math_preflight(
-        operation_id,
-        inputs,
-        u32_params,
-        f32_params,
-        context,
-    )?;
+    direct_math_preflight(operation_id, inputs, u32_params, f32_params, context)?;
 
     let (reference_program, program_identity) =
         direct_math_reference_identity(operation_id, u32_params, f32_params)?;
@@ -1188,8 +732,7 @@ fn workspace_verify_direct_math_receipt(
     let direct_output =
         run_direct_math_operation(operation_id, inputs, u32_params, f32_params)?.to_array();
     let reference_output = reference_program.run_inputs(inputs)?.to_array();
-    let report =
-        verify_vectors_metrics(&reference_output, &direct_output, abs_tol, rel_tol)?;
+    let report = verify_vectors_metrics(&reference_output, &direct_output, abs_tol, rel_tol)?;
 
     let receipt_id = workspace.next_verifier_receipt_id();
     let program_identity_fingerprint = bytes_fingerprint(program_identity.as_bytes());
@@ -1262,81 +805,6 @@ fn workspace_verify_direct_math_receipt(
     ))
 }
 
-/// Execute a canonical unary direct math operation and compare it to a verifier-owned V9 reference.
-#[wasm_bindgen(js_name = workspaceVerifyDirectMath1Receipt)]
-pub fn workspace_verify_direct_math_1_receipt(
-    workspace: &mut AgentWorkspace,
-    operation_id: String,
-    input: &WasmTensor,
-    u32_params: &[u32],
-    f32_params: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    workspace_verify_direct_math_receipt(
-        workspace,
-        &operation_id,
-        &[input.clone()],
-        u32_params,
-        f32_params,
-        abs_tol,
-        rel_tol,
-        label,
-        "workspaceVerifyDirectMath1Receipt",
-    )
-}
-
-/// Execute a canonical binary direct math operation and compare it to a verifier-owned V9 reference.
-#[wasm_bindgen(js_name = workspaceVerifyDirectMath2Receipt)]
-pub fn workspace_verify_direct_math_2_receipt(
-    workspace: &mut AgentWorkspace,
-    operation_id: String,
-    lhs: &WasmTensor,
-    rhs: &WasmTensor,
-    u32_params: &[u32],
-    f32_params: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-    label: String,
-) -> Result<String, String> {
-    workspace_verify_direct_math_receipt(
-        workspace,
-        &operation_id,
-        &[lhs.clone(), rhs.clone()],
-        u32_params,
-        f32_params,
-        abs_tol,
-        rel_tol,
-        label,
-        "workspaceVerifyDirectMath2Receipt",
-    )
-}
-
-
-/// Return proof-related workspace collections without merging their authority classes.
-#[wasm_bindgen(js_name = workspaceProofLedger)]
-pub fn workspace_proof_ledger(workspace: &AgentWorkspace) -> String {
-    let legacy = workspace.query("_proofs".into(), None, None);
-    let attestations = workspace.query("_attestations".into(), None, None);
-    let receipts = workspace.query("_verifier_receipts".into(), None, None);
-    format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.proof-ledger.v1\",",
-            "\"legacy_recordProof_authority\":\"caller_controlled_legacy\",",
-            "\"legacy_proofs\":{},",
-            "\"attestations\":{},",
-            "\"verifier_receipts\":{}",
-            "}}"
-        ),
-        legacy,
-        attestations,
-        receipts,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1396,7 +864,9 @@ mod tests {
         let mut builder = AgentGraphBuilder::new(2).unwrap();
         let mut registry = LayerRegistry::new();
 
-        let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+        let id = workspace
+            .reserve_layer_id(&registry, "relu".into())
+            .unwrap();
         let spec = AgentLayerSpec::relu(id);
         let out = workspace_init_unary(
             &mut workspace,
@@ -1566,13 +1036,11 @@ mod tests {
         .unwrap_err();
         assert!(error.contains("workspaceBindRuntimeMathProgramPlan"));
 
-        let binding =
-            workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
+        let binding = workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
         assert!(binding.contains("\"identity_source\":\"canonical_plan_replay\""));
         assert!(binding.contains("\"newly_bound\":true"));
 
-        let repeat =
-            workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
+        let repeat = workspace_bind_runtime_math_program_plan(&mut workspace, &plan).unwrap();
         assert!(repeat.contains("\"newly_bound\":false"));
 
         let receipt = workspace_verify_math_program_1_receipt(
@@ -1811,8 +1279,7 @@ mod tests {
     fn parameterized_direct_math_paths_cover_v4_v8_v9_semantics() {
         let mut workspace = AgentWorkspace::new(4).unwrap();
 
-        let select_input =
-            WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
+        let select_input = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
         let select = workspace_verify_direct_math_1_receipt(
             &mut workspace,
             "tensor.select_axis".into(),
@@ -1826,8 +1293,7 @@ mod tests {
         .unwrap();
         assert!(select.contains("\"passed\":true"));
 
-        let reduction_input =
-            WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 2, 2, 1]);
+        let reduction_input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 2, 2, 1]);
         let reduction = workspace_verify_direct_math_1_receipt(
             &mut workspace,
             "reduction.mean_axis".into(),
@@ -1841,10 +1307,8 @@ mod tests {
         .unwrap();
         assert!(reduction.contains("\"passed\":true"));
 
-        let comparison_lhs =
-            WasmTensor::new(&[1.0, 3.0, 2.0], &[1, 3, 1, 1]);
-        let comparison_rhs =
-            WasmTensor::new(&[1.0, 2.0, 2.0], &[1, 3, 1, 1]);
+        let comparison_lhs = WasmTensor::new(&[1.0, 3.0, 2.0], &[1, 3, 1, 1]);
+        let comparison_rhs = WasmTensor::new(&[1.0, 2.0, 2.0], &[1, 3, 1, 1]);
         let comparison = workspace_verify_direct_math_2_receipt(
             &mut workspace,
             "comparison.less_equal_01".into(),
