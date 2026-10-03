@@ -9,9 +9,7 @@ use burn_research::response_intent_execution_gate::response_intent_execution_gat
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -87,7 +85,10 @@ fn run() -> Result<(), String> {
         false,
         "candidate mismatch",
     )?;
-    ensure(inbox.record(failed)?, "failed graph evidence was not recorded");
+    ensure(
+        inbox.record(failed)?,
+        "failed graph evidence was not recorded",
+    );
     let before_len = inbox.len();
 
     let revision_intent = create_agent_response_intent(
@@ -97,7 +98,10 @@ fn run() -> Result<(), String> {
         "agent-gate-probe",
     )?;
     let revision_gate = response_intent_execution_gate(&inbox, &revision_intent);
-    ensure(revision_gate.dispatchable, "revision gate was not dispatchable");
+    ensure(
+        revision_gate.dispatchable,
+        "revision gate was not dispatchable",
+    );
     ensure(
         revision_gate.gate_status == "dispatchable_nonexecuting",
         "unexpected revision gate status",

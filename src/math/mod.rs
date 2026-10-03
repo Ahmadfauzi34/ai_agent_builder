@@ -26,23 +26,23 @@ pub mod probability;
 pub mod program;
 pub(crate) mod program_index_params;
 pub(crate) mod program_reduction_params;
+pub(crate) mod program_runtime_shape;
 pub(crate) mod program_select_params;
 pub(crate) mod program_shape_params;
 pub(crate) mod program_step_record;
 pub mod program_v4;
-pub mod program_v5;
-pub mod program_v6;
-pub mod program_v7;
-pub mod program_v8;
-pub mod program_v9;
 pub(crate) mod program_v4_step;
-pub(crate) mod program_value_source;
-pub(crate) mod program_runtime_shape;
+pub mod program_v5;
 pub mod program_v5_wasm;
+pub mod program_v6;
 pub mod program_v6_wasm;
+pub mod program_v7;
 pub mod program_v7_wasm;
+pub mod program_v8;
 pub mod program_v8_wasm;
+pub mod program_v9;
 pub mod program_v9_wasm;
+pub(crate) mod program_value_source;
 pub mod program_wasm;
 pub mod reduction;
 pub mod reduction_wasm;
@@ -71,33 +71,33 @@ pub use program_v5::{
     math_program_v5_capabilities, MathProgramV5, MathProgramV5Builder, MAX_V5_EXTERNAL_INPUTS,
     MIN_V5_EXTERNAL_INPUTS,
 };
+pub use program_v5_wasm::{
+    wasm_math_program_v5_capabilities, WasmMathProgramV5, WasmMathProgramV5Builder,
+};
 pub use program_v6::{
     math_program_v6_capabilities, MathProgramV6, MathProgramV6Builder, MAX_V6_EXTERNAL_INPUTS,
     MIN_V6_EXTERNAL_INPUTS, OP_FILL_LIKE,
+};
+pub use program_v6_wasm::{
+    wasm_math_program_v6_capabilities, WasmMathProgramV6, WasmMathProgramV6Builder,
 };
 pub use program_v7::{
     math_program_v7_capabilities, MathProgramV7, MathProgramV7Builder, MAX_V7_EXTERNAL_INPUTS,
     MIN_V7_EXTERNAL_INPUTS, OP_EXPAND_LIKE,
 };
+pub use program_v7_wasm::{
+    wasm_math_program_v7_capabilities, WasmMathProgramV7, WasmMathProgramV7Builder,
+};
 pub use program_v8::{
     math_program_v8_capabilities, MathProgramV8, MathProgramV8Builder, MAX_V8_EXTERNAL_INPUTS,
     MIN_V8_EXTERNAL_INPUTS, OP_MAX_AXIS, OP_MEAN_AXIS, OP_MIN_AXIS, OP_SUM_AXIS,
 };
+pub use program_v8_wasm::{
+    wasm_math_program_v8_capabilities, WasmMathProgramV8, WasmMathProgramV8Builder,
+};
 pub use program_v9::{
     math_program_v9_capabilities, MathProgramV9, MathProgramV9Builder, MAX_V9_EXTERNAL_INPUTS,
     MIN_V9_EXTERNAL_INPUTS, OP_INDICES_LIKE, OP_LESS_EQUAL_01,
-};
-pub use program_v5_wasm::{
-    wasm_math_program_v5_capabilities, WasmMathProgramV5, WasmMathProgramV5Builder,
-};
-pub use program_v6_wasm::{
-    wasm_math_program_v6_capabilities, WasmMathProgramV6, WasmMathProgramV6Builder,
-};
-pub use program_v7_wasm::{
-    wasm_math_program_v7_capabilities, WasmMathProgramV7, WasmMathProgramV7Builder,
-};
-pub use program_v8_wasm::{
-    wasm_math_program_v8_capabilities, WasmMathProgramV8, WasmMathProgramV8Builder,
 };
 pub use program_v9_wasm::{
     wasm_math_program_v9_capabilities, WasmMathProgramV9, WasmMathProgramV9Builder,

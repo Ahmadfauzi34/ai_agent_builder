@@ -90,8 +90,7 @@ fn bound_approval(
     subject_identity: &str,
     approver: &str,
 ) -> SubjectBoundApprovalSnapshot {
-    let mut review =
-        SubjectBoundReviewSession::new(intent_id, subject(subject_identity)).unwrap();
+    let mut review = SubjectBoundReviewSession::new(intent_id, subject(subject_identity)).unwrap();
     review.submit("agent").unwrap();
     review.approve(approver).unwrap()
 }
@@ -139,20 +138,11 @@ fn audit_scoped_authority_and_stale_approval_behavior() {
     assert!(!policy_v2.decision_is_current(&decision_v1, &delegated_a));
 
     // Existing subject binding independently makes an approval stale when the spec changes.
-    let spec_a = EffectiveSpec::root(vec![
-        SpecDeclaration::new("mode", "a").unwrap(),
-    ])
-    .unwrap();
-    let spec_b = EffectiveSpec::root(vec![
-        SpecDeclaration::new("mode", "b").unwrap(),
-    ])
-    .unwrap();
+    let spec_a = EffectiveSpec::root(vec![SpecDeclaration::new("mode", "a").unwrap()]).unwrap();
+    let spec_b = EffectiveSpec::root(vec![SpecDeclaration::new("mode", "b").unwrap()]).unwrap();
 
-    let mut review_a = SubjectBoundReviewSession::new(
-        "intent-spec",
-        spec_a.approval_subject().unwrap(),
-    )
-    .unwrap();
+    let mut review_a =
+        SubjectBoundReviewSession::new("intent-spec", spec_a.approval_subject().unwrap()).unwrap();
     review_a.submit("agent").unwrap();
     let approval_a = review_a.approve("customer").unwrap();
 

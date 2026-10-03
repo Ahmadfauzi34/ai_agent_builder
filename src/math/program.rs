@@ -91,15 +91,7 @@ impl MathStep {
         }
     }
 
-    fn scalar1(
-        op: u8,
-        arity: u8,
-        in_a: u8,
-        in_b: u8,
-        out: u8,
-        param_kind: u8,
-        value: f32,
-    ) -> Self {
+    fn scalar1(op: u8, arity: u8, in_a: u8, in_b: u8, out: u8, param_kind: u8, value: f32) -> Self {
         Self {
             op,
             arity,
@@ -136,12 +128,7 @@ impl MathStep {
         }
     }
 
-    fn shape(
-        op: u8,
-        input: u8,
-        output: u8,
-        shape_params: FixedShapeParams,
-    ) -> Self {
+    fn shape(op: u8, input: u8, output: u8, shape_params: FixedShapeParams) -> Self {
         Self {
             op,
             arity: ARITY_UNARY,
@@ -210,16 +197,8 @@ fn expected_arity(op: u8) -> Option<u8> {
         | OP_MAX
         | OP_NORMALIZE
         | OP_ENTROPY => Some(ARITY_UNARY),
-        OP_ADD
-        | OP_SUB
-        | OP_MUL
-        | OP_DIV
-        | OP_DOT
-        | OP_L2_DISTANCE
-        | OP_MATMUL
-        | OP_COSINE_SIMILARITY
-        | OP_CROSS_ENTROPY
-        | OP_KL_DIVERGENCE => Some(ARITY_BINARY),
+        OP_ADD | OP_SUB | OP_MUL | OP_DIV | OP_DOT | OP_L2_DISTANCE | OP_MATMUL
+        | OP_COSINE_SIMILARITY | OP_CROSS_ENTROPY | OP_KL_DIVERGENCE => Some(ARITY_BINARY),
         _ => None,
     }
 }
@@ -494,9 +473,8 @@ fn encode_plan(
 
     let version = plan_version(steps);
     let step_bytes = step_bytes(version)?;
-    let mut plan = Vec::with_capacity(
-        PLAN_HEADER_BYTES + steps.len() * step_bytes + PLAN_OUTPUT_BYTES,
-    );
+    let mut plan =
+        Vec::with_capacity(PLAN_HEADER_BYTES + steps.len() * step_bytes + PLAN_OUTPUT_BYTES);
     plan.extend_from_slice(PLAN_MAGIC);
     plan.push(version);
     plan.push(num_inputs);
@@ -535,11 +513,7 @@ fn decode_v3_parameters(
         param_kind,
         PARAM_RESHAPE_RANK4 | PARAM_PERMUTE_RANK4 | PARAM_SLICE_RANK4
     ) {
-        return Ok((
-            0,
-            0,
-            Some(FixedShapeParams::decode(param_kind, payload)?),
-        ));
+        return Ok((0, 0, Some(FixedShapeParams::decode(param_kind, payload)?)));
     }
     if payload[8..].iter().any(|byte| *byte != 0) {
         return Err("MathProgram: unused v3 scalar parameter bytes must be zero".into());
@@ -567,9 +541,11 @@ fn decode_plan(plan: &[u8]) -> Result<(u8, u8, Vec<MathStep>, u8), String> {
         return Err("MathProgram: plan must contain at least one step".into());
     }
     let expected_len = PLAN_HEADER_BYTES
-        .checked_add(num_steps.checked_mul(step_bytes).ok_or_else(|| {
-            "MathProgram: plan step length overflow".to_string()
-        })?)
+        .checked_add(
+            num_steps
+                .checked_mul(step_bytes)
+                .ok_or_else(|| "MathProgram: plan step length overflow".to_string())?,
+        )
         .and_then(|len| len.checked_add(PLAN_OUTPUT_BYTES))
         .ok_or_else(|| "MathProgram: plan length overflow".to_string())?;
     if plan.len() != expected_len {
@@ -709,17 +685,10 @@ impl MathProgramBuilder {
 
     fn push_step(&mut self, step: MathStep, context: &str) -> Result<(), String> {
         if self.steps.len() >= MAX_STEPS {
-            return Err(format!(
-                "{context}: step count exceeds maximum {MAX_STEPS}"
-            ));
+            return Err(format!("{context}: step count exceeds maximum {MAX_STEPS}"));
         }
-        let (filled, written) = validate_step(
-            step,
-            self.num_slots,
-            self.filled,
-            self.written,
-            context,
-        )?;
+        let (filled, written) =
+            validate_step(step, self.num_slots, self.filled, self.written, context)?;
         self.steps.push(step);
         self.filled = filled;
         self.written = written;
@@ -733,26 +702,14 @@ impl MathProgramBuilder {
         )
     }
 
-    pub fn add_binary(
-        &mut self,
-        op: u8,
-        lhs: u8,
-        rhs: u8,
-        output: u8,
-    ) -> Result<(), String> {
+    pub fn add_binary(&mut self, op: u8, lhs: u8, rhs: u8, output: u8) -> Result<(), String> {
         self.push_step(
             MathStep::plain(op, ARITY_BINARY, lhs, rhs, output),
             "MathProgramBuilder.addBinary",
         )
     }
 
-    pub fn add_clamp(
-        &mut self,
-        input: u8,
-        output: u8,
-        min: f32,
-        max: f32,
-    ) -> Result<(), String> {
+    pub fn add_clamp(&mut self, input: u8, output: u8, min: f32, max: f32) -> Result<(), String> {
         self.push_step(
             MathStep::scalar2(
                 OP_CLAMP,
@@ -789,12 +746,7 @@ impl MathProgramBuilder {
         )
     }
 
-    pub fn add_reshape(
-        &mut self,
-        input: u8,
-        output: u8,
-        shape: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_reshape(&mut self, input: u8, output: u8, shape: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::reshape(shape)?;
         self.push_step(
             MathStep::shape(OP_RESHAPE, input, output, params),
@@ -802,12 +754,7 @@ impl MathProgramBuilder {
         )
     }
 
-    pub fn add_permute(
-        &mut self,
-        input: u8,
-        output: u8,
-        axes: &[u32],
-    ) -> Result<(), String> {
+    pub fn add_permute(&mut self, input: u8, output: u8, axes: &[u32]) -> Result<(), String> {
         let params = FixedShapeParams::permute(axes)?;
         self.push_step(
             MathStep::shape(OP_PERMUTE, input, output, params),
@@ -939,7 +886,10 @@ impl MathProgram {
 
         for (index, step) in self.steps.iter().copied().enumerate() {
             let a = slots[step.in_a as usize].as_ref().ok_or_else(|| {
-                format!("MathProgram.run: step {index} input slot {} is empty", step.in_a)
+                format!(
+                    "MathProgram.run: step {index} input slot {} is empty",
+                    step.in_a
+                )
             })?;
 
             let output = if step.arity == ARITY_UNARY {
@@ -1017,7 +967,9 @@ impl MathProgram {
                     )),
                 }
             }
-            .map_err(|error| format!("MathProgram.run step {index} {}: {error}", op_name(step.op)))?;
+            .map_err(|error| {
+                format!("MathProgram.run step {index} {}: {error}", op_name(step.op))
+            })?;
 
             slots[step.out as usize] = Some(output);
         }
@@ -1153,16 +1105,12 @@ mod tests {
     #[test]
     fn cosine_similarity_parameter_changes_identity_and_executes() {
         let mut tight = MathProgramBuilder::new(2, 3).unwrap();
-        tight
-            .add_cosine_similarity(0, 1, 2, 1e-6)
-            .unwrap();
+        tight.add_cosine_similarity(0, 1, 2, 1e-6).unwrap();
         tight.set_output(2).unwrap();
         let tight = tight.compile().unwrap();
 
         let mut loose = MathProgramBuilder::new(2, 3).unwrap();
-        loose
-            .add_cosine_similarity(0, 1, 2, 1e-3)
-            .unwrap();
+        loose.add_cosine_similarity(0, 1, 2, 1e-3).unwrap();
         loose.set_output(2).unwrap();
         let loose = loose.compile().unwrap();
 
@@ -1258,12 +1206,8 @@ mod tests {
         assert_eq!(unary.num_steps(), 1);
 
         let mut binary = MathProgramBuilder::new(2, 3).unwrap();
-        assert!(binary
-            .add_binary(OP_COSINE_SIMILARITY, 0, 1, 2)
-            .is_err());
-        assert!(binary
-            .add_cosine_similarity(0, 1, 2, 0.0)
-            .is_err());
+        assert!(binary.add_binary(OP_COSINE_SIMILARITY, 0, 1, 2).is_err());
+        assert!(binary.add_cosine_similarity(0, 1, 2, 0.0).is_err());
         assert!(binary
             .add_cosine_similarity(0, 1, 2, f32::INFINITY)
             .is_err());

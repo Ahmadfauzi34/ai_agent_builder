@@ -7,9 +7,7 @@ use burn_research::runtime_evidence_interpretation::{
     interpret_recorded_evidence, EvidenceResponseAction,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -104,8 +102,14 @@ fn run() -> Result<(), String> {
     )?;
 
     ensure(inbox.record(fault)?, "fault evidence was not recorded");
-    ensure(inbox.record(failed)?, "failed verifier evidence was not recorded");
-    ensure(inbox.record(passed)?, "passed verifier evidence was not recorded");
+    ensure(
+        inbox.record(failed)?,
+        "failed verifier evidence was not recorded",
+    );
+    ensure(
+        inbox.record(passed)?,
+        "passed verifier evidence was not recorded",
+    );
     ensure(inbox.len() == 3, "unexpected inbox length");
 
     let before_len = inbox.len();

@@ -115,13 +115,11 @@ impl AuthorizationPolicy {
     }
 
     pub fn is_authorized(&self, approval: &SubjectBoundApprovalSnapshot) -> bool {
-        root_binding(approval)
-            .is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
+        root_binding(approval).is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
     }
 
     pub fn is_revision_authorized(&self, approval: &SubjectBoundRevisionApprovalSnapshot) -> bool {
-        revision_binding(approval)
-            .is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
+        revision_binding(approval).is_ok_and(|binding| self.actor_is_currently_authorized(&binding))
     }
 
     pub fn authorize(
@@ -178,12 +176,17 @@ impl AuthorizationPolicy {
         binding: AuthorizationApprovalBinding,
     ) -> Result<(), String> {
         if authorization.schema != AUTHORIZATION_SNAPSHOT_SCHEMA {
-            return Err("AuthorizationPolicy: unsupported authorization snapshot schema".to_string());
+            return Err(
+                "AuthorizationPolicy: unsupported authorization snapshot schema".to_string(),
+            );
         }
         if authorization.policy_id != self.policy_id
             || authorization.policy_revision != self.revision
         {
-            return Err("AuthorizationPolicy: authorization snapshot is stale for current policy".to_string());
+            return Err(
+                "AuthorizationPolicy: authorization snapshot is stale for current policy"
+                    .to_string(),
+            );
         }
         if authorization.binding != binding {
             return Err(
@@ -202,8 +205,7 @@ impl AuthorizationPolicy {
     }
 
     fn actor_is_currently_authorized(&self, binding: &AuthorizationApprovalBinding) -> bool {
-        binding.approver() == self.owner
-            || self.grants.iter().any(|grant| grant.matches(binding))
+        binding.approver() == self.owner || self.grants.iter().any(|grant| grant.matches(binding))
     }
 }
 
@@ -438,8 +440,14 @@ fn validate_review_approval(approval: &ApprovalSnapshot) -> Result<(), String> {
     if approval.schema != APPROVAL_SNAPSHOT_SCHEMA {
         return Err("AuthorizationPolicy: unsupported review approval schema".to_string());
     }
-    validate_present(&approval.approval_id, "AuthorizationPolicy: review approval id")?;
-    validate_present(&approval.intent_id, "AuthorizationPolicy: approval intent id")?;
+    validate_present(
+        &approval.approval_id,
+        "AuthorizationPolicy: review approval id",
+    )?;
+    validate_present(
+        &approval.intent_id,
+        "AuthorizationPolicy: approval intent id",
+    )?;
     validate_present(&approval.approver, "AuthorizationPolicy: approval actor")?;
 
     let expected_approval_id = format!(
@@ -521,7 +529,9 @@ mod tests {
         assert_eq!(authorization.subject(), &subject("spec:a"));
         assert_eq!(authorization.approver(), "customer");
         assert!(!authorization.is_revision());
-        assert!(policy.validate_authorization(&authorization, &approval).is_ok());
+        assert!(policy
+            .validate_authorization(&authorization, &approval)
+            .is_ok());
     }
 
     #[test]
@@ -565,8 +575,14 @@ mod tests {
 
         let authorization = policy.authorize_revision(&approval).unwrap();
         assert!(authorization.is_revision());
-        assert_eq!(authorization.approval_id(), approval.approval.revision_approval_id);
-        assert_eq!(authorization.intent_id(), approval.approval.approval.intent_id);
+        assert_eq!(
+            authorization.approval_id(),
+            approval.approval.revision_approval_id
+        );
+        assert_eq!(
+            authorization.intent_id(),
+            approval.approval.approval.intent_id
+        );
         assert_eq!(authorization.subject(), &approval.subject);
         assert!(policy
             .validate_revision_authorization(&authorization, &approval)
@@ -607,7 +623,9 @@ mod tests {
         let sibling_owner = bound_approval("intent-a", "spec:b", "customer");
         let authorization = policy.authorize(&exact).unwrap();
 
-        assert!(policy.validate_authorization(&authorization, &sibling_owner).is_err());
+        assert!(policy
+            .validate_authorization(&authorization, &sibling_owner)
+            .is_err());
     }
 
     #[test]
@@ -618,8 +636,7 @@ mod tests {
         let approval = bound_approval("intent-a", "spec:a", "delegate");
         let authorization = policy_v1.authorize(&approval).unwrap();
 
-        let policy_v2 =
-            AuthorizationPolicy::new("policy-a", 2, "customer", vec![scoped]).unwrap();
+        let policy_v2 = AuthorizationPolicy::new("policy-a", 2, "customer", vec![scoped]).unwrap();
         assert!(policy_v2
             .validate_authorization(&authorization, &approval)
             .is_err());
@@ -642,7 +659,10 @@ mod tests {
         .unwrap();
         let approval = bound_approval("intent-a", "spec:a", "delegate");
 
-        assert_eq!(policy.authorize(&approval).unwrap(), policy.authorize(&approval).unwrap());
+        assert_eq!(
+            policy.authorize(&approval).unwrap(),
+            policy.authorize(&approval).unwrap()
+        );
     }
 
     #[test]
@@ -672,20 +692,10 @@ mod tests {
         let a = grant("delegate-a", "intent-a", "spec:a");
         let b = grant("delegate-b", "intent-b", "spec:b");
 
-        let left = AuthorizationPolicy::new(
-            "policy-a",
-            1,
-            "customer",
-            vec![b.clone(), a.clone()],
-        )
-        .unwrap();
-        let right = AuthorizationPolicy::new(
-            "policy-a",
-            1,
-            "customer",
-            vec![a.clone(), b.clone()],
-        )
-        .unwrap();
+        let left = AuthorizationPolicy::new("policy-a", 1, "customer", vec![b.clone(), a.clone()])
+            .unwrap();
+        let right = AuthorizationPolicy::new("policy-a", 1, "customer", vec![a.clone(), b.clone()])
+            .unwrap();
         assert_eq!(left, right);
 
         assert!(AuthorizationPolicy::new("policy-a", 1, "customer", vec![a.clone(), a]).is_err());

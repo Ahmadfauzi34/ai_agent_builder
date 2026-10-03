@@ -139,7 +139,9 @@ fn run_layout_negative(operation: &str, slot_binding: Option<&str>) {
             assert_eq!(builder.num_steps(), before_steps);
             assert_eq!(workspace.get("_layers".into(), norm_id.to_string()), "null");
             assert_eq!(
-                registry.layer_init_fingerprint(LAYER_NORM, norm_id).unwrap(),
+                registry
+                    .layer_init_fingerprint(LAYER_NORM, norm_id)
+                    .unwrap(),
                 before_fingerprint
             );
         }
@@ -167,14 +169,14 @@ fn schema_driven_semantic_contract_matrix_executes_negative_cells_fail_closed() 
         !cases.is_empty(),
         "expected at least one semantic precondition in the canonical schema"
     );
-    assert!(
-        cases.iter().any(|case| case.operation == "workspaceInitUnary"
-            && case.predicate == "layout.edge_not_known_incompatible")
-    );
-    assert!(
-        cases.iter().any(|case| case.operation == "workspaceWireUnary"
-            && case.predicate == "layout.edge_not_known_incompatible")
-    );
+    assert!(cases
+        .iter()
+        .any(|case| case.operation == "workspaceInitUnary"
+            && case.predicate == "layout.edge_not_known_incompatible"));
+    assert!(cases
+        .iter()
+        .any(|case| case.operation == "workspaceWireUnary"
+            && case.predicate == "layout.edge_not_known_incompatible"));
 
     for case in &cases {
         run_semantic_negative_case(case);

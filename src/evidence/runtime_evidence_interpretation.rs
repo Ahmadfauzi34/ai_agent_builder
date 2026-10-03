@@ -101,10 +101,7 @@ pub struct EvidenceInterpretationSnapshot {
 }
 
 impl EvidenceInterpretationSnapshot {
-    pub fn candidate(
-        &self,
-        action: EvidenceResponseAction,
-    ) -> Option<&EvidenceResponseCandidate> {
+    pub fn candidate(&self, action: EvidenceResponseAction) -> Option<&EvidenceResponseCandidate> {
         self.candidates
             .iter()
             .find(|candidate| candidate.action == action)
@@ -131,25 +128,25 @@ impl EvidenceInterpretationSnapshot {
                 "\"role\":\"candidate_projection_only\",",
                 "\"entry_index\":{},",
                 "\"evidence\":{{",
-                    "\"kind\":\"{}\",",
-                    "\"outcome\":\"{}\",",
-                    "\"source_authority\":\"{}\",",
-                    "\"evidence_authority\":\"{}\",",
-                    "\"transport_integrity\":\"{}\"",
+                "\"kind\":\"{}\",",
+                "\"outcome\":\"{}\",",
+                "\"source_authority\":\"{}\",",
+                "\"evidence_authority\":\"{}\",",
+                "\"transport_integrity\":\"{}\"",
                 "}},",
                 "\"selection\":{{",
-                    "\"selected_action\":null,",
-                    "\"default_action\":null,",
-                    "\"ranking\":\"none\",",
-                    "\"ordering\":\"stable_protocol_order_not_preference\"",
+                "\"selected_action\":null,",
+                "\"default_action\":null,",
+                "\"ranking\":\"none\",",
+                "\"ordering\":\"stable_protocol_order_not_preference\"",
                 "}},",
                 "\"mutation\":{{",
-                    "\"interpreter\":\"none\",",
-                    "\"inbox\":\"none\",",
-                    "\"resolution\":\"none\",",
-                    "\"revision\":\"none\",",
-                    "\"diagnostic\":\"none\",",
-                    "\"verifier_execution\":\"none\"",
+                "\"interpreter\":\"none\",",
+                "\"inbox\":\"none\",",
+                "\"resolution\":\"none\",",
+                "\"revision\":\"none\",",
+                "\"diagnostic\":\"none\",",
+                "\"verifier_execution\":\"none\"",
                 "}},",
                 "\"candidates\":[{}]",
                 "}}"

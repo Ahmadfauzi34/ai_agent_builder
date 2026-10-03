@@ -276,7 +276,7 @@ impl ResponseDispatchRequestBindability {
                 "\"payload_mode\":{},",
                 "\"unresolved_required\":{},",
                 "\"execution_authorized\":{},",
-                "\"mutation\":\"{}\"" ,
+                "\"mutation\":\"{}\"",
                 "}}"
             ),
             self.bindable,
@@ -312,14 +312,14 @@ impl ResponseDispatchRequestPreflight {
                 "\"ready\":{},",
                 "\"status\":\"{}\",",
                 "\"checks\":{{",
-                    "\"response_intent_matches\":{},",
-                    "\"dispatch_matches\":{},",
-                    "\"requirements_match\":{},",
-                    "\"request_fingerprint_matches\":{}",
+                "\"response_intent_matches\":{},",
+                "\"dispatch_matches\":{},",
+                "\"requirements_match\":{},",
+                "\"request_fingerprint_matches\":{}",
                 "}},",
                 "\"execution_authorized\":{},",
                 "\"execution_effect\":\"none\",",
-                "\"mutation\":\"{}\"" ,
+                "\"mutation\":\"{}\"",
                 "}}"
             ),
             self.ready,
@@ -398,7 +398,11 @@ fn validate_requirement_accounting(
                 "ResponseDispatchRequest: duplicate bound requirement {name}"
             ));
         }
-        if !requirements.requirements.iter().any(|item| item.name == *name) {
+        if !requirements
+            .requirements
+            .iter()
+            .any(|item| item.name == *name)
+        {
             return Err(format!(
                 "ResponseDispatchRequest: unknown bound requirement {name}"
             ));
@@ -584,9 +588,7 @@ pub fn create_information_dispatch_request(
         current_requirements(inbox, intent, EvidenceResponseAction::RequestInformation)?;
     let information_request = information_request.into();
     if information_request.trim().is_empty() {
-        return Err(
-            "ResponseDispatchRequest: information_request must not be empty".to_string(),
-        );
+        return Err("ResponseDispatchRequest: information_request must not be empty".to_string());
     }
     if information_request.len() > MAX_INFORMATION_REQUEST_BYTES {
         return Err(format!(
@@ -628,10 +630,9 @@ pub fn create_revision_dispatch_request(
         current_requirements(inbox, intent, EvidenceResponseAction::ProposeRevision)?;
 
     let root = chain.root_snapshot();
-    let root_approval = root
-        .approval
-        .as_ref()
-        .ok_or_else(|| "ResponseDispatchRequest: revision chain root approval missing".to_string())?;
+    let root_approval = root.approval.as_ref().ok_or_else(|| {
+        "ResponseDispatchRequest: revision chain root approval missing".to_string()
+    })?;
     if root.workflow.intent_id != inbox.target_intent_id()
         || root.workflow.revision != inbox.target_workflow_revision()
         || root_approval.approval_id != inbox.target_approval_id()
@@ -677,10 +678,10 @@ pub fn preflight_response_dispatch_request(
     request: &ResponseDispatchRequest,
 ) -> ResponseDispatchRequestPreflight {
     let requirements = response_dispatch_requirements(inbox, intent);
-    let response_intent_matches =
-        request.response_intent_fingerprint == intent.response_intent_fingerprint()
-            && request.selected_action == intent.selected_action()
-            && request.evidence_kind == intent.evidence_kind();
+    let response_intent_matches = request.response_intent_fingerprint
+        == intent.response_intent_fingerprint()
+        && request.selected_action == intent.selected_action()
+        && request.evidence_kind == intent.evidence_kind();
 
     let dispatch_matches = requirements.ready
         && requirements.dispatch_fingerprint.as_deref() == Some(&request.dispatch_fingerprint)
@@ -747,8 +748,7 @@ mod tests {
         ResolutionEvidenceInbox,
         ResolutionReviewSession,
     ) {
-        let mut review =
-            ResolutionReviewSession::new("intent-dispatch-request").unwrap();
+        let mut review = ResolutionReviewSession::new("intent-dispatch-request").unwrap();
         review.submit("agent").unwrap();
         let approval = review.approve("customer").unwrap();
         let resolution = review.snapshot().workflow;
@@ -785,13 +785,9 @@ mod tests {
     #[test]
     fn reverify_remains_deferred_until_real_runtime_handles_exist() {
         let (_, _, inbox, _) = fixture();
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         let projection = response_dispatch_request_bindability(&inbox, &intent);
         assert!(!projection.bindable);
@@ -811,7 +807,10 @@ mod tests {
                 .unwrap();
         let request = create_ignore_dispatch_request(&inbox, &intent).unwrap();
 
-        assert!(matches!(request.payload(), ResponseDispatchRequestPayload::Ignore));
+        assert!(matches!(
+            request.payload(),
+            ResponseDispatchRequestPayload::Ignore
+        ));
         assert_eq!(request.executor_contract(), "none");
         assert_eq!(request.operation(), "no_op");
         assert!(preflight_response_dispatch_request(&inbox, &intent, &request).ready);
@@ -842,7 +841,9 @@ mod tests {
         assert_eq!(request.operation(), "request_information");
         assert!(preflight_response_dispatch_request(&inbox, &intent, &request).ready);
         assert_eq!(resolution, before);
-        assert!(request.to_json().contains("Provide the missing tensor rank"));
+        assert!(request
+            .to_json()
+            .contains("Provide the missing tensor rank"));
     }
 
     #[test]
@@ -858,14 +859,8 @@ mod tests {
         )
         .unwrap();
 
-        let request = create_revision_dispatch_request(
-            &inbox,
-            &intent,
-            &chain,
-            "fix-shape",
-            None,
-        )
-        .unwrap();
+        let request =
+            create_revision_dispatch_request(&inbox, &intent, &chain, "fix-shape", None).unwrap();
 
         assert_eq!(request.executor_contract(), "ResolutionRevisionChain");
         assert_eq!(request.operation(), "open_revision");
@@ -899,14 +894,10 @@ mod tests {
         let foreign_chain =
             ResolutionRevisionChain::from_approved(foreign_review.snapshot()).unwrap();
 
-        assert!(create_revision_dispatch_request(
-            &inbox,
-            &intent,
-            &foreign_chain,
-            "fix",
-            None,
-        )
-        .is_err());
+        assert!(
+            create_revision_dispatch_request(&inbox, &intent, &foreign_chain, "fix", None,)
+                .is_err()
+        );
     }
 
     #[test]
@@ -920,27 +911,9 @@ mod tests {
         )
         .unwrap();
 
-        let a = create_information_dispatch_request(
-            &inbox,
-            &intent,
-            "Need rank",
-            None,
-        )
-        .unwrap();
-        let b = create_information_dispatch_request(
-            &inbox,
-            &intent,
-            "Need rank",
-            None,
-        )
-        .unwrap();
-        let c = create_information_dispatch_request(
-            &inbox,
-            &intent,
-            "Need dtype",
-            None,
-        )
-        .unwrap();
+        let a = create_information_dispatch_request(&inbox, &intent, "Need rank", None).unwrap();
+        let b = create_information_dispatch_request(&inbox, &intent, "Need rank", None).unwrap();
+        let c = create_information_dispatch_request(&inbox, &intent, "Need dtype", None).unwrap();
 
         assert_eq!(a.request_fingerprint(), b.request_fingerprint());
         assert_ne!(a.request_fingerprint(), c.request_fingerprint());

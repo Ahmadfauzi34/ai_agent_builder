@@ -1,9 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::authorization::AuthorizationPolicy;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::effective_spec::{
-    ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration,
-};
+use burn_research::effective_spec::{ApprovedEffectiveSpec, EffectiveSpec, SpecDeclaration};
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
 #[cfg(not(target_arch = "wasm32"))]
@@ -45,18 +43,19 @@ fn run() -> Result<(), String> {
     ])?;
     let subject = spec.approval_subject()?;
 
-    let mut review =
-        SubjectBoundReviewSession::new("intent-runtime-evidence-probe", subject)?;
+    let mut review = SubjectBoundReviewSession::new("intent-runtime-evidence-probe", subject)?;
     review.submit("agent")?;
     let approval = review.approve("owner")?;
     let resolution = review.snapshot().review.workflow;
-    ensure(resolution.compile_eligible(), "resolution must be compile eligible");
+    ensure(
+        resolution.compile_eligible(),
+        "resolution must be compile eligible",
+    );
 
     let approved = ApprovedEffectiveSpec::bind_root(spec, approval.clone())?;
     let policy = AuthorizationPolicy::new("runtime-policy", 13, "owner", vec![])?;
     let authorization = policy.authorize(&approval)?;
-    let projection =
-        RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization)?;
+    let projection = RuntimeSubjectProjection::from_authorized(&approved, &policy, &authorization)?;
 
     ensure(
         resolution.intent_id == projection.intent_id
@@ -65,12 +64,8 @@ fn run() -> Result<(), String> {
     );
 
     let before_resolution = resolution.clone();
-    let mut inbox = ResolutionEvidenceInbox::from_authorized(
-        &resolution,
-        &approved,
-        &policy,
-        &authorization,
-    )?;
+    let mut inbox =
+        ResolutionEvidenceInbox::from_authorized(&resolution, &approved, &policy, &authorization)?;
 
     let fault_envelope = serde_json::json!({
         "schema_version": 1,
@@ -90,13 +85,15 @@ fn run() -> Result<(), String> {
         }
     })
     .to_string();
-    let fault =
-        RuntimeEvidence::from_bound_agent_fault_envelope(&projection, &fault_envelope)?;
+    let fault = RuntimeEvidence::from_bound_agent_fault_envelope(&projection, &fault_envelope)?;
     ensure(
         inbox.classify(&fault) == RejoinStatus::Exact,
         "exact AgentFault failed rejoin classification",
     );
-    ensure(inbox.record(fault.clone())?, "first fault insert was not recorded");
+    ensure(
+        inbox.record(fault.clone())?,
+        "first fault insert was not recorded",
+    );
     ensure(!inbox.record(fault)?, "duplicate fault was not idempotent");
 
     let verifier_receipt = serde_json::json!({
@@ -148,7 +145,10 @@ fn run() -> Result<(), String> {
             && verifier.kind() == "graph_verifier_receipt",
         "graph verifier source-authority/transport semantics drift",
     );
-    ensure(inbox.record(verifier)?, "graph verifier evidence was not recorded");
+    ensure(
+        inbox.record(verifier)?,
+        "graph verifier evidence was not recorded",
+    );
 
     let semantic_program_identity = serde_json::json!({
         "schema": "burn-research.program-identity.v1",
@@ -395,7 +395,10 @@ fn run() -> Result<(), String> {
         inbox.classify(&foreign) == RejoinStatus::SubjectMismatch,
         "foreign subject was not classified",
     );
-    ensure(inbox.record(foreign).is_err(), "foreign subject evidence entered inbox");
+    ensure(
+        inbox.record(foreign).is_err(),
+        "foreign subject evidence entered inbox",
+    );
 
     let unbound = RuntimeEvidence::agent_fault(
         None,
@@ -410,7 +413,10 @@ fn run() -> Result<(), String> {
         inbox.classify(&unbound) == RejoinStatus::Unbound,
         "unbound evidence was not classified",
     );
-    ensure(inbox.record(unbound).is_err(), "unbound evidence entered inbox");
+    ensure(
+        inbox.record(unbound).is_err(),
+        "unbound evidence entered inbox",
+    );
 
     for index in inbox.len()..MAX_RUNTIME_EVIDENCE_ENTRIES {
         let evidence = RuntimeEvidence::bound_agent_fault(
@@ -422,7 +428,10 @@ fn run() -> Result<(), String> {
             true,
             format!("fill-{index}"),
         )?;
-        ensure(inbox.record(evidence)?, "bounded evidence fill failed early");
+        ensure(
+            inbox.record(evidence)?,
+            "bounded evidence fill failed early",
+        );
     }
     ensure(
         inbox.len() == MAX_RUNTIME_EVIDENCE_ENTRIES,
@@ -438,7 +447,10 @@ fn run() -> Result<(), String> {
         true,
         "overflow",
     )?;
-    ensure(inbox.record(overflow).is_err(), "evidence inbox accepted overflow");
+    ensure(
+        inbox.record(overflow).is_err(),
+        "evidence inbox accepted overflow",
+    );
 
     let summary = inbox.to_json();
     ensure(

@@ -8,7 +8,11 @@ use burn::prelude::*;
 
 use crate::WasmTensor;
 
-fn validate_same_shape(lhs: &WasmTensor, rhs: &WasmTensor, context: &str) -> Result<[usize; 4], String> {
+fn validate_same_shape(
+    lhs: &WasmTensor,
+    rhs: &WasmTensor,
+    context: &str,
+) -> Result<[usize; 4], String> {
     let lhs_shape = lhs.inner.dims();
     let rhs_shape = rhs.inner.dims();
     if lhs_shape != rhs_shape {
@@ -86,21 +90,13 @@ impl TensorComparison {
     }
 
     /// Element-wise `lhs <= rhs`, materialized as canonical f32 `0.0` / `1.0` values.
-    pub fn less_equal_01(
-        &self,
-        lhs: &WasmTensor,
-        rhs: &WasmTensor,
-    ) -> Result<WasmTensor, String> {
+    pub fn less_equal_01(&self, lhs: &WasmTensor, rhs: &WasmTensor) -> Result<WasmTensor, String> {
         let shape = validate_same_shape(lhs, rhs, "Comparison.lessEqual01")?;
         validate_finite(lhs, "Comparison.lessEqual01 lhs")?;
         validate_finite(rhs, "Comparison.lessEqual01 rhs")?;
 
         let output = WasmTensor {
-            inner: lhs
-                .inner
-                .clone()
-                .lower_equal(rhs.inner.clone())
-                .float(),
+            inner: lhs.inner.clone().lower_equal(rhs.inner.clone()).float(),
         };
         validate_numeric_predicate_output(&output, shape, "Comparison.lessEqual01 output")?;
         Ok(output)

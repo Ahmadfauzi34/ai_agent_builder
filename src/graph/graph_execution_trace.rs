@@ -24,7 +24,9 @@ pub struct TracedMultiInputRun {
 impl TracedMultiInputRun {
     /// A failed numerical step has no output and never issues an execution receipt.
     pub fn output(&self) -> Result<WasmTensor, String> {
-        self.output.clone().ok_or_else(|| "TracedMultiInputRun: execution did not complete".into())
+        self.output
+            .clone()
+            .ok_or_else(|| "TracedMultiInputRun: execution did not complete".into())
     }
 
     pub fn report(&self) -> String {
@@ -67,9 +69,18 @@ struct TraceCollector {
 }
 
 impl TraceCollector {
-    fn new(total_steps: usize, start: u32, count: u32, max_tensor_bytes: u32) -> Result<Self, String> {
+    fn new(
+        total_steps: usize,
+        start: u32,
+        count: u32,
+        max_tensor_bytes: u32,
+    ) -> Result<Self, String> {
         let start = start as usize;
-        if start >= total_steps || count == 0 || count > MAX_TRACE_STEPS || max_tensor_bytes > MAX_TENSOR_BYTES {
+        if start >= total_steps
+            || count == 0
+            || count > MAX_TRACE_STEPS
+            || max_tensor_bytes > MAX_TENSOR_BYTES
+        {
             return Err(format!(
                 "runWithTrace: require start < {total_steps}, steps in 1..={MAX_TRACE_STEPS}, and max tensor bytes <= {MAX_TENSOR_BYTES}"
             ));
@@ -96,9 +107,13 @@ impl TraceCollector {
                 "{{\"shape\":{shape},\"byte_length\":null,\"capture_status\":\"size_overflow\",\"finite_values\":null,\"value_sha256\":null}}"
             ) };
         };
-        let reason = if bytes > self.max_tensor_bytes { Some("tensor_budget_exceeded") }
-            else if bytes > self.remaining_bytes { Some("total_budget_exceeded") }
-            else { None };
+        let reason = if bytes > self.max_tensor_bytes {
+            Some("tensor_budget_exceeded")
+        } else if bytes > self.remaining_bytes {
+            Some("total_budget_exceeded")
+        } else {
+            None
+        };
         if let Some(reason) = reason {
             return TensorObservation { json: format!(
                 "{{\"shape\":{shape},\"byte_length\":{bytes},\"capture_status\":\"{reason}\",\"finite_values\":null,\"value_sha256\":null}}"
@@ -118,16 +133,26 @@ impl TraceCollector {
         ) }
     }
 
-    fn observe_step(&mut self, index: usize, step: &GraphPlanStep, result: &Result<WasmTensor, String>) {
+    fn observe_step(
+        &mut self,
+        index: usize,
+        step: &GraphPlanStep,
+        result: &Result<WasmTensor, String>,
+    ) {
         if let Err(error) = result {
             self.fault = Some((index, error.clone()));
         } else {
             self.completed_steps += 1;
         }
-        if !(self.start..self.end).contains(&index) { return; }
+        if !(self.start..self.end).contains(&index) {
+            return;
+        }
         let result_json = match result {
             Ok(output) => self.observe_tensor(output).json,
-            Err(error) => format!("{{\"capture_status\":\"step_failed\",\"error\":\"{}\"}}", escape_json(error)),
+            Err(error) => format!(
+                "{{\"capture_status\":\"step_failed\",\"error\":\"{}\"}}",
+                escape_json(error)
+            ),
         };
         self.observations.push(format!(
             "{{\"index\":{index},\"layer_type\":{},\"layer_id\":{},\"arity\":{},\"input_slots\":[{}],\"output_slot\":{},\"observation\":{result_json}}}",
@@ -137,13 +162,29 @@ impl TraceCollector {
         ));
     }
 
-    fn report(&mut self, graph: &CompiledMultiInputGraph, output: Option<&WasmTensor>, inputs: String) -> String {
-        let terminal = output.map_or_else(|| "null".to_string(), |tensor| self.observe_tensor(tensor).json);
-        let fault_index = self.fault.as_ref().map_or_else(|| "null".to_string(), |(step, _)| step.to_string());
-        let error = self.fault.as_ref().map_or_else(|| "null".to_string(), |(_, message)| format!("\"{}\"", escape_json(message)));
+    fn report(
+        &mut self,
+        graph: &CompiledMultiInputGraph,
+        output: Option<&WasmTensor>,
+        inputs: String,
+    ) -> String {
+        let terminal = output.map_or_else(
+            || "null".to_string(),
+            |tensor| self.observe_tensor(tensor).json,
+        );
+        let fault_index = self
+            .fault
+            .as_ref()
+            .map_or_else(|| "null".to_string(), |(step, _)| step.to_string());
+        let error = self.fault.as_ref().map_or_else(
+            || "null".to_string(),
+            |(_, message)| format!("\"{}\"", escape_json(message)),
+        );
         let completed = output.is_some();
         let total_steps = graph.graph.steps.len();
-        let trace_complete = completed && self.start == 0 && self.end == total_steps
+        let trace_complete = completed
+            && self.start == 0
+            && self.end == total_steps
             && self.observations.len() == total_steps;
         let used_bytes = MAX_TOTAL_HASHED_BYTES - self.remaining_bytes;
         format!(concat!(
@@ -169,15 +210,26 @@ pub(super) fn run(
     max_tensor_bytes: u32,
 ) -> Result<TracedMultiInputRun, String> {
     // Validate observation bounds before any numerical call.
-    let mut collector = TraceCollector::new(graph.graph.steps.len(), start_step, max_steps, max_tensor_bytes)?;
+    let mut collector = TraceCollector::new(
+        graph.graph.steps.len(),
+        start_step,
+        max_steps,
+        max_tensor_bytes,
+    )?;
     let bound_inputs = bundle.bound_inputs();
     let mut inputs = Vec::with_capacity(bound_inputs.len());
     for (slot, tensor) in &bound_inputs {
         let observation = collector.observe_tensor(tensor);
-        inputs.push(format!("{{\"slot\":{slot},\"observation\":{}}}", observation.json));
+        inputs.push(format!(
+            "{{\"slot\":{slot},\"observation\":{}}}",
+            observation.json
+        ));
     }
-    let outcome = graph.graph.run_with_external_inputs_observed(registry, &bound_inputs,
-        |index, step, result| collector.observe_step(index, step, result));
+    let outcome = graph.graph.run_with_external_inputs_observed(
+        registry,
+        &bound_inputs,
+        |index, step, result| collector.observe_step(index, step, result),
+    );
     if collector.fault.is_none() {
         if let Err(error) = &outcome {
             // A terminal slot fault is possible even when all steps succeeded.
@@ -185,5 +237,8 @@ pub(super) fn run(
         }
     }
     let report = collector.report(graph, outcome.as_ref().ok(), inputs.join(","));
-    Ok(TracedMultiInputRun { output: outcome.ok(), report })
+    Ok(TracedMultiInputRun {
+        output: outcome.ok(),
+        report,
+    })
 }

@@ -72,10 +72,7 @@ pub struct SubjectBoundReviewSession {
 }
 
 impl SubjectBoundReviewSession {
-    pub fn new(
-        intent_id: impl Into<String>,
-        subject: ApprovalSubject,
-    ) -> Result<Self, String> {
+    pub fn new(intent_id: impl Into<String>, subject: ApprovalSubject) -> Result<Self, String> {
         Ok(Self {
             subject,
             review: ResolutionReviewSession::new(intent_id)?,
@@ -319,7 +316,8 @@ impl SubjectBoundRevisionChain {
         diagnostic: ResolutionDiagnostic,
     ) -> Result<(), String> {
         self.require_subject(revision_id)?;
-        self.chain.request_diagnostic(revision_id, actor, diagnostic)
+        self.chain
+            .request_diagnostic(revision_id, actor, diagnostic)
     }
 
     pub fn respond(
@@ -451,7 +449,8 @@ mod tests {
     #[test]
     fn same_transitions_bind_distinct_subjects_to_distinct_approvals() {
         fn build(identity: &str) -> SubjectBoundApprovalSnapshot {
-            let mut review = SubjectBoundReviewSession::new("intent-42", subject(identity)).unwrap();
+            let mut review =
+                SubjectBoundReviewSession::new("intent-42", subject(identity)).unwrap();
             review.submit("agent").unwrap();
             review.approve("customer").unwrap()
         }
@@ -465,7 +464,8 @@ mod tests {
 
     #[test]
     fn subject_exists_before_submit_and_has_no_session_mutation_path() {
-        let review = SubjectBoundReviewSession::new("intent-subject", subject("spec:stable")).unwrap();
+        let review =
+            SubjectBoundReviewSession::new("intent-subject", subject("spec:stable")).unwrap();
         assert_eq!(review.subject().kind(), "effective-spec");
         assert_eq!(review.subject().identity(), "spec:stable");
         assert!(!review.compile_eligible());
@@ -473,7 +473,8 @@ mod tests {
 
     #[test]
     fn unresolved_approval_failure_is_atomic_and_yields_no_bound_approval() {
-        let mut review = SubjectBoundReviewSession::new("intent-blocked", subject("spec:v1")).unwrap();
+        let mut review =
+            SubjectBoundReviewSession::new("intent-blocked", subject("spec:v1")).unwrap();
         review.submit("agent").unwrap();
         review
             .request_diagnostic("validator", normalization_diagnostic())
@@ -506,7 +507,10 @@ mod tests {
         let approval = chain.approve_revision(&child, "customer").unwrap();
 
         assert_eq!(approval.subject.identity(), "spec:child");
-        assert_eq!(chain.revision_subject(&child).unwrap().identity(), "spec:child");
+        assert_eq!(
+            chain.revision_subject(&child).unwrap().identity(),
+            "spec:child"
+        );
         assert!(chain.revision_compile_eligible(&child).unwrap());
     }
 
@@ -526,7 +530,10 @@ mod tests {
 
         assert!(chain.revision_compile_eligible(&left).unwrap());
         assert!(!chain.revision_compile_eligible(&right).unwrap());
-        assert_eq!(chain.revision_subject(&right).unwrap().identity(), "spec:right");
+        assert_eq!(
+            chain.revision_subject(&right).unwrap().identity(),
+            "spec:right"
+        );
         assert!(chain.bound_revision_approval(&right).is_none());
     }
 

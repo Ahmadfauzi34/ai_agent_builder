@@ -7,9 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::effective_spec::{
-    ApprovedEffectiveSpec, EffectiveSpecMaterialization, SpecDirective,
-};
+use crate::effective_spec::{ApprovedEffectiveSpec, EffectiveSpecMaterialization, SpecDirective};
 
 /// Explicit authorization to inherit only the undecided fields of one exact approved parent.
 ///

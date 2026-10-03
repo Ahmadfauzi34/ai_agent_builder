@@ -2,9 +2,7 @@ use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
 use burn_research::protocol::LAYER_NORM;
 use burn_research::registry::LayerRegistry;
 use burn_research::workspace::AgentWorkspace;
-use burn_research::workspace_ops::{
-    workspace_compile, workspace_init_unary, workspace_wire_unary,
-};
+use burn_research::workspace_ops::{workspace_compile, workspace_init_unary, workspace_wire_unary};
 use burn_research::WasmTensor;
 
 #[test]
@@ -13,7 +11,9 @@ fn canonical_init_rejects_known_layout_mismatch_before_mutation() {
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
 
-    let linear_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let linear_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let linear = AgentLayerSpec::linear(linear_id, 4, 4, true).unwrap();
     let linear_out = workspace_init_unary(
         &mut workspace,
@@ -25,7 +25,9 @@ fn canonical_init_rejects_known_layout_mismatch_before_mutation() {
     )
     .unwrap();
 
-    let norm_id = workspace.reserve_layer_id(&registry, "layernorm".into()).unwrap();
+    let norm_id = workspace
+        .reserve_layer_id(&registry, "layernorm".into())
+        .unwrap();
     let layer_norm = AgentLayerSpec::layer_norm(norm_id, 4, None).unwrap();
     let before = workspace.snapshot();
     let steps_before = builder.num_steps();
@@ -52,7 +54,9 @@ fn canonical_wire_rejects_known_layout_mismatch_without_metadata_or_slot_mutatio
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
 
-    let linear_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let linear_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let linear = AgentLayerSpec::linear(linear_id, 4, 4, true).unwrap();
     let linear_out = workspace_init_unary(
         &mut workspace,
@@ -91,7 +95,9 @@ fn unknown_preserve_layout_still_defers_to_runtime() {
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
 
-    let relu_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let relu_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let relu = AgentLayerSpec::relu(relu_id);
     let relu_out = workspace_init_unary(
         &mut workspace,
@@ -103,7 +109,9 @@ fn unknown_preserve_layout_still_defers_to_runtime() {
     )
     .unwrap();
 
-    let norm_id = workspace.reserve_layer_id(&registry, "layernorm".into()).unwrap();
+    let norm_id = workspace
+        .reserve_layer_id(&registry, "layernorm".into())
+        .unwrap();
     let layer_norm = AgentLayerSpec::layer_norm(norm_id, 4, None).unwrap();
     let out = workspace_init_unary(
         &mut workspace,
@@ -126,7 +134,9 @@ fn known_compatible_linear_to_batchnorm_remains_executable() {
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
 
-    let linear_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let linear_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let linear = AgentLayerSpec::linear(linear_id, 4, 4, true).unwrap();
     let linear_out = workspace_init_unary(
         &mut workspace,
@@ -138,7 +148,9 @@ fn known_compatible_linear_to_batchnorm_remains_executable() {
     )
     .unwrap();
 
-    let norm_id = workspace.reserve_layer_id(&registry, "batchnorm".into()).unwrap();
+    let norm_id = workspace
+        .reserve_layer_id(&registry, "batchnorm".into())
+        .unwrap();
     let batch_norm = AgentLayerSpec::batch_norm(norm_id, 4, None).unwrap();
     let out = workspace_init_unary(
         &mut workspace,

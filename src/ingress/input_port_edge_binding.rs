@@ -1,12 +1,14 @@
+pub use crate::facade::ingress::{
+    bind_input_port_consumer_edge, input_port_consumer_edge_binding,
+    input_port_edge_binding_capabilities, semantic_graph_identity,
+};
 use wasm_bindgen::prelude::*;
 
-use crate::agent::{
-    AgentGraphBuilder, AgentGraphSemanticEdgeBinding,
-};
+use crate::agent::{AgentGraphBuilder, AgentGraphSemanticEdgeBinding};
 use crate::input_port_consumer::InputPortConsumerSpec;
 use crate::workspace::AgentWorkspace;
 
-const INPUT_PORT_EDGE_BINDING_V1: &str =
+pub(crate) const INPUT_PORT_EDGE_BINDING_V1: &str =
     include_str!("../../docs/contracts/agent-input-port-edge-binding.v1.json");
 
 fn json_escape(value: &str) -> String {
@@ -25,8 +27,12 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn bool_json(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
+pub(crate) fn bool_json(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
 }
 
 fn string_array_json(values: &[String]) -> String {
@@ -47,7 +53,7 @@ fn fnv1a64(value: &[u8]) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
-fn external_positions(
+pub(crate) fn external_positions(
     builder: &AgentGraphBuilder,
     step_index: u32,
     context: &str,
@@ -58,7 +64,7 @@ fn external_positions(
         .map_err(|error| format!("{context}: {error}"))
 }
 
-fn binding_fingerprint(
+pub(crate) fn binding_fingerprint(
     step_index: u32,
     positions: &[String],
     consumer: &InputPortConsumerSpec,
@@ -75,10 +81,10 @@ fn binding_fingerprint(
             "\"positions\":{},",
             "\"consumer\":{},",
             "\"input\":{{",
-                "\"role\":\"{}\",",
-                "\"source\":\"{}\",",
-                "\"revision\":{},",
-                "\"fingerprint\":\"{}\"" ,
+            "\"role\":\"{}\",",
+            "\"source\":\"{}\",",
+            "\"revision\":{},",
+            "\"fingerprint\":\"{}\"",
             "}}",
             "}}"
         ),
@@ -105,7 +111,7 @@ fn binding_snapshot_compatible(binding: &AgentGraphSemanticEdgeBinding) -> bool 
     role_match && fingerprint_ok && revision_ok
 }
 
-fn stored_consumer_compatible(
+pub(crate) fn stored_consumer_compatible(
     binding: &AgentGraphSemanticEdgeBinding,
     workspace: &AgentWorkspace,
 ) -> Option<bool> {
@@ -130,20 +136,20 @@ pub(crate) fn binding_record_json(binding: &AgentGraphSemanticEdgeBinding) -> St
             "\"step_index\":{},",
             "\"external_input_positions\":{},",
             "\"consumer\":{{",
-                "\"consumer_id\":\"{}\",",
-                "\"accepted_roles\":{},",
-                "\"allow_extension_roles\":{},",
-                "\"require_fingerprint\":{},",
-                "\"minimum_revision\":{}",
+            "\"consumer_id\":\"{}\",",
+            "\"accepted_roles\":{},",
+            "\"allow_extension_roles\":{},",
+            "\"require_fingerprint\":{},",
+            "\"minimum_revision\":{}",
             "}},",
             "\"bound_input\":{{",
-                "\"role\":\"{}\",",
-                "\"source\":\"{}\",",
-                "\"revision\":{},",
-                "\"fingerprint\":{}",
+            "\"role\":\"{}\",",
+            "\"source\":\"{}\",",
+            "\"revision\":{},",
+            "\"fingerprint\":{}",
             "}},",
             "\"binding_fingerprint\":\"{}\",",
-            "\"compatibility_at_bind\":\"{}\"" ,
+            "\"compatibility_at_bind\":\"{}\"",
             "}}"
         ),
         binding.step_index,
@@ -207,143 +213,6 @@ pub(crate) fn semantic_graph_identity_json(builder: &AgentGraphBuilder) -> Strin
     )
 }
 
-#[wasm_bindgen(js_name = inputPortEdgeBindingCapabilities)]
-pub fn input_port_edge_binding_capabilities() -> String {
-    INPUT_PORT_EDGE_BINDING_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = bindInputPortConsumerEdge)]
-pub fn bind_input_port_consumer_edge(
-    workspace: &AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    consumer: &InputPortConsumerSpec,
-    step_index: u32,
-) -> Result<bool, String> {
-    if workspace.interaction_num_slots() != builder.num_slots() {
-        return Err(format!(
-            "bindInputPortConsumerEdge: workspace num_slots {} does not match builder num_slots {}",
-            workspace.interaction_num_slots(),
-            builder.num_slots()
-        ));
-    }
-
-    let positions = external_positions(builder, step_index, "bindInputPortConsumerEdge")?;
-    if positions.is_empty() {
-        return Err(format!(
-            "bindInputPortConsumerEdge: step {step_index} does not consume external slot 0"
-        ));
-    }
-
-    if consumer.is_compatible_with_workspace(workspace).is_none() {
-        return Err(
-            "bindInputPortConsumerEdge: semantic input port is unbound; compatibility is unknown"
-                .to_string(),
-        );
-    }
-
-    let metadata = workspace
-        .input_port_metadata()
-        .ok_or_else(|| "bindInputPortConsumerEdge: semantic input metadata disappeared".to_string())?;
-    let fingerprint = binding_fingerprint(
-        step_index,
-        &positions,
-        consumer,
-        &metadata.role,
-        &metadata.source,
-        metadata.revision,
-        &metadata.fingerprint,
-    );
-
-    builder.bind_semantic_edge(AgentGraphSemanticEdgeBinding {
-        step_index,
-        external_input_positions: positions,
-        consumer_id: consumer.consumer_id_ref().to_string(),
-        accepted_roles: consumer.accepted_roles_slice().to_vec(),
-        allow_extension_roles: consumer.allow_extension_roles_value(),
-        require_fingerprint: consumer.require_fingerprint_value(),
-        minimum_revision: consumer.minimum_revision_value(),
-        bound_role: metadata.role.clone(),
-        bound_source: metadata.source.clone(),
-        bound_revision: metadata.revision,
-        bound_fingerprint: metadata.fingerprint.clone(),
-        binding_fingerprint: fingerprint,
-    })
-}
-
-#[wasm_bindgen(js_name = inputPortConsumerEdgeBinding)]
-pub fn input_port_consumer_edge_binding(
-    workspace: &AgentWorkspace,
-    builder: &AgentGraphBuilder,
-    step_index: u32,
-) -> Result<String, String> {
-    if workspace.interaction_num_slots() != builder.num_slots() {
-        return Err(format!(
-            "inputPortConsumerEdgeBinding: workspace num_slots {} does not match builder num_slots {}",
-            workspace.interaction_num_slots(),
-            builder.num_slots()
-        ));
-    }
-    let positions =
-        external_positions(builder, step_index, "inputPortConsumerEdgeBinding")?;
-    if positions.is_empty() {
-        return Ok(format!(
-            "{{\"schema_version\":1,\"schema_id\":\"burn-research.input-port-edge-binding-status.v1\",\"status\":\"not_applicable\",\"step_index\":{step_index},\"reason\":\"step_does_not_consume_external_slot_0\"}}"
-        ));
-    }
-
-    let Some(binding) = builder.semantic_edge_binding(step_index) else {
-        return Ok(format!(
-            "{{\"schema_version\":1,\"schema_id\":\"burn-research.input-port-edge-binding-status.v1\",\"status\":\"unbound\",\"step_index\":{step_index}}}"
-        ));
-    };
-
-    let (state, current_compatible, snapshot_match) = match workspace.input_port_metadata() {
-        None => ("input_unbound", None, false),
-        Some(metadata) => {
-            let compatible = stored_consumer_compatible(binding, workspace).unwrap_or(false);
-            let snapshot_match = metadata.role == binding.bound_role
-                && metadata.source == binding.bound_source
-                && metadata.revision == binding.bound_revision
-                && metadata.fingerprint == binding.bound_fingerprint;
-            let state = if snapshot_match {
-                "current"
-            } else if compatible {
-                "drifted_compatible"
-            } else {
-                "drifted_incompatible"
-            };
-            (state, Some(compatible), snapshot_match)
-        }
-    };
-
-    Ok(format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.input-port-edge-binding-status.v1\",",
-            "\"status\":\"bound\",",
-            "\"binding_state\":\"{}\",",
-            "\"current_compatible\":{},",
-            "\"input_snapshot_match\":{},",
-            "\"binding\":{},",
-            "\"semantic_graph_identity\":{}",
-            "}}"
-        ),
-        state,
-        current_compatible
-            .map(bool_json)
-            .unwrap_or("null"),
-        bool_json(snapshot_match),
-        binding_record_json(binding),
-        semantic_graph_identity_json(builder),
-    ))
-}
-
-#[wasm_bindgen(js_name = semanticGraphIdentity)]
-pub fn semantic_graph_identity(builder: &AgentGraphBuilder) -> String {
-    semantic_graph_identity_json(builder)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -392,29 +261,12 @@ mod tests {
             10,
         )
         .unwrap();
-        assert!(bind_input_port_consumer_edge(
-            &workspace,
-            &mut builder,
-            &consumer,
-            0,
-        )
-        .unwrap());
-        assert!(!bind_input_port_consumer_edge(
-            &workspace,
-            &mut builder,
-            &consumer,
-            0,
-        )
-        .unwrap());
+        assert!(bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0,).unwrap());
+        assert!(!bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0,).unwrap());
 
-        let other = InputPortConsumerSpec::new(
-            "other".into(),
-            "[\"observation\"]".into(),
-            false,
-            false,
-            0,
-        )
-        .unwrap();
+        let other =
+            InputPortConsumerSpec::new("other".into(), "[\"observation\"]".into(), false, false, 0)
+                .unwrap();
         assert!(bind_input_port_consumer_edge(&workspace, &mut builder, &other, 0).is_err());
     }
 
@@ -454,9 +306,10 @@ mod tests {
         )
         .unwrap();
         bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0).unwrap();
-        let before: serde_json::Value =
-            serde_json::from_str(&input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap())
-                .unwrap();
+        let before: serde_json::Value = serde_json::from_str(
+            &input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap(),
+        )
+        .unwrap();
         let binding_fingerprint = before["binding"]["binding_fingerprint"].clone();
 
         workspace_bind_input_port_metadata(
@@ -468,9 +321,10 @@ mod tests {
         )
         .unwrap();
 
-        let after: serde_json::Value =
-            serde_json::from_str(&input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap())
-                .unwrap();
+        let after: serde_json::Value = serde_json::from_str(
+            &input_port_consumer_edge_binding(&workspace, &builder, 0).unwrap(),
+        )
+        .unwrap();
         assert_eq!(after["binding_state"], "drifted_compatible");
         assert_eq!(after["input_snapshot_match"], false);
         assert_eq!(after["binding"]["binding_fingerprint"], binding_fingerprint);

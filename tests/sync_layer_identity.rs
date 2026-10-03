@@ -1,5 +1,5 @@
 use burn_research::agent::AgentLayerSpec;
-use burn_research::protocol::{ACT_RELU, LAYER_ACTIVATION, OP_INIT, PacketHeader};
+use burn_research::protocol::{PacketHeader, ACT_RELU, LAYER_ACTIVATION, OP_INIT};
 use burn_research::registry::LayerRegistry;
 use burn_research::workspace::AgentWorkspace;
 

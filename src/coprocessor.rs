@@ -1,3 +1,4 @@
+pub use crate::facade::coprocessor::math_verify_vectors;
 use wasm_bindgen::prelude::*;
 
 pub(crate) fn validate_tolerance(abs_tol: f64, rel_tol: f64) -> Result<(), String> {
@@ -114,36 +115,20 @@ pub(crate) fn verify_vectors_report(
     abs_tol: f64,
     rel_tol: f64,
 ) -> Result<String, String> {
-    verify_vectors_metrics(reference, candidate, abs_tol, rel_tol)
-        .map(|report| report.to_json())
-}
-
-/// Compare an external implementation result with a trusted numerical reference.
-///
-/// This is intentionally dependency-free and returns compact JSON so an agent can
-/// consume the proof result without coupling the produced artifact to this WASM runtime.
-#[wasm_bindgen(js_name = mathVerifyVectors)]
-pub fn math_verify_vectors(
-    reference: &[f32],
-    candidate: &[f32],
-    abs_tol: f64,
-    rel_tol: f64,
-) -> Result<String, String> {
-    verify_vectors_report(reference, candidate, abs_tol, rel_tol)
+    verify_vectors_metrics(reference, candidate, abs_tol, rel_tol).map(|report| report.to_json())
 }
 
 #[cfg(test)]
 mod tests {
     use super::verify_vectors_report;
     use crate::graph::CompiledGraph;
-    use crate::protocol::{ACT_RELU, LAYER_ACTIVATION, OP_INIT, PacketHeader};
+    use crate::protocol::{PacketHeader, ACT_RELU, LAYER_ACTIVATION, OP_INIT};
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
 
     #[test]
     fn exact_match_passes() {
-        let report = verify_vectors_report(&[1.0, 2.0, 3.0], &[1.0, 2.0, 3.0], 0.0, 0.0)
-            .unwrap();
+        let report = verify_vectors_report(&[1.0, 2.0, 3.0], &[1.0, 2.0, 3.0], 0.0, 0.0).unwrap();
         assert!(report.contains("\"passed\":true"));
         assert!(report.contains("\"first_failure\":null"));
     }

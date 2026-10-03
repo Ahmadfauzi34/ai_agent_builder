@@ -46,28 +46,13 @@ fn overwritten_slot_zero_becomes_internal_lineage_across_routing_binding_and_lif
     .unwrap();
 
     let step0_route: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_compatibility(
-            &workspace,
-            &builder,
-            &consumer,
-            0,
-        )
-        .unwrap(),
+        &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 0).unwrap(),
     )
     .unwrap();
     assert_eq!(step0_route["status"], "applicable");
-    assert_eq!(
-        step0_route["edge"]["external_input_positions"][0],
-        "input"
-    );
+    assert_eq!(step0_route["edge"]["external_input_positions"][0], "input");
 
-    assert!(bind_input_port_consumer_edge(
-        &workspace,
-        &mut builder,
-        &consumer,
-        0,
-    )
-    .unwrap());
+    assert!(bind_input_port_consumer_edge(&workspace, &mut builder, &consumer, 0,).unwrap());
 
     let first_transition = SemanticTransitionSpec::new(
         "observation-to-feature".into(),
@@ -75,22 +60,13 @@ fn overwritten_slot_zero_becomes_internal_lineage_across_routing_binding_and_lif
         "feature".into(),
     )
     .unwrap();
-    assert!(bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &first_transition,
-        0,
-    )
-    .unwrap());
+    assert!(
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &first_transition, 0,)
+            .unwrap()
+    );
 
     let step1_route: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_compatibility(
-            &workspace,
-            &builder,
-            &consumer,
-            1,
-        )
-        .unwrap(),
+        &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 1).unwrap(),
     )
     .unwrap();
     assert_eq!(step1_route["status"], "not_applicable");
@@ -110,34 +86,20 @@ fn overwritten_slot_zero_becomes_internal_lineage_across_routing_binding_and_lif
         "candidate".into(),
     )
     .unwrap();
-    assert!(bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &second_transition,
-        1,
-    )
-    .unwrap());
+    assert!(
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &second_transition, 1,)
+            .unwrap()
+    );
 
-    let lineage: serde_json::Value = serde_json::from_str(
-        &semantic_lifecycle_transition(&builder, 1).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(
-        lineage["transition"]["inputs"][0]["slot"],
-        0
-    );
-    assert_eq!(
-        lineage["transition"]["inputs"][0]["role"],
-        "feature"
-    );
+    let lineage: serde_json::Value =
+        serde_json::from_str(&semantic_lifecycle_transition(&builder, 1).unwrap()).unwrap();
+    assert_eq!(lineage["transition"]["inputs"][0]["slot"], 0);
+    assert_eq!(lineage["transition"]["inputs"][0]["role"], "feature");
     assert_eq!(
         lineage["transition"]["inputs"][0]["source_kind"],
         "prior_transition"
     );
-    assert_eq!(
-        lineage["transition"]["inputs"][0]["source_step_index"],
-        0
-    );
+    assert_eq!(lineage["transition"]["inputs"][0]["source_step_index"], 0);
 
     // Executable semantics agree with the topology-origin classification.
     let graph = builder.compile(&registry).unwrap();

@@ -14,6 +14,10 @@
 //! ## Bukan tanggung jawab modul ini
 //! - Eksekusi tensor → `layers/*`; orkestrasi graph → `graph`.
 
+pub use crate::facade::semantic::{
+    bind_semantic_lifecycle_transition, semantic_lifecycle_capabilities,
+    semantic_lifecycle_identity, semantic_lifecycle_projection, semantic_lifecycle_transition,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{
@@ -24,7 +28,7 @@ use crate::input_port::role_valid;
 use crate::input_port_edge_binding::semantic_graph_identity_json;
 use crate::workspace::AgentWorkspace;
 
-const SEMANTIC_LIFECYCLE_V1: &str =
+pub(crate) const SEMANTIC_LIFECYCLE_V1: &str =
     include_str!("../../docs/contracts/agent-semantic-lifecycle.v1.json");
 const MAX_TRANSITION_ID_BYTES: usize = 128;
 const MAX_ROLE_BYTES: usize = 64;
@@ -168,8 +172,8 @@ pub(crate) fn transition_record_json(transition: &AgentGraphSemanticLifecycleTra
             "\"transition_id\":\"{}\",",
             "\"inputs\":[{}],",
             "\"output\":{{",
-                "\"slot\":{},",
-                "\"role\":\"{}\"",
+            "\"slot\":{},",
+            "\"role\":\"{}\"",
             "}},",
             "\"transition_fingerprint\":\"{}\"",
             "}}"
@@ -207,10 +211,13 @@ fn exact_external_binding_current(
         ));
     }
 
-    Ok((binding.bound_role.clone(), binding.binding_fingerprint.clone()))
+    Ok((
+        binding.bound_role.clone(),
+        binding.binding_fingerprint.clone(),
+    ))
 }
 
-fn resolve_input_lineage(
+pub(crate) fn resolve_input_lineage(
     workspace: &AgentWorkspace,
     builder: &AgentGraphBuilder,
     step_index: u32,
@@ -267,7 +274,7 @@ fn resolve_input_lineage(
     }
 }
 
-fn transition_fingerprint(
+pub(crate) fn transition_fingerprint(
     step_index: u32,
     transition_id: &str,
     inputs: &[AgentGraphSemanticInputLineage],
@@ -300,9 +307,9 @@ fn transition_fingerprint(
 
 #[wasm_bindgen]
 pub struct SemanticTransitionSpec {
-    transition_id: String,
-    input_roles: Vec<String>,
-    output_role: String,
+    pub(crate) transition_id: String,
+    pub(crate) input_roles: Vec<String>,
+    pub(crate) output_role: String,
 }
 
 #[wasm_bindgen]
@@ -367,111 +374,13 @@ impl SemanticTransitionSpec {
     }
 }
 
-#[wasm_bindgen(js_name = semanticLifecycleCapabilities)]
-pub fn semantic_lifecycle_capabilities() -> String {
-    SEMANTIC_LIFECYCLE_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = bindSemanticLifecycleTransition)]
-pub fn bind_semantic_lifecycle_transition(
-    workspace: &AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    spec: &SemanticTransitionSpec,
-    step_index: u32,
-) -> Result<bool, String> {
-    if workspace.interaction_num_slots() != builder.num_slots() {
-        return Err(format!(
-            "bindSemanticLifecycleTransition: workspace num_slots {} does not match builder num_slots {}",
-            workspace.interaction_num_slots(),
-            builder.num_slots()
-        ));
-    }
-
-    let index = usize::try_from(step_index)
-        .map_err(|_| "bindSemanticLifecycleTransition: step index conversion failed".to_string())?;
-    let steps = builder.introspection_steps();
-    let Some((arity, _, _, in_slot, in_slot2, out_slot)) = steps.get(index).copied() else {
-        return Err(format!(
-            "bindSemanticLifecycleTransition: step index {step_index} is outside num_steps {}",
-            steps.len()
-        ));
-    };
-
-    if spec.input_roles.len() != usize::from(arity) {
-        return Err(format!(
-            "bindSemanticLifecycleTransition: spec has {} input roles but step {step_index} arity is {arity}",
-            spec.input_roles.len()
-        ));
-    }
-
-    let mut inputs = Vec::with_capacity(usize::from(arity));
-    if arity == 1 {
-        inputs.push(resolve_input_lineage(
-            workspace,
-            builder,
-            step_index,
-            "input",
-            in_slot,
-        )?);
-    } else {
-        inputs.push(resolve_input_lineage(
-            workspace,
-            builder,
-            step_index,
-            "left",
-            in_slot,
-        )?);
-        inputs.push(resolve_input_lineage(
-            workspace,
-            builder,
-            step_index,
-            "right",
-            in_slot2,
-        )?);
-    }
-
-    for (position, (declared, actual)) in spec
-        .input_roles
-        .iter()
-        .zip(inputs.iter().map(|input| &input.role))
-        .enumerate()
-    {
-        if declared != actual {
-            return Err(format!(
-                "bindSemanticLifecycleTransition: input role mismatch at position {position}; declared {declared}, lineage resolves to {actual}"
-            ));
-        }
-    }
-
-    let fingerprint = transition_fingerprint(
-        step_index,
-        &spec.transition_id,
-        &inputs,
-        out_slot,
-        &spec.output_role,
-    );
-
-    builder.bind_semantic_lifecycle_transition(AgentGraphSemanticLifecycleTransition {
-        step_index,
-        transition_id: spec.transition_id.clone(),
-        inputs,
-        output_slot: out_slot,
-        output_role: spec.output_role.clone(),
-        transition_fingerprint: fingerprint,
-    })
-}
-
 pub(crate) fn semantic_lifecycle_identity_json(builder: &AgentGraphBuilder) -> String {
     let base_identity = semantic_graph_identity_json(builder);
     let mut canonical = format!(
         "{{\"base_semantic_graph_identity\":{},\"transitions\":[",
         base_identity
     );
-    for (index, transition) in builder
-        .semantic_lifecycle_transitions()
-        .iter()
-        .enumerate()
-    {
+    for (index, transition) in builder.semantic_lifecycle_transitions().iter().enumerate() {
         if index > 0 {
             canonical.push(',');
         }
@@ -501,87 +410,12 @@ pub(crate) fn semantic_lifecycle_identity_json(builder: &AgentGraphBuilder) -> S
     )
 }
 
-#[wasm_bindgen(js_name = semanticLifecycleIdentity)]
-pub fn semantic_lifecycle_identity(builder: &AgentGraphBuilder) -> String {
-    semantic_lifecycle_identity_json(builder)
-}
-
-#[wasm_bindgen(js_name = semanticLifecycleTransition)]
-pub fn semantic_lifecycle_transition(
-    builder: &AgentGraphBuilder,
-    step_index: u32,
-) -> Result<String, String> {
-    let index = usize::try_from(step_index)
-        .map_err(|_| "semanticLifecycleTransition: step index conversion failed".to_string())?;
-    if index >= builder.introspection_steps().len() {
-        return Err(format!(
-            "semanticLifecycleTransition: step index {step_index} is outside num_steps {}",
-            builder.num_steps()
-        ));
-    }
-
-    match builder.semantic_lifecycle_transition(step_index) {
-        Some(transition) => Ok(format!(
-            "{{\"schema_version\":1,\"schema_id\":\"burn-research.semantic-lifecycle-transition-status.v1\",\"status\":\"bound\",\"transition\":{}}}",
-            transition_record_json(transition)
-        )),
-        None => Ok(format!(
-            "{{\"schema_version\":1,\"schema_id\":\"burn-research.semantic-lifecycle-transition-status.v1\",\"status\":\"unbound\",\"step_index\":{step_index}}}"
-        )),
-    }
-}
-
-#[wasm_bindgen(js_name = semanticLifecycleProjection)]
-pub fn semantic_lifecycle_projection(builder: &AgentGraphBuilder) -> String {
-    let transitions = builder
-        .semantic_lifecycle_transitions()
-        .iter()
-        .map(transition_record_json)
-        .collect::<Vec<_>>()
-        .join(",");
-
-    let bound = builder
-        .semantic_lifecycle_transitions()
-        .iter()
-        .map(|transition| transition.step_index)
-        .collect::<std::collections::BTreeSet<_>>();
-    let unbound = (0..builder.num_steps())
-        .filter(|step_index| !bound.contains(step_index))
-        .map(|step_index| step_index.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-
-    format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.semantic-lifecycle-projection.v1\",",
-            "\"projection_only\":true,",
-            "\"transition_count\":{},",
-            "\"coverage_complete\":{},",
-            "\"unbound_step_indices\":[{}],",
-            "\"identity\":{},",
-            "\"transitions\":[{}]",
-            "}}"
-        ),
-        builder.semantic_lifecycle_transitions().len(),
-        if builder.semantic_lifecycle_transitions().len() == builder.num_steps() as usize {
-            "true"
-        } else {
-            "false"
-        },
-        unbound,
-        semantic_lifecycle_identity_json(builder),
-        transitions,
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         bind_semantic_lifecycle_transition, semantic_lifecycle_capabilities,
-        semantic_lifecycle_identity, semantic_lifecycle_projection,
-        semantic_lifecycle_transition, SemanticTransitionSpec,
+        semantic_lifecycle_identity, semantic_lifecycle_projection, semantic_lifecycle_transition,
+        SemanticTransitionSpec,
     };
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
     use crate::input_port::workspace_bind_input_port_metadata;
@@ -605,7 +439,9 @@ mod tests {
         )
         .unwrap();
 
-        let first_id = workspace.reserve_layer_id(&registry, "relu-a".into()).unwrap();
+        let first_id = workspace
+            .reserve_layer_id(&registry, "relu-a".into())
+            .unwrap();
         let first = AgentLayerSpec::relu(first_id);
         let first_output = workspace_init_unary(
             &mut workspace,
@@ -633,15 +469,11 @@ mod tests {
             "feature".into(),
         )
         .unwrap();
-        bind_semantic_lifecycle_transition(
-            &workspace,
-            &mut builder,
-            &first_transition,
-            0,
-        )
-        .unwrap();
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &first_transition, 0).unwrap();
 
-        let second_id = workspace.reserve_layer_id(&registry, "relu-b".into()).unwrap();
+        let second_id = workspace
+            .reserve_layer_id(&registry, "relu-b".into())
+            .unwrap();
         let second = AgentLayerSpec::relu(second_id);
         workspace_init_unary(
             &mut workspace,
@@ -659,22 +491,12 @@ mod tests {
             "candidate".into(),
         )
         .unwrap();
-        bind_semantic_lifecycle_transition(
-            &workspace,
-            &mut builder,
-            &second_transition,
-            1,
-        )
-        .unwrap();
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &second_transition, 1)
+            .unwrap();
 
-        let status: serde_json::Value = serde_json::from_str(
-            &semantic_lifecycle_transition(&builder, 1).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(
-            status["transition"]["inputs"][0]["source_step_index"],
-            0
-        );
+        let status: serde_json::Value =
+            serde_json::from_str(&semantic_lifecycle_transition(&builder, 1).unwrap()).unwrap();
+        assert_eq!(status["transition"]["inputs"][0]["source_step_index"], 0);
         assert_eq!(status["transition"]["inputs"][0]["role"], "feature");
         assert_eq!(status["transition"]["output"]["role"], "candidate");
     }
@@ -685,7 +507,9 @@ mod tests {
         let mut builder = AgentGraphBuilder::new(4).unwrap();
         let mut registry = LayerRegistry::new();
 
-        let first_id = workspace.reserve_layer_id(&registry, "relu-a".into()).unwrap();
+        let first_id = workspace
+            .reserve_layer_id(&registry, "relu-a".into())
+            .unwrap();
         let first = AgentLayerSpec::relu(first_id);
         let first_output = workspace_init_unary(
             &mut workspace,
@@ -697,7 +521,9 @@ mod tests {
         )
         .unwrap();
 
-        let second_id = workspace.reserve_layer_id(&registry, "relu-b".into()).unwrap();
+        let second_id = workspace
+            .reserve_layer_id(&registry, "relu-b".into())
+            .unwrap();
         let second = AgentLayerSpec::relu(second_id);
         workspace_init_unary(
             &mut workspace,
@@ -715,13 +541,8 @@ mod tests {
             "candidate".into(),
         )
         .unwrap();
-        let err = bind_semantic_lifecycle_transition(
-            &workspace,
-            &mut builder,
-            &transition,
-            1,
-        )
-        .unwrap_err();
+        let err = bind_semantic_lifecycle_transition(&workspace, &mut builder, &transition, 1)
+            .unwrap_err();
         assert!(err.contains("producer step 0 has no semantic lifecycle transition"));
     }
 

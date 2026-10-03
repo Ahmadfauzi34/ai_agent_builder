@@ -1,13 +1,14 @@
+use super::super::state_record::deterministic_record_bytes;
 use burn::nn::conv::{Conv2d, Conv2dConfig};
 use burn::nn::PaddingConfig2d;
 use burn::prelude::*;
-use super::super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmGhostModule;
 use crate::{WasmBackend, WasmTensor};
 
 #[inline]
-fn reject_invalid_config<T>(message: String) -> T {
+pub(crate) fn reject_invalid_config<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -64,9 +65,8 @@ impl GhostModuleConfig {
 
         let primary_ch = self.out_channels / self.ratio;
 
-        let mut primary_cfg =
-            Conv2dConfig::new([self.in_channels, primary_ch], self.kernel_size)
-                .with_initializer(burn::module::Initializer::Zeros);
+        let mut primary_cfg = Conv2dConfig::new([self.in_channels, primary_ch], self.kernel_size)
+            .with_initializer(burn::module::Initializer::Zeros);
         primary_cfg.stride = self.stride;
         primary_cfg.padding = PaddingConfig2d::Explicit(self.padding[0], self.padding[1]);
         let primary = primary_cfg.init(device);
@@ -135,7 +135,7 @@ fn validate_conv2d_params(
     }
 }
 
-fn validate_ghost_state_structure(
+pub(crate) fn validate_ghost_state_structure(
     current: &GhostModuleRecord<WasmBackend>,
     incoming: &GhostModuleRecord<WasmBackend>,
 ) -> Result<(), String> {
@@ -153,73 +153,6 @@ fn validate_ghost_state_structure(
         &incoming.cheap.weight,
         &incoming.cheap.bias,
     )
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmGhostModule {
-    inner: GhostModule<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmGhostModule {
-    #[wasm_bindgen(constructor)]
-    /// Fallible constructor (complaint #14): invalid configs are a per-call
-    /// `Err`, never a panic/`throw_str`, so corrupt bundle bytes cannot wedge
-    /// the in-process WASM runtime.
-    pub fn try_new(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        ratio: Option<usize>,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> Result<WasmGhostModule, String> {
-        let device = Default::default();
-        let mut config =
-            GhostModuleConfig::new(in_channels, out_channels, [kernel_size_h, kernel_size_w]);
-        if let Some(r) = ratio {
-            config.ratio = r;
-        }
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config.stride = [sh, sw];
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = [ph, pw];
-        }
-        let inner = config.try_init(&device).unwrap_or_else(reject_invalid_config);
-        Ok(WasmGhostModule { inner })
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: GhostModuleRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "GhostModule loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_ghost_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
 }
 
 #[cfg(test)]

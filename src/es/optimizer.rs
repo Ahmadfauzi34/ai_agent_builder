@@ -1,8 +1,9 @@
-use wasm_bindgen::prelude::*;
 use super::diag::{diversity, mean_std, EsReport};
 use super::objective::{LinearMseObjective, Objective};
 use super::rng::Rng;
 use super::strategy::{EsStrategy, Strategy};
+pub use crate::facade::es::es_capabilities;
+use wasm_bindgen::prelude::*;
 
 const LINEAR_DEMO_IN_DIM: usize = 3;
 const LINEAR_DEMO_OUT_DIM: usize = 2;
@@ -29,9 +30,7 @@ fn strict_config(
 
     let pop = pop.unwrap_or(DEFAULT_POP);
     if pop < 2 {
-        return Err(format!(
-            "EsOptimizer.strict: pop must be >= 2, got {pop}"
-        ));
+        return Err(format!("EsOptimizer.strict: pop must be >= 2, got {pop}"));
     }
     if strategy == 0 && !pop.is_multiple_of(2) {
         return Err(format!(
@@ -62,27 +61,6 @@ fn strict_config(
         }
         Ok((pop, sigma, None))
     }
-}
-
-/// Machine-readable ES contracts for agent planning.
-#[wasm_bindgen(js_name = esCapabilities)]
-pub fn es_capabilities() -> String {
-    concat!(
-        "{",
-        "\"entry\":\"EsOptimizer\",",
-        "\"constructor\":{\"mode\":\"legacy_forgiving\",\"coercions\":[\"dim_zero_to_one\",\"pop_below_two_to_two\",\"unknown_strategy_to_openes\",\"openes_odd_pop_truncates_to_pairs\"]},",
-        "\"strict_factory\":\"EsOptimizer.strict\",",
-        "\"strategies\":{\"openes\":0,\"mu_lambda\":1},",
-        "\"strict_contract\":{",
-        "\"dim\":{\"min\":1},",
-        "\"openes\":{\"pop_min\":2,\"pop_even\":true,\"sigma\":\"finite>0\",\"lr\":\"finite>0\"},",
-        "\"mu_lambda\":{\"pop_min\":2,\"sigma\":\"finite>0\",\"lr\":\"omit\"}},",
-        "\"lifecycle\":\"ask->tell\",",
-        "\"controls\":{\"set_learning_rate\":{\"method\":\"setLearningRate\",\"strategy\":\"openes\",\"lr\":\"finite>0\",\"lifecycle\":\"between_completed_generations\"}},",
-        "\"linear_demo\":{\"method\":\"runLinearDemo\",\"optimizer_dim\":6,\"gens_min\":1}",
-        "}"
-    )
-    .to_string()
 }
 
 #[wasm_bindgen]
@@ -161,13 +139,19 @@ impl EsOptimizer {
     }
 
     #[wasm_bindgen(js_name = dim)]
-    pub fn dim(&self) -> u32 { self.dim as u32 }
+    pub fn dim(&self) -> u32 {
+        self.dim as u32
+    }
 
     #[wasm_bindgen(js_name = generation)]
-    pub fn generation(&self) -> u32 { self.gen }
+    pub fn generation(&self) -> u32 {
+        self.gen
+    }
 
     #[wasm_bindgen(js_name = batchSize)]
-    pub fn batch_size(&self) -> u32 { self.last_candidates.len() as u32 }
+    pub fn batch_size(&self) -> u32 {
+        self.last_candidates.len() as u32
+    }
 
     /// Change OpenES learning rate without resetting search state.
     ///
@@ -190,7 +174,9 @@ impl EsOptimizer {
     pub fn ask(&mut self) -> Vec<f32> {
         let cands = self.strategy.ask(&mut self.rng);
         let mut flat = Vec::with_capacity(cands.len() * self.dim);
-        for c in &cands { flat.extend_from_slice(c); }
+        for c in &cands {
+            flat.extend_from_slice(c);
+        }
         self.last_candidates = cands;
         self.awaiting_fitness = true;
         flat
@@ -232,15 +218,22 @@ impl EsOptimizer {
         let mut best = f64::NEG_INFINITY;
         let mut worst = f64::INFINITY;
         for &v in &f64s {
-            if v > best { best = v; }
-            if v < worst { worst = v; }
+            if v > best {
+                best = v;
+            }
+            if v < worst {
+                worst = v;
+            }
         }
 
         // global best + stagnation (scan kandidat vs fitness)
         let mut gen_best = f64::NEG_INFINITY;
         let mut gen_best_params: Vec<f32> = Vec::new();
         for (c, &v) in self.last_candidates.iter().zip(f64s.iter()) {
-            if v > gen_best { gen_best = v; gen_best_params = c.clone(); }
+            if v > gen_best {
+                gen_best = v;
+                gen_best_params = c.clone();
+            }
         }
         let prev_best = self.best_fitness;
         if gen_best > self.best_fitness + 1e-8 {
@@ -255,14 +248,29 @@ impl EsOptimizer {
         // diagnosa populasi
         let div = diversity(&self.last_candidates);
         let mean_vec = self.strategy.mean();
-        let mean_norm = (mean_vec.iter().map(|&v| (v as f64) * (v as f64)).sum::<f64>()).sqrt();
-        let best_norm = (self.best_params.iter().map(|&v| (v as f64) * (v as f64)).sum::<f64>()).sqrt();
+        let mean_norm = (mean_vec
+            .iter()
+            .map(|&v| (v as f64) * (v as f64))
+            .sum::<f64>())
+        .sqrt();
+        let best_norm = (self
+            .best_params
+            .iter()
+            .map(|&v| (v as f64) * (v as f64))
+            .sum::<f64>())
+        .sqrt();
 
         // flags
         let mut flags: Vec<String> = Vec::new();
-        if div < 1e-6 { flags.push("DIVERSITY_COLLAPSE".into()); }
-        if improvement <= 1e-8 { flags.push("NO_IMPROVEMENT".into()); }
-        if std < 1e-9 { flags.push("ALL_FITNESS_EQUAL".into()); }
+        if div < 1e-6 {
+            flags.push("DIVERSITY_COLLAPSE".into());
+        }
+        if improvement <= 1e-8 {
+            flags.push("NO_IMPROVEMENT".into());
+        }
+        if std < 1e-9 {
+            flags.push("ALL_FITNESS_EQUAL".into());
+        }
 
         self.gen = self.gen.saturating_add(1);
         self.awaiting_fitness = false;
@@ -273,13 +281,17 @@ impl EsOptimizer {
             evals: f64s.len(),
             dim: self.dim,
             pop: self.last_candidates.len(),
-            best, worst, mean, std,
+            best,
+            worst,
+            mean,
+            std,
             improvement,
             stagnation: self.stagnation,
             diversity: div,
             sigma: self.strategy.sigma(),
             lr: self.strategy.lr(),
-            mean_norm, best_norm,
+            mean_norm,
+            best_norm,
             flags,
         };
         let json = rep.to_json();
@@ -288,13 +300,19 @@ impl EsOptimizer {
     }
 
     /// Vektor terbaik sepanjang pelatihan (Float32Array).
-    pub fn best(&self) -> Vec<f32> { self.best_params.clone() }
+    pub fn best(&self) -> Vec<f32> {
+        self.best_params.clone()
+    }
 
     /// Rata-rata populasi saat ini (Float32Array).
-    pub fn mean(&self) -> Vec<f32> { self.strategy.mean() }
+    pub fn mean(&self) -> Vec<f32> {
+        self.strategy.mean()
+    }
 
     /// Laporan JSON generasi terakhir.
-    pub fn report(&self) -> String { self.last_report.clone() }
+    pub fn report(&self) -> String {
+        self.last_report.clone()
+    }
 
     /// Proof-of-life mandiri untuk problem linear tetap `in=3, out=2`.
     ///
@@ -325,7 +343,9 @@ impl EsOptimizer {
             let row: Vec<f32> = (0..in_dim).map(|_| r.gaussian()).collect();
             let mut yo = vec![0.0f32; out_dim];
             for k in 0..in_dim {
-                for o in 0..out_dim { yo[o] += row[k] * w_true[k * out_dim + o]; }
+                for o in 0..out_dim {
+                    yo[o] += row[k] * w_true[k * out_dim + o];
+                }
             }
             x.extend_from_slice(&row);
             y.extend_from_slice(&yo);
@@ -371,15 +391,13 @@ mod tests {
 
     #[test]
     fn learning_rate_mutation_rejects_invalid_values_and_non_openes_strategy() {
-        let mut openes =
-            EsOptimizer::strict(3, 0, 7, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut openes = EsOptimizer::strict(3, 0, 7, Some(8), Some(0.08), Some(0.10)).unwrap();
         for lr in [0.0, -0.01, f32::NAN, f32::INFINITY] {
             assert!(openes.set_learning_rate(lr).is_err());
             assert_eq!(openes.generation(), 0);
         }
 
-        let mut mu_lambda =
-            EsOptimizer::strict(3, 1, 7, Some(8), Some(0.08), None).unwrap();
+        let mut mu_lambda = EsOptimizer::strict(3, 1, 7, Some(8), Some(0.08), None).unwrap();
         let err = mu_lambda.set_learning_rate(0.10).unwrap_err();
         assert!(err.contains("only supported by OpenES"));
         assert_eq!(mu_lambda.generation(), 0);
@@ -387,8 +405,7 @@ mod tests {
 
     #[test]
     fn learning_rate_mutation_rejects_pending_batch_without_consuming_it() {
-        let mut optimizer =
-            EsOptimizer::strict(3, 0, 11, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut optimizer = EsOptimizer::strict(3, 0, 11, Some(8), Some(0.08), Some(0.10)).unwrap();
 
         let pending = optimizer.ask();
         assert_eq!(pending.len(), 24);
@@ -408,10 +425,8 @@ mod tests {
 
     #[test]
     fn learning_rate_mutation_preserves_search_state_until_next_tell() {
-        let mut control =
-            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
-        let mut changed =
-            EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut control = EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
+        let mut changed = EsOptimizer::strict(3, 0, 19, Some(8), Some(0.08), Some(0.10)).unwrap();
 
         let first_control = control.ask();
         let first_changed = changed.ask();

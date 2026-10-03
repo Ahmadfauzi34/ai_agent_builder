@@ -4,21 +4,17 @@
 // visible inside `registry` and its descendants. Do not re-home it under
 // `graph` via `#[path]` -- that breaks field privacy (E0616) and, because of
 // `#[path]` child-resolution rules, module lookup (E0583).
-mod binding;
-mod inventory;
+pub(crate) mod binding;
+pub(crate) mod inventory;
 
 use crate::protocol::{
-    PayloadCursor, CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, LAYER_CONV,
-    LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
-    POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
+    PayloadCursor, CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, LAYER_CONV, LAYER_GHOST,
+    LAYER_POOL, LAYER_SEBLOCK, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D,
+    POOL_MAXPOOL1D, POOL_MAXPOOL2D,
 };
 use crate::registry::LayerRegistry;
 
-fn require_channels(
-    shape: [usize; 4],
-    expected: usize,
-    context: &str,
-) -> Result<(), String> {
+fn require_channels(shape: [usize; 4], expected: usize, context: &str) -> Result<(), String> {
     if shape[1] != expected {
         return Err(format!(
             "{context}: expected channel axis 1 size {expected}, got {} for shape {:?}",
@@ -69,7 +65,9 @@ fn require_transpose_output_positive(
     context: &str,
 ) -> Result<(), String> {
     if input == 0 {
-        return Err(format!("{context}: input extent on axis {axis} must be > 0"));
+        return Err(format!(
+            "{context}: input extent on axis {axis} must be > 0"
+        ));
     }
     if kernel == 0 || stride == 0 {
         return Err(format!(
@@ -78,9 +76,7 @@ fn require_transpose_output_positive(
     }
     // Burn wrapper uses dilation=1 and output_padding=0, so:
     // out = (input - 1) * stride - 2 * padding + kernel.
-    let output = (input as i128 - 1) * stride as i128
-        - 2 * padding as i128
-        + kernel as i128;
+    let output = (input as i128 - 1) * stride as i128 - 2 * padding as i128 + kernel as i128;
     if output <= 0 {
         return Err(format!(
             "{context}: transpose convolution would produce non-positive extent {output} on axis {axis}"
@@ -125,11 +121,7 @@ pub(crate) fn parse_init_fingerprint(fingerprint: &str) -> Result<(u8, Vec<u8>),
     ))
 }
 
-fn validate_conv(
-    variant: u8,
-    payload: &[u8],
-    shape: [usize; 4],
-) -> Result<(), String> {
+fn validate_conv(variant: u8, payload: &[u8], shape: [usize; 4]) -> Result<(), String> {
     let mut c = PayloadCursor::new(payload);
     let _id = c.read_u32()?;
     let in_channels = c.read_usize()?;
@@ -152,12 +144,8 @@ fn validate_conv(
             require_kernel_fits(shape[3], pw, kw, 3, "Conv2d forward")
         }
         CONV_CONVTRANSPOSE2D => {
-            require_transpose_output_positive(
-                shape[2], ph, kh, sh, 2, "ConvTranspose2d forward",
-            )?;
-            require_transpose_output_positive(
-                shape[3], pw, kw, sw, 3, "ConvTranspose2d forward",
-            )
+            require_transpose_output_positive(shape[2], ph, kh, sh, 2, "ConvTranspose2d forward")?;
+            require_transpose_output_positive(shape[3], pw, kw, sw, 3, "ConvTranspose2d forward")
         }
         _ => Err(format!(
             "Conv forward: unknown init variant 0x{variant:02X}"
@@ -165,11 +153,7 @@ fn validate_conv(
     }
 }
 
-fn validate_pool(
-    variant: u8,
-    payload: &[u8],
-    shape: [usize; 4],
-) -> Result<(), String> {
+fn validate_pool(variant: u8, payload: &[u8], shape: [usize; 4]) -> Result<(), String> {
     let mut c = PayloadCursor::new(payload);
     let _id = c.read_u32()?;
     match variant {
@@ -273,9 +257,7 @@ pub(crate) fn validate_registry_unary_contract(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        parse_init_fingerprint, require_kernel_fits, require_transpose_output_positive,
-    };
+    use super::{parse_init_fingerprint, require_kernel_fits, require_transpose_output_positive};
 
     #[test]
     fn kernel_fit_rejects_kernel_larger_than_padded_input() {
@@ -291,10 +273,8 @@ mod tests {
 
     #[test]
     fn fingerprint_parser_recovers_variant_and_payload() {
-        let (variant, payload) = parse_init_fingerprint(
-            "type=04;id=1;variant=01;flags=00;payload=01000000",
-        )
-        .unwrap();
+        let (variant, payload) =
+            parse_init_fingerprint("type=04;id=1;variant=01;flags=00;payload=01000000").unwrap();
         assert_eq!(variant, 1);
         assert_eq!(payload, vec![1, 0, 0, 0]);
     }

@@ -1,11 +1,13 @@
+pub use crate::facade::math::linear_algebra_capabilities;
 use burn::prelude::*;
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmLinearAlgebra;
 use crate::WasmTensor;
 
-const DEFAULT_EPSILON: f64 = 1e-12;
+pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;
 
-fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
     for (index, value) in input.to_array().into_iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
@@ -16,7 +18,7 @@ fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_feature_shape(shape: [usize; 4], context: &str) -> Result<(), String> {
+pub(crate) fn validate_feature_shape(shape: [usize; 4], context: &str) -> Result<(), String> {
     let [batch, features, h, w] = shape;
     if batch == 0 {
         return Err(format!("{context}: batch axis must be non-empty"));
@@ -32,7 +34,11 @@ fn validate_feature_shape(shape: [usize; 4], context: &str) -> Result<(), String
     Ok(())
 }
 
-fn validate_feature_pair(a: &WasmTensor, b: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_feature_pair(
+    a: &WasmTensor,
+    b: &WasmTensor,
+    context: &str,
+) -> Result<(), String> {
     let a_shape = a.inner.dims();
     let b_shape = b.inner.dims();
     validate_feature_shape(a_shape, context)?;
@@ -47,7 +53,7 @@ fn validate_feature_pair(a: &WasmTensor, b: &WasmTensor, context: &str) -> Resul
     Ok(())
 }
 
-fn validate_epsilon(epsilon: f64, context: &str) -> Result<f32, String> {
+pub(crate) fn validate_epsilon(epsilon: f64, context: &str) -> Result<f32, String> {
     if !epsilon.is_finite() || epsilon <= 0.0 || epsilon > f32::MAX as f64 {
         return Err(format!(
             "{context}: epsilon must be finite, > 0, and representable as f32; got {epsilon}"
@@ -56,134 +62,13 @@ fn validate_epsilon(epsilon: f64, context: &str) -> Result<f32, String> {
     Ok(epsilon as f32)
 }
 
-fn checked_output(
+pub(crate) fn checked_output(
     inner: Tensor<crate::WasmBackend, 4>,
     context: &str,
 ) -> Result<WasmTensor, String> {
     let output = WasmTensor { inner };
     validate_finite(&output, context)?;
     Ok(output)
-}
-
-#[wasm_bindgen(js_name = linearAlgebraCapabilities)]
-pub fn linear_algebra_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.linear-algebra.v1\",",
-        "\"backend\":\"Burn Tensor<WasmBackend,4>\",",
-        "\"matrix_ops\":[\"matmul\"],",
-        "\"vector_ops\":[\"dot\",\"l2Norm\",\"cosineSimilarity\",\"l2Distance\"],",
-        "\"vector_layout\":\"[B,F,1,1]\",",
-        "\"contracts\":{",
-        "\"finite_inputs\":true,",
-        "\"finite_outputs\":true,",
-        "\"paired_vector_shape\":\"exact_match\",",
-        "\"matmul_layout\":\"[B,G,M,K]@[B,G,K,N]\",",
-        "\"cosine_zero_vector\":\"stabilized_to_zero\",",
-        "\"solve\":\"deferred_v1\"",
-        "}",
-        "}"
-    )
-    .to_string()
-}
-
-/// Stateless Burn-backed linear algebra surface for the canonical rank-4 bridge.
-///
-/// Vector operations use `[B,F,1,1]`. Matrix multiplication follows Burn's rank-4
-/// batched semantics `[B,G,M,K] @ [B,G,K,N] -> [B,G,M,N]`.
-#[wasm_bindgen]
-pub struct WasmLinearAlgebra;
-
-#[wasm_bindgen]
-impl WasmLinearAlgebra {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmLinearAlgebra {
-        WasmLinearAlgebra
-    }
-
-    pub fn matmul(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        let da = a.inner.dims();
-        let db = b.inner.dims();
-        if da.iter().any(|&d| d == 0) || db.iter().any(|&d| d == 0) {
-            return Err(format!(
-                "LinearAlgebra.matmul: zero-sized dimensions are not supported in v1: {da:?} @ {db:?}"
-            ));
-        }
-        if da[0] != db[0] || da[1] != db[1] || da[3] != db[2] {
-            return Err(format!(
-                "LinearAlgebra.matmul: incompatible shapes {da:?} @ {db:?}; expected [B,G,M,K] @ [B,G,K,N]"
-            ));
-        }
-        validate_finite(a, "LinearAlgebra.matmul lhs")?;
-        validate_finite(b, "LinearAlgebra.matmul rhs")?;
-        checked_output(
-            a.inner.clone().matmul(b.inner.clone()),
-            "LinearAlgebra.matmul output",
-        )
-    }
-
-    pub fn dot(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_pair(a, b, "LinearAlgebra.dot")?;
-        checked_output(
-            a.inner.clone().mul(b.inner.clone()).sum_dim(1),
-            "LinearAlgebra.dot output",
-        )
-    }
-
-    #[wasm_bindgen(js_name = l2Norm)]
-    pub fn l2_norm(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_shape(input.inner.dims(), "LinearAlgebra.l2Norm")?;
-        validate_finite(input, "LinearAlgebra.l2Norm input")?;
-        let squared = input.inner.clone().mul(input.inner.clone());
-        checked_output(
-            squared.sum_dim(1).sqrt(),
-            "LinearAlgebra.l2Norm output",
-        )
-    }
-
-    #[wasm_bindgen(js_name = cosineSimilarity)]
-    pub fn cosine_similarity(
-        &self,
-        a: &WasmTensor,
-        b: &WasmTensor,
-        epsilon: Option<f64>,
-    ) -> Result<WasmTensor, String> {
-        validate_feature_pair(a, b, "LinearAlgebra.cosineSimilarity")?;
-        let epsilon = validate_epsilon(
-            epsilon.unwrap_or(DEFAULT_EPSILON),
-            "LinearAlgebra.cosineSimilarity",
-        )?;
-
-        let dot = a.inner.clone().mul(b.inner.clone()).sum_dim(1);
-        let norm_a = a
-            .inner
-            .clone()
-            .mul(a.inner.clone())
-            .sum_dim(1)
-            .sqrt();
-        let norm_b = b
-            .inner
-            .clone()
-            .mul(b.inner.clone())
-            .sum_dim(1)
-            .sqrt();
-        let denominator = norm_a.mul(norm_b).clamp_min(epsilon);
-        checked_output(
-            dot.div(denominator),
-            "LinearAlgebra.cosineSimilarity output",
-        )
-    }
-
-    #[wasm_bindgen(js_name = l2Distance)]
-    pub fn l2_distance(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_pair(a, b, "LinearAlgebra.l2Distance")?;
-        let delta = a.inner.clone().sub(b.inner.clone());
-        let squared = delta.clone().mul(delta);
-        checked_output(
-            squared.sum_dim(1).sqrt(),
-            "LinearAlgebra.l2Distance output",
-        )
-    }
 }
 
 #[cfg(test)]
@@ -204,14 +89,8 @@ mod tests {
     #[test]
     fn vector_ops_compute_expected_batchwise_values() {
         let linalg = WasmLinearAlgebra::new();
-        let a = WasmTensor::new(
-            &[1.0, 2.0, 3.0, 3.0, 4.0, 0.0],
-            &[2, 3, 1, 1],
-        );
-        let b = WasmTensor::new(
-            &[3.0, 1.0, 2.0, 0.0, 4.0, 3.0],
-            &[2, 3, 1, 1],
-        );
+        let a = WasmTensor::new(&[1.0, 2.0, 3.0, 3.0, 4.0, 0.0], &[2, 3, 1, 1]);
+        let b = WasmTensor::new(&[3.0, 1.0, 2.0, 0.0, 4.0, 3.0], &[2, 3, 1, 1]);
 
         let dot = linalg.dot(&a, &b).unwrap();
         assert_eq!(dot.shape(), vec![2, 1, 1, 1]);
@@ -221,11 +100,7 @@ mod tests {
         assert_close(&norm.to_array(), &[14.0_f32.sqrt(), 5.0], 1e-6);
 
         let cosine = linalg.cosine_similarity(&a, &b, None).unwrap();
-        assert_close(
-            &cosine.to_array(),
-            &[11.0 / 14.0, 16.0 / 25.0],
-            1e-6,
-        );
+        assert_close(&cosine.to_array(), &[11.0 / 14.0, 16.0 / 25.0], 1e-6);
 
         let distance = linalg.l2_distance(&a, &b).unwrap();
         assert_close(
@@ -252,14 +127,8 @@ mod tests {
     #[test]
     fn matmul_matches_reference_result() {
         let linalg = WasmLinearAlgebra::new();
-        let a = WasmTensor::new(
-            &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-            &[1, 1, 2, 3],
-        );
-        let b = WasmTensor::new(
-            &[7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
-            &[1, 1, 3, 2],
-        );
+        let a = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0], &[1, 1, 2, 3]);
+        let b = WasmTensor::new(&[7.0, 8.0, 9.0, 10.0, 11.0, 12.0], &[1, 1, 3, 2]);
         let out = linalg.matmul(&a, &b).unwrap();
         assert_eq!(out.shape(), vec![1, 1, 2, 2]);
         assert_eq!(out.to_array(), vec![58.0, 64.0, 139.0, 154.0]);

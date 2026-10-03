@@ -1,6 +1,4 @@
-use crate::runtime_evidence_interpretation::{
-    interpret_recorded_evidence, EvidenceResponseAction,
-};
+use crate::runtime_evidence_interpretation::{interpret_recorded_evidence, EvidenceResponseAction};
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
 const AGENT_RESPONSE_INTENT_V1: &str =
@@ -64,7 +62,10 @@ fn response_intent_fingerprint_for(
     fnv1a64(canonical.bytes())
 }
 
-fn evidence_fingerprint(inbox: &ResolutionEvidenceInbox, entry_index: usize) -> Result<String, String> {
+fn evidence_fingerprint(
+    inbox: &ResolutionEvidenceInbox,
+    entry_index: usize,
+) -> Result<String, String> {
     let evidence = inbox.observations().get(entry_index).ok_or_else(|| {
         format!(
             "AgentResponseIntent: entry index {entry_index} is outside recorded inbox length {}",
@@ -134,26 +135,26 @@ impl AgentResponseIntent {
                 "\"selector\":\"{}\",",
                 "\"entry_index\":{},",
                 "\"evidence\":{{",
-                    "\"kind\":\"{}\",",
-                    "\"outcome\":\"{}\",",
-                    "\"fingerprint\":\"{}\"",
+                "\"kind\":\"{}\",",
+                "\"outcome\":\"{}\",",
+                "\"fingerprint\":\"{}\"",
                 "}},",
                 "\"selection\":{{",
-                    "\"authority\":\"explicit_caller_agent\",",
-                    "\"selected_action\":\"{}\",",
-                    "\"target_boundary\":\"{}\",",
-                    "\"handoff\":\"{}\"",
+                "\"authority\":\"explicit_caller_agent\",",
+                "\"selected_action\":\"{}\",",
+                "\"target_boundary\":\"{}\",",
+                "\"handoff\":\"{}\"",
                 "}},",
                 "\"response_intent_fingerprint\":\"{}\",",
                 "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
                 "\"execution_authorized\":false,",
                 "\"execution_effect\":\"none\",",
                 "\"mutation\":{{",
-                    "\"inbox\":\"none\",",
-                    "\"resolution\":\"none\",",
-                    "\"revision\":\"none\",",
-                    "\"diagnostic\":\"none\",",
-                    "\"verifier\":\"none\"",
+                "\"inbox\":\"none\",",
+                "\"resolution\":\"none\",",
+                "\"revision\":\"none\",",
+                "\"diagnostic\":\"none\",",
+                "\"verifier\":\"none\"",
                 "}}",
                 "}}"
             ),
@@ -192,11 +193,11 @@ impl ResponseIntentPreflight {
                 "\"ready\":{},",
                 "\"status\":\"{}\",",
                 "\"checks\":{{",
-                    "\"entry_exists\":{},",
-                    "\"evidence_matches\":{},",
-                    "\"candidate_available\":{},",
-                    "\"candidate_snapshot_matches\":{},",
-                    "\"intent_fingerprint_matches\":{}",
+                "\"entry_exists\":{},",
+                "\"evidence_matches\":{},",
+                "\"candidate_available\":{},",
+                "\"candidate_snapshot_matches\":{},",
+                "\"intent_fingerprint_matches\":{}",
                 "}},",
                 "\"execution_authorized\":{},",
                 "\"execution_effect\":\"none\",",
@@ -515,20 +516,12 @@ mod tests {
         .unwrap();
         inbox.record(failed).unwrap();
 
-        let first = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent-a",
-        )
-        .unwrap();
-        let second = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent-a",
-        )
-        .unwrap();
+        let first =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-a")
+                .unwrap();
+        let second =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-a")
+                .unwrap();
         let revision = create_agent_response_intent(
             &inbox,
             0,
@@ -564,13 +557,9 @@ mod tests {
         .unwrap();
         inbox.record(failed).unwrap();
 
-        let mut intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent-a",
-        )
-        .unwrap();
+        let mut intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-a")
+                .unwrap();
         intent.evidence_fingerprint = "fnv1a64:tampered".to_string();
 
         let preflight = preflight_response_intent(&inbox, &intent);
@@ -598,21 +587,14 @@ mod tests {
         .unwrap();
         inbox.record(failed).unwrap();
 
-        let mut intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent-a",
-        )
-        .unwrap();
+        let mut intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-a")
+                .unwrap();
         intent.response_intent_fingerprint = "fnv1a64:tampered".to_string();
 
         let preflight = preflight_response_intent(&inbox, &intent);
         assert!(!preflight.ready);
-        assert_eq!(
-            preflight.status,
-            "response_intent_fingerprint_mismatch"
-        );
+        assert_eq!(preflight.status, "response_intent_fingerprint_mismatch");
         assert!(preflight.evidence_matches);
         assert!(preflight.candidate_available);
         assert!(preflight.candidate_snapshot_matches);
@@ -636,13 +618,8 @@ mod tests {
         .unwrap();
         inbox.record(failed).unwrap();
 
-        let err = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "",
-        )
-        .unwrap_err();
+        let err = create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "")
+            .unwrap_err();
         assert!(err.contains("selector must not be empty"));
 
         let err = create_agent_response_intent(

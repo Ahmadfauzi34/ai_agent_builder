@@ -63,7 +63,7 @@ impl DispatchRequirement {
                 "\"name\":\"{}\",",
                 "\"required\":{},",
                 "\"value_class\":\"{}\",",
-                "\"source_authority\":\"{}\"" ,
+                "\"source_authority\":\"{}\"",
                 "}}"
             ),
             json_escape(&self.name),
@@ -380,17 +380,14 @@ pub fn response_dispatch_requirements(
     };
 
     let route_contract_matches = match intent.selected_action() {
-        EvidenceResponseAction::Ignore => {
-            route.operation == "no_op" && executor_contract == "none"
-        }
+        EvidenceResponseAction::Ignore => route.operation == "no_op" && executor_contract == "none",
         EvidenceResponseAction::Reverify => route.operation == executor_contract,
         EvidenceResponseAction::RequestInformation => {
             route.operation == "request_information"
                 && executor_contract == "external_resolution_review"
         }
         EvidenceResponseAction::ProposeRevision => {
-            route.operation == "open_revision"
-                && executor_contract == "ResolutionRevisionChain"
+            route.operation == "open_revision" && executor_contract == "ResolutionRevisionChain"
         }
     };
     if !route_contract_matches {
@@ -448,9 +445,7 @@ pub fn response_dispatch_requirements(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        response_dispatch_requirements, response_dispatch_requirements_capabilities,
-    };
+    use super::{response_dispatch_requirements, response_dispatch_requirements_capabilities};
     use crate::agent_response_intent::create_agent_response_intent;
     use crate::resolution::ResolutionWorkflow;
     use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
@@ -501,13 +496,9 @@ mod tests {
     #[test]
     fn failed_graph_reverify_has_machine_readable_verifier_requirements() {
         let (_, _, inbox) = fixture(false);
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         let projection = response_dispatch_requirements(&inbox, &intent);
         assert!(projection.ready);
@@ -536,7 +527,8 @@ mod tests {
     fn reverify_requirement_matrix_matches_all_typed_verifier_receipts() {
         let (resolution, projection, _) = fixture(false);
 
-        let cases = vec![
+        let cases =
+            vec![
             (
                 RuntimeEvidence::bound_math_program_verifier_receipt(
                     &projection,
@@ -588,13 +580,9 @@ mod tests {
         for (evidence, contract, required_names) in cases {
             let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
             assert!(inbox.record(evidence).unwrap());
-            let intent = create_agent_response_intent(
-                &inbox,
-                0,
-                EvidenceResponseAction::Reverify,
-                "agent",
-            )
-            .unwrap();
+            let intent =
+                create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                    .unwrap();
 
             let projection = response_dispatch_requirements(&inbox, &intent);
             assert!(projection.ready);
@@ -697,13 +685,9 @@ mod tests {
     #[test]
     fn stale_intent_closes_requirement_projection() {
         let (resolution, projection, inbox_a) = fixture(false);
-        let intent = create_agent_response_intent(
-            &inbox_a,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox_a, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         let mut inbox_b = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
         let different = RuntimeEvidence::bound_graph_verifier_receipt(

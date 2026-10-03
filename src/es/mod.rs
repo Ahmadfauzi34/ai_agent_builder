@@ -12,11 +12,11 @@
 //! ## Bukan tanggung jawab modul ini
 //! - Menjalankan model/layer → `layers/*`, `graph`.
 
-pub mod rng;
 pub mod diag;
-pub mod strategy;
 pub mod objective;
 pub mod optimizer;
+pub mod rng;
+pub mod strategy;
 
 #[cfg(test)]
 mod invariant_tests;

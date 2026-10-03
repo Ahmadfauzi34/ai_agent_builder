@@ -1,22 +1,21 @@
-use burn::prelude::*;
-use burn::nn::conv::{
-    Conv1d, Conv1dConfig,
-    Conv2d, Conv2dConfig,
-    ConvTranspose2d, ConvTranspose2dConfig
-};
 use super::state_record::deterministic_record_bytes;
-use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
+pub use crate::facade::wasm_types::WasmConv;
 use crate::layers::shape_contract::require_singleton_axis;
+use crate::{WasmBackend, WasmTensor};
+use burn::nn::conv::{
+    Conv1d, Conv1dConfig, Conv2d, Conv2dConfig, ConvTranspose2d, ConvTranspose2dConfig,
+};
+use burn::prelude::*;
+use wasm_bindgen::prelude::*;
 
-fn validate_conv1d_stride(stride: Option<usize>, context: &str) -> Result<(), String> {
+pub(crate) fn validate_conv1d_stride(stride: Option<usize>, context: &str) -> Result<(), String> {
     if stride == Some(0) {
         return Err(format!("{context}: stride must be greater than 0"));
     }
     Ok(())
 }
 
-fn validate_conv2d_stride(
+pub(crate) fn validate_conv2d_stride(
     stride_h: Option<usize>,
     stride_w: Option<usize>,
     context: &str,
@@ -33,7 +32,7 @@ fn validate_conv2d_stride(
     Ok(())
 }
 
-fn conv_fail<T>(message: String) -> T {
+pub(crate) fn conv_fail<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -112,205 +111,37 @@ fn validate_conv_params<const D: usize>(
     }
 }
 
-fn validate_conv_state_structure(
+pub(crate) fn validate_conv_state_structure(
     current: &ConvolutionRecord<WasmBackend>,
     incoming: &ConvolutionRecord<WasmBackend>,
 ) -> Result<(), String> {
     match (current, incoming) {
-        (ConvolutionRecord::Conv1d(expected), ConvolutionRecord::Conv1d(actual)) =>
-            validate_conv_params::<3>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
-        (ConvolutionRecord::Conv2d(expected), ConvolutionRecord::Conv2d(actual)) =>
-            validate_conv_params::<4>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
+        (ConvolutionRecord::Conv1d(expected), ConvolutionRecord::Conv1d(actual)) => {
+            validate_conv_params::<3>(
+                &expected.weight,
+                &expected.bias,
+                &actual.weight,
+                &actual.bias,
+            )
+        }
+        (ConvolutionRecord::Conv2d(expected), ConvolutionRecord::Conv2d(actual)) => {
+            validate_conv_params::<4>(
+                &expected.weight,
+                &expected.bias,
+                &actual.weight,
+                &actual.bias,
+            )
+        }
         (
             ConvolutionRecord::ConvTranspose2d(expected),
             ConvolutionRecord::ConvTranspose2d(actual),
-        ) => validate_conv_params::<4>(&expected.weight, &expected.bias, &actual.weight, &actual.bias),
+        ) => validate_conv_params::<4>(
+            &expected.weight,
+            &expected.bias,
+            &actual.weight,
+            &actual.bias,
+        ),
         _ => Err("Conv loadState: convolution variant mismatch".to_string()),
-    }
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmConv {
-    inner: Convolution<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmConv {
-    #[wasm_bindgen(js_name = newConv1d)]
-    pub fn new_conv1d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> WasmConv {
-        Self::try_new_conv1d(in_channels, out_channels, kernel_size, stride, padding)
-            .unwrap_or_else(conv_fail)
-    }
-
-    #[wasm_bindgen(js_name = newConv2d)]
-    pub fn new_conv2d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> WasmConv {
-        Self::try_new_conv2d(
-            in_channels,
-            out_channels,
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-        )
-        .unwrap_or_else(conv_fail)
-    }
-
-    #[wasm_bindgen(js_name = newConvTranspose2d)]
-    pub fn new_conv_transpose2d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> WasmConv {
-        Self::try_new_conv_transpose2d(
-            in_channels,
-            out_channels,
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-        )
-        .unwrap_or_else(conv_fail)
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input)
-            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: ConvolutionRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "Conv loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_conv_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
-}
-
-impl WasmConv {
-    pub(crate) fn try_new_conv1d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_conv1d_stride(stride, "Conv1d")?;
-        let device = Default::default();
-        let mut config = Conv1dConfig::new(in_channels, out_channels, kernel_size);
-        if let Some(s) = stride {
-            config.stride = s;
-        }
-        if let Some(p) = padding {
-            config.padding = burn::nn::PaddingConfig1d::Explicit(p);
-        }
-        Ok(WasmConv {
-            inner: ConvolutionConfig::Conv1d(
-                config.with_initializer(burn::module::Initializer::Zeros),
-            )
-            .init(&device),
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn try_new_conv2d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_conv2d_stride(stride_h, stride_w, "Conv2d")?;
-        let device = Default::default();
-        let mut config = Conv2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config.stride = [sh, sw];
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = burn::nn::PaddingConfig2d::Explicit(ph, pw);
-        }
-        Ok(WasmConv {
-            inner: ConvolutionConfig::Conv2d(
-                config.with_initializer(burn::module::Initializer::Zeros),
-            )
-            .init(&device),
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn try_new_conv_transpose2d(
-        in_channels: usize,
-        out_channels: usize,
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_conv2d_stride(stride_h, stride_w, "ConvTranspose2d")?;
-        let device = Default::default();
-        let mut config = ConvTranspose2dConfig::new([in_channels, out_channels], [kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config.stride = [sh, sw];
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config.padding = [ph, pw];
-        }
-        Ok(WasmConv {
-            inner: ConvolutionConfig::ConvTranspose2d(
-                config.with_initializer(burn::module::Initializer::Zeros),
-            )
-            .init(&device),
-        })
-    }
-
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        if matches!(&self.inner, Convolution::Conv1d(_)) {
-            require_singleton_axis(input.inner.dims(), 3, "Conv1d forward")?;
-        }
-        let out = self.inner.forward(input.inner.clone());
-        Ok(WasmTensor { inner: out })
     }
 }
 
@@ -318,7 +149,7 @@ impl WasmConv {
 // FLOAT-BRIDGE (M1) — conv. Record per variant = { weight: Param<TD>, bias: Option<Param<T1>> }.
 // D = 3 (conv1d) atau 4 (conv2d / transpose2d). Helper generic supaya rank statis & aman.
 // ============================================================
-fn push_param<B: Backend, const D: usize>(
+pub(crate) fn push_param<B: Backend, const D: usize>(
     p: &burn::module::Param<Tensor<B, D>>,
     out: &mut Vec<f32>,
 ) -> Result<(), String> {
@@ -330,7 +161,7 @@ fn push_param<B: Backend, const D: usize>(
     Ok(())
 }
 
-fn set_conv_param<B: Backend, const D: usize>(
+pub(crate) fn set_conv_param<B: Backend, const D: usize>(
     weight: &mut burn::module::Param<Tensor<B, D>>,
     bias: &mut Option<burn::module::Param<Tensor<B, 1>>>,
     data: &[f32],
@@ -365,52 +196,10 @@ fn set_conv_param<B: Backend, const D: usize>(
     Ok(())
 }
 
-#[wasm_bindgen]
-impl WasmConv {
-    #[wasm_bindgen(js_name = getWeightsFlat)]
-    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
-        let rec = self.inner.clone().into_record();
-        let mut out = Vec::new();
-        match rec {
-            ConvolutionRecord::Conv1d(r) => {
-                push_param::<WasmBackend, 3>(&r.weight, &mut out)?;
-                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
-            }
-            ConvolutionRecord::Conv2d(r) => {
-                push_param::<WasmBackend, 4>(&r.weight, &mut out)?;
-                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
-            }
-            ConvolutionRecord::ConvTranspose2d(r) => {
-                push_param::<WasmBackend, 4>(&r.weight, &mut out)?;
-                if let Some(b) = &r.bias { push_param::<WasmBackend, 1>(b, &mut out)?; }
-            }
-        }
-        Ok(out)
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
-        let mut rec = self.inner.clone().into_record();
-        match &mut rec {
-            ConvolutionRecord::Conv1d(r) => {
-                set_conv_param::<WasmBackend, 3>(&mut r.weight, &mut r.bias, data)?;
-            }
-            ConvolutionRecord::Conv2d(r) => {
-                set_conv_param::<WasmBackend, 4>(&mut r.weight, &mut r.bias, data)?;
-            }
-            ConvolutionRecord::ConvTranspose2d(r) => {
-                set_conv_param::<WasmBackend, 4>(&mut r.weight, &mut r.bias, data)?;
-            }
-        }
-        self.inner = self.inner.clone().load_record(rec);
-        Ok(())
-    }
-}
-
 // ============================================================
 // WEIGHT LAYOUT (M2) — conv. Mirror urutan getWeightsFlat per variant.
 // ============================================================
-fn push_conv_segs<B: Backend, const D: usize>(
+pub(crate) fn push_conv_segs<B: Backend, const D: usize>(
     weight: &burn::module::Param<Tensor<B, D>>,
     bias: &Option<burn::module::Param<Tensor<B, 1>>>,
     segs: &mut Vec<(&'static str, usize)>,
@@ -418,29 +207,6 @@ fn push_conv_segs<B: Backend, const D: usize>(
     segs.push(("weight", weight.dims().iter().product::<usize>()));
     if let Some(b) = bias {
         segs.push(("bias", b.dims().iter().product::<usize>()));
-    }
-}
-
-impl WasmConv {
-    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
-        let rec = self.inner.clone().into_record();
-        let mut segs = Vec::new();
-        match rec {
-            ConvolutionRecord::Conv1d(r) => {
-                push_conv_segs::<WasmBackend, 3>(&r.weight, &r.bias, &mut segs);
-            }
-            ConvolutionRecord::Conv2d(r) => {
-                push_conv_segs::<WasmBackend, 4>(&r.weight, &r.bias, &mut segs);
-            }
-            ConvolutionRecord::ConvTranspose2d(r) => {
-                push_conv_segs::<WasmBackend, 4>(&r.weight, &r.bias, &mut segs);
-            }
-        }
-        segs
-    }
-
-    pub fn weight_layout(&self) -> String {
-        crate::layers::layout::segs_json(&self.weight_segs())
     }
 }
 

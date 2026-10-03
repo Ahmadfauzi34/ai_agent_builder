@@ -25,13 +25,23 @@ fn three_external_inputs_fan_in_and_replay_deterministically() {
     assert_eq!(program.program_plan()[4], 5);
     assert_eq!(program.program_plan()[5], 3);
 
-    let inputs = [tensor(&[1.0, 2.0]), tensor(&[3.0, 4.0]), tensor(&[5.0, 6.0])];
-    assert_eq!(program.run_inputs(&inputs).unwrap().to_array(), vec![9.0, 12.0]);
+    let inputs = [
+        tensor(&[1.0, 2.0]),
+        tensor(&[3.0, 4.0]),
+        tensor(&[5.0, 6.0]),
+    ];
+    assert_eq!(
+        program.run_inputs(&inputs).unwrap().to_array(),
+        vec![9.0, 12.0]
+    );
 
     let replay = MathProgramV5::from_plan(&program.program_plan()).unwrap();
     assert_eq!(replay.program_plan(), program.program_plan());
     assert_eq!(replay.program_identity(), program.program_identity());
-    assert_eq!(replay.run_inputs(&inputs).unwrap().to_array(), vec![9.0, 12.0]);
+    assert_eq!(
+        replay.run_inputs(&inputs).unwrap().to_array(),
+        vec![9.0, 12.0]
+    );
 }
 
 #[test]
@@ -49,7 +59,10 @@ fn four_inputs_can_branch_and_merge_without_packing() {
         tensor(&[2.0, 3.0]),
         tensor(&[4.0, 5.0]),
     ];
-    assert_eq!(program.run_inputs(&inputs).unwrap().to_array(), vec![12.0, 21.0]);
+    assert_eq!(
+        program.run_inputs(&inputs).unwrap().to_array(),
+        vec![12.0, 21.0]
+    );
 }
 
 #[test]
@@ -98,7 +111,10 @@ fn select_axis_reuses_v4_inside_three_input_program() {
         tensor(&[1.0, 1.0]),
         tensor(&[2.0, 2.0]),
     ];
-    assert_eq!(program.run_inputs(&inputs).unwrap().to_array(), vec![33.0, 13.0]);
+    assert_eq!(
+        program.run_inputs(&inputs).unwrap().to_array(),
+        vec![33.0, 13.0]
+    );
 }
 
 #[test]
@@ -128,7 +144,12 @@ fn legacy_v1_to_v4_input_contract_remains_frozen() {
     legacy.set_output(2).unwrap();
     let legacy = legacy.compile().unwrap();
     assert_eq!(legacy.program_plan()[4], 1);
-    assert_eq!(MathProgram::from_plan(&legacy.program_plan()).unwrap().program_plan(), legacy.program_plan());
+    assert_eq!(
+        MathProgram::from_plan(&legacy.program_plan())
+            .unwrap()
+            .program_plan(),
+        legacy.program_plan()
+    );
     assert!(MathProgramBuilder::new(3, 4).is_err());
 
     let mut v4 = MathProgramV4Builder::new(2, 3).unwrap();

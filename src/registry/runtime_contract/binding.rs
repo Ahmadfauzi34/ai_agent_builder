@@ -1,21 +1,21 @@
+pub use crate::facade::registry::layer_registry_operation_binding_capabilities;
 use wasm_bindgen::prelude::*;
 
 use crate::protocol::{
-    ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
-    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU,
-    ACT_TANH, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB,
-    CONV_CONV1D, CONV_CONV2D, CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY,
-    LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR,
-    LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT, NORM_BATCH, NORM_GROUP,
-    NORM_INSTANCE, NORM_LAYER, NORM_RMS, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
-    POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT,
-    SHIFT_UP,
+    ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
+    BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
+    CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
+    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
+    POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
+    SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP,
 };
 
-use super::inventory::{inventory_fingerprint_of, live_instance_records, sha256_text};
 use super::super::LayerRegistry;
+use super::inventory::{inventory_fingerprint_of, live_instance_records, sha256_text};
 
-const BINDING_CAPABILITIES_V1: &str =
+pub(crate) const BINDING_CAPABILITIES_V1: &str =
     include_str!("../../../docs/contracts/layer-registry-operation-binding.v1.json");
 const BINDING_SCHEMA: &str = "burn-research.layer-registry-operation-binding-snapshot.v1";
 
@@ -161,11 +161,6 @@ fn operation_binding_snapshot(registry: &LayerRegistry) -> Result<String, String
     ))
 }
 
-#[wasm_bindgen(js_name = layerRegistryOperationBindingCapabilities)]
-pub fn layer_registry_operation_binding_capabilities() -> String {
-    BINDING_CAPABILITIES_V1.to_string()
-}
-
 #[wasm_bindgen]
 impl LayerRegistry {
     #[wasm_bindgen(js_name = operationBindingSnapshot)]
@@ -203,9 +198,7 @@ mod tests {
         registry
             .init_agent_layer(&AgentLayerSpec::linear(7, 4, 3, true).unwrap())
             .unwrap();
-        registry
-            .init_agent_layer(&AgentLayerSpec::relu(9))
-            .unwrap();
+        registry.init_agent_layer(&AgentLayerSpec::relu(9)).unwrap();
         registry
             .init_agent_layer(
                 &AgentLayerSpec::conv2d(11, 2, 3, 3, 2, None, None, None, None).unwrap(),
@@ -223,9 +216,7 @@ mod tests {
     #[test]
     fn binding_fingerprint_is_anchored_to_inventory_fingerprint() {
         let mut registry = LayerRegistry::new();
-        registry
-            .init_agent_layer(&AgentLayerSpec::gelu(5))
-            .unwrap();
+        registry.init_agent_layer(&AgentLayerSpec::gelu(5)).unwrap();
 
         let binding = operation_binding_snapshot(&registry).unwrap();
         let inventory = registry.inventory_snapshot().unwrap();

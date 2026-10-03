@@ -28,8 +28,8 @@ fn every_domain_module_declares_its_contract() {
     let mut missing = Vec::new();
     for rel in CONTRACT_MODULES {
         let path = manifest_dir().join(rel);
-        let src = std::fs::read_to_string(&path)
-            .unwrap_or_else(|e| panic!("cannot read {rel}: {e}"));
+        let src =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {rel}: {e}"));
         // Blok kontrak harus berupa doc-comment level-modul di dekat kepala file.
         let head: String = src.lines().take(40).collect::<Vec<_>>().join("\n");
         if !head.contains("//! # Kontrak:") {

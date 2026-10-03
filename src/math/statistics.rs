@@ -1,9 +1,11 @@
+pub use crate::facade::math::statistics_capabilities;
 use burn::prelude::*;
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmStatistics;
 use crate::WasmTensor;
 
-fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Result<(), String> {
     let shape = input.inner.dims();
     let [batch, features, h, w] = shape;
     if batch == 0 {
@@ -27,7 +29,7 @@ fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn checked_output(
+pub(crate) fn checked_output(
     inner: Tensor<crate::WasmBackend, 4>,
     context: &str,
 ) -> Result<WasmTensor, String> {
@@ -48,82 +50,6 @@ fn checked_output(
     Ok(output)
 }
 
-#[wasm_bindgen(js_name = statisticsCapabilities)]
-pub fn statistics_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.statistics.v1\",",
-        "\"backend\":\"Burn Tensor<WasmBackend,4>\",",
-        "\"input_layout\":\"[B,F,1,1]\",",
-        "\"output_layout\":\"[B,1,1,1]\",",
-        "\"reduction_axis\":1,",
-        "\"reducers\":[\"sum\",\"mean\",\"variancePopulation\",\"stdPopulation\",\"min\",\"max\"],",
-        "\"contracts\":{",
-        "\"finite_inputs\":true,",
-        "\"finite_outputs\":true,",
-        "\"non_empty_batch\":true,",
-        "\"non_empty_features\":true,",
-        "\"variance_semantics\":\"population_no_bessel_correction\",",
-        "\"probability_ops\":\"deferred\"",
-        "}",
-        "}"
-    )
-    .to_string()
-}
-
-/// Stateless descriptive-statistics surface for canonical feature tensors `[B,F,1,1]`.
-///
-/// All reducers operate across feature axis 1 and retain the canonical rank-4 bridge,
-/// producing `[B,1,1,1]`. Variance and standard deviation use population semantics.
-#[wasm_bindgen]
-pub struct WasmStatistics;
-
-#[wasm_bindgen]
-impl WasmStatistics {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmStatistics {
-        WasmStatistics
-    }
-
-    pub fn sum(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.sum")?;
-        checked_output(input.inner.clone().sum_dim(1), "Statistics.sum output")
-    }
-
-    pub fn mean(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.mean")?;
-        checked_output(input.inner.clone().mean_dim(1), "Statistics.mean output")
-    }
-
-    #[wasm_bindgen(js_name = variancePopulation)]
-    pub fn variance_population(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.variancePopulation")?;
-        checked_output(
-            input.inner.clone().var_bias(1),
-            "Statistics.variancePopulation output",
-        )
-    }
-
-    #[wasm_bindgen(js_name = stdPopulation)]
-    pub fn std_population(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.stdPopulation")?;
-        checked_output(
-            input.inner.clone().var_bias(1).sqrt(),
-            "Statistics.stdPopulation output",
-        )
-    }
-
-    pub fn min(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.min")?;
-        checked_output(input.inner.clone().min_dim(1), "Statistics.min output")
-    }
-
-    pub fn max(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_feature_tensor(input, "Statistics.max")?;
-        checked_output(input.inner.clone().max_dim(1), "Statistics.max output")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{statistics_capabilities, WasmStatistics};
@@ -142,10 +68,7 @@ mod tests {
     #[test]
     fn reducers_compute_expected_batched_values() {
         let stats = WasmStatistics::new();
-        let input = WasmTensor::new(
-            &[2.0, 4.0, 6.0, 8.0, 1.0, 1.0, 3.0, 3.0],
-            &[2, 4, 1, 1],
-        );
+        let input = WasmTensor::new(&[2.0, 4.0, 6.0, 8.0, 1.0, 1.0, 3.0, 3.0], &[2, 4, 1, 1]);
 
         let sum = stats.sum(&input).unwrap();
         assert_eq!(sum.shape(), vec![2, 1, 1, 1]);
@@ -171,8 +94,14 @@ mod tests {
     fn singleton_feature_has_zero_population_variance() {
         let stats = WasmStatistics::new();
         let input = WasmTensor::new(&[3.0, -2.0], &[2, 1, 1, 1]);
-        assert_eq!(stats.variance_population(&input).unwrap().to_array(), vec![0.0, 0.0]);
-        assert_eq!(stats.std_population(&input).unwrap().to_array(), vec![0.0, 0.0]);
+        assert_eq!(
+            stats.variance_population(&input).unwrap().to_array(),
+            vec![0.0, 0.0]
+        );
+        assert_eq!(
+            stats.std_population(&input).unwrap().to_array(),
+            vec![0.0, 0.0]
+        );
     }
 
     #[test]

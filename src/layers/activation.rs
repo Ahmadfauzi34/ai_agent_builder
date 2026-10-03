@@ -1,21 +1,22 @@
-use burn::prelude::*;
-use burn::nn::{
-    Gelu, HardSigmoid, HardSigmoidConfig, LeakyRelu, LeakyReluConfig, PRelu,
-    PReluConfig, Relu, Sigmoid, Softplus, SoftplusConfig, SwiGlu, SwiGluConfig, Tanh,
-};
-use burn::nn::activation::HardSwish;
 use super::state_record::deterministic_record_bytes;
-use wasm_bindgen::prelude::*;
+pub use crate::facade::wasm_types::WasmActivation;
 use crate::{WasmBackend, WasmTensor};
+use burn::nn::activation::HardSwish;
+use burn::nn::{
+    Gelu, HardSigmoid, HardSigmoidConfig, LeakyRelu, LeakyReluConfig, PRelu, PReluConfig, Relu,
+    Sigmoid, Softplus, SoftplusConfig, SwiGlu, SwiGluConfig, Tanh,
+};
+use burn::prelude::*;
+use wasm_bindgen::prelude::*;
 
-fn validate_rank4_axis(dim: usize, context: &str) -> Result<(), String> {
+pub(crate) fn validate_rank4_axis(dim: usize, context: &str) -> Result<(), String> {
     if dim >= 4 {
         return Err(format!("{context}: dim must be in 0..4, got {dim}"));
     }
     Ok(())
 }
 
-fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), String> {
+pub(crate) fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), String> {
     validate_rank4_axis(dim, "GLU forward")?;
     let n = shape[dim];
     if !n.is_multiple_of(2) {
@@ -27,7 +28,7 @@ fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), String> {
     Ok(())
 }
 
-fn activation_forward_fail<T>(message: String) -> T {
+pub(crate) fn activation_forward_fail<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -112,7 +113,9 @@ impl ActivationConfig {
             ActivationConfig::Softplus(c) => Activation::Softplus(c.init()),
             ActivationConfig::Mish => Activation::Mish(StrictMish),
             ActivationConfig::Softmax { dim } => Activation::Softmax(StrictSoftmax { dim: *dim }),
-            ActivationConfig::LogSoftmax { dim } => Activation::LogSoftmax(StrictLogSoftmax { dim: *dim }),
+            ActivationConfig::LogSoftmax { dim } => {
+                Activation::LogSoftmax(StrictLogSoftmax { dim: *dim })
+            }
             ActivationConfig::Glu { dim } => Activation::Glu(StrictGlu { dim: *dim }),
         }
     }
@@ -184,7 +187,7 @@ fn validate_activation_linear_state(
     }
 }
 
-fn validate_activation_state_structure(
+pub(crate) fn validate_activation_state_structure(
     current: &ActivationRecord<WasmBackend>,
     incoming: &ActivationRecord<WasmBackend>,
 ) -> Result<(), String> {
@@ -216,169 +219,6 @@ fn validate_activation_state_structure(
             )
         }
         _ => Ok(()),
-    }
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmActivation {
-    inner: Activation<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmActivation {
-    #[wasm_bindgen(js_name = newGelu)]
-    pub fn new_gelu() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Gelu.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newRelu)]
-    pub fn new_relu() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Relu.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newSigmoid)]
-    pub fn new_sigmoid() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Sigmoid.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newTanh)]
-    pub fn new_tanh() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Tanh.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newHardSwish)]
-    pub fn new_hard_swish() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::HardSwish.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newLeakyRelu)]
-    pub fn new_leaky_relu(negative_slope: Option<f64>) -> WasmActivation {
-        let device = Default::default();
-        let mut config = LeakyReluConfig::new();
-        if let Some(s) = negative_slope {
-            config = config.with_negative_slope(s);
-        }
-        WasmActivation { inner: ActivationConfig::LeakyRelu(config).init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newPRelu)]
-    pub fn new_prelu(num_parameters: Option<usize>, alpha: Option<f64>) -> WasmActivation {
-        let device = Default::default();
-        let mut config = PReluConfig::new();
-        if let Some(n) = num_parameters {
-            config = config.with_num_parameters(n);
-        }
-        if let Some(a) = alpha {
-            config = config.with_alpha(a);
-        }
-        WasmActivation { inner: ActivationConfig::PRelu(config).init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newSwiGlu)]
-    pub fn new_swiglu(d_input: usize, d_output: usize, bias: Option<bool>) -> WasmActivation {
-        let device = Default::default();
-        let mut config = SwiGluConfig::new(d_input, d_output);
-        if let Some(b) = bias {
-            config = config.with_bias(b);
-        }
-        // Complaint #15: deterministic zero initial weights (no implicit RNG).
-        let config = config.with_initializer(burn::module::Initializer::Zeros);
-        WasmActivation {
-            inner: ActivationConfig::SwiGlu(config).init(&device),
-        }
-    }
-
-    #[wasm_bindgen(js_name = newHardSigmoid)]
-    pub fn new_hard_sigmoid(alpha: Option<f64>, beta: Option<f64>) -> WasmActivation {
-        let device = Default::default();
-        let mut config = HardSigmoidConfig::new();
-        if let Some(a) = alpha {
-            config = config.with_alpha(a);
-        }
-        if let Some(b) = beta {
-            config = config.with_beta(b);
-        }
-        WasmActivation { inner: ActivationConfig::HardSigmoid(config).init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newSoftplus)]
-    pub fn new_softplus(beta: Option<f64>) -> WasmActivation {
-        let device = Default::default();
-        let mut config = SoftplusConfig::new();
-        if let Some(b) = beta {
-            config = config.with_beta(b);
-        }
-        WasmActivation { inner: ActivationConfig::Softplus(config).init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newMish)]
-    pub fn new_mish() -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Mish.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newSoftmax)]
-    pub fn new_softmax(dim: usize) -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Softmax { dim }.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newLogSoftmax)]
-    pub fn new_log_softmax(dim: usize) -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::LogSoftmax { dim }.init(&device) }
-    }
-
-    #[wasm_bindgen(js_name = newGlu)]
-    pub fn new_glu(dim: usize) -> WasmActivation {
-        let device = Default::default();
-        WasmActivation { inner: ActivationConfig::Glu { dim }.init(&device) }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input).unwrap_or_else(activation_forward_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: ActivationRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "Activation loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_activation_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
-}
-
-impl WasmActivation {
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        let shape = input.inner.dims();
-        match &self.inner {
-            Activation::Softmax(m) => validate_rank4_axis(m.dim, "Softmax forward")?,
-            Activation::LogSoftmax(m) => validate_rank4_axis(m.dim, "LogSoftmax forward")?,
-            Activation::Glu(m) => validate_glu_shape(shape, m.dim)?,
-            _ => {}
-        }
-
-        let out = self.inner.forward(input.inner.clone());
-        Ok(WasmTensor { inner: out })
     }
 }
 

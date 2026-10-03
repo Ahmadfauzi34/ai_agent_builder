@@ -64,8 +64,14 @@ fn malformed_record_load_is_no_mutation_and_registry_remains_retryable() {
     assert!(registry
         .load_layer_state(12, LAYER_LINEAR, &[0xde, 0xad, 0xbe, 0xef])
         .is_err());
-    assert_eq!(registry.get_layer_state(12, LAYER_LINEAR).unwrap(), state_before);
-    assert_eq!(registry.get_weights_flat(12, LAYER_LINEAR).unwrap(), weights_before);
+    assert_eq!(
+        registry.get_layer_state(12, LAYER_LINEAR).unwrap(),
+        state_before
+    );
+    assert_eq!(
+        registry.get_weights_flat(12, LAYER_LINEAR).unwrap(),
+        weights_before
+    );
     assert_eq!(registry.total_params(), params_before);
 
     registry
@@ -78,11 +84,23 @@ fn malformed_record_load_is_no_mutation_and_registry_remains_retryable() {
 #[test]
 fn malformed_record_bytes_fail_closed_for_every_stateful_layer_family() {
     let cases = vec![
-        (AgentLayerSpec::linear(40, 3, 2, true).unwrap(), LAYER_LINEAR),
+        (
+            AgentLayerSpec::linear(40, 3, 2, true).unwrap(),
+            LAYER_LINEAR,
+        ),
         (AgentLayerSpec::batch_norm(41, 2, None).unwrap(), LAYER_NORM),
-        (AgentLayerSpec::conv1d(42, 1, 2, 3, None, None).unwrap(), LAYER_CONV),
-        (AgentLayerSpec::embedding(43, 4, 3).unwrap(), LAYER_EMBEDDING),
-        (AgentLayerSpec::prelu(44, 1, 0.25).unwrap(), LAYER_ACTIVATION),
+        (
+            AgentLayerSpec::conv1d(42, 1, 2, 3, None, None).unwrap(),
+            LAYER_CONV,
+        ),
+        (
+            AgentLayerSpec::embedding(43, 4, 3).unwrap(),
+            LAYER_EMBEDDING,
+        ),
+        (
+            AgentLayerSpec::prelu(44, 1, 0.25).unwrap(),
+            LAYER_ACTIVATION,
+        ),
         (
             AgentLayerSpec::ghost(45, 2, 4, 1, 1, 2, None, None, None, None).unwrap(),
             LAYER_GHOST,
@@ -129,8 +147,14 @@ fn wrong_length_weight_update_is_no_mutation_and_retryable() {
     let wrong = vec![0.0; weights_before.len() - 1];
 
     assert!(registry.set_weights_flat(13, LAYER_LINEAR, &wrong).is_err());
-    assert_eq!(registry.get_layer_state(13, LAYER_LINEAR).unwrap(), state_before);
-    assert_eq!(registry.get_weights_flat(13, LAYER_LINEAR).unwrap(), weights_before);
+    assert_eq!(
+        registry.get_layer_state(13, LAYER_LINEAR).unwrap(),
+        state_before
+    );
+    assert_eq!(
+        registry.get_weights_flat(13, LAYER_LINEAR).unwrap(),
+        weights_before
+    );
     assert_eq!(registry.total_params(), params_before);
 
     let replacement = weights_before
@@ -140,7 +164,10 @@ fn wrong_length_weight_update_is_no_mutation_and_retryable() {
     registry
         .set_weights_flat(13, LAYER_LINEAR, &replacement)
         .unwrap();
-    assert_eq!(registry.get_weights_flat(13, LAYER_LINEAR).unwrap(), replacement);
+    assert_eq!(
+        registry.get_weights_flat(13, LAYER_LINEAR).unwrap(),
+        replacement
+    );
     assert_eq!(registry.total_params(), params_before);
 }
 
@@ -157,10 +184,16 @@ fn batch_norm_optimizer_bridge_exposes_only_trainable_state_and_forward_is_non_m
     assert!(!layout.contains("running_var"));
 
     let weights = registry.get_weights_flat(21, LAYER_NORM).unwrap();
-    assert_eq!(weights.len(), 4, "BatchNorm(2) optimizer bridge must be gamma(2)+beta(2)");
+    assert_eq!(
+        weights.len(),
+        4,
+        "BatchNorm(2) optimizer bridge must be gamma(2)+beta(2)"
+    );
 
     let state_before_bad_update = registry.get_layer_state(21, LAYER_NORM).unwrap();
-    assert!(registry.set_weights_flat(21, LAYER_NORM, &[1.0, 1.0, 0.0]).is_err());
+    assert!(registry
+        .set_weights_flat(21, LAYER_NORM, &[1.0, 1.0, 0.0])
+        .is_err());
     assert_eq!(
         registry.get_layer_state(21, LAYER_NORM).unwrap(),
         state_before_bad_update
@@ -190,7 +223,10 @@ fn linear_shape_adapter_rejects_hidden_spatial_data_without_state_mutation_then_
     let invalid = WasmTensor::new(&[1.0; 6], &[1, 3, 2, 1]);
     let err = expect_err_without_debug(registry.forward_layer(31, LAYER_LINEAR, &invalid));
     assert!(err.contains("axis 2"));
-    assert_eq!(registry.get_layer_state(31, LAYER_LINEAR).unwrap(), state_before);
+    assert_eq!(
+        registry.get_layer_state(31, LAYER_LINEAR).unwrap(),
+        state_before
+    );
 
     let valid = WasmTensor::new(&[1.0, 2.0, 3.0], &[1, 3, 1, 1]);
     assert!(registry.forward_layer(31, LAYER_LINEAR, &valid).is_ok());
@@ -208,7 +244,10 @@ fn one_dimensional_conv_and_pool_reject_hidden_width_then_accept_canonical_rank4
     let invalid = WasmTensor::new(&[1.0; 10], &[1, 1, 5, 2]);
     let conv_err = expect_err_without_debug(registry.forward_layer(32, LAYER_CONV, &invalid));
     assert!(conv_err.contains("axis 3"));
-    assert_eq!(registry.get_layer_state(32, LAYER_CONV).unwrap(), conv_state_before);
+    assert_eq!(
+        registry.get_layer_state(32, LAYER_CONV).unwrap(),
+        conv_state_before
+    );
 
     let pool_err = expect_err_without_debug(registry.forward_layer(33, LAYER_POOL, &invalid));
     assert!(pool_err.contains("axis 3"));
@@ -222,18 +261,7 @@ fn one_dimensional_conv_and_pool_reject_hidden_width_then_accept_canonical_rank4
 
 #[test]
 fn conv2d_adapter_preserves_canonical_rank4_spatial_semantics() {
-    let spec = AgentLayerSpec::conv2d(
-        35,
-        1,
-        2,
-        3,
-        3,
-        None,
-        None,
-        Some(1),
-        Some(1),
-    )
-    .unwrap();
+    let spec = AgentLayerSpec::conv2d(35, 1, 2, 3, 3, None, None, Some(1), Some(1)).unwrap();
     let mut registry = LayerRegistry::new();
     registry.init_agent_layer(&spec).unwrap();
 
@@ -256,8 +284,13 @@ fn embedding_validates_float_bridge_indices_before_burn_integer_conversion_and_r
         vec![0.0, f32::NAN],
     ] {
         let invalid = WasmTensor::new(&invalid_values, &[1, 2, 1, 1]);
-        assert!(registry.forward_layer(34, LAYER_EMBEDDING, &invalid).is_err());
-        assert_eq!(registry.get_layer_state(34, LAYER_EMBEDDING).unwrap(), state_before);
+        assert!(registry
+            .forward_layer(34, LAYER_EMBEDDING, &invalid)
+            .is_err());
+        assert_eq!(
+            registry.get_layer_state(34, LAYER_EMBEDDING).unwrap(),
+            state_before
+        );
     }
 
     let valid = WasmTensor::new(&[0.0, 1.0, 3.0], &[1, 3, 1, 1]);

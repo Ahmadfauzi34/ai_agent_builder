@@ -19,9 +19,7 @@ use burn_research::resolution_runtime_bridge::{
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::workspace::AgentWorkspace;
 #[cfg(not(target_arch = "wasm32"))]
@@ -89,8 +87,7 @@ fn run() -> Result<(), String> {
     let mut builder = AgentGraphBuilder::new(2)?;
     builder.add_unary(&spec, 0, 1)?;
     builder.set_output(1)?;
-    let graph =
-        workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1)?;
+    let graph = workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1)?;
 
     let input = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
     let candidate = vec![0.0, 3.0];
@@ -112,12 +109,8 @@ fn run() -> Result<(), String> {
         "source graph evidence was not recorded",
     );
 
-    let intent = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::Reverify,
-        "agent",
-    )?;
+    let intent =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")?;
 
     let workspace_before_binding = workspace.snapshot();
     let inbox_before_binding = inbox.len();
@@ -148,7 +141,10 @@ fn run() -> Result<(), String> {
         0.0,
         "repeat-check",
     );
-    ensure(preflight.ready, "real-handle graph reverify preflight was not ready");
+    ensure(
+        preflight.ready,
+        "real-handle graph reverify preflight was not ready",
+    );
     ensure(
         !preflight.execution_authorized,
         "graph reverify binding unexpectedly authorized execution",

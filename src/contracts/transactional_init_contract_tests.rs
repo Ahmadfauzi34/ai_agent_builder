@@ -23,9 +23,7 @@ fn unary_failure_after_workspace_sync_restores_exact_state_and_registry_accounti
     // Reproduce the state immediately after Registry init but before final graph commit.
     // output slot 1 is valid in Workspace but intentionally invalid in this 1-slot Builder,
     // so finalize_initialized_unary reaches syncLayer and then fails in addUnary.
-    let output_slot = workspace
-        .reserve_slot(format!("layer:{layer_id}"))
-        .unwrap();
+    let output_slot = workspace.reserve_slot(format!("layer:{layer_id}")).unwrap();
     assert_eq!(output_slot, 1);
     registry.init_agent_layer(&spec).unwrap();
     assert!(registry.layer_exists(spec.layer_type(), layer_id));
@@ -89,9 +87,7 @@ fn binary_failure_after_workspace_sync_restores_exact_state_and_is_retriable() {
     let layer_before = workspace.get("_layers".into(), layer_id.to_string());
     let checkpoint = workspace.clone();
 
-    let output_slot = workspace
-        .reserve_slot(format!("layer:{layer_id}"))
-        .unwrap();
+    let output_slot = workspace.reserve_slot(format!("layer:{layer_id}")).unwrap();
     assert_eq!(output_slot, 1);
     registry.init_agent_layer(&spec).unwrap();
     assert!(registry.layer_exists(spec.layer_type(), layer_id));

@@ -38,13 +38,8 @@ fn valid_actions_overlay_keeps_canonical_candidates_visible() {
     let before_params = registry.total_params();
 
     let projection: serde_json::Value = serde_json::from_str(
-        &interaction_valid_actions_for_input_consumer(
-            &workspace,
-            &builder,
-            &registry,
-            &consumer,
-        )
-        .unwrap(),
+        &interaction_valid_actions_for_input_consumer(&workspace, &builder, &registry, &consumer)
+            .unwrap(),
     )
     .unwrap();
 
@@ -139,13 +134,7 @@ fn edge_projection_applies_only_to_steps_that_consume_external_slot_zero() {
     let before_params = registry.total_params();
 
     let external: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_compatibility(
-            &workspace,
-            &builder,
-            &consumer,
-            0,
-        )
-        .unwrap(),
+        &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 0).unwrap(),
     )
     .unwrap();
     assert_eq!(external["status"], "applicable");
@@ -153,13 +142,7 @@ fn edge_projection_applies_only_to_steps_that_consume_external_slot_zero() {
     assert_eq!(external["compatibility"]["status"], "compatible");
 
     let internal: serde_json::Value = serde_json::from_str(
-        &input_port_consumer_edge_compatibility(
-            &workspace,
-            &builder,
-            &consumer,
-            1,
-        )
-        .unwrap(),
+        &input_port_consumer_edge_compatibility(&workspace, &builder, &consumer, 1).unwrap(),
     )
     .unwrap();
     assert_eq!(internal["status"], "not_applicable");
@@ -172,15 +155,11 @@ fn edge_projection_applies_only_to_steps_that_consume_external_slot_zero() {
 
 #[test]
 fn routing_capability_keeps_selection_and_execution_outside_projection() {
-    let caps: serde_json::Value =
-        serde_json::from_str(&input_port_routing_capabilities()).unwrap();
+    let caps: serde_json::Value = serde_json::from_str(&input_port_routing_capabilities()).unwrap();
 
     assert_eq!(caps["role"], "read_only_semantic_routing_projection");
     assert_eq!(caps["scope"]["state_ownership"], "none");
     assert_eq!(caps["scope"]["execution_effect"], "none");
     assert_eq!(caps["scope"]["selection_effect"], "none");
-    assert_eq!(
-        caps["valid_actions_overlay"]["candidate_retained"],
-        true
-    );
+    assert_eq!(caps["valid_actions_overlay"]["candidate_retained"], true);
 }

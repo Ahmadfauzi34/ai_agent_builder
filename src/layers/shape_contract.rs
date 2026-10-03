@@ -15,10 +15,7 @@ pub(crate) fn require_singleton_axis(
     Ok(())
 }
 
-pub(crate) fn require_singleton_spatial(
-    shape: [usize; 4],
-    context: &str,
-) -> Result<(), String> {
+pub(crate) fn require_singleton_spatial(shape: [usize; 4], context: &str) -> Result<(), String> {
     require_singleton_axis(shape, 2, context)?;
     require_singleton_axis(shape, 3, context)
 }

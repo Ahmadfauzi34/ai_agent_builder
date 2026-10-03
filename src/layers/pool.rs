@@ -1,17 +1,19 @@
-use burn::prelude::*;
+pub use crate::facade::wasm_types::WasmPool;
+use crate::layers::shape_contract::require_singleton_axis;
+use crate::WasmTensor;
 use burn::nn::pool::{
-    MaxPool1d, MaxPool1dConfig,
-    MaxPool2d, MaxPool2dConfig,
-    AvgPool1d, AvgPool1dConfig,
-    AvgPool2d, AvgPool2dConfig,
-    AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig,
+    AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig, AvgPool1d, AvgPool1dConfig, AvgPool2d,
+    AvgPool2dConfig, MaxPool1d, MaxPool1dConfig, MaxPool2d, MaxPool2dConfig,
 };
 use burn::nn::{PaddingConfig1d, PaddingConfig2d};
+use burn::prelude::*;
 use wasm_bindgen::prelude::*;
-use crate::WasmTensor;
-use crate::layers::shape_contract::require_singleton_axis;
 
-fn validate_pool1d_params(kernel_size: usize, stride: Option<usize>, context: &str) -> Result<(), String> {
+pub(crate) fn validate_pool1d_params(
+    kernel_size: usize,
+    stride: Option<usize>,
+    context: &str,
+) -> Result<(), String> {
     if kernel_size == 0 {
         return Err(format!("{context}: kernel_size must be greater than 0"));
     }
@@ -21,7 +23,7 @@ fn validate_pool1d_params(kernel_size: usize, stride: Option<usize>, context: &s
     Ok(())
 }
 
-fn validate_pool2d_params(
+pub(crate) fn validate_pool2d_params(
     kernel_size_h: usize,
     kernel_size_w: usize,
     stride_h: Option<usize>,
@@ -45,7 +47,7 @@ fn validate_pool2d_params(
     Ok(())
 }
 
-fn pool_fail<T>(message: String) -> T {
+pub(crate) fn pool_fail<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -113,195 +115,6 @@ impl Pooling {
                 out.reshape([b_out, c_out, l_out, 1])
             }
         }
-    }
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmPool {
-    inner: Pooling,
-}
-
-#[wasm_bindgen]
-impl WasmPool {
-    #[wasm_bindgen(js_name = newMaxPool1d)]
-    pub fn new_max_pool1d(
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> WasmPool {
-        Self::try_new_max_pool1d(kernel_size, stride, padding).unwrap_or_else(pool_fail)
-    }
-
-    #[wasm_bindgen(js_name = newMaxPool2d)]
-    pub fn new_max_pool2d(
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> WasmPool {
-        Self::try_new_max_pool2d(
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-        )
-        .unwrap_or_else(pool_fail)
-    }
-
-    #[wasm_bindgen(js_name = newAvgPool1d)]
-    pub fn new_avg_pool1d(
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> WasmPool {
-        Self::try_new_avg_pool1d(kernel_size, stride, padding).unwrap_or_else(pool_fail)
-    }
-
-    #[wasm_bindgen(js_name = newAvgPool2d)]
-    pub fn new_avg_pool2d(
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> WasmPool {
-        Self::try_new_avg_pool2d(
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            padding_h,
-            padding_w,
-        )
-        .unwrap_or_else(pool_fail)
-    }
-
-    #[wasm_bindgen(js_name = newAdaptiveAvgPool2d)]
-    pub fn new_adaptive_avg_pool2d(
-        output_size_h: usize,
-        output_size_w: usize,
-    ) -> WasmPool {
-        let config = AdaptiveAvgPool2dConfig::new([output_size_h, output_size_w]);
-        WasmPool {
-            inner: PoolingConfig::AdaptiveAvgPool2d(config).init(),
-        }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input)
-            .unwrap_or_else(crate::layers::shape_contract::forward_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        0
-    }
-}
-
-impl WasmPool {
-    pub(crate) fn try_new_max_pool1d(
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_pool1d_params(kernel_size, stride, "MaxPool1d")?;
-        let mut config = MaxPool1dConfig::new(kernel_size);
-        if let Some(s) = stride {
-            config = config.with_stride(s);
-        }
-        if let Some(p) = padding {
-            config = config.with_padding(PaddingConfig1d::Explicit(p));
-        }
-        Ok(WasmPool {
-            inner: PoolingConfig::MaxPool1d(config).init(),
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn try_new_max_pool2d(
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_pool2d_params(
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            "MaxPool2d",
-        )?;
-        let mut config = MaxPool2dConfig::new([kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config = config.with_strides([sh, sw]);
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding(PaddingConfig2d::Explicit(ph, pw));
-        }
-        Ok(WasmPool {
-            inner: PoolingConfig::MaxPool2d(config).init(),
-        })
-    }
-
-    pub(crate) fn try_new_avg_pool1d(
-        kernel_size: usize,
-        stride: Option<usize>,
-        padding: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_pool1d_params(kernel_size, stride, "AvgPool1d")?;
-        let mut config = AvgPool1dConfig::new(kernel_size);
-        if let Some(s) = stride {
-            config = config.with_stride(s);
-        }
-        if let Some(p) = padding {
-            config = config.with_padding(PaddingConfig1d::Explicit(p));
-        }
-        Ok(WasmPool {
-            inner: PoolingConfig::AvgPool1d(config).init(),
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn try_new_avg_pool2d(
-        kernel_size_h: usize,
-        kernel_size_w: usize,
-        stride_h: Option<usize>,
-        stride_w: Option<usize>,
-        padding_h: Option<usize>,
-        padding_w: Option<usize>,
-    ) -> Result<Self, String> {
-        validate_pool2d_params(
-            kernel_size_h,
-            kernel_size_w,
-            stride_h,
-            stride_w,
-            "AvgPool2d",
-        )?;
-        let mut config = AvgPool2dConfig::new([kernel_size_h, kernel_size_w]);
-        if let (Some(sh), Some(sw)) = (stride_h, stride_w) {
-            config = config.with_strides([sh, sw]);
-        }
-        if let (Some(ph), Some(pw)) = (padding_h, padding_w) {
-            config = config.with_padding(PaddingConfig2d::Explicit(ph, pw));
-        }
-        Ok(WasmPool {
-            inner: PoolingConfig::AvgPool2d(config).init(),
-        })
-    }
-
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        if matches!(&self.inner, Pooling::MaxPool1d(_) | Pooling::AvgPool1d(_)) {
-            require_singleton_axis(input.inner.dims(), 3, "Pool1d forward")?;
-        }
-        let out = self.inner.forward(input.inner.clone());
-        Ok(WasmTensor { inner: out })
     }
 }
 

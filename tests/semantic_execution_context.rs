@@ -29,7 +29,9 @@ fn semantic_context_enriches_graph_proof_without_changing_program_identity() {
     )
     .unwrap();
 
-    let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let output = workspace_init_unary(
         &mut workspace,

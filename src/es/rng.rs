@@ -8,7 +8,9 @@ pub struct Rng {
 
 impl Rng {
     pub fn new(seed: u32) -> Self {
-        Self { state: if seed == 0 { 0x9E37_79B9 } else { seed } }
+        Self {
+            state: if seed == 0 { 0x9E37_79B9 } else { seed },
+        }
     }
 
     pub fn next_u32(&mut self) -> u32 {

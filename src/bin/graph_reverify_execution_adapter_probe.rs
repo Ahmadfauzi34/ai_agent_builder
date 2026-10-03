@@ -21,9 +21,7 @@ use burn_research::resolution_runtime_bridge::{
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::workspace::AgentWorkspace;
 #[cfg(not(target_arch = "wasm32"))]
@@ -91,8 +89,7 @@ fn run() -> Result<(), String> {
     let mut builder = AgentGraphBuilder::new(2)?;
     builder.add_unary(&spec, 0, 1)?;
     builder.set_output(1)?;
-    let graph =
-        workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1)?;
+    let graph = workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1)?;
     let input = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
 
     let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection)?;
@@ -107,15 +104,14 @@ fn run() -> Result<(), String> {
         "source-failed".to_string(),
     )?;
     let source = RuntimeEvidence::from_graph_verifier_receipt_json(&source_receipt)?;
-    ensure(source.outcome() == "failed", "source verifier receipt did not fail");
+    ensure(
+        source.outcome() == "failed",
+        "source verifier receipt did not fail",
+    );
     ensure(inbox.record(source)?, "source evidence was not recorded");
 
-    let intent = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::Reverify,
-        "agent",
-    )?;
+    let intent =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")?;
 
     let corrected = vec![0.0, 2.0];
     let binding = create_graph_reverify_runtime_binding(
@@ -146,7 +142,10 @@ fn run() -> Result<(), String> {
         0.0,
         "reverify-corrected",
     );
-    ensure(drift_attempt.is_err(), "drifted candidate entered canonical verifier");
+    ensure(
+        drift_attempt.is_err(),
+        "drifted candidate entered canonical verifier",
+    );
     ensure(
         workspace.snapshot() == workspace_before_drift,
         "drifted execution attempt mutated workspace",
@@ -166,7 +165,10 @@ fn run() -> Result<(), String> {
         0.0,
         "reverify-corrected",
     )?;
-    ensure(result.verifier_outcome() == "passed", "corrected reverify did not pass");
+    ensure(
+        result.verifier_outcome() == "passed",
+        "corrected reverify did not pass",
+    );
     ensure(
         result.after_verifier_receipt_count()
             == result.before_verifier_receipt_count().saturating_add(1),
@@ -190,12 +192,7 @@ fn run() -> Result<(), String> {
     );
 
     ensure(
-        rejoin_graph_reverify_execution_result(
-            &mut inbox,
-            &intent,
-            &binding,
-            &result,
-        )?,
+        rejoin_graph_reverify_execution_result(&mut inbox, &intent, &binding, &result)?,
         "canonical graph verifier evidence did not rejoin",
     );
     ensure(

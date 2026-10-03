@@ -10,9 +10,11 @@ use burn_research::workspace_ops::workspace_init_unary;
 
 #[test]
 fn public_introspection_contract_is_embedded_and_machine_readable() {
-    let contract: serde_json::Value =
-        serde_json::from_str(&introspection_capabilities()).unwrap();
-    assert_eq!(contract["schema_id"], "burn-research.agent-introspection.v1");
+    let contract: serde_json::Value = serde_json::from_str(&introspection_capabilities()).unwrap();
+    assert_eq!(
+        contract["schema_id"],
+        "burn-research.agent-introspection.v1"
+    );
     assert_eq!(contract["role"], "read_only_semantic_projection");
     assert_eq!(contract["state_ownership"], "none");
 }
@@ -39,8 +41,14 @@ fn public_layer_catalog_is_complete_and_machine_readable() {
         "concat",
     ] {
         let entry = &constructors[required];
-        assert!(entry["signature"].is_string(), "missing signature for {required}");
-        assert!(entry["parameters"].is_array(), "missing parameters for {required}");
+        assert!(
+            entry["signature"].is_string(),
+            "missing signature for {required}"
+        );
+        assert!(
+            entry["parameters"].is_array(),
+            "missing parameters for {required}"
+        );
         assert!(entry["arity"].is_number(), "missing arity for {required}");
         assert_eq!(entry["layout_contract_key"], required);
     }
@@ -62,7 +70,9 @@ fn workspace_and_graph_descriptions_are_read_only_semantic_views() {
         )
         .unwrap();
 
-    let layer_id = workspace.reserve_layer_id(&registry, "relu-main".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "relu-main".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(layer_id);
     let output = workspace_init_unary(
         &mut workspace,
@@ -117,7 +127,10 @@ fn lower_level_graph_does_not_invent_missing_workspace_semantics() {
     let description: serde_json::Value =
         serde_json::from_str(&describe_graph(&workspace, &builder, &registry).unwrap()).unwrap();
 
-    assert_eq!(description["unknown_metadata_policy"], "report_null_do_not_infer");
+    assert_eq!(
+        description["unknown_metadata_policy"],
+        "report_null_do_not_infer"
+    );
     assert_eq!(description["steps"][0]["workspace_metadata"], false);
     assert!(description["steps"][0]["variant"].is_null());
     assert!(description["steps"][0]["constructor"].is_null());

@@ -86,8 +86,7 @@ impl SelectAxisParams {
         }
 
         let axis = payload[0] as u32;
-        let count = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]])
-            as usize;
+        let count = u32::from_le_bytes([payload[4], payload[5], payload[6], payload[7]]) as usize;
         if count == 0 {
             return Err("MathProgram selectAxis parameters: index count must be non-zero".into());
         }
@@ -97,13 +96,9 @@ impl SelectAxisParams {
             ));
         }
         let expected_len = SELECT_HEADER_BYTES
-            .checked_add(
-                count
-                    .checked_mul(4)
-                    .ok_or_else(|| {
-                        "MathProgram selectAxis parameters: payload length overflow".to_string()
-                    })?,
-            )
+            .checked_add(count.checked_mul(4).ok_or_else(|| {
+                "MathProgram selectAxis parameters: payload length overflow".to_string()
+            })?)
             .ok_or_else(|| {
                 "MathProgram selectAxis parameters: payload length overflow".to_string()
             })?;
