@@ -26,30 +26,18 @@ use crate::agent::{
 };
 use crate::input_port::role_valid;
 use crate::input_port_edge_binding::semantic_graph_identity_json;
+use crate::semantic_ingress_manifest::json_escape;
 use crate::workspace::AgentWorkspace;
 
 pub(crate) const SEMANTIC_LIFECYCLE_V1: &str =
     include_str!("../../docs/contracts/agent-semantic-lifecycle.v1.json");
-const MAX_TRANSITION_ID_BYTES: usize = 128;
+pub(crate) const MAX_TRANSITION_ID_BYTES: usize = 128;
 const MAX_ROLE_BYTES: usize = 64;
 
-fn json_escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 8);
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn string_array_json(values: &[String]) -> String {
+// Consolidate: json_escape lives canonically as pub(crate) in
+// semantic_ingress_manifest (v1) — imported above; the duplicate private
+// copy was removed so the facade resolves to a single definition.
+pub(crate) fn string_array_json(values: &[String]) -> String {
     let body = values
         .iter()
         .map(|value| format!("\"{}\"", json_escape(value)))
@@ -58,7 +46,7 @@ fn string_array_json(values: &[String]) -> String {
     format!("[{body}]")
 }
 
-fn parse_roles(value: &str) -> Result<Vec<String>, String> {
+pub(crate) fn parse_roles(value: &str) -> Result<Vec<String>, String> {
     let trimmed = value.trim();
     if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
         return Err(
@@ -105,7 +93,7 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
     Ok(roles)
 }
 
-fn validate_role(role: &str, context: &str) -> Result<(), String> {
+pub(crate) fn validate_role(role: &str, context: &str) -> Result<(), String> {
     if role.is_empty() {
         return Err(format!("{context}: role must be non-empty"));
     }
@@ -310,68 +298,6 @@ pub struct SemanticTransitionSpec {
     pub(crate) transition_id: String,
     pub(crate) input_roles: Vec<String>,
     pub(crate) output_role: String,
-}
-
-#[wasm_bindgen]
-impl SemanticTransitionSpec {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        transition_id: String,
-        input_roles_json: String,
-        output_role: String,
-    ) -> Result<SemanticTransitionSpec, String> {
-        if transition_id.is_empty() {
-            return Err(
-                "SemanticTransitionSpec.transition_id: value must be non-empty".to_string(),
-            );
-        }
-        if transition_id.len() > MAX_TRANSITION_ID_BYTES {
-            return Err(format!(
-                "SemanticTransitionSpec.transition_id: {} bytes exceeds limit {MAX_TRANSITION_ID_BYTES}",
-                transition_id.len()
-            ));
-        }
-        let input_roles = parse_roles(&input_roles_json)?;
-        validate_role(&output_role, "SemanticTransitionSpec.output_role")?;
-        Ok(Self {
-            transition_id,
-            input_roles,
-            output_role,
-        })
-    }
-
-    #[wasm_bindgen(js_name = transitionId)]
-    pub fn transition_id(&self) -> String {
-        self.transition_id.clone()
-    }
-
-    #[wasm_bindgen(js_name = inputRoles)]
-    pub fn input_roles(&self) -> String {
-        string_array_json(&self.input_roles)
-    }
-
-    #[wasm_bindgen(js_name = outputRole)]
-    pub fn output_role(&self) -> String {
-        self.output_role.clone()
-    }
-
-    #[wasm_bindgen(js_name = describe)]
-    pub fn describe(&self) -> String {
-        format!(
-            concat!(
-                "{{",
-                "\"schema_version\":1,",
-                "\"schema_id\":\"burn-research.semantic-transition-spec.v1\",",
-                "\"transition_id\":\"{}\",",
-                "\"input_roles\":{},",
-                "\"output_role\":\"{}\"",
-                "}}"
-            ),
-            json_escape(&self.transition_id),
-            string_array_json(&self.input_roles),
-            json_escape(&self.output_role),
-        )
-    }
 }
 
 pub(crate) fn semantic_lifecycle_identity_json(builder: &AgentGraphBuilder) -> String {

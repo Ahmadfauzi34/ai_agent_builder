@@ -11,17 +11,17 @@ use crate::program_bundle::export_multi_input_program_bundle;
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
 
-const MAX_CASES: usize = 128;
-const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_CASES: usize = 128;
+pub(crate) const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_TOTAL_OUTPUT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STATE_BYTES: usize = 16 * 1024 * 1024;
 
-struct VerificationCase {
-    baseline: MultiInputInputBundle,
-    candidate: MultiInputInputBundle,
-    input_digest: String,
-    input_bytes: u64,
+pub(crate) struct VerificationCase {
+    pub(crate) baseline: MultiInputInputBundle,
+    pub(crate) candidate: MultiInputInputBundle,
+    pub(crate) input_digest: String,
+    pub(crate) input_bytes: u64,
 }
 
 pub(crate) struct VerificationOutcome {
@@ -34,12 +34,12 @@ pub(crate) struct VerificationOutcome {
 
 #[wasm_bindgen]
 pub struct MultiInputVerificationCases {
-    baseline_plan: MultiInputGraphPlan,
-    candidate_plan: MultiInputGraphPlan,
-    baseline_identity: String,
-    candidate_identity: String,
-    cases: Vec<VerificationCase>,
-    input_bytes: u64,
+    pub(crate) baseline_plan: MultiInputGraphPlan,
+    pub(crate) candidate_plan: MultiInputGraphPlan,
+    pub(crate) baseline_identity: String,
+    pub(crate) candidate_identity: String,
+    pub(crate) cases: Vec<VerificationCase>,
+    pub(crate) input_bytes: u64,
 }
 
 fn digest(bytes: &[u8]) -> String {
@@ -59,7 +59,7 @@ fn tensor_bytes(tensor: &WasmTensor) -> Result<u64, String> {
         })
 }
 
-fn case_digest(
+pub(crate) fn case_digest(
     baseline: &MultiInputInputBundle,
     candidate: &MultiInputInputBundle,
 ) -> Result<(String, u64), String> {
@@ -150,85 +150,6 @@ fn output_observation(tensor: &WasmTensor) -> Result<([usize; 4], Vec<f32>, Stri
 
 fn shape_json(shape: [usize; 4]) -> String {
     format!("[{},{},{},{}]", shape[0], shape[1], shape[2], shape[3])
-}
-
-#[wasm_bindgen]
-impl MultiInputVerificationCases {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        baseline: &CompiledMultiInputGraph,
-        candidate: &CompiledMultiInputGraph,
-    ) -> Result<Self, String> {
-        if baseline.plan.ports() != candidate.plan.ports() {
-            return Err("verification: baseline and candidate input port contracts differ".into());
-        }
-        Ok(Self {
-            baseline_plan: baseline.plan.clone(),
-            candidate_plan: candidate.plan.clone(),
-            baseline_identity: baseline.program_identity(),
-            candidate_identity: candidate.program_identity(),
-            cases: Vec::new(),
-            input_bytes: 0,
-        })
-    }
-
-    #[wasm_bindgen(js_name = addCase)]
-    pub fn add_case(
-        &mut self,
-        baseline: &MultiInputInputBundle,
-        candidate: &MultiInputInputBundle,
-    ) -> Result<u32, String> {
-        if self.cases.len() == MAX_CASES {
-            return Err("verification.addCase: at most 128 test vectors".into());
-        }
-        if !baseline.input_preflight(&self.baseline_plan).ready
-            || !candidate.input_preflight(&self.candidate_plan).ready
-        {
-            return Err("verification.addCase: input preflight failed".into());
-        }
-        let (input_digest, input_bytes) = case_digest(baseline, candidate)?;
-        let total = self
-            .input_bytes
-            .checked_add(input_bytes)
-            .ok_or("verification.addCase: input budget overflow")?;
-        if total > MAX_INPUT_BYTES {
-            return Err("verification.addCase: total test vector bytes exceed 64 MiB".into());
-        }
-        self.cases.push(VerificationCase {
-            baseline: baseline.clone(),
-            candidate: candidate.clone(),
-            input_digest,
-            input_bytes,
-        });
-        self.input_bytes = total;
-        Ok(self.cases.len() as u32)
-    }
-
-    #[wasm_bindgen(js_name = caseCount)]
-    pub fn case_count(&self) -> u32 {
-        self.cases.len() as u32
-    }
-
-    pub fn verify(
-        &self,
-        baseline_registry: &LayerRegistry,
-        baseline: &CompiledMultiInputGraph,
-        candidate_registry: &LayerRegistry,
-        candidate: &CompiledMultiInputGraph,
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        Ok(self
-            .verify_outcome(
-                baseline_registry,
-                baseline,
-                candidate_registry,
-                candidate,
-                abs_tol,
-                rel_tol,
-            )?
-            .json)
-    }
 }
 
 impl MultiInputVerificationCases {

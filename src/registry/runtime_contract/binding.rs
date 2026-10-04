@@ -1,5 +1,4 @@
 pub use crate::facade::registry::layer_registry_operation_binding_capabilities;
-use wasm_bindgen::prelude::*;
 
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
@@ -124,7 +123,7 @@ fn infer_operation_id(layer_type: u8, variant: u8) -> Result<&'static str, Strin
     Ok(operation)
 }
 
-fn operation_binding_snapshot(registry: &LayerRegistry) -> Result<String, String> {
+pub(crate) fn operation_binding_snapshot(registry: &LayerRegistry) -> Result<String, String> {
     let (records, summed_params) = live_instance_records(registry)?;
     let inventory_fingerprint = inventory_fingerprint_of(&records, summed_params);
 
@@ -161,13 +160,7 @@ fn operation_binding_snapshot(registry: &LayerRegistry) -> Result<String, String
     ))
 }
 
-#[wasm_bindgen]
-impl LayerRegistry {
-    #[wasm_bindgen(js_name = operationBindingSnapshot)]
-    pub fn operation_binding_snapshot(&self) -> Result<String, String> {
-        operation_binding_snapshot(self)
-    }
-}
+// #[wasm_bindgen] impl LayerRegistry — dipindah ke src/facade/registry.rs (Opsi C Fase 2).
 
 #[cfg(test)]
 mod tests {

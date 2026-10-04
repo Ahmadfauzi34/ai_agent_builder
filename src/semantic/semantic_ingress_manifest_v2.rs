@@ -1,76 +1,53 @@
 pub use crate::facade::semantic::semantic_ingress_manifest_v2_capabilities;
 use wasm_bindgen::prelude::*;
 
-use crate::graph::{CompiledMultiInputGraph, TracedMultiInputRun};
-use crate::input_port::role_valid;
-use crate::input_port_consumer::InputPortConsumerSpec;
+use crate::graph::CompiledMultiInputGraph;
 use crate::multi_input_graph::{
     InputPreflight, MultiInputGraphPlan, MultiInputInputBundle, MultiInputPortContract,
 };
 use crate::registry::LayerRegistry;
-use crate::semantic_ingress_manifest::validate_logical_port_id;
+use crate::semantic_ingress_manifest::{bool_json, json_escape};
 use crate::WasmTensor;
 
 pub(crate) const CONTRACT: &str =
     include_str!("../../docs/contracts/semantic-ingress-manifest.v2.json");
-const MAX_SOURCE_BYTES: usize = 256;
+pub(crate) const MAX_SOURCE_BYTES: usize = 256;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Backing {
+pub(crate) enum Backing {
     Slot(u8),
     Deferred,
 }
 
 #[derive(Clone, PartialEq, Eq)]
-struct LogicalPort {
-    id: String,
-    role: String,
-    expected_source: Option<String>,
-    backing: Backing,
-    required: bool,
+pub(crate) struct LogicalPort {
+    pub(crate) id: String,
+    pub(crate) role: String,
+    pub(crate) expected_source: Option<String>,
+    pub(crate) backing: Backing,
+    pub(crate) required: bool,
 }
 
 #[wasm_bindgen]
 pub struct SemanticIngressManifestV2 {
-    plan: MultiInputGraphPlan,
-    plan_bytes: Vec<u8>,
-    ports: Vec<LogicalPort>,
+    pub(crate) plan: MultiInputGraphPlan,
+    pub(crate) plan_bytes: Vec<u8>,
+    pub(crate) ports: Vec<LogicalPort>,
 }
 
-struct IngressStatus {
-    ready: bool,
-    json: String,
+pub(crate) struct IngressStatus {
+    pub(crate) ready: bool,
+    pub(crate) json: String,
 }
 
-fn json_escape(value: &str) -> String {
-    let mut out = String::with_capacity(value.len() + 8);
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn json_string(value: &str) -> String {
+// Consolidate: json_escape/bool_json live canonically as pub(crate) in
+// semantic_ingress_manifest (v1) — imported above; duplicate private copies
+// removed so the facade resolves to a single definition.
+pub(crate) fn json_string(value: &str) -> String {
     format!("\"{}\"", json_escape(value))
 }
 
-fn bool_json(value: bool) -> &'static str {
-    if value {
-        "true"
-    } else {
-        "false"
-    }
-}
-
-fn bytes_hex(bytes: &[u8]) -> String {
+pub(crate) fn bytes_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|value| format!("{value:02x}")).collect()
 }
 
@@ -83,7 +60,7 @@ fn fingerprint(bytes: &[u8]) -> String {
     format!("fnv1a64:{hash:016x}")
 }
 
-fn logical_port_json(port: &LogicalPort) -> String {
+pub(crate) fn logical_port_json(port: &LogicalPort) -> String {
     match port.backing {
         Backing::Slot(slot) => format!(
             "{{\"logical_port_id\":{},\"role\":{},\"backing\":\"graph_input_slot\",\"slot\":{},\"expected_source\":{},\"required\":true}}",
@@ -102,7 +79,7 @@ fn logical_port_json(port: &LogicalPort) -> String {
 }
 
 impl SemanticIngressManifestV2 {
-    fn add_port(&mut self, port: LogicalPort) -> Result<bool, String> {
+    pub(crate) fn add_port(&mut self, port: LogicalPort) -> Result<bool, String> {
         if let Some(existing) = self.ports.iter().find(|existing| existing.id == port.id) {
             if existing == &port {
                 return Ok(false);
@@ -128,13 +105,13 @@ impl SemanticIngressManifestV2 {
         Ok(true)
     }
 
-    fn runtime_port(&self, slot: u8) -> Option<&LogicalPort> {
+    pub(crate) fn runtime_port(&self, slot: u8) -> Option<&LogicalPort> {
         self.ports
             .iter()
             .find(|port| port.backing == Backing::Slot(slot))
     }
 
-    fn manifest_fingerprint_internal(&self) -> String {
+    pub(crate) fn manifest_fingerprint_internal(&self) -> String {
         let mut bytes = b"semantic-ingress-manifest.v2".to_vec();
         bytes.extend_from_slice(&(self.plan_bytes.len() as u32).to_le_bytes());
         bytes.extend_from_slice(&self.plan_bytes);
@@ -156,7 +133,7 @@ impl SemanticIngressManifestV2 {
         fingerprint(&bytes)
     }
 
-    fn runtime_port_status(
+    pub(crate) fn runtime_port_status(
         &self,
         contract: &MultiInputPortContract,
         bundle: &MultiInputInputBundle,
@@ -206,7 +183,7 @@ impl SemanticIngressManifestV2 {
         (json, ready)
     }
 
-    fn status_internal(
+    pub(crate) fn status_internal(
         &self,
         registry: &LayerRegistry,
         graph: &CompiledMultiInputGraph,
@@ -249,207 +226,6 @@ impl SemanticIngressManifestV2 {
             graph.preflight(registry, bundle),
         );
         IngressStatus { ready, json }
-    }
-}
-
-#[wasm_bindgen]
-impl SemanticIngressManifestV2 {
-    #[wasm_bindgen(constructor)]
-    pub fn new(plan: &MultiInputGraphPlan) -> Result<SemanticIngressManifestV2, String> {
-        let plan_bytes = plan.validate_for_compile()?;
-        Ok(Self {
-            plan: plan.clone(),
-            plan_bytes,
-            ports: Vec::new(),
-        })
-    }
-
-    #[wasm_bindgen(js_name = addRuntimePort)]
-    pub fn add_runtime_port(
-        &mut self,
-        logical_port_id: String,
-        slot: u8,
-        expected_source: String,
-    ) -> Result<bool, String> {
-        validate_logical_port_id(&logical_port_id)?;
-        if expected_source.is_empty() || expected_source.len() > MAX_SOURCE_BYTES {
-            return Err(format!("SemanticIngressManifestV2.expected_source: value must be 1..={MAX_SOURCE_BYTES} bytes"));
-        }
-        let contract = self.plan.ports().iter().find(|port| port.slot == slot)
-            .ok_or_else(|| format!("SemanticIngressManifestV2: slot {slot} is not declared in the multi-input graph plan"))?;
-        self.add_port(LogicalPort {
-            id: logical_port_id,
-            role: contract.role.clone(),
-            expected_source: Some(expected_source),
-            backing: Backing::Slot(slot),
-            required: true,
-        })
-    }
-
-    #[wasm_bindgen(js_name = addDeferredPort)]
-    pub fn add_deferred_port(
-        &mut self,
-        logical_port_id: String,
-        role: String,
-        required: bool,
-    ) -> Result<bool, String> {
-        validate_logical_port_id(&logical_port_id)?;
-        if !role_valid(&role) {
-            return Err(format!(
-                "SemanticIngressManifestV2: invalid deferred role {role}"
-            ));
-        }
-        self.add_port(LogicalPort {
-            id: logical_port_id,
-            role,
-            expected_source: None,
-            backing: Backing::Deferred,
-            required,
-        })
-    }
-
-    #[wasm_bindgen(js_name = manifestFingerprint)]
-    pub fn manifest_fingerprint(&self) -> String {
-        self.manifest_fingerprint_internal()
-    }
-
-    #[wasm_bindgen(js_name = toJSON)]
-    pub fn to_json(&self) -> String {
-        format!(
-            "{{\"schema_version\":2,\"schema_id\":\"burn-research.semantic-ingress-manifest-instance.v2\",\"plan_hex\":{},\"manifest_fingerprint\":{},\"ports\":[{}],\"execution_authorized\":false}}",
-            json_string(&bytes_hex(&self.plan_bytes)),
-            json_string(&self.manifest_fingerprint_internal()),
-            self.ports.iter().map(logical_port_json).collect::<Vec<_>>().join(","),
-        )
-    }
-
-    #[wasm_bindgen(js_name = inputPortStatus)]
-    pub fn input_port_status(
-        &self,
-        slot: u8,
-        bundle: &MultiInputInputBundle,
-    ) -> Result<String, String> {
-        let contract = self
-            .plan
-            .ports()
-            .iter()
-            .find(|port| port.slot == slot)
-            .ok_or_else(|| {
-                format!("SemanticIngressManifestV2.inputPortStatus: undeclared slot {slot}")
-            })?;
-        let matches = bundle.matches_plan_internal(&self.plan);
-        let input = bundle.input_preflight(&self.plan);
-        let (port, _) = self.runtime_port_status(contract, bundle, &input, matches);
-        Ok(format!(
-            "{{\"schema_version\":2,\"schema_id\":\"burn-research.semantic-input-port-status.v2\",\"bundle_plan_matches\":{},\"execution_authorized\":false,\"port\":{}}}",
-            bool_json(matches), port,
-        ))
-    }
-
-    #[wasm_bindgen(js_name = consumerCompatibility)]
-    pub fn consumer_compatibility(
-        &self,
-        slot: u8,
-        bundle: &MultiInputInputBundle,
-        consumer: &InputPortConsumerSpec,
-    ) -> Result<String, String> {
-        let contract = self
-            .plan
-            .ports()
-            .iter()
-            .find(|port| port.slot == slot)
-            .ok_or_else(|| {
-                format!("SemanticIngressManifestV2.consumerCompatibility: undeclared slot {slot}")
-            })?;
-        let mapped = self.runtime_port(slot).ok_or_else(|| format!("SemanticIngressManifestV2.consumerCompatibility: slot {slot} has no logical port mapping"))?;
-        let input = bundle.input_preflight(&self.plan);
-        let bundle_plan_matches = bundle.matches_plan_internal(&self.plan);
-        let (port_status, port_ready) =
-            self.runtime_port_status(contract, bundle, &input, bundle_plan_matches);
-        let bound = bundle.bound_input(slot);
-        let role_match = bound.is_some_and(|actual| consumer.role_matches(&actual.role));
-        let fingerprint_ok = bound.is_some_and(|actual| {
-            !consumer.require_fingerprint_value() || !actual.fingerprint.is_empty()
-        });
-        let revision_ok =
-            bound.is_some_and(|actual| actual.revision >= consumer.minimum_revision_value());
-        let compatible = port_ready && role_match && fingerprint_ok && revision_ok;
-        let status = if bound.is_none() {
-            "unknown"
-        } else if compatible {
-            "compatible"
-        } else {
-            "incompatible"
-        };
-        Ok(format!(
-            "{{\"schema_version\":2,\"schema_id\":\"burn-research.semantic-input-consumer-compatibility.v2\",\"logical_port_id\":{},\"consumer\":{},\"input_port\":{},\"status\":{},\"compatible\":{},\"predicates\":{{\"port_ready\":{},\"role_match\":{},\"fingerprint_ok\":{},\"revision_ok\":{}}},\"execution_authorized\":false,\"decision_authority\":\"agent\"}}",
-            json_string(&mapped.id),
-            consumer.json(),
-            port_status,
-            json_string(status),
-            if bound.is_none() { "null" } else { bool_json(compatible) },
-            bool_json(port_ready), bool_json(role_match), bool_json(fingerprint_ok), bool_json(revision_ok),
-        ))
-    }
-
-    #[wasm_bindgen(js_name = status)]
-    pub fn status(
-        &self,
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        bundle: &MultiInputInputBundle,
-    ) -> String {
-        self.status_internal(registry, graph, bundle).json
-    }
-
-    #[wasm_bindgen(js_name = run)]
-    pub fn run(
-        &self,
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        bundle: &MultiInputInputBundle,
-    ) -> Result<WasmTensor, String> {
-        if !self.status_internal(registry, graph, bundle).ready {
-            return Err("SemanticIngressManifestV2.run: ingress or graph preflight failed; execution was not started".into());
-        }
-        graph.run(registry, bundle)
-    }
-
-    #[wasm_bindgen(js_name = runWithTrace)]
-    pub fn run_with_trace(
-        &self,
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        bundle: &MultiInputInputBundle,
-        start_step: u32,
-        max_steps: u32,
-        max_tensor_bytes: u32,
-    ) -> Result<TracedMultiInputRun, String> {
-        if !self.status_internal(registry, graph, bundle).ready {
-            return Err("SemanticIngressManifestV2.runWithTrace: ingress or graph preflight failed; execution was not started".into());
-        }
-        graph.run_with_trace(registry, bundle, start_step, max_steps, max_tensor_bytes)
-    }
-
-    #[wasm_bindgen(js_name = verifyFlat)]
-    pub fn verify_flat(
-        &self,
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        bundle: &MultiInputInputBundle,
-        candidate: &[f32],
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        let status = self.status_internal(registry, graph, bundle);
-        if !status.ready {
-            return Err("SemanticIngressManifestV2.verifyFlat: ingress or graph preflight failed; execution was not started".into());
-        }
-        let verification = graph.verify_flat(registry, bundle, candidate, abs_tol, rel_tol)?;
-        Ok(format!(
-            "{{\"schema_version\":2,\"schema_id\":\"burn-research.semantic-ingress-verification.v2\",\"ingress\":{},\"reference\":{}}}",
-            status.json, verification,
-        ))
     }
 }
 

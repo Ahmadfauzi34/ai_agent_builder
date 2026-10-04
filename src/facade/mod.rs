@@ -24,6 +24,7 @@ pub mod ingress;
 pub mod interaction;
 pub mod introspection;
 pub mod math;
+pub mod protocol;
 pub mod registry;
 pub mod resolution;
 pub mod semantic;

@@ -12,17 +12,17 @@ use crate::program_bundle::{export_multi_input_program_bundle, import_multi_inpu
 use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
 
-const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
+pub(crate) const MAX_BUNDLE_BYTES: usize = 16 * 1024 * 1024;
 pub(crate) const MAX_CHECKPOINT_BRANCHES: usize = 8;
 pub(crate) const MAX_BRANCH_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_BRANCH_CANDIDATE_BYTES: usize = 64 * 1024 * 1024;
 pub(crate) const MAX_STATE_DIFF_RANGES: usize = 64;
 
-fn digest(bytes: &[u8]) -> String {
+pub(crate) fn digest(bytes: &[u8]) -> String {
     format!("sha256:{}", bytes_hex(&Sha256::digest(bytes)))
 }
 
-fn valid_branch_id(id: &str) -> bool {
+pub(crate) fn valid_branch_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
         && id
@@ -30,7 +30,7 @@ fn valid_branch_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-' | b'.'))
 }
 
-fn state_diff_json(before: &[u8], after: &[u8]) -> String {
+pub(crate) fn state_diff_json(before: &[u8], after: &[u8]) -> String {
     let common = before.len().min(after.len());
     let mut changed = 0usize;
     let mut ranges: Vec<(usize, usize)> = Vec::new();
@@ -83,7 +83,7 @@ fn state_diff_json(before: &[u8], after: &[u8]) -> String {
         digest(before), digest(after), before.len(), after.len(), before.len() == after.len())
 }
 
-fn encode(plan: &DecodedGraphPlan) -> Result<Vec<u8>, String> {
+pub(crate) fn encode(plan: &DecodedGraphPlan) -> Result<Vec<u8>, String> {
     let steps = u32::try_from(plan.steps.len()).map_err(|_| "mutation: too many steps")?;
     let mut bytes = Vec::with_capacity(9 + plan.steps.len().saturating_mul(9));
     bytes.extend_from_slice(&steps.to_le_bytes());
@@ -98,53 +98,53 @@ fn encode(plan: &DecodedGraphPlan) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-struct StagedCandidate {
-    registry: LayerRegistry,
-    graph: CompiledMultiInputGraph,
-    bundle: Vec<u8>,
-    receipt_digest: Option<String>,
+pub(crate) struct StagedCandidate {
+    pub(crate) registry: LayerRegistry,
+    pub(crate) graph: CompiledMultiInputGraph,
+    pub(crate) bundle: Vec<u8>,
+    pub(crate) receipt_digest: Option<String>,
 }
 
-struct BranchVerification {
-    receipt_digest: String,
-    verifier_receipt_digest: String,
-    equivalent: bool,
+pub(crate) struct BranchVerification {
+    pub(crate) receipt_digest: String,
+    pub(crate) verifier_receipt_digest: String,
+    pub(crate) equivalent: bool,
 }
 
-struct CheckpointBranch {
-    id: String,
-    transaction: GraphMutationTransaction,
-    verification: Option<BranchVerification>,
+pub(crate) struct CheckpointBranch {
+    pub(crate) id: String,
+    pub(crate) transaction: GraphMutationTransaction,
+    pub(crate) verification: Option<BranchVerification>,
 }
 
 #[wasm_bindgen]
 pub struct GraphMutationTransaction {
-    baseline_bundle: Vec<u8>,
-    baseline_identity: String,
-    baseline_digest: String,
-    baseline_registry: LayerRegistry,
-    baseline_graph: CompiledMultiInputGraph,
-    baseline_plan: MultiInputGraphPlan,
-    proposal: DecodedGraphPlan,
-    init_specs: Vec<AgentLayerSpec>,
-    weight_patches: Vec<(u8, u32, Vec<f32>)>,
-    candidate: Option<StagedCandidate>,
-    committed: bool,
+    pub(crate) baseline_bundle: Vec<u8>,
+    pub(crate) baseline_identity: String,
+    pub(crate) baseline_digest: String,
+    pub(crate) baseline_registry: LayerRegistry,
+    pub(crate) baseline_graph: CompiledMultiInputGraph,
+    pub(crate) baseline_plan: MultiInputGraphPlan,
+    pub(crate) proposal: DecodedGraphPlan,
+    pub(crate) init_specs: Vec<AgentLayerSpec>,
+    pub(crate) weight_patches: Vec<(u8, u32, Vec<f32>)>,
+    pub(crate) candidate: Option<StagedCandidate>,
+    pub(crate) committed: bool,
 }
 
 #[wasm_bindgen]
 pub struct CheckpointBranchSet {
-    baseline_bundle: Vec<u8>,
-    baseline_identity: String,
-    baseline_digest: String,
-    baseline_registry: LayerRegistry,
-    baseline_graph: CompiledMultiInputGraph,
-    branches: Vec<CheckpointBranch>,
-    promoted_branch: Option<String>,
+    pub(crate) baseline_bundle: Vec<u8>,
+    pub(crate) baseline_identity: String,
+    pub(crate) baseline_digest: String,
+    pub(crate) baseline_registry: LayerRegistry,
+    pub(crate) baseline_graph: CompiledMultiInputGraph,
+    pub(crate) branches: Vec<CheckpointBranch>,
+    pub(crate) promoted_branch: Option<String>,
 }
 
 impl GraphMutationTransaction {
-    fn editable(&self) -> Result<(), String> {
+    pub(crate) fn editable(&self) -> Result<(), String> {
         if self.committed {
             Err("mutation: transaction already committed".into())
         } else {
@@ -152,11 +152,11 @@ impl GraphMutationTransaction {
         }
     }
 
-    fn invalidate(&mut self) {
+    pub(crate) fn invalidate(&mut self) {
         self.candidate = None;
     }
 
-    fn step(spec: &AgentLayerSpec, first: u8, second: u8, output: u8) -> GraphPlanStep {
+    pub(crate) fn step(spec: &AgentLayerSpec, first: u8, second: u8, output: u8) -> GraphPlanStep {
         let layer_type = spec.layer_type();
         GraphPlanStep {
             arity: if layer_type == LAYER_BINARY { 2 } else { 1 },
@@ -172,7 +172,7 @@ impl GraphMutationTransaction {
         }
     }
 
-    fn check_slots(&self, slots: &[u8]) -> Result<(), String> {
+    pub(crate) fn check_slots(&self, slots: &[u8]) -> Result<(), String> {
         if slots
             .iter()
             .any(|slot| u32::from(*slot) >= self.proposal.num_slots)
@@ -184,7 +184,7 @@ impl GraphMutationTransaction {
 }
 
 impl CheckpointBranchSet {
-    fn editable(&self) -> Result<(), String> {
+    pub(crate) fn editable(&self) -> Result<(), String> {
         if self.promoted_branch.is_some() {
             Err("checkpoint branches: a branch has already been promoted".into())
         } else {
@@ -192,7 +192,7 @@ impl CheckpointBranchSet {
         }
     }
 
-    fn branch_mut(&mut self, id: &str) -> Result<&mut CheckpointBranch, String> {
+    pub(crate) fn branch_mut(&mut self, id: &str) -> Result<&mut CheckpointBranch, String> {
         self.branches
             .iter_mut()
             .find(|branch| branch.id == id)
@@ -486,607 +486,5 @@ mod tests {
         assert_eq!(branches.promoted_branch().as_deref(), Some("relu-path"));
         assert_eq!(promoted.program_identity(), relu_graph.program_identity());
         assert!(branches.fork("after-promotion").is_err());
-    }
-}
-
-#[wasm_bindgen]
-impl GraphMutationTransaction {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        expected_program_identity: &str,
-        expected_state_digest: &str,
-    ) -> Result<Self, String> {
-        if graph.program_identity() != expected_program_identity {
-            return Err("mutation: expected baseline program identity mismatch".into());
-        }
-        let baseline_bundle = export_multi_input_program_bundle(graph, registry, true)?;
-        if baseline_bundle.len() > MAX_BUNDLE_BYTES {
-            return Err("mutation: baseline bundle exceeds 16 MiB".into());
-        }
-        let baseline_digest = digest(&baseline_bundle);
-        if baseline_digest != expected_state_digest {
-            return Err("mutation: expected baseline state digest mismatch".into());
-        }
-        let mut baseline_registry = LayerRegistry::new();
-        let baseline_graph =
-            import_multi_input_program_bundle(&mut baseline_registry, &baseline_bundle)?;
-        let baseline_plan = graph.plan.clone();
-        let proposal = decode_graph_plan(baseline_plan.graph_plan())?;
-        Ok(Self {
-            baseline_bundle,
-            baseline_identity: expected_program_identity.into(),
-            baseline_digest,
-            baseline_registry,
-            baseline_graph,
-            baseline_plan,
-            proposal,
-            init_specs: Vec::new(),
-            weight_patches: Vec::new(),
-            candidate: None,
-            committed: false,
-        })
-    }
-
-    #[wasm_bindgen(js_name = replaceStep)]
-    pub fn replace_step(
-        &mut self,
-        index: u32,
-        spec: &AgentLayerSpec,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        self.check_slots(&[first, second, output])?;
-        let index = index as usize;
-        if index >= self.proposal.steps.len() {
-            return Err("mutation.replaceStep: index out of range".into());
-        }
-        self.proposal.steps[index] = Self::step(spec, first, second, output);
-        self.init_specs.push(spec.clone());
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = insertStep)]
-    pub fn insert_step(
-        &mut self,
-        index: u32,
-        spec: &AgentLayerSpec,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        self.check_slots(&[first, second, output])?;
-        let index = index as usize;
-        if index > self.proposal.steps.len() {
-            return Err("mutation.insertStep: index out of range".into());
-        }
-        if self.proposal.steps.len() >= 4096 {
-            return Err("mutation.insertStep: 4096 step limit".into());
-        }
-        self.proposal
-            .steps
-            .insert(index, Self::step(spec, first, second, output));
-        self.init_specs.push(spec.clone());
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = removeStep)]
-    pub fn remove_step(&mut self, index: u32) -> Result<(), String> {
-        self.editable()?;
-        let index = index as usize;
-        if index >= self.proposal.steps.len() {
-            return Err("mutation.removeStep: index out of range".into());
-        }
-        self.proposal.steps.remove(index);
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = reconnectStep)]
-    pub fn reconnect_step(
-        &mut self,
-        index: u32,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        self.check_slots(&[first, second, output])?;
-        let step = self
-            .proposal
-            .steps
-            .get_mut(index as usize)
-            .ok_or("mutation.reconnectStep: index out of range")?;
-        step.in_slot = first;
-        step.in_slot2 = if step.arity == 2 { second } else { first };
-        step.out_slot = output;
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = setOutput)]
-    pub fn set_output(&mut self, output: u8) -> Result<(), String> {
-        self.editable()?;
-        self.check_slots(&[output])?;
-        self.proposal.output_slot = output;
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(
-        &mut self,
-        layer_type: u8,
-        layer_id: u32,
-        values: &[f32],
-    ) -> Result<(), String> {
-        self.editable()?;
-        if values.iter().any(|value| !value.is_finite()) {
-            return Err("mutation: weights must be finite".into());
-        }
-        if !self
-            .proposal
-            .steps
-            .iter()
-            .any(|step| (step.layer_type, step.layer_id) == (layer_type, layer_id))
-        {
-            return Err("mutation: weight target is not referenced by proposal".into());
-        }
-        self.weight_patches
-            .retain(|(kind, id, _)| (*kind, *id) != (layer_type, layer_id));
-        self.weight_patches
-            .push((layer_type, layer_id, values.to_vec()));
-        self.invalidate();
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = baselineBundle)]
-    pub fn baseline_bundle(&self) -> Vec<u8> {
-        self.baseline_bundle.clone()
-    }
-
-    #[wasm_bindgen(js_name = baselineStateDigest)]
-    pub fn baseline_state_digest(&self) -> String {
-        self.baseline_digest.clone()
-    }
-
-    #[wasm_bindgen(js_name = stageCandidate)]
-    pub fn stage_candidate(&mut self) -> Result<String, String> {
-        self.editable()?;
-        self.invalidate();
-        let plan = self
-            .baseline_plan
-            .with_graph_plan(encode(&self.proposal)?)?;
-        let mut registry = LayerRegistry::new();
-        import_multi_input_program_bundle(&mut registry, &self.baseline_bundle)?;
-        for spec in &self.init_specs {
-            if self.proposal.steps.iter().any(|step| {
-                (step.layer_type, step.layer_id) == (spec.layer_type(), spec.layer_id())
-            }) {
-                registry.init_agent_layer(spec)?;
-            }
-        }
-        for (layer_type, layer_id, values) in &self.weight_patches {
-            if !self
-                .proposal
-                .steps
-                .iter()
-                .any(|step| (step.layer_type, step.layer_id) == (*layer_type, *layer_id))
-            {
-                return Err("mutation: weight target was removed".into());
-            }
-            registry.set_weights_flat(*layer_id, *layer_type, values)?;
-        }
-        let graph = registry.compile_multi_input_graph(&plan)?;
-        let bundle = export_multi_input_program_bundle(&graph, &registry, true)?;
-        if bundle.len() > MAX_BUNDLE_BYTES {
-            return Err("mutation: candidate bundle exceeds 16 MiB".into());
-        }
-        let report = format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.graph-mutation-stage.v1\",\"baseline_program_identity\":{},\"candidate_program_identity\":{},\"baseline_state_checkpoint_bytes_sha256\":\"{}\",\"candidate_state_checkpoint_bytes_sha256\":\"{}\",\"promotion_authorized\":false}}",
-            self.baseline_identity, graph.program_identity(), self.baseline_digest, digest(&bundle));
-        self.candidate = Some(StagedCandidate {
-            registry,
-            graph,
-            bundle,
-            receipt_digest: None,
-        });
-        Ok(report)
-    }
-
-    #[wasm_bindgen(js_name = candidateBundle)]
-    pub fn candidate_bundle(&self) -> Result<Vec<u8>, String> {
-        Ok(self
-            .candidate
-            .as_ref()
-            .ok_or("mutation: no staged candidate")?
-            .bundle
-            .clone())
-    }
-
-    #[wasm_bindgen(js_name = verifyCases)]
-    pub fn verify_cases(
-        &mut self,
-        cases: &MultiInputVerificationCases,
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        self.editable()?;
-        let candidate = self
-            .candidate
-            .as_mut()
-            .ok_or("mutation: no staged candidate")?;
-        candidate.receipt_digest = None;
-        let outcome = cases.verify_outcome(
-            &self.baseline_registry,
-            &self.baseline_graph,
-            &candidate.registry,
-            &candidate.graph,
-            abs_tol,
-            rel_tol,
-        )?;
-        if outcome.baseline_state != self.baseline_digest
-            || outcome.candidate_state != digest(&candidate.bundle)
-        {
-            return Err("mutation: verification checkpoint differs from staged snapshot".into());
-        }
-        if outcome.equivalent {
-            candidate.receipt_digest = Some(outcome.digest);
-        }
-        Ok(outcome.json)
-    }
-
-    #[wasm_bindgen(js_name = commitByReceipt)]
-    pub fn commit_by_receipt(
-        &mut self,
-        live_registry: &mut LayerRegistry,
-        live_graph: &CompiledMultiInputGraph,
-        expected_program_identity: &str,
-        expected_state_digest: &str,
-        receipt_digest: &str,
-        authorize: bool,
-    ) -> Result<CompiledMultiInputGraph, String> {
-        self.editable()?;
-        if !authorize {
-            return Err("mutation: explicit promotion authorization required".into());
-        }
-        if expected_program_identity != self.baseline_identity
-            || live_graph.program_identity() != self.baseline_identity
-        {
-            return Err("mutation: baseline program identity changed".into());
-        }
-        if expected_state_digest != self.baseline_digest {
-            return Err("mutation: expected baseline state digest mismatch".into());
-        }
-        let candidate = self
-            .candidate
-            .as_ref()
-            .ok_or("mutation: no staged candidate")?;
-        if candidate.receipt_digest.as_deref() != Some(receipt_digest) {
-            return Err(
-                "mutation: passing verification receipt from this transaction required".into(),
-            );
-        }
-        let live = export_multi_input_program_bundle(live_graph, live_registry, true)?;
-        if live != self.baseline_bundle {
-            return Err("mutation: baseline state changed; no commit".into());
-        }
-        if digest(&candidate.bundle)
-            != digest(&export_multi_input_program_bundle(
-                &candidate.graph,
-                &candidate.registry,
-                true,
-            )?)
-        {
-            return Err("mutation: staged candidate state changed; no commit".into());
-        }
-        let graph = import_multi_input_program_bundle(live_registry, &candidate.bundle)?;
-        self.committed = true;
-        Ok(graph)
-    }
-}
-
-#[wasm_bindgen]
-impl CheckpointBranchSet {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        registry: &LayerRegistry,
-        graph: &CompiledMultiInputGraph,
-        expected_program_identity: &str,
-        expected_state_digest: &str,
-    ) -> Result<Self, String> {
-        let snapshot = GraphMutationTransaction::new(
-            registry,
-            graph,
-            expected_program_identity,
-            expected_state_digest,
-        )?;
-        Ok(Self {
-            baseline_bundle: snapshot.baseline_bundle.clone(),
-            baseline_identity: snapshot.baseline_identity,
-            baseline_digest: snapshot.baseline_digest,
-            baseline_registry: snapshot.baseline_registry,
-            baseline_graph: snapshot.baseline_graph,
-            branches: Vec::new(),
-            promoted_branch: None,
-        })
-    }
-
-    #[wasm_bindgen(js_name = branchCount)]
-    pub fn branch_count(&self) -> u32 {
-        self.branches.len() as u32
-    }
-
-    #[wasm_bindgen(js_name = promotedBranch)]
-    pub fn promoted_branch(&self) -> Option<String> {
-        self.promoted_branch.clone()
-    }
-
-    #[wasm_bindgen(js_name = baselineStateDigest)]
-    pub fn baseline_state_digest(&self) -> String {
-        self.baseline_digest.clone()
-    }
-
-    #[wasm_bindgen(js_name = baselineBundle)]
-    pub fn baseline_bundle(&self) -> Vec<u8> {
-        self.baseline_bundle.clone()
-    }
-
-    #[wasm_bindgen(js_name = fork)]
-    pub fn fork(&mut self, branch_id: &str) -> Result<u32, String> {
-        self.editable()?;
-        if !valid_branch_id(branch_id) {
-            return Err("checkpoint branches.fork: id must be 1..=64 ASCII letters, digits, '.', '_' or '-'".into());
-        }
-        if self.branches.iter().any(|branch| branch.id == branch_id) {
-            return Err("checkpoint branches.fork: branch id already exists".into());
-        }
-        if self.branches.len() >= MAX_CHECKPOINT_BRANCHES {
-            return Err("checkpoint branches.fork: at most 8 branches".into());
-        }
-        let snapshots = self
-            .baseline_bundle
-            .len()
-            .checked_mul(self.branches.len() + 2)
-            .ok_or("checkpoint branches.fork: snapshot budget overflow")?;
-        if snapshots > MAX_BRANCH_SNAPSHOT_BYTES {
-            return Err(
-                "checkpoint branches.fork: aggregate baseline snapshots exceed 64 MiB".into(),
-            );
-        }
-        let transaction = GraphMutationTransaction::new(
-            &self.baseline_registry,
-            &self.baseline_graph,
-            &self.baseline_identity,
-            &self.baseline_digest,
-        )?;
-        self.branches.push(CheckpointBranch {
-            id: branch_id.into(),
-            transaction,
-            verification: None,
-        });
-        Ok(self.branches.len() as u32)
-    }
-
-    #[wasm_bindgen(js_name = replaceStep)]
-    pub fn replace_step(
-        &mut self,
-        branch_id: &str,
-        index: u32,
-        spec: &AgentLayerSpec,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch
-            .transaction
-            .replace_step(index, spec, first, second, output)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = insertStep)]
-    pub fn insert_step(
-        &mut self,
-        branch_id: &str,
-        index: u32,
-        spec: &AgentLayerSpec,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch
-            .transaction
-            .insert_step(index, spec, first, second, output)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = removeStep)]
-    pub fn remove_step(&mut self, branch_id: &str, index: u32) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch.transaction.remove_step(index)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = reconnectStep)]
-    pub fn reconnect_step(
-        &mut self,
-        branch_id: &str,
-        index: u32,
-        first: u8,
-        second: u8,
-        output: u8,
-    ) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch
-            .transaction
-            .reconnect_step(index, first, second, output)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = setOutput)]
-    pub fn set_output(&mut self, branch_id: &str, output: u8) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch.transaction.set_output(output)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(
-        &mut self,
-        branch_id: &str,
-        layer_type: u8,
-        layer_id: u32,
-        values: &[f32],
-    ) -> Result<(), String> {
-        self.editable()?;
-        let branch = self.branch_mut(branch_id)?;
-        branch
-            .transaction
-            .set_weights_flat(layer_type, layer_id, values)?;
-        branch.verification = None;
-        Ok(())
-    }
-
-    #[wasm_bindgen(js_name = stageBranch)]
-    pub fn stage_branch(&mut self, branch_id: &str) -> Result<String, String> {
-        self.editable()?;
-        let other_candidate_bytes = self
-            .branches
-            .iter()
-            .filter(|branch| branch.id != branch_id)
-            .filter_map(|branch| branch.transaction.candidate.as_ref())
-            .map(|candidate| candidate.bundle.len())
-            .sum::<usize>();
-        let branch = self.branch_mut(branch_id)?;
-        branch.verification = None;
-        let stage = branch.transaction.stage_candidate()?;
-        let candidate_len = branch.transaction.candidate.as_ref().unwrap().bundle.len();
-        if other_candidate_bytes.saturating_add(candidate_len) > MAX_BRANCH_CANDIDATE_BYTES {
-            branch.transaction.invalidate();
-            return Err(
-                "checkpoint branches.stageBranch: aggregate candidate bundles exceed 64 MiB".into(),
-            );
-        }
-        Ok(format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-branch-stage.v1\",\"branch_id\":\"{}\",\"stage\":{stage}}}", branch.id))
-    }
-
-    #[wasm_bindgen(js_name = candidateBundle)]
-    pub fn candidate_bundle(&self, branch_id: &str) -> Result<Vec<u8>, String> {
-        let branch = self
-            .branches
-            .iter()
-            .find(|branch| branch.id == branch_id)
-            .ok_or_else(|| format!("checkpoint branches: unknown branch {branch_id:?}"))?;
-        branch.transaction.candidate_bundle()
-    }
-
-    #[wasm_bindgen(js_name = stateDiff)]
-    pub fn state_diff(&self, branch_id: &str) -> Result<String, String> {
-        let branch = self
-            .branches
-            .iter()
-            .find(|branch| branch.id == branch_id)
-            .ok_or_else(|| format!("checkpoint branches: unknown branch {branch_id:?}"))?;
-        let candidate = branch
-            .transaction
-            .candidate
-            .as_ref()
-            .ok_or("checkpoint branches: stage branch before diff")?;
-        Ok(format!(
-            "{{\"branch_id\":\"{}\",\"state_diff\":{}}}",
-            branch.id,
-            state_diff_json(&self.baseline_bundle, &candidate.bundle)
-        ))
-    }
-
-    #[wasm_bindgen(js_name = verifyBranch)]
-    pub fn verify_branch(
-        &mut self,
-        branch_id: &str,
-        cases: &MultiInputVerificationCases,
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        self.editable()?;
-        let baseline_identity = self.baseline_identity.clone();
-        let baseline_digest = self.baseline_digest.clone();
-        let baseline_bundle = self.baseline_bundle.clone();
-        let branch = self.branch_mut(branch_id)?;
-        branch.verification = None;
-        let verification = branch.transaction.verify_cases(cases, abs_tol, rel_tol)?;
-        let candidate = branch
-            .transaction
-            .candidate
-            .as_ref()
-            .ok_or("checkpoint branches: candidate disappeared")?;
-        let verifier_receipt_digest = candidate.receipt_digest.clone().unwrap_or_default();
-        let equivalent = !verifier_receipt_digest.is_empty();
-        let state_diff = state_diff_json(&baseline_bundle, &candidate.bundle);
-        let body = format!("{{\"schema_version\":1,\"schema_id\":\"burn-research.checkpoint-branch-verification.v1\",\"authority\":\"wasm_burn_reference_observation\",\"branch_id\":\"{}\",\"baseline_program_identity\":{},\"candidate_program_identity\":{},\"baseline_state_checkpoint_bytes_sha256\":\"{}\",\"candidate_state_checkpoint_bytes_sha256\":\"{}\",\"equivalent\":{equivalent},\"promotion_authorized\":false,\"verifier_receipt\":{},\"state_diff\":{}}}",
-            branch.id, baseline_identity, candidate.graph.program_identity(), baseline_digest,
-            digest(&candidate.bundle), verification, state_diff);
-        let receipt_digest = digest(body.as_bytes());
-        let receipt = format!(
-            "{},\"receipt_digest\":\"{receipt_digest}\"}}",
-            &body[..body.len() - 1]
-        );
-        branch.verification = Some(BranchVerification {
-            receipt_digest,
-            verifier_receipt_digest,
-            equivalent,
-        });
-        Ok(receipt)
-    }
-
-    #[wasm_bindgen(js_name = commitBranchByReceipt)]
-    pub fn commit_branch_by_receipt(
-        &mut self,
-        branch_id: &str,
-        live_registry: &mut LayerRegistry,
-        live_graph: &CompiledMultiInputGraph,
-        expected_program_identity: &str,
-        expected_state_digest: &str,
-        receipt_digest: &str,
-        authorize: bool,
-    ) -> Result<CompiledMultiInputGraph, String> {
-        self.editable()?;
-        if !authorize {
-            return Err("checkpoint branches: explicit promotion authorization required".into());
-        }
-        let branch = self.branch_mut(branch_id)?;
-        let proof = branch
-            .verification
-            .as_ref()
-            .ok_or("checkpoint branches: verified branch receipt required")?;
-        if !proof.equivalent || proof.receipt_digest != receipt_digest {
-            return Err("checkpoint branches: equivalent receipt for this branch required".into());
-        }
-        let promoted = branch.transaction.commit_by_receipt(
-            live_registry,
-            live_graph,
-            expected_program_identity,
-            expected_state_digest,
-            &proof.verifier_receipt_digest,
-            true,
-        )?;
-        self.promoted_branch = Some(branch_id.into());
-        Ok(promoted)
     }
 }
