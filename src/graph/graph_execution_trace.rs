@@ -16,22 +16,8 @@ const MAX_TOTAL_HASHED_BYTES: u64 = 64 * 1024 * 1024;
 
 #[wasm_bindgen]
 pub struct TracedMultiInputRun {
-    output: Option<WasmTensor>,
-    report: String,
-}
-
-#[wasm_bindgen]
-impl TracedMultiInputRun {
-    /// A failed numerical step has no output and never issues an execution receipt.
-    pub fn output(&self) -> Result<WasmTensor, String> {
-        self.output
-            .clone()
-            .ok_or_else(|| "TracedMultiInputRun: execution did not complete".into())
-    }
-
-    pub fn report(&self) -> String {
-        self.report.clone()
-    }
+    pub(crate) output: Option<WasmTensor>,
+    pub(crate) report: String,
 }
 
 fn escape_json(value: &str) -> String {
@@ -201,7 +187,7 @@ impl TraceCollector {
     }
 }
 
-pub(super) fn run(
+pub(crate) fn run(
     graph: &CompiledMultiInputGraph,
     registry: &LayerRegistry,
     bundle: &MultiInputInputBundle,

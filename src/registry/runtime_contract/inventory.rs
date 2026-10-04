@@ -1,6 +1,5 @@
 pub use crate::facade::registry::layer_registry_inventory_capabilities;
 use sha2::{Digest, Sha256};
-use wasm_bindgen::prelude::*;
 
 use crate::protocol::{
     LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
@@ -198,7 +197,7 @@ pub(super) fn inventory_fingerprint_of(
     sha256_text(&canonical)
 }
 
-fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
+pub(crate) fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
     let (records, summed_params) = live_instance_records(registry)?;
     let inventory_fingerprint = inventory_fingerprint_of(&records, summed_params);
 
@@ -224,13 +223,7 @@ fn inventory_snapshot(registry: &LayerRegistry) -> Result<String, String> {
     ))
 }
 
-#[wasm_bindgen]
-impl LayerRegistry {
-    #[wasm_bindgen(js_name = inventorySnapshot)]
-    pub fn inventory_snapshot(&self) -> Result<String, String> {
-        inventory_snapshot(self)
-    }
-}
+// #[wasm_bindgen] impl LayerRegistry — dipindah ke src/facade/registry.rs (Opsi C Fase 2).
 
 #[cfg(test)]
 mod tests {

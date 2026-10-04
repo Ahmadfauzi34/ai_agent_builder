@@ -251,5 +251,99 @@ class TestPureMove(unittest.TestCase):
         )
 
 
+# Opsi C Fase 2 moved #[wasm_bindgen] impl blocks for these 13 domain structs
+# into src/facade/; the struct definitions stay in their domain modules but
+# MUST keep #[wasm_bindgen] (it generates the WasmDescribe/IntoWasmAbi/
+# FromWasmAbi trait impls every wasm signature needs — removing it is E0277).
+FASE2_STRUCTS = [
+    "CompiledGraph",
+    "CompiledMultiInputGraph",
+    "MultiInputVerificationCases",
+    "TracedMultiInputRun",
+    "CheckpointBranchSet",
+    "GraphMutationTransaction",
+    "LayerRegistry",
+    "PacketHeader",
+    "EsOptimizer",
+    "AgentGraphBuilder",
+    "SemanticIngressManifestV2",
+    "SemanticTransitionSpec",
+    "InputPortConsumerSpec",
+]
+
+
+def facade_impl_targets():
+    """Type names with #[wasm_bindgen] impl blocks under src/facade/."""
+    targets = set()
+    for path in FACADE.rglob("*.rs"):
+        src = path.read_text()
+        for m in re.finditer(
+            r"#\[wasm_bindgen[^\n]*\]\n(?:#\[[^\n]*\]\n)*impl (\w+)", src
+        ):
+            targets.add(m.group(1))
+    return targets
+
+
+def struct_has_wasm_attr(name):
+    """True/False whether `pub struct <name>` carries #[wasm_bindgen];
+    None if the struct is not defined anywhere in src/."""
+    for path in SRC.rglob("*.rs"):
+        lines = path.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if re.match(rf"pub struct {re.escape(name)}\b", line.strip()):
+                j = i - 1
+                while j >= 0:
+                    s = lines[j].strip()
+                    if s.startswith("#["):
+                        if re.match(r"#\[wasm_bindgen", s):
+                            return True
+                    elif s.startswith("///") or s.startswith("//") or s == "":
+                        pass
+                    else:
+                        break
+                    j -= 1
+                return False
+    return None
+
+
+class TestFase2StructAttr(unittest.TestCase):
+    """RC-fase2-struct-attr-e0277: every type with a #[wasm_bindgen] impl block
+    under src/facade/ must carry #[wasm_bindgen] on its struct definition.
+    Removing the struct attribute breaks every wasm signature mentioning the
+    type (E0277: unsatisfied WasmDescribe/IntoWasmAbi trait bounds)."""
+
+    def test_every_facade_impl_target_has_struct_attr(self):
+        bad = []
+        for name in sorted(facade_impl_targets()):
+            status = struct_has_wasm_attr(name)
+            if status is not True:
+                bad.append((name, "missing" if status is None else "no-attr"))
+        self.assertEqual(bad, [], f"impl targets without struct attr: {bad}")
+
+    def test_all_13_fase2_structs_keep_attr(self):
+        bad = [n for n in FASE2_STRUCTS if struct_has_wasm_attr(n) is not True]
+        self.assertEqual(bad, [], f"Fase-2 structs missing #[wasm_bindgen]: {bad}")
+
+
+class TestFase2ImplPlacement(unittest.TestCase):
+    """RC-fase2-impl-block-placement: #[wasm_bindgen] impl blocks for the 13
+    Fase-2 domain structs live in src/facade/, never in domain files.
+    (Pre-existing wasm impls for other types, e.g. MultiInputGraphPlan in
+    multi_input_graph.rs, are grandfathered and out of scope.)"""
+
+    def test_no_wasm_impl_for_fase2_structs_outside_facade(self):
+        bad = []
+        for path in SRC.rglob("*.rs"):
+            if path.is_relative_to(FACADE):
+                continue
+            src = path.read_text()
+            for m in re.finditer(
+                r"#\[wasm_bindgen[^\n]*\]\n(?:#\[[^\n]*\]\n)*impl (\w+)", src
+            ):
+                if m.group(1) in FASE2_STRUCTS:
+                    bad.append((str(path.relative_to(REPO)), m.group(1)))
+        self.assertEqual(bad, [], f"wasm impl blocks outside facade: {bad}")
+
+
 if __name__ == "__main__":
     unittest.main()

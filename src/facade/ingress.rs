@@ -24,9 +24,11 @@ use crate::ingress::input_port::MAX_FINGERPRINT_BYTES;
 use crate::ingress::input_port::MAX_ROLE_BYTES;
 use crate::ingress::input_port::MAX_SOURCE_BYTES;
 use crate::ingress::input_port_consumer::bool_json;
+use crate::ingress::input_port_consumer::parse_roles;
 use crate::ingress::input_port_consumer::string_array_json;
 use crate::ingress::input_port_consumer::InputPortConsumerSpec;
 use crate::ingress::input_port_consumer::INPUT_PORT_CONSUMER_V1;
+use crate::ingress::input_port_consumer::MAX_CONSUMER_ID_BYTES;
 use crate::ingress::input_port_edge_binding::binding_fingerprint;
 use crate::ingress::input_port_edge_binding::binding_record_json;
 use crate::ingress::input_port_edge_binding::external_positions;
@@ -620,4 +622,64 @@ pub fn input_port_consumer_edge_compatibility(
         positions_json(&positions),
         compatibility,
     ))
+}
+
+#[wasm_bindgen]
+impl InputPortConsumerSpec {
+    #[wasm_bindgen(constructor)]
+    pub fn new(
+        consumer_id: String,
+        accepted_roles_json: String,
+        allow_extension_roles: bool,
+        require_fingerprint: bool,
+        minimum_revision: u64,
+    ) -> Result<InputPortConsumerSpec, String> {
+        if consumer_id.is_empty() {
+            return Err("InputPortConsumerSpec.consumer_id: value must be non-empty".to_string());
+        }
+        if consumer_id.len() > MAX_CONSUMER_ID_BYTES {
+            return Err(format!(
+                "InputPortConsumerSpec.consumer_id: {} bytes exceeds limit {MAX_CONSUMER_ID_BYTES}",
+                consumer_id.len()
+            ));
+        }
+        let accepted_roles = parse_roles(&accepted_roles_json)?;
+        Ok(Self {
+            consumer_id,
+            accepted_roles,
+            allow_extension_roles,
+            require_fingerprint,
+            minimum_revision,
+        })
+    }
+
+    #[wasm_bindgen(js_name = consumerId)]
+    pub fn consumer_id(&self) -> String {
+        self.consumer_id.clone()
+    }
+
+    #[wasm_bindgen(js_name = acceptedRoles)]
+    pub fn accepted_roles(&self) -> String {
+        string_array_json(&self.accepted_roles)
+    }
+
+    #[wasm_bindgen(js_name = allowExtensionRoles)]
+    pub fn allow_extension_roles(&self) -> bool {
+        self.allow_extension_roles
+    }
+
+    #[wasm_bindgen(js_name = requireFingerprint)]
+    pub fn require_fingerprint(&self) -> bool {
+        self.require_fingerprint
+    }
+
+    #[wasm_bindgen(js_name = minimumRevision)]
+    pub fn minimum_revision(&self) -> u64 {
+        self.minimum_revision
+    }
+
+    #[wasm_bindgen(js_name = describe)]
+    pub fn describe(&self) -> String {
+        self.json()
+    }
 }

@@ -61,7 +61,7 @@ pub struct CompiledGraph {
     pub(crate) steps: Vec<GraphPlanStep>,
     pub(crate) num_slots: u32,
     pub(crate) out_slot: u8,
-    canonical_plan: Vec<u8>,
+    pub(crate) canonical_plan: Vec<u8>,
     pub(crate) init_fingerprints: Vec<String>,
 }
 
@@ -69,11 +69,11 @@ pub struct CompiledGraph {
 pub struct CompiledMultiInputGraph {
     pub(crate) graph: CompiledGraph,
     pub(crate) plan: MultiInputGraphPlan,
-    input_plan_bytes: Vec<u8>,
+    pub(crate) input_plan_bytes: Vec<u8>,
 }
 
 impl CompiledGraph {
-    fn structural_identity_json(&self) -> String {
+    pub(crate) fn structural_identity_json(&self) -> String {
         let layer_identities = self
             .init_fingerprints
             .iter()
@@ -230,7 +230,7 @@ impl CompiledGraph {
         })
     }
 
-    fn run_with_external_inputs_internal(
+    pub(crate) fn run_with_external_inputs_internal(
         &self,
         registry: &LayerRegistry,
         inputs: &[(u8, WasmTensor)],
@@ -362,197 +362,6 @@ impl CompiledMultiInputGraph {
             bytes_hex(&self.input_plan_bytes),
             layer_identities,
         )
-    }
-}
-
-#[wasm_bindgen]
-impl CompiledMultiInputGraph {
-    #[wasm_bindgen(js_name = explainPlan)]
-    pub fn explain_plan(&self, registry: &LayerRegistry) -> String {
-        graph_plan_explain::report(self, registry)
-    }
-
-    #[wasm_bindgen(js_name = runWithTrace)]
-    pub fn run_with_trace(
-        &self,
-        registry: &LayerRegistry,
-        bundle: &MultiInputInputBundle,
-        start_step: u32,
-        max_steps: u32,
-        max_tensor_bytes: u32,
-    ) -> Result<TracedMultiInputRun, String> {
-        let (ready, _) = self.preflight_state(registry, bundle);
-        if !ready {
-            return Err("CompiledMultiInputGraph.runWithTrace: input or registry preflight failed; execution was not started".into());
-        }
-        super::graph_execution_trace::run(
-            self,
-            registry,
-            bundle,
-            start_step,
-            max_steps,
-            max_tensor_bytes,
-        )
-    }
-
-    #[wasm_bindgen(js_name = preflight)]
-    pub fn preflight(&self, registry: &LayerRegistry, bundle: &MultiInputInputBundle) -> String {
-        self.preflight_state(registry, bundle).1
-    }
-
-    #[wasm_bindgen(js_name = run)]
-    pub fn run(
-        &self,
-        registry: &LayerRegistry,
-        bundle: &MultiInputInputBundle,
-    ) -> Result<WasmTensor, String> {
-        let (ready, _) = self.preflight_state(registry, bundle);
-        if !ready {
-            return Err(
-                "CompiledMultiInputGraph.run: input or registry preflight failed; execution was not started".into(),
-            );
-        }
-        self.graph
-            .run_with_external_inputs_internal(registry, &bundle.bound_inputs())
-    }
-
-    #[wasm_bindgen(js_name = verifyFlat)]
-    pub fn verify_flat(
-        &self,
-        registry: &LayerRegistry,
-        bundle: &MultiInputInputBundle,
-        candidate: &[f32],
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        let (ready, preflight) = self.preflight_state(registry, bundle);
-        if !ready {
-            return Err(
-                "CompiledMultiInputGraph.verifyFlat: input or registry preflight failed; execution was not started".into(),
-            );
-        }
-        let reference = self
-            .graph
-            .run_with_external_inputs_internal(registry, &bundle.bound_inputs())?
-            .to_array();
-        let verification = verify_vectors_report(&reference, candidate, abs_tol, rel_tol)?;
-        Ok(format!(
-            "{{\"schema_version\":1,\"schema_id\":\"burn-research.multi-input-verification.v1\",\"preflight\":{},\"verification\":{}}}",
-            preflight,
-            verification,
-        ))
-    }
-
-    #[wasm_bindgen(js_name = inputPlanV1)]
-    pub fn input_plan_v1(&self) -> Vec<u8> {
-        self.input_plan_bytes.clone()
-    }
-
-    #[wasm_bindgen(js_name = programPlan)]
-    pub fn program_plan(&self) -> Vec<u8> {
-        self.graph.canonical_plan.clone()
-    }
-
-    #[wasm_bindgen(js_name = programIdentity)]
-    pub fn program_identity(&self) -> String {
-        self.program_identity_json()
-    }
-
-    #[wasm_bindgen(js_name = requiredInputSlots)]
-    pub fn required_input_slots(&self) -> Vec<u8> {
-        self.plan.ports().iter().map(|port| port.slot).collect()
-    }
-
-    #[wasm_bindgen(js_name = validateRegistryBinding)]
-    pub fn validate_registry_binding(&self, registry: &LayerRegistry) -> Result<(), String> {
-        self.graph
-            .validate_registry_binding_internal(registry, "validateRegistryBinding")
-    }
-}
-
-#[wasm_bindgen]
-impl CompiledGraph {
-    #[wasm_bindgen(js_name = run)]
-    pub fn run(&self, registry: &LayerRegistry, input: &WasmTensor) -> Result<WasmTensor, String> {
-        // A compiled graph is structurally bound to the init identities validated at compile time.
-        // Mutable weights/state may change under the same init identity, but structural re-init
-        // requires recompiling the canonical plan before execution.
-        self.validate_registry_binding_internal(registry, "run")?;
-
-        let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
-        slots[0] = Some(input.clone());
-        for s in &self.steps {
-            let out = if s.arity == ARITY_BINARY {
-                let a = slots[s.in_slot as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
-                let b = slots[s.in_slot2 as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot2))?;
-                registry.forward_binary_layer(s.layer_id, a, b)?
-            } else {
-                let inp = slots[s.in_slot as usize]
-                    .as_ref()
-                    .ok_or_else(|| format!("run: empty input slot {}", s.in_slot))?;
-                if matches!(
-                    s.layer_type,
-                    LAYER_CONV | LAYER_POOL | LAYER_GHOST | LAYER_SEBLOCK
-                ) {
-                    crate::registry::runtime_contract::validate_registry_unary_contract(
-                        registry,
-                        s.layer_type,
-                        s.layer_id,
-                        inp.inner.dims(),
-                    )?;
-                }
-                registry.forward_layer(s.layer_id, s.layer_type, inp)?
-            };
-            slots[s.out_slot as usize] = Some(out);
-        }
-        slots[self.out_slot as usize]
-            .take()
-            .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
-    }
-
-    #[wasm_bindgen(js_name = verifyFlat)]
-    pub fn verify_flat(
-        &self,
-        registry: &LayerRegistry,
-        input: &WasmTensor,
-        candidate: &[f32],
-        abs_tol: f64,
-        rel_tol: f64,
-    ) -> Result<String, String> {
-        let reference = self.run(registry, input)?.to_array();
-        verify_vectors_report(&reference, candidate, abs_tol, rel_tol)
-    }
-
-    #[wasm_bindgen(js_name = programPlan)]
-    pub fn program_plan(&self) -> Vec<u8> {
-        self.canonical_plan.clone()
-    }
-
-    #[wasm_bindgen(js_name = programIdentity)]
-    pub fn program_identity(&self) -> String {
-        self.structural_identity_json()
-    }
-
-    #[wasm_bindgen(js_name = validateRegistryBinding)]
-    pub fn validate_registry_binding(&self, registry: &LayerRegistry) -> Result<(), String> {
-        self.validate_registry_binding_internal(registry, "validateRegistryBinding")
-    }
-
-    #[wasm_bindgen(js_name = numSteps)]
-    pub fn step_count(&self) -> u32 {
-        self.steps.len() as u32
-    }
-    #[wasm_bindgen(js_name = numSlots)]
-    pub fn slot_count(&self) -> u32 {
-        self.num_slots
-    }
-    #[wasm_bindgen(js_name = outSlot)]
-    pub fn output_slot(&self) -> u8 {
-        self.out_slot
     }
 }
 

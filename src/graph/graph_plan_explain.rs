@@ -140,7 +140,7 @@ fn infer_shape(step: &GraphPlanStep, identity: &str, inputs: &[Option<Shape>]) -
     }
 }
 
-pub(super) fn report(compiled: &CompiledMultiInputGraph, registry: &LayerRegistry) -> String {
+pub(crate) fn report(compiled: &CompiledMultiInputGraph, registry: &LayerRegistry) -> String {
     let mut slots = vec![None; compiled.graph.num_slots as usize];
     let input_ports = compiled
         .plan

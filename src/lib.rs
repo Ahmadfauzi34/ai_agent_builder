@@ -48,7 +48,7 @@ pub use facade::wasm_types::{
     WasmReduction, WasmSeBlock, WasmShift, WasmStatistics, WasmTensorTransform,
 };
 // --- root re-exports: #[wasm_bindgen] free functions moved to the facade (Opsi C, Fase 1) ---
-pub use facade::agent::{agent_capabilities};
+pub use facade::agent::agent_capabilities;
 pub use facade::contracts::{
     agent_contract_schema, agent_contract_schema_version, agent_layout_compatibility,
     agent_layout_contract, agent_layout_contract_version, agent_spec_layout,

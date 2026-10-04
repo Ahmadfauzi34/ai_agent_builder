@@ -10,7 +10,7 @@ use crate::workspace::AgentWorkspace;
 
 pub(crate) const INPUT_PORT_CONSUMER_V1: &str =
     include_str!("../../docs/contracts/agent-input-port-consumer.v1.json");
-const MAX_CONSUMER_ID_BYTES: usize = 128;
+pub(crate) const MAX_CONSUMER_ID_BYTES: usize = 128;
 const MAX_ACCEPTED_ROLES: usize = 16;
 
 pub(crate) fn json_escape(value: &str) -> String {
@@ -46,7 +46,7 @@ pub(crate) fn string_array_json(values: &[String]) -> String {
     format!("[{body}]")
 }
 
-fn parse_roles(value: &str) -> Result<Vec<String>, String> {
+pub(crate) fn parse_roles(value: &str) -> Result<Vec<String>, String> {
     let trimmed = value.trim();
     if !trimmed.starts_with('[') || !trimmed.ends_with(']') {
         return Err(
@@ -160,66 +160,6 @@ impl InputPortConsumerSpec {
         let fingerprint_ok = !self.require_fingerprint || fingerprint_present;
         let revision_ok = self.minimum_revision == 0 || metadata.revision >= self.minimum_revision;
         Some(role_match && fingerprint_ok && revision_ok)
-    }
-}
-
-#[wasm_bindgen]
-impl InputPortConsumerSpec {
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        consumer_id: String,
-        accepted_roles_json: String,
-        allow_extension_roles: bool,
-        require_fingerprint: bool,
-        minimum_revision: u64,
-    ) -> Result<InputPortConsumerSpec, String> {
-        if consumer_id.is_empty() {
-            return Err("InputPortConsumerSpec.consumer_id: value must be non-empty".to_string());
-        }
-        if consumer_id.len() > MAX_CONSUMER_ID_BYTES {
-            return Err(format!(
-                "InputPortConsumerSpec.consumer_id: {} bytes exceeds limit {MAX_CONSUMER_ID_BYTES}",
-                consumer_id.len()
-            ));
-        }
-        let accepted_roles = parse_roles(&accepted_roles_json)?;
-        Ok(Self {
-            consumer_id,
-            accepted_roles,
-            allow_extension_roles,
-            require_fingerprint,
-            minimum_revision,
-        })
-    }
-
-    #[wasm_bindgen(js_name = consumerId)]
-    pub fn consumer_id(&self) -> String {
-        self.consumer_id.clone()
-    }
-
-    #[wasm_bindgen(js_name = acceptedRoles)]
-    pub fn accepted_roles(&self) -> String {
-        string_array_json(&self.accepted_roles)
-    }
-
-    #[wasm_bindgen(js_name = allowExtensionRoles)]
-    pub fn allow_extension_roles(&self) -> bool {
-        self.allow_extension_roles
-    }
-
-    #[wasm_bindgen(js_name = requireFingerprint)]
-    pub fn require_fingerprint(&self) -> bool {
-        self.require_fingerprint
-    }
-
-    #[wasm_bindgen(js_name = minimumRevision)]
-    pub fn minimum_revision(&self) -> u64 {
-        self.minimum_revision
-    }
-
-    #[wasm_bindgen(js_name = describe)]
-    pub fn describe(&self) -> String {
-        self.json()
     }
 }
 
