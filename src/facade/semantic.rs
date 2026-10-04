@@ -22,9 +22,11 @@ use crate::semantic::semantic_execution_context::SEMANTIC_EXECUTION_CONTEXT_V1;
 use crate::semantic::semantic_ingress_manifest::bool_json;
 use crate::semantic::semantic_ingress_manifest::json_escape;
 use crate::semantic::semantic_ingress_manifest::validate_logical_port_id;
+use crate::semantic::semantic_ingress_manifest::validate_port_fields;
 use crate::semantic::semantic_ingress_manifest::workspace_port_status;
 use crate::semantic::semantic_ingress_manifest::RuntimeBacking;
 use crate::semantic::semantic_ingress_manifest::SemanticIngressManifest;
+use crate::semantic::semantic_ingress_manifest::SemanticIngressPort;
 use crate::semantic::semantic_ingress_manifest::SEMANTIC_INGRESS_MANIFEST_V1;
 use crate::semantic::semantic_ingress_manifest_v2::bytes_hex;
 use crate::semantic::semantic_ingress_manifest_v2::json_string;
@@ -556,5 +558,80 @@ impl SemanticTransitionSpec {
             string_array_json(&self.input_roles),
             json_escape(&self.output_role),
         )
+    }
+}
+
+#[wasm_bindgen]
+impl SemanticIngressManifest {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> SemanticIngressManifest {
+        Self { ports: Vec::new() }
+    }
+
+    #[wasm_bindgen(js_name = addRuntimeBackedPort)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_runtime_backed_port(
+        &mut self,
+        logical_port_id: String,
+        role: String,
+        source: String,
+        revision: u64,
+        fingerprint: String,
+        runtime_slot: u32,
+        required: bool,
+    ) -> Result<bool, String> {
+        if runtime_slot != 0 {
+            return Err(format!(
+                "SemanticIngressManifest.addRuntimeBackedPort: graph runtime currently backs only slot 0, got slot {runtime_slot}"
+            ));
+        }
+        validate_port_fields(&logical_port_id, &role, &source, &fingerprint)?;
+        self.add_port(SemanticIngressPort {
+            logical_port_id,
+            role,
+            source,
+            revision,
+            fingerprint,
+            required,
+            runtime_backing: RuntimeBacking::Slot0,
+        })
+    }
+
+    #[wasm_bindgen(js_name = addDeferredPort)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_deferred_port(
+        &mut self,
+        logical_port_id: String,
+        role: String,
+        source: String,
+        revision: u64,
+        fingerprint: String,
+        required: bool,
+    ) -> Result<bool, String> {
+        validate_port_fields(&logical_port_id, &role, &source, &fingerprint)?;
+        self.add_port(SemanticIngressPort {
+            logical_port_id,
+            role,
+            source,
+            revision,
+            fingerprint,
+            required,
+            runtime_backing: RuntimeBacking::Deferred,
+        })
+    }
+
+    #[wasm_bindgen(js_name = portCount)]
+    pub fn port_count(&self) -> u32 {
+        self.ports.len() as u32
+    }
+
+    #[wasm_bindgen(js_name = manifestFingerprint)]
+    pub fn manifest_fingerprint(&self) -> String {
+        self.manifest_fingerprint_internal()
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> String {
+        self.json_internal()
     }
 }
