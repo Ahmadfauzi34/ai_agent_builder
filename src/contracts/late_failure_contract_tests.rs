@@ -19,7 +19,10 @@ fn fill_workspace_to_row_limit(workspace: &mut AgentWorkspace) {
             break;
         }
     }
-    assert!(reached_limit, "workspace row limit was not reached by adversarial fill");
+    assert!(
+        reached_limit,
+        "workspace row limit was not reached by adversarial fill"
+    );
 }
 
 #[test]
@@ -50,7 +53,10 @@ fn output_slot_exhaustion_fails_before_registry_initialization_and_retry_succeed
 
     assert!(err.contains("no free slot"));
     assert_eq!(workspace.snapshot(), snapshot_before);
-    assert_eq!(workspace.get("_layers".into(), layer_id.to_string()), layer_before);
+    assert_eq!(
+        workspace.get("_layers".into(), layer_id.to_string()),
+        layer_before
+    );
     assert_eq!(builder.num_steps(), steps_before);
     assert!(!registry.layer_exists(LAYER_ACTIVATION, layer_id));
 
@@ -95,7 +101,10 @@ fn builder_workspace_slot_mismatch_rolls_back_output_reservation_before_registry
 
     assert!(err.contains("outside builder num_slots"));
     assert_eq!(workspace.snapshot(), snapshot_before);
-    assert_eq!(workspace.get("_layers".into(), layer_id.to_string()), layer_before);
+    assert_eq!(
+        workspace.get("_layers".into(), layer_id.to_string()),
+        layer_before
+    );
     assert_eq!(too_small_builder.num_steps(), 0);
     assert!(!registry.layer_exists(LAYER_ACTIVATION, layer_id));
 
@@ -132,15 +141,8 @@ fn full_workspace_and_max_helper_label_do_not_create_a_post_init_sync_failure() 
     // already-existing _layers row, so neither the row cap nor the maximal label
     // should introduce a late failure after Registry initialization.
     let label = "x".repeat(4000);
-    let output = workspace_init_unary(
-        &mut workspace,
-        &mut builder,
-        &mut registry,
-        &spec,
-        0,
-        label,
-    )
-    .unwrap();
+    let output =
+        workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, label).unwrap();
 
     assert_eq!(output, 1);
     assert!(registry.layer_exists(LAYER_ACTIVATION, layer_id));
@@ -194,7 +196,10 @@ fn simulated_abort_immediately_after_registry_init_can_restore_exact_retriable_c
     workspace.release_slot(output_slot).unwrap();
 
     assert_eq!(workspace.snapshot(), snapshot_before);
-    assert_eq!(workspace.get("_layers".into(), layer_id.to_string()), layer_before);
+    assert_eq!(
+        workspace.get("_layers".into(), layer_id.to_string()),
+        layer_before
+    );
     assert!(!registry.layer_exists(LAYER_ACTIVATION, layer_id));
     assert_eq!(builder.num_steps(), 0);
 

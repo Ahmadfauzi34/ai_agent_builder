@@ -177,14 +177,14 @@ impl GraphReverifyRuntimeBinding {
                 "\"operation\":\"CompiledGraph.verifyFlat\",",
                 "\"registry_state_policy\":\"live_current_state_not_snapshotted\",",
                 "\"runtime\":{{",
-                    "\"program_identity\":{},",
-                    "\"input_shape\":[{}],",
-                    "\"input_fingerprint\":\"{}\",",
-                    "\"candidate_fingerprint\":\"{}\",",
-                    "\"candidate_len\":{},",
-                    "\"abs_tol\":{},",
-                    "\"rel_tol\":{},",
-                    "\"label\":\"{}\"",
+                "\"program_identity\":{},",
+                "\"input_shape\":[{}],",
+                "\"input_fingerprint\":\"{}\",",
+                "\"candidate_fingerprint\":\"{}\",",
+                "\"candidate_len\":{},",
+                "\"abs_tol\":{},",
+                "\"rel_tol\":{},",
+                "\"label\":\"{}\"",
                 "}},",
                 "\"binding_fingerprint\":\"{}\",",
                 "\"fingerprint_algorithm\":\"fnv1a64_noncryptographic\",",
@@ -240,17 +240,17 @@ impl GraphReverifyRuntimeBindingPreflight {
                 "\"ready\":{},",
                 "\"status\":\"{}\",",
                 "\"checks\":{{",
-                    "\"requirements_current\":{},",
-                    "\"workspace_subject_matches\":{},",
-                    "\"source_evidence_matches\":{},",
-                    "\"program_identity_matches\":{},",
-                    "\"registry_binding_valid\":{},",
-                    "\"runtime_program_bound\":{},",
-                    "\"input_matches\":{},",
-                    "\"candidate_matches\":{},",
-                    "\"tolerance_matches\":{},",
-                    "\"label_matches\":{},",
-                    "\"binding_fingerprint_matches\":{}",
+                "\"requirements_current\":{},",
+                "\"workspace_subject_matches\":{},",
+                "\"source_evidence_matches\":{},",
+                "\"program_identity_matches\":{},",
+                "\"registry_binding_valid\":{},",
+                "\"runtime_program_bound\":{},",
+                "\"input_matches\":{},",
+                "\"candidate_matches\":{},",
+                "\"tolerance_matches\":{},",
+                "\"label_matches\":{},",
+                "\"binding_fingerprint_matches\":{}",
                 "}},",
                 "\"execution_authorized\":false,",
                 "\"execution_effect\":\"none\",",
@@ -434,12 +434,13 @@ pub fn preflight_graph_reverify_runtime_binding(
     label: &str,
 ) -> GraphReverifyRuntimeBindingPreflight {
     let current_requirements = current_graph_requirements(inbox, intent).ok();
-    let requirements_current = current_requirements.as_ref().is_some_and(
-        |(dispatch, requirements)| {
-            dispatch == &binding.dispatch_fingerprint
-                && requirements == &binding.requirements_fingerprint
-        },
-    );
+    let requirements_current =
+        current_requirements
+            .as_ref()
+            .is_some_and(|(dispatch, requirements)| {
+                dispatch == &binding.dispatch_fingerprint
+                    && requirements == &binding.requirements_fingerprint
+            });
     let workspace_subject_matches = inbox.target_matches_workspace(workspace);
 
     let source_evidence_matches = inbox
@@ -449,8 +450,7 @@ pub fn preflight_graph_reverify_runtime_binding(
             binding.source_entry_index == intent.entry_index()
                 && binding.source_evidence_fingerprint == intent.evidence_fingerprint()
                 && evidence.kind() == "graph_verifier_receipt"
-                && evidence.graph_program_identity()
-                    == Some(binding.program_identity.as_str())
+                && evidence.graph_program_identity() == Some(binding.program_identity.as_str())
         });
 
     let current_program_identity = graph.program_identity();
@@ -475,8 +475,7 @@ pub fn preflight_graph_reverify_runtime_binding(
     };
     let candidate_matches = candidate_valid
         && candidate.len() == binding.candidate_len
-        && current_candidate_fingerprint.as_deref()
-            == Some(binding.candidate_fingerprint.as_str());
+        && current_candidate_fingerprint.as_deref() == Some(binding.candidate_fingerprint.as_str());
 
     let tolerance_matches = validate_tolerance(abs_tol, rel_tol).is_ok()
         && abs_tol.to_bits() == binding.abs_tol_bits
@@ -484,23 +483,26 @@ pub fn preflight_graph_reverify_runtime_binding(
     let label_matches = validate_label(label, "GraphReverifyRuntimeBindingPreflight").is_ok()
         && label == binding.label;
 
-    let binding_fingerprint_matches = current_requirements.as_ref().is_some_and(
-        |(dispatch, requirements)| {
-            binding_fingerprint(
-                intent,
-                dispatch,
-                requirements,
-                &current_program_identity,
-                &input.shape(),
-                &current_input_fingerprint,
-                current_candidate_fingerprint.as_deref().unwrap_or("invalid"),
-                candidate.len(),
-                abs_tol.to_bits(),
-                rel_tol.to_bits(),
-                label,
-            ) == binding.binding_fingerprint
-        },
-    );
+    let binding_fingerprint_matches =
+        current_requirements
+            .as_ref()
+            .is_some_and(|(dispatch, requirements)| {
+                binding_fingerprint(
+                    intent,
+                    dispatch,
+                    requirements,
+                    &current_program_identity,
+                    &input.shape(),
+                    &current_input_fingerprint,
+                    current_candidate_fingerprint
+                        .as_deref()
+                        .unwrap_or("invalid"),
+                    candidate.len(),
+                    abs_tol.to_bits(),
+                    rel_tol.to_bits(),
+                    label,
+                ) == binding.binding_fingerprint
+            });
 
     let ready = requirements_current
         && workspace_subject_matches
@@ -551,10 +553,10 @@ mod tests {
     use crate::resolution_runtime_bridge::{
         bind_runtime_subject_projection, RuntimeSubjectProjection,
     };
-    use crate::workspace_ops::workspace_compile_for_runtime_subject;
     use crate::runtime_evidence_interpretation::EvidenceResponseAction;
     use crate::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
     use crate::workspace::AgentWorkspace;
+    use crate::workspace_ops::workspace_compile_for_runtime_subject;
     use crate::WasmTensor;
 
     fn fixture() -> (
@@ -618,15 +620,13 @@ mod tests {
         let source = RuntimeEvidence::from_graph_verifier_receipt_json(&source_receipt).unwrap();
         assert!(inbox.record(source).unwrap());
 
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
-        (inbox, intent, workspace, builder, registry, graph, input, candidate)
+        (
+            inbox, intent, workspace, builder, registry, graph, input, candidate,
+        )
     }
 
     #[test]
@@ -704,7 +704,8 @@ mod tests {
 
     #[test]
     fn binding_rejects_graph_that_does_not_match_selected_evidence() {
-        let (inbox, intent, workspace, _builder, mut registry, _graph, input, candidate) = fixture();
+        let (inbox, intent, workspace, _builder, mut registry, _graph, input, candidate) =
+            fixture();
         let other_spec = AgentLayerSpec::gelu(9);
         registry.init_agent_layer(&other_spec).unwrap();
         let mut other_builder = AgentGraphBuilder::new(2).unwrap();

@@ -85,7 +85,9 @@ pub struct EffectiveSpec {
 impl EffectiveSpec {
     pub fn root(declarations: Vec<SpecDeclaration>) -> Result<Self, String> {
         if declarations.is_empty() {
-            return Err("EffectiveSpec: root specification must declare at least one field".to_string());
+            return Err(
+                "EffectiveSpec: root specification must declare at least one field".to_string(),
+            );
         }
         if declarations.len() > EFFECTIVE_SPEC_MAX_FIELDS {
             return Err(format!(
@@ -198,10 +200,7 @@ impl SpecDirective {
         })
     }
 
-    pub fn declare(
-        key: impl Into<String>,
-        value: impl Into<String>,
-    ) -> Result<Self, String> {
+    pub fn declare(key: impl Into<String>, value: impl Into<String>) -> Result<Self, String> {
         Ok(Self::Declare {
             key: validate_key(key)?,
             value: validate_value(value)?,
@@ -268,7 +267,10 @@ impl ApprovedEffectiveSpec {
         approval: SubjectBoundApprovalSnapshot,
     ) -> Result<Self, String> {
         if spec.parent_spec_identity.is_some() || spec.parent_approval_id.is_some() {
-            return Err("ApprovedEffectiveSpec: root approval cannot bind a child specification".to_string());
+            return Err(
+                "ApprovedEffectiveSpec: root approval cannot bind a child specification"
+                    .to_string(),
+            );
         }
         verify_subject(&spec, &approval.subject)?;
         Ok(Self {
@@ -344,7 +346,9 @@ fn materialize_child(
             SpecDirective::Inherit { .. } | SpecDirective::Remove { .. } => {}
         }
         if ordered.insert(key.clone(), directive).is_some() {
-            return Err(format!("EffectiveSpec: duplicate directive for field: {key}"));
+            return Err(format!(
+                "EffectiveSpec: duplicate directive for field: {key}"
+            ));
         }
     }
 
@@ -353,7 +357,9 @@ fn materialize_child(
         match directive {
             SpecDirective::Inherit { .. }
             | SpecDirective::Override { .. }
-            | SpecDirective::Remove { .. } if !exists_in_parent => {
+            | SpecDirective::Remove { .. }
+                if !exists_in_parent =>
+            {
                 return Err(format!(
                     "EffectiveSpec: directive for unknown parent field requires Declare instead: {key}"
                 ));
@@ -464,12 +470,14 @@ fn materialize_child(
         return Err("EffectiveSpec: child specification cannot remove all fields".to_string());
     }
 
-    Ok(EffectiveSpecMaterialization::Resolved(EffectiveSpec::finish(
-        Some(parent_spec_identity),
-        Some(parent_approval_id),
-        fields,
-        changes,
-    )?))
+    Ok(EffectiveSpecMaterialization::Resolved(
+        EffectiveSpec::finish(
+            Some(parent_spec_identity),
+            Some(parent_approval_id),
+            fields,
+            changes,
+        )?,
+    ))
 }
 
 fn parent_change(
@@ -506,20 +514,19 @@ fn canonical_identity(
     fields: &[EffectiveField],
     changes: &[SpecChange],
 ) -> Result<String, String> {
-    let parent = match (parent_spec_identity, parent_approval_id) {
-        (None, None) => None,
-        (Some(spec_identity), Some(approval_id)) => {
-            validate_evidence(spec_identity, "parent spec identity")?;
-            validate_evidence(approval_id, "parent approval id")?;
-            Some((spec_identity, approval_id))
-        }
-        _ => {
-            return Err(
+    let parent =
+        match (parent_spec_identity, parent_approval_id) {
+            (None, None) => None,
+            (Some(spec_identity), Some(approval_id)) => {
+                validate_evidence(spec_identity, "parent spec identity")?;
+                validate_evidence(approval_id, "parent approval id")?;
+                Some((spec_identity, approval_id))
+            }
+            _ => return Err(
                 "EffectiveSpec: parent provenance must contain both spec identity and approval id"
                     .to_string(),
-            )
-        }
-    };
+            ),
+        };
 
     validate_canonical_provenance(parent, fields, changes)?;
 
@@ -641,7 +648,10 @@ fn push_optional_component(out: &mut String, value: Option<&str>) {
 fn validate_unique_field_keys(fields: &[EffectiveField]) -> Result<(), String> {
     for window in fields.windows(2) {
         if window[0].key == window[1].key {
-            return Err(format!("EffectiveSpec: duplicate field key: {}", window[0].key));
+            return Err(format!(
+                "EffectiveSpec: duplicate field key: {}",
+                window[0].key
+            ));
         }
     }
     Ok(())
@@ -650,7 +660,10 @@ fn validate_unique_field_keys(fields: &[EffectiveField]) -> Result<(), String> {
 fn validate_unique_change_keys(changes: &[SpecChange]) -> Result<(), String> {
     for window in changes.windows(2) {
         if window[0].key == window[1].key {
-            return Err(format!("EffectiveSpec: duplicate change key: {}", window[0].key));
+            return Err(format!(
+                "EffectiveSpec: duplicate change key: {}",
+                window[0].key
+            ));
         }
     }
     Ok(())
@@ -793,7 +806,10 @@ mod tests {
             child.field("axis").unwrap().origin,
             EffectiveFieldOrigin::DeclaredHere
         ));
-        assert_eq!(child.parent_approval_id.as_deref(), Some(root.approval_id()));
+        assert_eq!(
+            child.parent_approval_id.as_deref(),
+            Some(root.approval_id())
+        );
         assert_eq!(
             child.parent_spec_identity.as_deref(),
             Some(root.spec.identity.as_str())
@@ -824,11 +840,9 @@ mod tests {
     fn root_approval_requires_exact_effective_spec_subject() {
         let spec_a = EffectiveSpec::root(vec![decl("norm", "l2")]).unwrap();
         let spec_b = EffectiveSpec::root(vec![decl("norm", "probability")]).unwrap();
-        let mut review = SubjectBoundReviewSession::new(
-            "intent-bind-root",
-            spec_a.approval_subject().unwrap(),
-        )
-        .unwrap();
+        let mut review =
+            SubjectBoundReviewSession::new("intent-bind-root", spec_a.approval_subject().unwrap())
+                .unwrap();
         review.submit("agent").unwrap();
         let approval = review.approve("customer").unwrap();
 
@@ -840,12 +854,16 @@ mod tests {
     fn revision_approval_binds_exact_child_identity_and_parent_evidence() {
         let root = approved_root(vec![decl("norm", "l2")]);
         let child = root
-            .materialize_child(vec![SpecDirective::override_value("norm", "probability").unwrap()])
+            .materialize_child(vec![
+                SpecDirective::override_value("norm", "probability").unwrap()
+            ])
             .unwrap()
             .resolved()
             .unwrap();
         let alternate = root
-            .materialize_child(vec![SpecDirective::override_value("norm", "zscore").unwrap()])
+            .materialize_child(vec![
+                SpecDirective::override_value("norm", "zscore").unwrap()
+            ])
             .unwrap()
             .resolved()
             .unwrap();
@@ -872,7 +890,14 @@ mod tests {
 
         assert!(ApprovedEffectiveSpec::bind_revision(alternate, approval.clone()).is_err());
         let approved_child = ApprovedEffectiveSpec::bind_revision(child, approval).unwrap();
-        assert_eq!(approved_child.approval_id(), chain.bound_revision_approval(&revision_id).unwrap().approval.revision_approval_id);
+        assert_eq!(
+            approved_child.approval_id(),
+            chain
+                .bound_revision_approval(&revision_id)
+                .unwrap()
+                .approval
+                .revision_approval_id
+        );
     }
 
     #[test]

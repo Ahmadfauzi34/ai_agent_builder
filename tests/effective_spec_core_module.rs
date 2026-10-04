@@ -5,9 +5,11 @@ use burn_research::effective_spec::{
 use burn_research::resolution_subject::SubjectBoundReviewSession;
 
 fn approved_root(spec: EffectiveSpec) -> ApprovedEffectiveSpec {
-    let mut review =
-        SubjectBoundReviewSession::new("intent-effective-spec-core", spec.approval_subject().unwrap())
-            .unwrap();
+    let mut review = SubjectBoundReviewSession::new(
+        "intent-effective-spec-core",
+        spec.approval_subject().unwrap(),
+    )
+    .unwrap();
     review.submit("agent").unwrap();
     let approval = review.approve("customer").unwrap();
     ApprovedEffectiveSpec::bind_root(spec, approval).unwrap()

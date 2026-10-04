@@ -1,6 +1,4 @@
-use burn_research::math::program::{
-    MathProgram, MathProgramBuilder, OP_ABS, OP_ADD,
-};
+use burn_research::math::program::{MathProgram, MathProgramBuilder, OP_ABS, OP_ADD};
 use burn_research::math::program_v4::{MathProgramV4, MathProgramV4Builder};
 use burn_research::math::program_v5::{MathProgramV5, MathProgramV5Builder};
 use burn_research::math::program_v6::{MathProgramV6, MathProgramV6Builder};
@@ -275,7 +273,9 @@ fn math_program_v1_to_v9_normalize_into_one_structural_ir_and_replay_exactly() {
         v1_ir, v2_ir, v3_ir, v4_ir, v5_ir, v6_ir, v7_ir, v8_ir, v9_ir,
     ];
     assert_eq!(
-        all.iter().map(|plan| plan.source_version).collect::<Vec<_>>(),
+        all.iter()
+            .map(|plan| plan.source_version)
+            .collect::<Vec<_>>(),
         (1u8..=9).collect::<Vec<_>>()
     );
 }

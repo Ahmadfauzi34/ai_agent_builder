@@ -1,3 +1,7 @@
+pub use crate::facade::workspace::{
+    workspace_capabilities, workspace_compile, workspace_compile_for_runtime_subject,
+    workspace_init_binary, workspace_init_unary, workspace_wire_binary, workspace_wire_unary,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
@@ -57,9 +61,9 @@ fn workspace_slot_producer_identity(
     let Some(layer_id) = owner.strip_prefix("layer:") else {
         return Ok(None);
     };
-    let layer_id = layer_id.parse::<u32>().map_err(|_| {
-        format!("{context}: internal slot {slot} has invalid layer owner {owner}")
-    })?;
+    let layer_id = layer_id
+        .parse::<u32>()
+        .map_err(|_| format!("{context}: internal slot {slot} has invalid layer owner {owner}"))?;
 
     let layer_row = workspace.get("_layers".into(), layer_id.to_string());
     if layer_row == "null" {
@@ -68,29 +72,19 @@ fn workspace_slot_producer_identity(
         ));
     }
     let layer_value = workspace_row_value(&layer_row).ok_or_else(|| {
-        format!(
-            "{context}: internal layer metadata id {layer_id} is missing a value field"
-        )
+        format!("{context}: internal layer metadata id {layer_id} is missing a value field")
     })?;
     let (before_variant, variant) = layer_value.rsplit_once(";variant=").ok_or_else(|| {
-        format!(
-            "{context}: internal layer metadata id {layer_id} is missing variant provenance"
-        )
+        format!("{context}: internal layer metadata id {layer_id} is missing variant provenance")
     })?;
     let (_, layer_type) = before_variant.rsplit_once(";type=").ok_or_else(|| {
-        format!(
-            "{context}: internal layer metadata id {layer_id} is missing type provenance"
-        )
+        format!("{context}: internal layer metadata id {layer_id} is missing type provenance")
     })?;
     let layer_type = layer_type.parse::<u8>().map_err(|_| {
-        format!(
-            "{context}: internal layer metadata id {layer_id} has invalid type provenance"
-        )
+        format!("{context}: internal layer metadata id {layer_id} has invalid type provenance")
     })?;
     let variant = variant.parse::<u8>().map_err(|_| {
-        format!(
-            "{context}: internal layer metadata id {layer_id} has invalid variant provenance"
-        )
+        format!("{context}: internal layer metadata id {layer_id} has invalid variant provenance")
     })?;
     Ok(Some((layer_type, variant)))
 }
@@ -103,12 +97,8 @@ pub(crate) fn validate_workspace_layout_input(
 ) -> Result<(), String> {
     if slot == 0 {
         if let Some(contract) = workspace.input_contract() {
-            validate_external_input_contract_for_spec(
-                contract.shape,
-                &contract.layout,
-                consumer,
-            )
-            .map_err(|err| format!("{context}: {err}"))?;
+            validate_external_input_contract_for_spec(contract.shape, &contract.layout, consumer)
+                .map_err(|err| format!("{context}: {err}"))?;
         }
     }
 
@@ -177,7 +167,7 @@ fn ensure_registry_has_spec(
     Ok(())
 }
 
-fn ensure_registry_matches_spec(
+pub(crate) fn ensure_registry_matches_spec(
     registry: &LayerRegistry,
     spec: &AgentLayerSpec,
     context: &str,
@@ -201,7 +191,7 @@ fn ensure_registry_matches_spec(
     Ok(())
 }
 
-fn reserve_workspace_output_slot(
+pub(crate) fn reserve_workspace_output_slot(
     workspace: &mut AgentWorkspace,
     builder: &AgentGraphBuilder,
     owner: String,
@@ -215,7 +205,7 @@ fn reserve_workspace_output_slot(
     Ok(slot)
 }
 
-fn rollback_init_transaction(
+pub(crate) fn rollback_init_transaction(
     workspace: &mut AgentWorkspace,
     workspace_checkpoint: &AgentWorkspace,
     registry: &mut LayerRegistry,
@@ -333,267 +323,6 @@ pub(crate) fn finalize_initialized_binary(
     Ok(output_slot)
 }
 
-/// Discover the canonical agent-facing workspace/control-plane API.
-#[wasm_bindgen(js_name = workspaceCapabilities)]
-pub fn workspace_capabilities() -> String {
-    concat!(
-        "{",
-        "\"state\":\"AgentWorkspace\",",
-        "\"ownership\":\"metadata_only\",",
-        "\"execution_truth\":\"LayerRegistry\",",
-        "\"graph\":\"AgentGraphBuilder\",",
-        "\"provenance\":{\"wire_identity\":\"exact_validated_init_fingerprint\",\"syncLayer\":\"exact_identity_metadata_only_not_canonical_orchestration\",\"layout_preflight\":\"canonical_slot_owner_to_layer_type_variant\"},",
-        "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"subject_bound_compile\":\"bind_exact_program_identity_only_after_successful_compile\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
-        "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
-        "\"layout_policy\":{\"known_incompatible\":\"reject_before_mutation\",\"unknown\":\"defer_to_runtime\",\"implicit_relayout\":\"forbidden\"},",
-        "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\",\"workspaceCompileForRuntimeSubject\"],",
-        "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
-        "\"escape_hatches\":[\"workspaceCompile\",\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
-        "\"recommended_flow\":[\"bind_runtime_subject_if_used\",\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"subject_bound_compile_if_bound\",\"run\",\"verify\"]",
-        "}"
-    )
-    .to_string()
-}
-
-/// Reconcile an already initialized unary layer into workspace metadata and graph wiring.
-/// The supplied spec must exactly match the live registry layer's validated init identity.
-#[wasm_bindgen(js_name = workspaceWireUnary)]
-pub fn workspace_wire_unary(
-    workspace: &mut AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    registry: &LayerRegistry,
-    spec: &AgentLayerSpec,
-    input_slot: u8,
-    label: String,
-) -> Result<u8, String> {
-    if spec.layer_type() == LAYER_BINARY {
-        return Err("workspaceWireUnary: binary spec requires workspaceWireBinary".into());
-    }
-    validate_workspace_input_slot(workspace, builder, input_slot, "workspaceWireUnary")?;
-    validate_workspace_layout_input(workspace, input_slot, spec, "workspaceWireUnary")?;
-    ensure_registry_matches_spec(registry, spec, "workspaceWireUnary")?;
-    validate_workspace_op_label(&label, "workspaceWireUnary")?;
-
-    let output_slot = reserve_workspace_output_slot(
-        workspace,
-        builder,
-        format!("layer:{}", spec.layer_id()),
-        "workspaceWireUnary",
-    )?;
-    // Metadata reconciliation happens only after identity proof and output reservation succeed.
-    if let Err(err) = workspace.sync_layer(registry, spec, label) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = builder.add_unary(spec, input_slot, output_slot) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    Ok(output_slot)
-}
-
-/// Reconcile an already initialized binary layer into workspace metadata and graph wiring.
-/// The supplied spec must exactly match the live registry layer's validated init identity.
-#[wasm_bindgen(js_name = workspaceWireBinary)]
-pub fn workspace_wire_binary(
-    workspace: &mut AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    registry: &LayerRegistry,
-    spec: &AgentLayerSpec,
-    left_slot: u8,
-    right_slot: u8,
-    label: String,
-) -> Result<u8, String> {
-    if spec.layer_type() != LAYER_BINARY {
-        return Err("workspaceWireBinary: spec is not binary".into());
-    }
-    validate_workspace_input_slot(workspace, builder, left_slot, "workspaceWireBinary.left")?;
-    validate_workspace_input_slot(workspace, builder, right_slot, "workspaceWireBinary.right")?;
-    validate_workspace_layout_input(workspace, left_slot, spec, "workspaceWireBinary.left")?;
-    validate_workspace_layout_input(workspace, right_slot, spec, "workspaceWireBinary.right")?;
-    ensure_registry_matches_spec(registry, spec, "workspaceWireBinary")?;
-    validate_workspace_op_label(&label, "workspaceWireBinary")?;
-
-    let output_slot = reserve_workspace_output_slot(
-        workspace,
-        builder,
-        format!("layer:{}", spec.layer_id()),
-        "workspaceWireBinary",
-    )?;
-    if let Err(err) = workspace.sync_layer(registry, spec, label) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    if let Err(err) = builder.add_binary(spec, left_slot, right_slot, output_slot) {
-        let _ = workspace.release_slot(output_slot);
-        return Err(err);
-    }
-    Ok(output_slot)
-}
-
-/// Initialize a reserved unary layer and wire it into the graph.
-/// A workspace checkpoint protects the entire control state until graph commit succeeds.
-#[wasm_bindgen(js_name = workspaceInitUnary)]
-pub fn workspace_init_unary(
-    workspace: &mut AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    registry: &mut LayerRegistry,
-    spec: &AgentLayerSpec,
-    input_slot: u8,
-    label: String,
-) -> Result<u8, String> {
-    if spec.layer_type() == LAYER_BINARY {
-        return Err("workspaceInitUnary: binary spec requires workspaceInitBinary".into());
-    }
-    validate_workspace_input_slot(workspace, builder, input_slot, "workspaceInitUnary")?;
-    validate_workspace_layout_input(workspace, input_slot, spec, "workspaceInitUnary")?;
-    validate_spec_is_new(registry, spec, "workspaceInitUnary")?;
-    ensure_workspace_layer_reserved(workspace, spec, "workspaceInitUnary")?;
-    validate_workspace_op_label(&label, "workspaceInitUnary")?;
-
-    let workspace_checkpoint = workspace.clone();
-    let output_slot = match reserve_workspace_output_slot(
-        workspace,
-        builder,
-        format!("layer:{}", spec.layer_id()),
-        "workspaceInitUnary",
-    ) {
-        Ok(slot) => slot,
-        Err(err) => {
-            *workspace = workspace_checkpoint;
-            return Err(err);
-        }
-    };
-
-    if let Err(err) = registry.init_agent_layer(spec) {
-        return Err(rollback_init_transaction(
-            workspace,
-            &workspace_checkpoint,
-            registry,
-            spec,
-            "workspaceInitUnary",
-            err,
-        ));
-    }
-
-    finalize_initialized_unary(
-        workspace,
-        &workspace_checkpoint,
-        builder,
-        registry,
-        spec,
-        input_slot,
-        output_slot,
-        label,
-    )
-}
-
-/// Initialize a reserved binary layer and wire it into the graph.
-/// A workspace checkpoint protects the entire control state until graph commit succeeds.
-#[wasm_bindgen(js_name = workspaceInitBinary)]
-pub fn workspace_init_binary(
-    workspace: &mut AgentWorkspace,
-    builder: &mut AgentGraphBuilder,
-    registry: &mut LayerRegistry,
-    spec: &AgentLayerSpec,
-    left_slot: u8,
-    right_slot: u8,
-    label: String,
-) -> Result<u8, String> {
-    if spec.layer_type() != LAYER_BINARY {
-        return Err("workspaceInitBinary: spec is not binary".into());
-    }
-    validate_workspace_input_slot(workspace, builder, left_slot, "workspaceInitBinary.left")?;
-    validate_workspace_input_slot(workspace, builder, right_slot, "workspaceInitBinary.right")?;
-    validate_workspace_layout_input(workspace, left_slot, spec, "workspaceInitBinary.left")?;
-    validate_workspace_layout_input(workspace, right_slot, spec, "workspaceInitBinary.right")?;
-    validate_spec_is_new(registry, spec, "workspaceInitBinary")?;
-    ensure_workspace_layer_reserved(workspace, spec, "workspaceInitBinary")?;
-    validate_workspace_op_label(&label, "workspaceInitBinary")?;
-
-    let workspace_checkpoint = workspace.clone();
-    let output_slot = match reserve_workspace_output_slot(
-        workspace,
-        builder,
-        format!("layer:{}", spec.layer_id()),
-        "workspaceInitBinary",
-    ) {
-        Ok(slot) => slot,
-        Err(err) => {
-            *workspace = workspace_checkpoint;
-            return Err(err);
-        }
-    };
-
-    if let Err(err) = registry.init_agent_layer(spec) {
-        return Err(rollback_init_transaction(
-            workspace,
-            &workspace_checkpoint,
-            registry,
-            spec,
-            "workspaceInitBinary",
-            err,
-        ));
-    }
-
-    finalize_initialized_binary(
-        workspace,
-        &workspace_checkpoint,
-        builder,
-        registry,
-        spec,
-        left_slot,
-        right_slot,
-        output_slot,
-        label,
-    )
-}
-
-/// Compile using a temporary output selection without mutating builder state.
-#[wasm_bindgen(js_name = workspaceCompile)]
-pub fn workspace_compile(
-    builder: &AgentGraphBuilder,
-    registry: &LayerRegistry,
-    output_slot: u8,
-) -> Result<CompiledGraph, String> {
-    validate_builder_slot(builder, output_slot, "workspaceCompile")?;
-    builder.compile_with_output(registry, output_slot)
-}
-
-/// Compile and bind the exact CompiledGraph.programIdentity to the immutable runtime subject.
-///
-/// This is the canonical compile path for subject-bound verification. The historical
-/// workspaceCompile surface remains available as an explicit unbound/legacy escape hatch.
-#[wasm_bindgen(js_name = workspaceCompileForRuntimeSubject)]
-pub fn workspace_compile_for_runtime_subject(
-    workspace: &mut AgentWorkspace,
-    builder: &AgentGraphBuilder,
-    registry: &LayerRegistry,
-    output_slot: u8,
-) -> Result<CompiledGraph, String> {
-    if workspace.runtime_subject_binding().is_none() {
-        return Err(
-            "workspaceCompileForRuntimeSubject: workspace has no bound runtime subject".to_string(),
-        );
-    }
-    if workspace.interaction_num_slots() != builder.num_slots() {
-        return Err(format!(
-            "workspaceCompileForRuntimeSubject: workspace num_slots {} does not match builder num_slots {}",
-            workspace.interaction_num_slots(),
-            builder.num_slots()
-        ));
-    }
-
-    validate_builder_slot(
-        builder,
-        output_slot,
-        "workspaceCompileForRuntimeSubject",
-    )?;
-    let graph = builder.compile_with_output(registry, output_slot)?;
-    workspace.bind_runtime_program_identity(graph.program_identity())?;
-    Ok(graph)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -631,7 +360,9 @@ mod tests {
         let mut registry = LayerRegistry::new();
         let mut builder = AgentGraphBuilder::new(5).unwrap();
 
-        let relu_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+        let relu_id = workspace
+            .reserve_layer_id(&registry, "relu".into())
+            .unwrap();
         let relu = AgentLayerSpec::relu(relu_id);
         let relu_slot = workspace_init_unary(
             &mut workspace,
@@ -658,7 +389,10 @@ mod tests {
 
         let graph = workspace_compile(&builder, &registry, sum_slot).unwrap();
         let input = WasmTensor::new(&[-2.0, 3.0], &[1, 2, 1, 1]);
-        assert_eq!(graph.run(&registry, &input).unwrap().to_array(), vec![0.0, 6.0]);
+        assert_eq!(
+            graph.run(&registry, &input).unwrap().to_array(),
+            vec![0.0, 6.0]
+        );
         assert!(workspace
             .get("_layers".into(), relu_id.to_string())
             .contains("initialized"));
@@ -724,8 +458,13 @@ mod tests {
         .unwrap();
         let graph = workspace_compile(&builder, &registry, out).unwrap();
         let input = WasmTensor::new(&[-1.0, 4.0], &[1, 2, 1, 1]);
-        assert_eq!(graph.run(&registry, &input).unwrap().to_array(), vec![0.0, 4.0]);
-        assert!(workspace.get("_layers".into(), "42".into()).contains("manual-relu"));
+        assert_eq!(
+            graph.run(&registry, &input).unwrap().to_array(),
+            vec![0.0, 4.0]
+        );
+        assert!(workspace
+            .get("_layers".into(), "42".into())
+            .contains("manual-relu"));
     }
 
     #[test]
@@ -858,7 +597,9 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("no free slot available"));
         assert_eq!(workspace.get("_layers".into(), "44".into()), "null");
-        assert!(workspace.get("_slots".into(), "1".into()).contains("blocker"));
+        assert!(workspace
+            .get("_slots".into(), "1".into())
+            .contains("blocker"));
         assert_eq!(builder.num_steps(), 0);
     }
 

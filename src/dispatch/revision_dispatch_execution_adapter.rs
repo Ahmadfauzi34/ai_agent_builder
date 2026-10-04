@@ -1,9 +1,7 @@
 use crate::agent_response_intent::AgentResponseIntent;
 use crate::resolution_revision::ResolutionRevisionChain;
 use crate::response_dispatch_executor_preflight::preflight_revision_dispatch_executor;
-use crate::response_dispatch_request::{
-    ResponseDispatchRequest, ResponseDispatchRequestPayload,
-};
+use crate::response_dispatch_request::{ResponseDispatchRequest, ResponseDispatchRequestPayload};
 use crate::runtime_evidence_interpretation::EvidenceResponseAction;
 use crate::runtime_resolution_evidence::ResolutionEvidenceInbox;
 
@@ -173,7 +171,8 @@ pub fn execute_revision_dispatch_request(
     let before = chain.snapshot();
     let before_revision_count = before.revisions.len();
 
-    let revision_id = match chain.open_revision(parent_revision_id.as_deref(), revision_key.clone()) {
+    let revision_id = match chain.open_revision(parent_revision_id.as_deref(), revision_key.clone())
+    {
         Ok(revision_id) => revision_id,
         Err(error) => {
             *chain = rollback;
@@ -242,10 +241,7 @@ mod tests {
     use crate::runtime_evidence_interpretation::EvidenceResponseAction;
     use crate::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
-    fn fixture() -> (
-        ResolutionEvidenceInbox,
-        ResolutionReviewSession,
-    ) {
+    fn fixture() -> (ResolutionEvidenceInbox, ResolutionReviewSession) {
         let mut review = ResolutionReviewSession::new("intent-revision-execution").unwrap();
         review.submit("agent").unwrap();
         let approval = review.approve("customer").unwrap();
@@ -327,8 +323,7 @@ mod tests {
         execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain).unwrap();
         let once = chain.snapshot();
 
-        let replay =
-            execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain);
+        let replay = execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain);
         assert!(replay.is_err());
         assert_eq!(chain.snapshot(), once);
     }
@@ -343,8 +338,7 @@ mod tests {
         let request = create_ignore_dispatch_request(&inbox, &intent).unwrap();
         let before = chain.snapshot();
 
-        let result =
-            execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain);
+        let result = execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain);
         assert!(result.is_err());
         assert_eq!(chain.snapshot(), before);
     }
@@ -353,7 +347,10 @@ mod tests {
     fn capability_contract_declares_explicit_mutation_boundary() {
         let contract: serde_json::Value =
             serde_json::from_str(revision_dispatch_execution_adapter_capabilities()).unwrap();
-        assert_eq!(contract["role"], "explicit_revision_dispatch_execution_adapter");
+        assert_eq!(
+            contract["role"],
+            "explicit_revision_dispatch_execution_adapter"
+        );
         assert_eq!(contract["semantics"]["mutation"], "committed_on_success");
         assert_eq!(
             contract["semantics"]["execution_trigger"],

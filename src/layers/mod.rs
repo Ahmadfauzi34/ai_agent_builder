@@ -23,14 +23,14 @@
 //! - Angka protokol dan budget → `protocol`.
 //! - Siklus hidup instance → `registry`.
 
-pub mod linear;
 pub mod activation;
-pub mod conv;
-pub mod norm;
-pub mod embedding;
-pub mod pool;
 pub mod binary;
+pub mod conv;
 pub mod custom;
+pub mod embedding;
 pub mod layout;
+pub mod linear;
+pub mod norm;
+pub mod pool;
 pub(crate) mod shape_contract;
 pub(crate) mod state_record;

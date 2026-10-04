@@ -150,10 +150,7 @@ impl ResolutionReviewSession {
         Ok(())
     }
 
-    pub fn approve(
-        &mut self,
-        actor: impl Into<String>,
-    ) -> Result<ApprovalSnapshot, String> {
+    pub fn approve(&mut self, actor: impl Into<String>) -> Result<ApprovalSnapshot, String> {
         let actor = validate_actor(actor)?;
         if self.approval.is_some() {
             return Err("ResolutionReviewSession: approval already exists".to_string());
@@ -176,17 +173,17 @@ impl ResolutionReviewSession {
                 if diagnostic.status != DiagnosticStatus::Resolved {
                     return None;
                 }
-                diagnostic.resolution.as_ref().map(|value| ApprovalDecision {
-                    diagnostic_code: diagnostic.code.clone(),
-                    value: value.clone(),
-                })
+                diagnostic
+                    .resolution
+                    .as_ref()
+                    .map(|value| ApprovalDecision {
+                        diagnostic_code: diagnostic.code.clone(),
+                        value: value.clone(),
+                    })
             })
             .collect::<Vec<_>>();
 
-        let approval_id = format!(
-            "{}:approval:r{}",
-            workflow.intent_id, workflow.revision
-        );
+        let approval_id = format!("{}:approval:r{}", workflow.intent_id, workflow.revision);
         let approval = ApprovalSnapshot {
             schema: APPROVAL_SNAPSHOT_SCHEMA.to_string(),
             approval_id: approval_id.clone(),
@@ -197,11 +194,7 @@ impl ResolutionReviewSession {
         };
 
         self.approval = Some(approval.clone());
-        self.record(
-            sequence,
-            actor,
-            ReviewEventKind::Approved { approval_id },
-        );
+        self.record(sequence, actor, ReviewEventKind::Approved { approval_id });
         Ok(approval)
     }
 
@@ -340,7 +333,10 @@ mod tests {
         let events = review.events();
         assert_eq!(events.len(), 4);
         assert_eq!(
-            events.iter().map(|event| event.sequence).collect::<Vec<_>>(),
+            events
+                .iter()
+                .map(|event| event.sequence)
+                .collect::<Vec<_>>(),
             vec![1, 2, 3, 4]
         );
         assert_eq!(
@@ -472,9 +468,9 @@ mod tests {
             let mut review = ResolutionReviewSession::new(format!("intent-{expected:?}")).unwrap();
             review.submit("agent").unwrap();
             match expected {
-                ResolutionState::Contradiction => review
-                    .mark_contradiction("validator", reason)
-                    .unwrap(),
+                ResolutionState::Contradiction => {
+                    review.mark_contradiction("validator", reason).unwrap()
+                }
                 ResolutionState::Unsupported => {
                     review.mark_unsupported("validator", reason).unwrap()
                 }

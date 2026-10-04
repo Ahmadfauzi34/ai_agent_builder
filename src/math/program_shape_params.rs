@@ -18,10 +18,7 @@ pub(crate) const PARAM_SLICE_RANK4: u8 = 5;
 pub(crate) enum FixedShapeParams {
     Reshape([u32; 4]),
     Permute([u32; 4]),
-    Slice {
-        starts: [u32; 4],
-        ends: [u32; 4],
-    },
+    Slice { starts: [u32; 4], ends: [u32; 4] },
 }
 
 impl FixedShapeParams {
@@ -78,12 +75,11 @@ impl FixedShapeParams {
 
     pub(crate) fn words(self) -> [u32; SHAPE_PARAM_WORDS] {
         match self {
-            Self::Reshape(shape) | Self::Permute(shape) => [
-                shape[0], shape[1], shape[2], shape[3], 0, 0, 0, 0,
-            ],
+            Self::Reshape(shape) | Self::Permute(shape) => {
+                [shape[0], shape[1], shape[2], shape[3], 0, 0, 0, 0]
+            }
             Self::Slice { starts, ends } => [
-                starts[0], starts[1], starts[2], starts[3],
-                ends[0], ends[1], ends[2], ends[3],
+                starts[0], starts[1], starts[2], starts[3], ends[0], ends[1], ends[2], ends[3],
             ],
         }
     }
@@ -227,10 +223,7 @@ mod tests {
             FixedShapeParams::decode(params.kind(), &encoded).unwrap(),
             params
         );
-        assert_eq!(
-            params.slice_usize(),
-            Some(([0, 1, 2, 3], [1, 2, 4, 8]))
-        );
+        assert_eq!(params.slice_usize(), Some(([0, 1, 2, 3], [1, 2, 4, 8])));
         assert!(FixedShapeParams::slice(&[0, 0, 2, 0], &[1, 1, 2, 1]).is_err());
     }
 

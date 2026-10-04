@@ -5,19 +5,14 @@ use burn_research::input_port_edge_binding::bind_input_port_consumer_edge;
 use burn_research::introspection::describe_graph;
 use burn_research::registry::LayerRegistry;
 use burn_research::semantic_lifecycle::{
-    bind_semantic_lifecycle_transition, semantic_lifecycle_identity,
-    semantic_lifecycle_projection, semantic_lifecycle_transition, SemanticTransitionSpec,
+    bind_semantic_lifecycle_transition, semantic_lifecycle_identity, semantic_lifecycle_projection,
+    semantic_lifecycle_transition, SemanticTransitionSpec,
 };
 use burn_research::workspace::AgentWorkspace;
 use burn_research::workspace_ops::workspace_init_unary;
 use burn_research::WasmTensor;
 
-fn two_step_graph() -> (
-    AgentWorkspace,
-    AgentGraphBuilder,
-    LayerRegistry,
-    u8,
-) {
+fn two_step_graph() -> (AgentWorkspace, AgentGraphBuilder, LayerRegistry, u8) {
     let mut workspace = AgentWorkspace::new(4).unwrap();
     let mut builder = AgentGraphBuilder::new(4).unwrap();
     let mut registry = LayerRegistry::new();
@@ -76,9 +71,7 @@ fn two_step_graph() -> (
 fn lifecycle_chain_changes_semantic_identity_not_program_or_numeric_output() {
     let (workspace, mut builder, registry, output_slot) = two_step_graph();
 
-    let graph_before = builder
-        .compile_with_output(&registry, output_slot)
-        .unwrap();
+    let graph_before = builder.compile_with_output(&registry, output_slot).unwrap();
     let program_before = graph_before.program_identity();
     let input = WasmTensor::new(&[-2.0, -0.5, 1.25, 3.0], &[1, 4, 1, 1]);
     let output_before = graph_before.run(&registry, &input).unwrap().to_array();
@@ -91,13 +84,7 @@ fn lifecycle_chain_changes_semantic_identity_not_program_or_numeric_output() {
         "feature".into(),
     )
     .unwrap();
-    assert!(bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &first,
-        0,
-    )
-    .unwrap());
+    assert!(bind_semantic_lifecycle_transition(&workspace, &mut builder, &first, 0,).unwrap());
 
     let second = SemanticTransitionSpec::new(
         "feature-to-candidate".into(),
@@ -105,17 +92,9 @@ fn lifecycle_chain_changes_semantic_identity_not_program_or_numeric_output() {
         "candidate".into(),
     )
     .unwrap();
-    assert!(bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &second,
-        1,
-    )
-    .unwrap());
+    assert!(bind_semantic_lifecycle_transition(&workspace, &mut builder, &second, 1,).unwrap());
 
-    let graph_after = builder
-        .compile_with_output(&registry, output_slot)
-        .unwrap();
+    let graph_after = builder.compile_with_output(&registry, output_slot).unwrap();
     let program_after = graph_after.program_identity();
     let output_after = graph_after.run(&registry, &input).unwrap().to_array();
     let lifecycle_after: serde_json::Value =
@@ -129,10 +108,8 @@ fn lifecycle_chain_changes_semantic_identity_not_program_or_numeric_output() {
     );
     assert_eq!(lifecycle_after["transition_count"], 2);
 
-    let second_status: serde_json::Value = serde_json::from_str(
-        &semantic_lifecycle_transition(&builder, 1).unwrap(),
-    )
-    .unwrap();
+    let second_status: serde_json::Value =
+        serde_json::from_str(&semantic_lifecycle_transition(&builder, 1).unwrap()).unwrap();
     assert_eq!(
         second_status["transition"]["inputs"][0]["source_kind"],
         "prior_transition"
@@ -141,19 +118,16 @@ fn lifecycle_chain_changes_semantic_identity_not_program_or_numeric_output() {
         second_status["transition"]["inputs"][0]["source_step_index"],
         0
     );
-    assert_eq!(
-        second_status["transition"]["inputs"][0]["role"],
-        "feature"
-    );
-    assert_eq!(
-        second_status["transition"]["output"]["role"],
-        "candidate"
-    );
+    assert_eq!(second_status["transition"]["inputs"][0]["role"], "feature");
+    assert_eq!(second_status["transition"]["output"]["role"], "candidate");
 
     let projection: serde_json::Value =
         serde_json::from_str(&semantic_lifecycle_projection(&builder)).unwrap();
     assert_eq!(projection["coverage_complete"], true);
-    assert_eq!(projection["unbound_step_indices"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        projection["unbound_step_indices"].as_array().unwrap().len(),
+        0
+    );
 
     let description: serde_json::Value =
         serde_json::from_str(&describe_graph(&workspace, &builder, &registry).unwrap()).unwrap();
@@ -182,20 +156,8 @@ fn lifecycle_binding_is_idempotent_and_conflicting_rebind_fails_closed() {
     )
     .unwrap();
 
-    assert!(bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &first,
-        0,
-    )
-    .unwrap());
-    assert!(!bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &first,
-        0,
-    )
-    .unwrap());
+    assert!(bind_semantic_lifecycle_transition(&workspace, &mut builder, &first, 0,).unwrap());
+    assert!(!bind_semantic_lifecycle_transition(&workspace, &mut builder, &first, 0,).unwrap());
 
     let before = semantic_lifecycle_transition(&builder, 0).unwrap();
     let conflicting = SemanticTransitionSpec::new(
@@ -204,13 +166,8 @@ fn lifecycle_binding_is_idempotent_and_conflicting_rebind_fails_closed() {
         "state".into(),
     )
     .unwrap();
-    let err = bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &conflicting,
-        0,
-    )
-    .unwrap_err();
+    let err =
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &conflicting, 0).unwrap_err();
     assert!(err.contains("different immutable semantic lifecycle transition"));
     assert_eq!(semantic_lifecycle_transition(&builder, 0).unwrap(), before);
 }
@@ -234,13 +191,8 @@ fn external_provenance_drift_blocks_lifecycle_binding() {
         "feature".into(),
     )
     .unwrap();
-    let err = bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &transition,
-        0,
-    )
-    .unwrap_err();
+    let err =
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &transition, 0).unwrap_err();
 
     assert!(err.contains("provenance drift"));
     let status: serde_json::Value =
@@ -258,13 +210,8 @@ fn internal_lineage_requires_prior_transition_and_exact_role_match() {
         "candidate".into(),
     )
     .unwrap();
-    let err = bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &missing,
-        1,
-    )
-    .unwrap_err();
+    let err =
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &missing, 1).unwrap_err();
     assert!(err.contains("producer step 0 has no semantic lifecycle transition"));
 
     let first = SemanticTransitionSpec::new(
@@ -273,13 +220,7 @@ fn internal_lineage_requires_prior_transition_and_exact_role_match() {
         "feature".into(),
     )
     .unwrap();
-    bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &first,
-        0,
-    )
-    .unwrap();
+    bind_semantic_lifecycle_transition(&workspace, &mut builder, &first, 0).unwrap();
 
     let mismatch = SemanticTransitionSpec::new(
         "wrong-role".into(),
@@ -287,12 +228,7 @@ fn internal_lineage_requires_prior_transition_and_exact_role_match() {
         "candidate".into(),
     )
     .unwrap();
-    let err = bind_semantic_lifecycle_transition(
-        &workspace,
-        &mut builder,
-        &mismatch,
-        1,
-    )
-    .unwrap_err();
+    let err =
+        bind_semantic_lifecycle_transition(&workspace, &mut builder, &mismatch, 1).unwrap_err();
     assert!(err.contains("declared state, lineage resolves to feature"));
 }

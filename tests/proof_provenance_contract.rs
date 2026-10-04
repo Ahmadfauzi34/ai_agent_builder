@@ -11,8 +11,7 @@ use burn_research::WasmTensor;
 
 #[test]
 fn proof_provenance_contract_is_artifact_discoverable() {
-    let caps: serde_json::Value =
-        serde_json::from_str(&proof_provenance_capabilities()).unwrap();
+    let caps: serde_json::Value = serde_json::from_str(&proof_provenance_capabilities()).unwrap();
     assert_eq!(caps["schema_id"], "burn-research.proof-provenance.v1");
     assert_eq!(
         caps["authorities"]["caller_attestation"],
@@ -30,7 +29,12 @@ fn legacy_claim_attestation_and_verifier_receipt_remain_separate() {
     let registry = LayerRegistry::new();
 
     workspace
-        .record_proof("legacy-self-claim".into(), true, 999.0, "caller supplied".into())
+        .record_proof(
+            "legacy-self-claim".into(),
+            true,
+            999.0,
+            "caller supplied".into(),
+        )
         .unwrap();
     workspace_record_attestation(
         &mut workspace,
@@ -59,7 +63,10 @@ fn legacy_claim_attestation_and_verifier_receipt_remain_separate() {
     assert_eq!(ledger["legacy_proofs"]["rows"].as_array().unwrap().len(), 1);
     assert_eq!(ledger["attestations"]["rows"].as_array().unwrap().len(), 1);
     assert_eq!(
-        ledger["verifier_receipts"]["rows"].as_array().unwrap().len(),
+        ledger["verifier_receipts"]["rows"]
+            .as_array()
+            .unwrap()
+            .len(),
         1
     );
 
@@ -80,7 +87,9 @@ fn graph_receipt_binds_burn_reference_and_program_identity() {
     let mut builder = AgentGraphBuilder::new(2).unwrap();
     let mut registry = LayerRegistry::new();
 
-    let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(id);
     let out = workspace_init_unary(
         &mut workspace,
@@ -146,10 +155,7 @@ fn numerical_failure_is_failed_receipt_not_transport_failure() {
 
     let ledger: serde_json::Value =
         serde_json::from_str(&workspace_proof_ledger(&workspace)).unwrap();
-    assert_eq!(
-        ledger["verifier_receipts"]["rows"][0]["state"],
-        "failed"
-    );
+    assert_eq!(ledger["verifier_receipts"]["rows"][0]["state"], "failed");
 }
 
 #[test]
@@ -169,15 +175,8 @@ fn invalid_candidate_does_not_mutate_ledger_or_consume_receipt_id() {
     assert_eq!(workspace.snapshot(), before);
 
     let receipt: serde_json::Value = serde_json::from_str(
-        &workspace_verify_vector_receipt(
-            &mut workspace,
-            &[1.0],
-            &[1.0],
-            0.0,
-            0.0,
-            "valid".into(),
-        )
-        .unwrap(),
+        &workspace_verify_vector_receipt(&mut workspace, &[1.0], &[1.0], 0.0, 0.0, "valid".into())
+            .unwrap(),
     )
     .unwrap();
     assert_eq!(receipt["receipt_id"], 1);

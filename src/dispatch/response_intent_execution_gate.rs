@@ -50,7 +50,7 @@ impl ResponseDispatchRoute {
                 "\"operation\":\"{}\",",
                 "\"route_mode\":\"{}\",",
                 "\"explicit_executor_required\":{},",
-                "\"prerequisite\":\"{}\"" ,
+                "\"prerequisite\":\"{}\"",
                 "}}"
             ),
             json_escape(&self.authority),
@@ -270,7 +270,10 @@ mod tests {
         }
     }
 
-    fn failed_graph_inbox() -> (crate::resolution::ResolutionSnapshot, ResolutionEvidenceInbox) {
+    fn failed_graph_inbox() -> (
+        crate::resolution::ResolutionSnapshot,
+        ResolutionEvidenceInbox,
+    ) {
         let resolution = resolved_snapshot("intent-gate");
         let projection = projection("intent-gate", resolution.revision, "spec-gate");
         let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
@@ -317,13 +320,9 @@ mod tests {
     #[test]
     fn reverify_routes_by_typed_evidence_kind() {
         let (_, inbox) = failed_graph_inbox();
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         let gate = response_intent_execution_gate(&inbox, &intent);
         assert!(gate.dispatchable);
@@ -385,13 +384,9 @@ mod tests {
         for (evidence, operation) in cases {
             let mut inbox = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();
             inbox.record(evidence).unwrap();
-            let intent = create_agent_response_intent(
-                &inbox,
-                0,
-                EvidenceResponseAction::Reverify,
-                "agent",
-            )
-            .unwrap();
+            let intent =
+                create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent")
+                    .unwrap();
             let gate = response_intent_execution_gate(&inbox, &intent);
             assert!(gate.dispatchable);
             assert_eq!(gate.route.as_ref().unwrap().operation, operation);
@@ -403,13 +398,9 @@ mod tests {
     fn ignore_is_explicit_noop_route_and_keeps_evidence_recorded() {
         let (_, inbox) = failed_graph_inbox();
         let before_len = inbox.len();
-        let intent = create_agent_response_intent(
-            &inbox,
-            0,
-            EvidenceResponseAction::Ignore,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Ignore, "agent")
+                .unwrap();
 
         let gate = response_intent_execution_gate(&inbox, &intent);
         assert!(gate.dispatchable);
@@ -424,13 +415,9 @@ mod tests {
     #[test]
     fn intent_against_different_evidence_closes_gate_without_route() {
         let (resolution, inbox_a) = failed_graph_inbox();
-        let intent = create_agent_response_intent(
-            &inbox_a,
-            0,
-            EvidenceResponseAction::Reverify,
-            "agent",
-        )
-        .unwrap();
+        let intent =
+            create_agent_response_intent(&inbox_a, 0, EvidenceResponseAction::Reverify, "agent")
+                .unwrap();
 
         let projection = projection("intent-gate", resolution.revision, "spec-gate");
         let mut inbox_b = ResolutionEvidenceInbox::new(&resolution, &projection).unwrap();

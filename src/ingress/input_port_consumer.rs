@@ -1,3 +1,6 @@
+pub use crate::facade::ingress::{
+    input_port_consumer_capabilities, input_port_consumer_compatibility,
+};
 use std::collections::BTreeSet;
 
 use wasm_bindgen::prelude::*;
@@ -5,12 +8,12 @@ use wasm_bindgen::prelude::*;
 use crate::input_port::role_valid;
 use crate::workspace::AgentWorkspace;
 
-const INPUT_PORT_CONSUMER_V1: &str =
+pub(crate) const INPUT_PORT_CONSUMER_V1: &str =
     include_str!("../../docs/contracts/agent-input-port-consumer.v1.json");
 const MAX_CONSUMER_ID_BYTES: usize = 128;
 const MAX_ACCEPTED_ROLES: usize = 16;
 
-fn json_escape(value: &str) -> String {
+pub(crate) fn json_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len() + 8);
     for ch in value.chars() {
         match ch {
@@ -26,11 +29,15 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn bool_json(value: bool) -> &'static str {
-    if value { "true" } else { "false" }
+pub(crate) fn bool_json(value: bool) -> &'static str {
+    if value {
+        "true"
+    } else {
+        "false"
+    }
 }
 
-fn string_array_json(values: &[String]) -> String {
+pub(crate) fn string_array_json(values: &[String]) -> String {
     let body = values
         .iter()
         .map(|value| format!("\"{}\"", json_escape(value)))
@@ -92,11 +99,11 @@ fn parse_roles(value: &str) -> Result<Vec<String>, String> {
 
 #[wasm_bindgen]
 pub struct InputPortConsumerSpec {
-    consumer_id: String,
-    accepted_roles: Vec<String>,
-    allow_extension_roles: bool,
-    require_fingerprint: bool,
-    minimum_revision: u64,
+    pub(crate) consumer_id: String,
+    pub(crate) accepted_roles: Vec<String>,
+    pub(crate) allow_extension_roles: bool,
+    pub(crate) require_fingerprint: bool,
+    pub(crate) minimum_revision: u64,
 }
 
 impl InputPortConsumerSpec {
@@ -216,93 +223,6 @@ impl InputPortConsumerSpec {
     }
 }
 
-#[wasm_bindgen(js_name = inputPortConsumerCapabilities)]
-pub fn input_port_consumer_capabilities() -> String {
-    INPUT_PORT_CONSUMER_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = inputPortConsumerCompatibility)]
-pub fn input_port_consumer_compatibility(
-    workspace: &AgentWorkspace,
-    consumer: &InputPortConsumerSpec,
-) -> String {
-    let Some(metadata) = workspace.input_port_metadata() else {
-        return format!(
-            concat!(
-                "{{",
-                "\"schema_version\":1,",
-                "\"schema_id\":\"burn-research.input-port-consumer-result.v1\",",
-                "\"status\":\"unknown\",",
-                "\"compatible\":null,",
-                "\"execution_authorized\":false,",
-                "\"decision_authority\":\"agent\",",
-                "\"consumer\":{},",
-                "\"reason\":\"semantic_port_unbound\"",
-                "}}"
-            ),
-            consumer.json(),
-        );
-    };
-
-    let role_match = consumer.role_matches(&metadata.role);
-    let fingerprint_present = !metadata.fingerprint.is_empty();
-    let fingerprint_ok = !consumer.require_fingerprint || fingerprint_present;
-    let revision_ok =
-        consumer.minimum_revision == 0 || metadata.revision >= consumer.minimum_revision;
-    let compatible = role_match && fingerprint_ok && revision_ok;
-
-    let mut reasons = Vec::<String>::new();
-    if !role_match {
-        reasons.push("role_not_accepted".to_string());
-    }
-    if !fingerprint_ok {
-        reasons.push("fingerprint_required".to_string());
-    }
-    if !revision_ok {
-        reasons.push("revision_too_old".to_string());
-    }
-
-    format!(
-        concat!(
-            "{{",
-            "\"schema_version\":1,",
-            "\"schema_id\":\"burn-research.input-port-consumer-result.v1\",",
-            "\"status\":\"{}\",",
-            "\"compatible\":{},",
-            "\"execution_authorized\":false,",
-            "\"decision_authority\":\"agent\",",
-            "\"consumer\":{},",
-            "\"input_port\":{{",
-                "\"slot\":0,",
-                "\"role\":\"{}\",",
-                "\"provenance\":{{",
-                    "\"source\":\"{}\",",
-                    "\"revision\":{},",
-                    "\"fingerprint_present\":{}",
-                "}}",
-            "}},",
-            "\"predicates\":{{",
-                "\"role_match\":{},",
-                "\"fingerprint_ok\":{},",
-                "\"revision_ok\":{}",
-            "}},",
-            "\"reasons\":{}",
-            "}}"
-        ),
-        if compatible { "compatible" } else { "incompatible" },
-        bool_json(compatible),
-        consumer.json(),
-        json_escape(&metadata.role),
-        json_escape(&metadata.source),
-        metadata.revision,
-        bool_json(fingerprint_present),
-        bool_json(role_match),
-        bool_json(fingerprint_ok),
-        bool_json(revision_ok),
-        string_array_json(&reasons),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -314,11 +234,17 @@ mod tests {
     #[test]
     fn unbound_port_produces_unknown_not_rejection() {
         let workspace = AgentWorkspace::new(2).unwrap();
-        let consumer =
-            InputPortConsumerSpec::new("feature-extractor".into(), "[\"observation\"]".into(), false, false, 0)
-                .unwrap();
+        let consumer = InputPortConsumerSpec::new(
+            "feature-extractor".into(),
+            "[\"observation\"]".into(),
+            false,
+            false,
+            0,
+        )
+        .unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &consumer)).unwrap();
+            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &consumer))
+                .unwrap();
         assert_eq!(result["status"], "unknown");
         assert!(result["compatible"].is_null());
         assert_eq!(result["execution_authorized"], false);
@@ -345,7 +271,8 @@ mod tests {
         )
         .unwrap();
         let result: serde_json::Value =
-            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &compatible)).unwrap();
+            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &compatible))
+                .unwrap();
         assert_eq!(result["status"], "compatible");
         assert_eq!(result["predicates"]["role_match"], true);
         assert_eq!(result["predicates"]["fingerprint_ok"], true);
@@ -398,7 +325,8 @@ mod tests {
         )
         .unwrap();
         let extensible_result: serde_json::Value =
-            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &extensible)).unwrap();
+            serde_json::from_str(&input_port_consumer_compatibility(&workspace, &extensible))
+                .unwrap();
         assert_eq!(extensible_result["status"], "compatible");
     }
 

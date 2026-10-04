@@ -61,7 +61,7 @@ impl ResponseDispatchExecutorPreflight {
                 "\"simulated_effect\":\"{}\",",
                 "\"execution_authorized\":{},",
                 "\"execution_effect\":\"none\",",
-                "\"mutation\":\"{}\"" ,
+                "\"mutation\":\"{}\"",
                 "}}"
             ),
             self.request_ready,
@@ -394,12 +394,13 @@ mod tests {
         assert!(generic.request_ready);
         assert!(!generic.executor_ready);
 
-        let preflight =
-            preflight_revision_dispatch_executor(&inbox, &intent, &request, &chain);
+        let preflight = preflight_revision_dispatch_executor(&inbox, &intent, &request, &chain);
         assert!(preflight.request_ready);
         assert!(preflight.executor_ready);
         assert_eq!(preflight.status, "ready_revision_clone_preflight");
-        assert!(preflight.simulated_effect.starts_with("would_open_revision:"));
+        assert!(preflight
+            .simulated_effect
+            .starts_with("would_open_revision:"));
         assert_eq!(chain.snapshot(), before);
         assert!(!preflight.execution_authorized);
     }
@@ -420,8 +421,7 @@ mod tests {
 
         chain.open_revision(None, "r1").unwrap();
 
-        let preflight =
-            preflight_revision_dispatch_executor(&inbox, &intent, &request, &chain);
+        let preflight = preflight_revision_dispatch_executor(&inbox, &intent, &request, &chain);
         assert!(preflight.request_ready);
         assert!(!preflight.executor_ready);
         assert!(preflight.status.contains("revision_executor_rejected"));
@@ -464,7 +464,10 @@ mod tests {
     fn capability_contract_keeps_preflight_nonexecuting() {
         let contract: serde_json::Value =
             serde_json::from_str(response_dispatch_executor_preflight_capabilities()).unwrap();
-        assert_eq!(contract["role"], "executor_acceptance_preflight_nonexecuting");
+        assert_eq!(
+            contract["role"],
+            "executor_acceptance_preflight_nonexecuting"
+        );
         assert_eq!(contract["semantics"]["execution_authorized"], false);
         assert_eq!(contract["semantics"]["mutation"], "none");
     }

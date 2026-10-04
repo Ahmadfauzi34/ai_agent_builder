@@ -1,13 +1,14 @@
-use burn::prelude::*;
+use super::state_record::deterministic_record_bytes;
+pub use crate::facade::wasm_types::WasmNorm;
+use crate::{WasmBackend, WasmTensor};
 use burn::nn::{
     BatchNorm, BatchNormConfig, GroupNorm, GroupNormConfig, InstanceNorm, InstanceNormConfig,
     LayerNorm, LayerNormConfig, RmsNorm, RmsNormConfig,
 };
-use super::state_record::deterministic_record_bytes;
+use burn::prelude::*;
 use wasm_bindgen::prelude::*;
-use crate::{WasmBackend, WasmTensor};
 
-fn validate_group_config(num_groups: usize, num_channels: usize) -> Result<(), String> {
+pub(crate) fn validate_group_config(num_groups: usize, num_channels: usize) -> Result<(), String> {
     if num_groups == 0 {
         return Err("GroupNorm: num_groups must be greater than 0".to_string());
     }
@@ -19,14 +20,14 @@ fn validate_group_config(num_groups: usize, num_channels: usize) -> Result<(), S
     Ok(())
 }
 
-fn validate_rms_epsilon(epsilon: f64) -> Result<(), String> {
+pub(crate) fn validate_rms_epsilon(epsilon: f64) -> Result<(), String> {
     if !(epsilon > 0.0) {
         return Err(format!("RMSNorm: epsilon must be positive, got {epsilon}"));
     }
     Ok(())
 }
 
-fn validate_norm_axis(
+pub(crate) fn validate_norm_axis(
     shape: [usize; 4],
     axis: usize,
     expected: usize,
@@ -41,7 +42,7 @@ fn validate_norm_axis(
     Ok(())
 }
 
-fn norm_fail<T>(message: String) -> T {
+pub(crate) fn norm_fail<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -76,7 +77,7 @@ impl NormalizationConfig {
 }
 
 // --- MODULE ENUM ---
-#[derive(Module, Debug)] 
+#[derive(Module, Debug)]
 pub enum Normalization<B: Backend> {
     Batch(BatchNorm<B>),
     Group(GroupNorm<B>),
@@ -97,7 +98,7 @@ impl<B: Backend> Normalization<B> {
     }
 }
 
-fn validate_norm_state_structure(
+pub(crate) fn validate_norm_state_structure(
     current: &NormalizationRecord<WasmBackend>,
     incoming: &NormalizationRecord<WasmBackend>,
 ) -> Result<(), String> {
@@ -123,122 +124,6 @@ fn validate_norm_state_structure(
     Ok(())
 }
 
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmNorm {
-    inner: Normalization<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmNorm {
-    #[wasm_bindgen]
-    pub fn new_rms_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
-        Self::try_new_rms_norm(size, epsilon).unwrap_or_else(norm_fail)
-    }
-
-    #[wasm_bindgen]
-    pub fn new_layer_norm(size: usize, epsilon: Option<f64>) -> WasmNorm {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Layer(LayerNormConfig::new(size).with_epsilon(eps));
-        WasmNorm { inner: config.init(&device) }
-    }
-
-    #[wasm_bindgen]
-    pub fn new_batch_norm(num_features: usize, epsilon: Option<f64>) -> WasmNorm {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Batch(BatchNormConfig::new(num_features).with_epsilon(eps));
-        WasmNorm { inner: config.init(&device) }
-    }
-
-    #[wasm_bindgen]
-    pub fn new_group_norm(num_groups: usize, num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
-        Self::try_new_group_norm(num_groups, num_channels, epsilon).unwrap_or_else(norm_fail)
-    }
-
-    #[wasm_bindgen]
-    pub fn new_instance_norm(num_channels: usize, epsilon: Option<f64>) -> WasmNorm {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Instance(InstanceNormConfig::new(num_channels).with_epsilon(eps));
-        WasmNorm { inner: config.init(&device) }
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        self.try_forward(input).unwrap_or_else(norm_fail)
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: NormalizationRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "Norm loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_norm_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
-}
-
-impl WasmNorm {
-    pub(crate) fn try_new_rms_norm(size: usize, epsilon: Option<f64>) -> Result<Self, String> {
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        validate_rms_epsilon(eps)?;
-        let config = NormalizationConfig::Rms(RmsNormConfig::new(size).with_epsilon(eps));
-        Ok(WasmNorm { inner: config.init(&device) })
-    }
-
-    pub(crate) fn try_new_group_norm(
-        num_groups: usize,
-        num_channels: usize,
-        epsilon: Option<f64>,
-    ) -> Result<Self, String> {
-        validate_group_config(num_groups, num_channels)?;
-        let device = Default::default();
-        let eps = epsilon.unwrap_or(1e-5);
-        let config = NormalizationConfig::Group(
-            GroupNormConfig::new(num_groups, num_channels).with_epsilon(eps),
-        );
-        Ok(WasmNorm { inner: config.init(&device) })
-    }
-
-    pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        let shape = input.inner.dims();
-        match &self.inner {
-            Normalization::Batch(norm) => {
-                validate_norm_axis(shape, 1, norm.gamma.dims()[0], "BatchNorm forward")?;
-            }
-            Normalization::Group(norm) => {
-                validate_norm_axis(shape, 1, norm.num_channels, "GroupNorm forward")?;
-            }
-            Normalization::Instance(norm) => {
-                validate_norm_axis(shape, 1, norm.num_channels, "InstanceNorm forward")?;
-            }
-            Normalization::Layer(norm) => {
-                validate_norm_axis(shape, 3, norm.gamma.dims()[0], "LayerNorm forward")?;
-            }
-            Normalization::Rms(norm) => {
-                validate_norm_axis(shape, 3, norm.gamma.dims()[0], "RMSNorm forward")?;
-            }
-        }
-
-        let out = self.inner.forward(input.inner.clone());
-        Ok(WasmTensor { inner: out })
-    }
-}
-
 // ============================================================
 // FLOAT-BRIDGE + WEIGHT LAYOUT (M1b) — norm.
 // KONTRAK TRAINABLE-ONLY: hanya gamma (+ beta kalau ada) yang diekspos.
@@ -247,11 +132,11 @@ impl WasmNorm {
 // RmsNorm = gamma saja (tanpa beta).
 // ============================================================
 
-fn norm_param_len(p: &burn::module::Param<Tensor<WasmBackend, 1>>) -> usize {
+pub(crate) fn norm_param_len(p: &burn::module::Param<Tensor<WasmBackend, 1>>) -> usize {
     p.dims().iter().product::<usize>()
 }
 
-fn push_norm_param(
+pub(crate) fn push_norm_param(
     p: &burn::module::Param<Tensor<WasmBackend, 1>>,
     out: &mut Vec<f32>,
 ) -> Result<(), String> {
@@ -263,7 +148,7 @@ fn push_norm_param(
     Ok(())
 }
 
-fn set_norm_param(
+pub(crate) fn set_norm_param(
     p: &mut burn::module::Param<Tensor<WasmBackend, 1>>,
     data: &[f32],
 ) -> Result<(), String> {
@@ -276,16 +161,13 @@ fn set_norm_param(
         ));
     }
     let device: <WasmBackend as Backend>::Device = Default::default();
-    *p = burn::module::Param::from_data(
-        burn::tensor::TensorData::new(data.to_vec(), [n]),
-        &device,
-    );
+    *p = burn::module::Param::from_data(burn::tensor::TensorData::new(data.to_vec(), [n]), &device);
     Ok(())
 }
 
 // Seragamkan ekstraksi trainable: gamma selalu ada, beta kecuali Rms.
 // TITIK API: nama variant record + field (gamma/beta) mengikuti Burn 0.20.
-fn norm_trainable_refs(
+pub(crate) fn norm_trainable_refs(
     rec: &NormalizationRecord<WasmBackend>,
 ) -> (
     Option<&burn::module::Param<Tensor<WasmBackend, 1>>>,
@@ -297,99 +179,6 @@ fn norm_trainable_refs(
         NormalizationRecord::Instance(r) => (r.gamma.as_ref(), r.beta.as_ref()),
         NormalizationRecord::Layer(r) => (Some(&r.gamma), r.beta.as_ref()),
         NormalizationRecord::Rms(r) => (Some(&r.gamma), None),
-    }
-}
-
-#[wasm_bindgen]
-impl WasmNorm {
-    #[wasm_bindgen(js_name = getWeightsFlat)]
-    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
-        let rec = self.inner.clone().into_record();
-        let (gamma, beta) = norm_trainable_refs(&rec);
-        let mut out = Vec::new();
-        if let Some(g) = gamma {
-            push_norm_param(g, &mut out)?;
-        }
-        if let Some(b) = beta {
-            push_norm_param(b, &mut out)?;
-        }
-        Ok(out)
-    }
-
-    #[wasm_bindgen(js_name = setWeightsFlat)]
-    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
-        let mut rec = self.inner.clone().into_record();
-        // panjang trainable: pinjam immut, lalu lepas (blok tersendiri)
-        let (gl, bl) = {
-            let (g, b) = norm_trainable_refs(&rec);
-            (
-                g.map(norm_param_len).unwrap_or(0),
-                b.map(norm_param_len).unwrap_or(0)
-            )
-        };
-        let total = gl + bl;
-        if data.len() != total {
-            return Err(format!(
-                "setWeightsFlat: norm expected {} floats ({}{}), got {}",
-                total,
-                if gl > 0 { "gamma" } else { "" },
-                if bl > 0 { "+beta" } else { "" },
-                data.len()
-            ));
-        }
-        // tulis per-field sekuensial (tanpa pinjam-mut bersamaan)
-        match &mut rec {
-            NormalizationRecord::Batch(r) => {
-                set_norm_param(&mut r.gamma, &data[..gl])?;
-                set_norm_param(&mut r.beta, &data[gl..])?;
-            }
-            NormalizationRecord::Group(r) => {
-                if let Some(ref mut g) = r.gamma {
-                    set_norm_param(g, &data[..gl])?;
-                }
-                if let Some(ref mut b) = r.beta {
-                    set_norm_param(b, &data[gl..])?;
-                }
-            }
-            NormalizationRecord::Instance(r) => {
-                if let Some(ref mut g) = r.gamma {
-                    set_norm_param(g, &data[..gl])?;
-                }
-                if let Some(ref mut b) = r.beta {
-                    set_norm_param(b, &data[gl..])?;
-                }
-            }
-            NormalizationRecord::Layer(r) => {
-                set_norm_param(&mut r.gamma, &data[..gl])?;
-                if let Some(ref mut b) = r.beta {
-                    set_norm_param(b, &data[gl..])?;
-                }
-            }
-            NormalizationRecord::Rms(r) => {
-                set_norm_param(&mut r.gamma, &data[..gl])?;
-            }
-        }
-        self.inner = self.inner.clone().load_record(rec);
-        Ok(())
-    }
-}
-
-impl WasmNorm {
-    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
-        let rec = self.inner.clone().into_record();
-        let (gamma, beta) = norm_trainable_refs(&rec);
-        let mut segs = Vec::new();
-        if let Some(g) = gamma {
-            segs.push(("gamma", norm_param_len(g)));
-        }
-        if let Some(b) = beta {
-            segs.push(("beta", norm_param_len(b)));
-        }
-        segs
-    }
-
-    pub fn weight_layout(&self) -> String {
-        crate::layers::layout::segs_json(&self.weight_segs())
     }
 }
 

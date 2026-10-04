@@ -1,13 +1,12 @@
 #[cfg(test)]
 mod hardening_tests {
-    use crate::es::optimizer::EsOptimizer;
-    use crate::registry::LayerRegistry;
     use crate::agent::AgentLayerSpec;
+    use crate::es::optimizer::EsOptimizer;
     use crate::layers::binary::WasmBinary;
     use crate::protocol::{
-        LAYER_EMBEDDING, LAYER_LINEAR, MAX_ALLOC_ELEMENTS, OP_INIT, PacketHeader,
-        VARIANT_NONE,
+        PacketHeader, LAYER_EMBEDDING, LAYER_LINEAR, MAX_ALLOC_ELEMENTS, OP_INIT, VARIANT_NONE,
     };
+    use crate::registry::LayerRegistry;
     use crate::WasmTensor;
 
     fn mk_init_header(layer_type: u8, payload_len: usize) -> PacketHeader {
@@ -97,7 +96,10 @@ mod hardening_tests {
             "rejection must be fast (<100 ms)"
         );
         assert!(err.contains("tensor_too_large"), "unexpected error: {err}");
-        assert!(err.contains("embedding weight"), "must name the stage: {err}");
+        assert!(
+            err.contains("embedding weight"),
+            "must name the stage: {err}"
+        );
     }
 
     // ---- Complaint #18: raw unreachable trap on giant tensor runs ----
@@ -109,12 +111,10 @@ mod hardening_tests {
         reg.init_layer(&mk_init_header(LAYER_LINEAR, p.len()), &p)
             .unwrap();
         // Input one element over the budget.
-        let big = WasmTensor::new(&vec![0.0f32; MAX_ALLOC_ELEMENTS + 1], &[
-            MAX_ALLOC_ELEMENTS + 1,
-            1,
-            1,
-            1,
-        ]);
+        let big = WasmTensor::new(
+            &vec![0.0f32; MAX_ALLOC_ELEMENTS + 1],
+            &[MAX_ALLOC_ELEMENTS + 1, 1, 1, 1],
+        );
         let err = match reg.forward_layer(1, LAYER_LINEAR, &big) {
             Ok(_) => panic!("expected forward_layer to reject the oversized input"),
             Err(err) => err,

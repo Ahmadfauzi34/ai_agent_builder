@@ -1,9 +1,11 @@
+pub use crate::facade::math::numeric_kernel_capabilities;
 use burn::prelude::*;
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmNumericKernel;
 use crate::WasmTensor;
 
-fn validate_same_shape(a: &WasmTensor, b: &WasmTensor, op: &str) -> Result<(), String> {
+pub(crate) fn validate_same_shape(a: &WasmTensor, b: &WasmTensor, op: &str) -> Result<(), String> {
     let a_shape = a.inner.dims();
     let b_shape = b.inner.dims();
     if a_shape != b_shape {
@@ -14,7 +16,7 @@ fn validate_same_shape(a: &WasmTensor, b: &WasmTensor, op: &str) -> Result<(), S
     Ok(())
 }
 
-fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
     for (index, value) in input.to_array().into_iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
@@ -25,7 +27,7 @@ fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_nonnegative(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_nonnegative(input: &WasmTensor, context: &str) -> Result<(), String> {
     validate_finite(input, context)?;
     for (index, value) in input.to_array().into_iter().enumerate() {
         if value < 0.0 {
@@ -37,7 +39,7 @@ fn validate_nonnegative(input: &WasmTensor, context: &str) -> Result<(), String>
     Ok(())
 }
 
-fn validate_positive(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_positive(input: &WasmTensor, context: &str) -> Result<(), String> {
     validate_finite(input, context)?;
     for (index, value) in input.to_array().into_iter().enumerate() {
         if value <= 0.0 {
@@ -49,150 +51,23 @@ fn validate_positive(input: &WasmTensor, context: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_nonzero(input: &WasmTensor, context: &str) -> Result<(), String> {
+pub(crate) fn validate_nonzero(input: &WasmTensor, context: &str) -> Result<(), String> {
     validate_finite(input, context)?;
     for (index, value) in input.to_array().into_iter().enumerate() {
         if value == 0.0 {
-            return Err(format!(
-                "{context}: zero denominator at index {index}"
-            ));
+            return Err(format!("{context}: zero denominator at index {index}"));
         }
     }
     Ok(())
 }
 
-fn checked_output(inner: Tensor<crate::WasmBackend, 4>, context: &str) -> Result<WasmTensor, String> {
+pub(crate) fn checked_output(
+    inner: Tensor<crate::WasmBackend, 4>,
+    context: &str,
+) -> Result<WasmTensor, String> {
     let output = WasmTensor { inner };
     validate_finite(&output, context)?;
     Ok(output)
-}
-
-#[wasm_bindgen(js_name = numericKernelCapabilities)]
-pub fn numeric_kernel_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.numeric-kernel.v1\",",
-        "\"backend\":\"Burn Tensor<WasmBackend,4>\",",
-        "\"broadcasting\":\"forbidden_v1\",",
-        "\"binary_ops\":[\"add\",\"sub\",\"mul\",\"div\"],",
-        "\"unary_ops\":[\"abs\",\"sqrt\",\"exp\",\"log\"],",
-        "\"bounded_ops\":[\"clamp\"],",
-        "\"predicates\":[\"allFinite\"],",
-        "\"contracts\":{",
-        "\"finite_inputs\":true,",
-        "\"finite_outputs\":true,",
-        "\"divisor\":\"finite_nonzero\",",
-        "\"sqrt_domain\":\"x>=0\",",
-        "\"log_domain\":\"x>0\",",
-        "\"clamp_bounds\":\"finite_min_lte_max\"",
-        "}",
-        "}"
-    )
-    .to_string()
-}
-
-/// Stateless Burn-backed primitive math surface.
-///
-/// Numeric Kernel v1 intentionally forbids implicit broadcasting and rejects invalid numerical
-/// domains as controlled errors instead of silently producing NaN/Inf. It is a lower-level math
-/// primitive, not a neural layer or graph policy.
-#[wasm_bindgen]
-pub struct WasmNumericKernel;
-
-#[wasm_bindgen]
-impl WasmNumericKernel {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmNumericKernel {
-        WasmNumericKernel
-    }
-
-    pub fn add(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_same_shape(a, b, "add")?;
-        validate_finite(a, "NumericKernel.add lhs")?;
-        validate_finite(b, "NumericKernel.add rhs")?;
-        checked_output(
-            a.inner.clone().add(b.inner.clone()),
-            "NumericKernel.add output",
-        )
-    }
-
-    pub fn sub(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_same_shape(a, b, "sub")?;
-        validate_finite(a, "NumericKernel.sub lhs")?;
-        validate_finite(b, "NumericKernel.sub rhs")?;
-        checked_output(
-            a.inner.clone().sub(b.inner.clone()),
-            "NumericKernel.sub output",
-        )
-    }
-
-    pub fn mul(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_same_shape(a, b, "mul")?;
-        validate_finite(a, "NumericKernel.mul lhs")?;
-        validate_finite(b, "NumericKernel.mul rhs")?;
-        checked_output(
-            a.inner.clone().mul(b.inner.clone()),
-            "NumericKernel.mul output",
-        )
-    }
-
-    pub fn div(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_same_shape(a, b, "div")?;
-        validate_finite(a, "NumericKernel.div lhs")?;
-        validate_nonzero(b, "NumericKernel.div rhs")?;
-        checked_output(
-            a.inner.clone().div(b.inner.clone()),
-            "NumericKernel.div output",
-        )
-    }
-
-    pub fn abs(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_finite(input, "NumericKernel.abs input")?;
-        checked_output(input.inner.clone().abs(), "NumericKernel.abs output")
-    }
-
-    pub fn sqrt(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_nonnegative(input, "NumericKernel.sqrt input")?;
-        checked_output(input.inner.clone().sqrt(), "NumericKernel.sqrt output")
-    }
-
-    pub fn exp(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_finite(input, "NumericKernel.exp input")?;
-        checked_output(input.inner.clone().exp(), "NumericKernel.exp output")
-    }
-
-    pub fn log(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
-        validate_positive(input, "NumericKernel.log input")?;
-        checked_output(input.inner.clone().log(), "NumericKernel.log output")
-    }
-
-    pub fn clamp(
-        &self,
-        input: &WasmTensor,
-        min: f32,
-        max: f32,
-    ) -> Result<WasmTensor, String> {
-        if !min.is_finite() || !max.is_finite() {
-            return Err(format!(
-                "NumericKernel.clamp: bounds must be finite, got min={min}, max={max}"
-            ));
-        }
-        if min > max {
-            return Err(format!(
-                "NumericKernel.clamp: min must be <= max, got min={min}, max={max}"
-            ));
-        }
-        validate_finite(input, "NumericKernel.clamp input")?;
-        checked_output(
-            input.inner.clone().clamp(min, max),
-            "NumericKernel.clamp output",
-        )
-    }
-
-    #[wasm_bindgen(js_name = allFinite)]
-    pub fn all_finite(&self, input: &WasmTensor) -> bool {
-        input.to_array().into_iter().all(f32::is_finite)
-    }
 }
 
 #[cfg(test)]
@@ -247,20 +122,34 @@ mod tests {
         let kernel = WasmNumericKernel::new();
 
         let abs_input = WasmTensor::new(&[-2.0, 0.0, 3.0], &[1, 3, 1, 1]);
-        assert_eq!(kernel.abs(&abs_input).unwrap().to_array(), vec![2.0, 0.0, 3.0]);
+        assert_eq!(
+            kernel.abs(&abs_input).unwrap().to_array(),
+            vec![2.0, 0.0, 3.0]
+        );
 
         let sqrt_input = WasmTensor::new(&[0.0, 4.0, 9.0], &[1, 3, 1, 1]);
-        assert_eq!(kernel.sqrt(&sqrt_input).unwrap().to_array(), vec![0.0, 2.0, 3.0]);
+        assert_eq!(
+            kernel.sqrt(&sqrt_input).unwrap().to_array(),
+            vec![0.0, 2.0, 3.0]
+        );
         let negative = WasmTensor::new(&[-1.0], &[1, 1, 1, 1]);
         assert!(kernel.sqrt(&negative).is_err());
 
         let exp_input = WasmTensor::new(&[0.0, 1.0], &[1, 2, 1, 1]);
-        assert_close(&kernel.exp(&exp_input).unwrap().to_array(), &[1.0, std::f32::consts::E], 1e-6);
+        assert_close(
+            &kernel.exp(&exp_input).unwrap().to_array(),
+            &[1.0, std::f32::consts::E],
+            1e-6,
+        );
         let overflow = WasmTensor::new(&[100.0], &[1, 1, 1, 1]);
         assert!(kernel.exp(&overflow).is_err());
 
         let log_input = WasmTensor::new(&[1.0, std::f32::consts::E], &[1, 2, 1, 1]);
-        assert_close(&kernel.log(&log_input).unwrap().to_array(), &[0.0, 1.0], 1e-6);
+        assert_close(
+            &kernel.log(&log_input).unwrap().to_array(),
+            &[0.0, 1.0],
+            1e-6,
+        );
         let zero = WasmTensor::new(&[0.0], &[1, 1, 1, 1]);
         assert!(kernel.log(&zero).is_err());
     }

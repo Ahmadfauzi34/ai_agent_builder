@@ -86,12 +86,17 @@ fn run() -> Result<(), String> {
     let ignore_intent =
         create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Ignore, "agent")?;
     let ignore_request = create_ignore_dispatch_request(&inbox, &ignore_intent)?;
-    let ignore =
-        response_dispatch_executor_preflight(&inbox, &ignore_intent, &ignore_request);
+    let ignore = response_dispatch_executor_preflight(&inbox, &ignore_intent, &ignore_request);
     ensure(ignore.request_ready, "ignore request not ready");
-    ensure(ignore.executor_ready, "ignore no-op executor should be ready");
+    ensure(
+        ignore.executor_ready,
+        "ignore no-op executor should be ready",
+    );
     ensure(ignore.status == "ready_noop", "ignore status drift");
-    ensure(!ignore.execution_authorized, "ignore preflight authorized execution");
+    ensure(
+        !ignore.execution_authorized,
+        "ignore preflight authorized execution",
+    );
 
     let info_intent = create_agent_response_intent(
         &inbox,
@@ -107,23 +112,21 @@ fn run() -> Result<(), String> {
     )?;
     let info = response_dispatch_executor_preflight(&inbox, &info_intent, &info_request);
     ensure(info.request_ready, "information request not ready");
-    ensure(!info.executor_ready, "external authority should remain deferred");
+    ensure(
+        !info.executor_ready,
+        "external authority should remain deferred",
+    );
     ensure(
         info.status == "deferred:external_resolution_review_authority",
         "external review status drift",
     );
 
     let chain = ResolutionRevisionChain::from_approved(review.snapshot())?;
-    let revision_intent = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::ProposeRevision,
-        "agent",
-    )?;
+    let revision_intent =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::ProposeRevision, "agent")?;
     let revision_request =
         create_revision_dispatch_request(&inbox, &revision_intent, &chain, "r1", None)?;
-    let generic =
-        response_dispatch_executor_preflight(&inbox, &revision_intent, &revision_request);
+    let generic = response_dispatch_executor_preflight(&inbox, &revision_intent, &revision_request);
     ensure(generic.request_ready, "revision request not ready");
     ensure(
         !generic.executor_ready,
@@ -134,22 +137,33 @@ fn run() -> Result<(), String> {
     let revision =
         preflight_revision_dispatch_executor(&inbox, &revision_intent, &revision_request, &chain);
     ensure(revision.request_ready, "typed revision request not ready");
-    ensure(revision.executor_ready, "revision clone preflight did not accept");
+    ensure(
+        revision.executor_ready,
+        "revision clone preflight did not accept",
+    );
     ensure(
         revision.status == "ready_revision_clone_preflight",
         "revision preflight status drift",
     );
     ensure(
-        revision.simulated_effect.starts_with("would_open_revision:"),
+        revision
+            .simulated_effect
+            .starts_with("would_open_revision:"),
         "revision simulated effect missing",
     );
-    ensure(chain.snapshot() == chain_before, "caller-owned revision chain mutated");
+    ensure(
+        chain.snapshot() == chain_before,
+        "caller-owned revision chain mutated",
+    );
     ensure(
         !revision.execution_authorized,
         "revision preflight authorized execution",
     );
 
-    ensure(inbox.len() == inbox_len_before, "executor preflight mutated inbox");
+    ensure(
+        inbox.len() == inbox_len_before,
+        "executor preflight mutated inbox",
+    );
 
     println!(
         "{}",

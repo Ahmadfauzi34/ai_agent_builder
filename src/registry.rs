@@ -25,22 +25,22 @@
 //! - Membangun paket init dari parameter ramah-agen → `agent.rs`.
 //! - Engine komputasi per layer → `layers/*`.
 
+use crate::layers::activation::WasmActivation;
+use crate::layers::binary::WasmBinary;
+use crate::layers::conv::WasmConv;
+use crate::layers::custom::feature_norm::WasmFeatureNorm;
+use crate::layers::custom::ghost::WasmGhostModule;
+use crate::layers::custom::seblock::WasmSeBlock;
+use crate::layers::custom::shift::WasmShift;
+use crate::layers::embedding::WasmEmbedding;
+use crate::layers::linear::WasmLinear;
+use crate::layers::norm::WasmNorm;
+use crate::layers::pool::WasmPool;
+use crate::protocol::*;
+use crate::WasmTensor;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use wasm_bindgen::prelude::*;
-use crate::WasmTensor;
-use crate::protocol::*;
-use crate::layers::linear::WasmLinear;
-use crate::layers::norm::WasmNorm;
-use crate::layers::conv::WasmConv;
-use crate::layers::activation::WasmActivation;
-use crate::layers::embedding::WasmEmbedding;
-use crate::layers::pool::WasmPool;
-use crate::layers::custom::shift::WasmShift;
-use crate::layers::custom::ghost::WasmGhostModule;
-use crate::layers::custom::seblock::WasmSeBlock;
-use crate::layers::custom::feature_norm::WasmFeatureNorm;
-use crate::layers::binary::WasmBinary;
 
 // The runtime-contract projection over the live registry. It lives here (not
 // under `graph`) so it can read `LayerRegistry`'s private fields: privacy in
@@ -80,16 +80,16 @@ impl LayerInitIdentity {
 
 #[wasm_bindgen]
 pub struct LayerRegistry {
-    linears:     HashMap<LayerId, WasmLinear>,
-    norms:       HashMap<LayerId, WasmNorm>,
-    convs:       HashMap<LayerId, WasmConv>,
+    linears: HashMap<LayerId, WasmLinear>,
+    norms: HashMap<LayerId, WasmNorm>,
+    convs: HashMap<LayerId, WasmConv>,
     activations: HashMap<LayerId, WasmActivation>,
-    embeddings:  HashMap<LayerId, WasmEmbedding>,
-    pools:       HashMap<LayerId, WasmPool>,
-    shifts:      HashMap<LayerId, WasmShift>,
-    ghosts:      HashMap<LayerId, WasmGhostModule>,
-    seblocks:    HashMap<LayerId, WasmSeBlock>,
-    binaries:    HashMap<LayerId, WasmBinary>,
+    embeddings: HashMap<LayerId, WasmEmbedding>,
+    pools: HashMap<LayerId, WasmPool>,
+    shifts: HashMap<LayerId, WasmShift>,
+    ghosts: HashMap<LayerId, WasmGhostModule>,
+    seblocks: HashMap<LayerId, WasmSeBlock>,
+    binaries: HashMap<LayerId, WasmBinary>,
     feature_norms: HashMap<LayerId, WasmFeatureNorm>,
     init_identities: HashMap<LayerKey, LayerInitIdentity>,
     cached_params: usize,
@@ -144,16 +144,16 @@ impl LayerRegistry {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         LayerRegistry {
-            linears:     HashMap::new(),
-            norms:       HashMap::new(),
-            convs:       HashMap::new(),
+            linears: HashMap::new(),
+            norms: HashMap::new(),
+            convs: HashMap::new(),
             activations: HashMap::new(),
-            embeddings:  HashMap::new(),
-            pools:       HashMap::new(),
-            shifts:      HashMap::new(),
-            ghosts:      HashMap::new(),
-            seblocks:    HashMap::new(),
-            binaries:    HashMap::new(),
+            embeddings: HashMap::new(),
+            pools: HashMap::new(),
+            shifts: HashMap::new(),
+            ghosts: HashMap::new(),
+            seblocks: HashMap::new(),
+            binaries: HashMap::new(),
             feature_norms: HashMap::new(),
             init_identities: HashMap::new(),
             cached_params: 0,
@@ -166,16 +166,16 @@ impl LayerRegistry {
         let mut id_cursor = PayloadCursor::new(payload);
         let layer_id = id_cursor.read_u32()?;
         let result = match header.layer_type {
-            LAYER_LINEAR      => self.init_linear(header, payload),
-            LAYER_NORM        => self.init_norm(header, payload),
-            LAYER_CONV        => self.init_conv(header, payload),
-            LAYER_ACTIVATION  => self.init_activation(header, payload),
-            LAYER_EMBEDDING   => self.init_embedding(header, payload),
-            LAYER_POOL        => self.init_pool(header, payload),
-            LAYER_SHIFT       => self.init_shift(header, payload),
-            LAYER_GHOST       => self.init_ghost(header, payload),
-            LAYER_SEBLOCK     => self.init_seblock(header, payload),
-            LAYER_BINARY      => self.init_binary(header, payload),
+            LAYER_LINEAR => self.init_linear(header, payload),
+            LAYER_NORM => self.init_norm(header, payload),
+            LAYER_CONV => self.init_conv(header, payload),
+            LAYER_ACTIVATION => self.init_activation(header, payload),
+            LAYER_EMBEDDING => self.init_embedding(header, payload),
+            LAYER_POOL => self.init_pool(header, payload),
+            LAYER_SHIFT => self.init_shift(header, payload),
+            LAYER_GHOST => self.init_ghost(header, payload),
+            LAYER_SEBLOCK => self.init_seblock(header, payload),
+            LAYER_BINARY => self.init_binary(header, payload),
             LAYER_FEATURE_NORM => self.init_feature_norm(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
         };
@@ -275,20 +275,31 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "FeatureNorm not found".to_string())?
                 .forward(input),
-            _ => Err(format!("Unknown layer type for forward: 0x{:02X}", layer_type)),
+            _ => Err(format!(
+                "Unknown layer type for forward: 0x{:02X}",
+                layer_type
+            )),
         }
     }
 
     #[wasm_bindgen(js_name = getLayerState)]
     pub fn get_layer_state(&self, layer_id: LayerId, layer_type: u8) -> Result<Vec<u8>, String> {
         match layer_type {
-            LAYER_LINEAR      => self.linears.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_NORM        => self.norms.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_CONV        => self.convs.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_ACTIVATION  => self.activations.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_EMBEDDING   => self.embeddings.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_GHOST       => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_SEBLOCK     => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
+            LAYER_LINEAR => self.linears.get(&layer_id).ok_or("Not found")?.get_state(),
+            LAYER_NORM => self.norms.get(&layer_id).ok_or("Not found")?.get_state(),
+            LAYER_CONV => self.convs.get(&layer_id).ok_or("Not found")?.get_state(),
+            LAYER_ACTIVATION => self
+                .activations
+                .get(&layer_id)
+                .ok_or("Not found")?
+                .get_state(),
+            LAYER_EMBEDDING => self
+                .embeddings
+                .get(&layer_id)
+                .ok_or("Not found")?
+                .get_state(),
+            LAYER_GHOST => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
+            LAYER_SEBLOCK => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
                 if self.layer_exists(layer_type, layer_id) {
                     Ok(vec![])
@@ -296,20 +307,28 @@ impl LayerRegistry {
                     Err("Not found".into())
                 }
             }
-            _ => Err(format!("Unknown layer type for get_state: 0x{:02X}", layer_type)),
+            _ => Err(format!(
+                "Unknown layer type for get_state: 0x{:02X}",
+                layer_type
+            )),
         }
     }
 
     #[wasm_bindgen(js_name = loadLayerState)]
-    pub fn load_layer_state(&mut self, layer_id: LayerId, layer_type: u8, data: &[u8]) -> Result<(), String> {
+    pub fn load_layer_state(
+        &mut self,
+        layer_id: LayerId,
+        layer_type: u8,
+        data: &[u8],
+    ) -> Result<(), String> {
         match layer_type {
-            LAYER_LINEAR      => load_layer_state!(self, linears, layer_id, data),
-            LAYER_NORM        => load_layer_state!(self, norms, layer_id, data),
-            LAYER_CONV        => load_layer_state!(self, convs, layer_id, data),
-            LAYER_ACTIVATION  => load_layer_state!(self, activations, layer_id, data),
-            LAYER_EMBEDDING   => load_layer_state!(self, embeddings, layer_id, data),
-            LAYER_GHOST       => load_layer_state!(self, ghosts, layer_id, data),
-            LAYER_SEBLOCK     => load_layer_state!(self, seblocks, layer_id, data),
+            LAYER_LINEAR => load_layer_state!(self, linears, layer_id, data),
+            LAYER_NORM => load_layer_state!(self, norms, layer_id, data),
+            LAYER_CONV => load_layer_state!(self, convs, layer_id, data),
+            LAYER_ACTIVATION => load_layer_state!(self, activations, layer_id, data),
+            LAYER_EMBEDDING => load_layer_state!(self, embeddings, layer_id, data),
+            LAYER_GHOST => load_layer_state!(self, ghosts, layer_id, data),
+            LAYER_SEBLOCK => load_layer_state!(self, seblocks, layer_id, data),
             LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
                 if !self.layer_exists(layer_type, layer_id) {
                     return Err("Not found".into());
@@ -321,23 +340,26 @@ impl LayerRegistry {
                 }
                 Ok(())
             }
-            _ => Err(format!("Unknown layer type for load_state: 0x{:02X}", layer_type)),
+            _ => Err(format!(
+                "Unknown layer type for load_state: 0x{:02X}",
+                layer_type
+            )),
         }
     }
 
     #[wasm_bindgen(js_name = destroyLayer)]
     pub fn destroy_layer(&mut self, layer_id: LayerId, layer_type: u8) -> bool {
         let removed = match layer_type {
-            LAYER_LINEAR      => remove_layer!(self, linears, layer_id),
-            LAYER_NORM        => remove_layer!(self, norms, layer_id),
-            LAYER_CONV        => remove_layer!(self, convs, layer_id),
-            LAYER_ACTIVATION  => remove_layer!(self, activations, layer_id),
-            LAYER_EMBEDDING   => remove_layer!(self, embeddings, layer_id),
-            LAYER_GHOST       => remove_layer!(self, ghosts, layer_id),
-            LAYER_SEBLOCK     => remove_layer!(self, seblocks, layer_id),
-            LAYER_POOL        => self.pools.remove(&layer_id).is_some(),
-            LAYER_SHIFT       => self.shifts.remove(&layer_id).is_some(),
-            LAYER_BINARY      => self.binaries.remove(&layer_id).is_some(),
+            LAYER_LINEAR => remove_layer!(self, linears, layer_id),
+            LAYER_NORM => remove_layer!(self, norms, layer_id),
+            LAYER_CONV => remove_layer!(self, convs, layer_id),
+            LAYER_ACTIVATION => remove_layer!(self, activations, layer_id),
+            LAYER_EMBEDDING => remove_layer!(self, embeddings, layer_id),
+            LAYER_GHOST => remove_layer!(self, ghosts, layer_id),
+            LAYER_SEBLOCK => remove_layer!(self, seblocks, layer_id),
+            LAYER_POOL => self.pools.remove(&layer_id).is_some(),
+            LAYER_SHIFT => self.shifts.remove(&layer_id).is_some(),
+            LAYER_BINARY => self.binaries.remove(&layer_id).is_some(),
             LAYER_FEATURE_NORM => remove_layer!(self, feature_norms, layer_id),
             _ => false,
         };
@@ -418,12 +440,12 @@ impl LayerRegistry {
         let mut c = PayloadCursor::new(payload);
         let id = c.read_u32()?;
         let layer = match header.variant {
-            ACT_GELU        => WasmActivation::new_gelu(),
-            ACT_RELU        => WasmActivation::new_relu(),
-            ACT_SIGMOID     => WasmActivation::new_sigmoid(),
-            ACT_TANH        => WasmActivation::new_tanh(),
-            ACT_HARDSWISH   => WasmActivation::new_hard_swish(),
-            ACT_LEAKYRELU   => {
+            ACT_GELU => WasmActivation::new_gelu(),
+            ACT_RELU => WasmActivation::new_relu(),
+            ACT_SIGMOID => WasmActivation::new_sigmoid(),
+            ACT_TANH => WasmActivation::new_tanh(),
+            ACT_HARDSWISH => WasmActivation::new_hard_swish(),
+            ACT_LEAKYRELU => {
                 let slope = c.read_option_f64()?;
                 WasmActivation::new_leaky_relu(slope)
             }
@@ -464,7 +486,12 @@ impl LayerRegistry {
                 let dim = c.read_dim("glu dim")?;
                 WasmActivation::new_glu(dim)
             }
-            _ => return Err(format!("Unknown activation variant: 0x{:02X}", header.variant)),
+            _ => {
+                return Err(format!(
+                    "Unknown activation variant: 0x{:02X}",
+                    header.variant
+                ))
+            }
         };
         insert_layer!(self, activations, id, layer);
         Ok(())
@@ -533,9 +560,9 @@ impl LayerRegistry {
         let id = c.read_u32()?;
         let shift_size = c.read_dim("shift size")?;
         let layer = match header.variant {
-            SHIFT_UP    => WasmShift::new_shift_up(shift_size),
-            SHIFT_DOWN  => WasmShift::new_shift_down(shift_size),
-            SHIFT_LEFT  => WasmShift::new_shift_left(shift_size),
+            SHIFT_UP => WasmShift::new_shift_up(shift_size),
+            SHIFT_DOWN => WasmShift::new_shift_down(shift_size),
+            SHIFT_LEFT => WasmShift::new_shift_left(shift_size),
             SHIFT_RIGHT => WasmShift::new_shift_right(shift_size),
             _ => return Err(format!("Unknown shift variant: 0x{:02X}", header.variant)),
         };
@@ -592,11 +619,30 @@ impl LayerRegistry {
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self, layer_id: LayerId, layer_type: u8) -> Result<Vec<f32>, String> {
         match layer_type {
-            LAYER_LINEAR    => self.linears.get(&layer_id).ok_or("Linear not found")?.get_weights_flat(),
-            LAYER_CONV      => self.convs.get(&layer_id).ok_or("Conv not found")?.get_weights_flat(),
-            LAYER_EMBEDDING => self.embeddings.get(&layer_id).ok_or("Embedding not found")?.get_weights_flat(),
-            LAYER_NORM      => self.norms.get(&layer_id).ok_or("Norm not found")?.get_weights_flat(),
-            _ => Err(format!("getWeightsFlat: not yet supported for type 0x{:02X}", layer_type)),
+            LAYER_LINEAR => self
+                .linears
+                .get(&layer_id)
+                .ok_or("Linear not found")?
+                .get_weights_flat(),
+            LAYER_CONV => self
+                .convs
+                .get(&layer_id)
+                .ok_or("Conv not found")?
+                .get_weights_flat(),
+            LAYER_EMBEDDING => self
+                .embeddings
+                .get(&layer_id)
+                .ok_or("Embedding not found")?
+                .get_weights_flat(),
+            LAYER_NORM => self
+                .norms
+                .get(&layer_id)
+                .ok_or("Norm not found")?
+                .get_weights_flat(),
+            _ => Err(format!(
+                "getWeightsFlat: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
         }
     }
 
@@ -608,22 +654,60 @@ impl LayerRegistry {
         data: &[f32],
     ) -> Result<(), String> {
         match layer_type {
-            LAYER_LINEAR    => self.linears.get_mut(&layer_id).ok_or("Linear not found")?.set_weights_flat(data),
-            LAYER_CONV      => self.convs.get_mut(&layer_id).ok_or("Conv not found")?.set_weights_flat(data),
-            LAYER_EMBEDDING => self.embeddings.get_mut(&layer_id).ok_or("Embedding not found")?.set_weights_flat(data),
-            LAYER_NORM      => self.norms.get_mut(&layer_id).ok_or("Norm not found")?.set_weights_flat(data),
-            _ => Err(format!("setWeightsFlat: not yet supported for type 0x{:02X}", layer_type)),
+            LAYER_LINEAR => self
+                .linears
+                .get_mut(&layer_id)
+                .ok_or("Linear not found")?
+                .set_weights_flat(data),
+            LAYER_CONV => self
+                .convs
+                .get_mut(&layer_id)
+                .ok_or("Conv not found")?
+                .set_weights_flat(data),
+            LAYER_EMBEDDING => self
+                .embeddings
+                .get_mut(&layer_id)
+                .ok_or("Embedding not found")?
+                .set_weights_flat(data),
+            LAYER_NORM => self
+                .norms
+                .get_mut(&layer_id)
+                .ok_or("Norm not found")?
+                .set_weights_flat(data),
+            _ => Err(format!(
+                "setWeightsFlat: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
         }
     }
 
     #[wasm_bindgen(js_name = weightLayout)]
     pub fn weight_layout(&self, layer_id: LayerId, layer_type: u8) -> Result<String, String> {
         match layer_type {
-            LAYER_LINEAR    => Ok(self.linears.get(&layer_id).ok_or("Linear not found")?.weight_layout()),
-            LAYER_CONV      => Ok(self.convs.get(&layer_id).ok_or("Conv not found")?.weight_layout()),
-            LAYER_EMBEDDING => Ok(self.embeddings.get(&layer_id).ok_or("Embedding not found")?.weight_layout()),
-            LAYER_NORM      => Ok(self.norms.get(&layer_id).ok_or("Norm not found")?.weight_layout()),
-            _ => Err(format!("weightLayout: not yet supported for type 0x{:02X}", layer_type)),
+            LAYER_LINEAR => Ok(self
+                .linears
+                .get(&layer_id)
+                .ok_or("Linear not found")?
+                .weight_layout()),
+            LAYER_CONV => Ok(self
+                .convs
+                .get(&layer_id)
+                .ok_or("Conv not found")?
+                .weight_layout()),
+            LAYER_EMBEDDING => Ok(self
+                .embeddings
+                .get(&layer_id)
+                .ok_or("Embedding not found")?
+                .weight_layout()),
+            LAYER_NORM => Ok(self
+                .norms
+                .get(&layer_id)
+                .ok_or("Norm not found")?
+                .weight_layout()),
+            _ => Err(format!(
+                "weightLayout: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
         }
     }
 }
@@ -659,9 +743,9 @@ impl LayerRegistry {
             ));
         }
         let layer = match header.variant {
-            BINARY_ADD    => WasmBinary::new_add(),
-            BINARY_SUB    => WasmBinary::new_sub(),
-            BINARY_MUL    => WasmBinary::new_mul(),
+            BINARY_ADD => WasmBinary::new_add(),
+            BINARY_SUB => WasmBinary::new_sub(),
+            BINARY_MUL => WasmBinary::new_mul(),
             BINARY_MATMUL => WasmBinary::new_matmul(),
             BINARY_CONCAT => {
                 crate::protocol::check_dim(dim, "binary concat dim")?;
@@ -702,16 +786,16 @@ fn read_run_step(c: &mut PayloadCursor) -> Result<RunStep, String> {
 
 fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
     match layer_type {
-        LAYER_LINEAR     => reg.linears.contains_key(&layer_id),
-        LAYER_NORM       => reg.norms.contains_key(&layer_id),
-        LAYER_CONV       => reg.convs.contains_key(&layer_id),
+        LAYER_LINEAR => reg.linears.contains_key(&layer_id),
+        LAYER_NORM => reg.norms.contains_key(&layer_id),
+        LAYER_CONV => reg.convs.contains_key(&layer_id),
         LAYER_ACTIVATION => reg.activations.contains_key(&layer_id),
-        LAYER_EMBEDDING  => reg.embeddings.contains_key(&layer_id),
-        LAYER_POOL       => reg.pools.contains_key(&layer_id),
-        LAYER_SHIFT      => reg.shifts.contains_key(&layer_id),
-        LAYER_GHOST      => reg.ghosts.contains_key(&layer_id),
-        LAYER_SEBLOCK    => reg.seblocks.contains_key(&layer_id),
-        LAYER_BINARY     => reg.binaries.contains_key(&layer_id),
+        LAYER_EMBEDDING => reg.embeddings.contains_key(&layer_id),
+        LAYER_POOL => reg.pools.contains_key(&layer_id),
+        LAYER_SHIFT => reg.shifts.contains_key(&layer_id),
+        LAYER_GHOST => reg.ghosts.contains_key(&layer_id),
+        LAYER_SEBLOCK => reg.seblocks.contains_key(&layer_id),
+        LAYER_BINARY => reg.binaries.contains_key(&layer_id),
         _ => false,
     }
 }
@@ -724,7 +808,10 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
         return Err("run_graph: plan has no steps".into());
     }
     if !(1..=MAX_SLOTS).contains(&num_slots) {
-        return Err(format!("run_graph: num_slots must be 1..={}, got {}", MAX_SLOTS, num_slots));
+        return Err(format!(
+            "run_graph: num_slots must be 1..={}, got {}",
+            MAX_SLOTS, num_slots
+        ));
     }
     let mut filled: u64 = 1;
     for _ in 0..num_steps {
@@ -733,11 +820,17 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
         let in_slot2 = s.in_slot2 as u32;
         let out_slot = s.out_slot as u32;
         if in_slot >= num_slots || in_slot2 >= num_slots || out_slot >= num_slots {
-            return Err(format!("run_graph: slot index out of range (num_slots={})", num_slots));
+            return Err(format!(
+                "run_graph: slot index out of range (num_slots={})",
+                num_slots
+            ));
         }
         if s.arity == crate::graph::ARITY_BINARY {
             if s.layer_type != LAYER_BINARY {
-                return Err(format!("run_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}", s.layer_type));
+                return Err(format!(
+                    "run_graph: arity 2 requires LAYER_BINARY, got 0x{:02X}",
+                    s.layer_type
+                ));
             }
             if (filled >> in_slot) & 1 == 0 {
                 return Err(format!("run_graph: input slot {} is empty", in_slot));
@@ -753,10 +846,16 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
                 return Err(format!("run_graph: input slot {} is empty", in_slot));
             }
         } else {
-            return Err(format!("run_graph: invalid arity {} (expected 1 or 2)", s.arity));
+            return Err(format!(
+                "run_graph: invalid arity {} (expected 1 or 2)",
+                s.arity
+            ));
         }
         if !contains_layer(reg, s.layer_type, s.layer_id) {
-            return Err(format!("run_graph: layer type 0x{:02X} id {} not found", s.layer_type, s.layer_id));
+            return Err(format!(
+                "run_graph: layer type 0x{:02X} id {} not found",
+                s.layer_type, s.layer_id
+            ));
         }
         filled |= 1u64 << out_slot;
     }
@@ -765,7 +864,10 @@ fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u32, u8), Str
         return Err(format!("run_graph: output slot {} out of range", out_slot));
     }
     if (filled >> out_slot) & 1 == 0 {
-        return Err(format!("run_graph: output slot {} is never written", out_slot));
+        return Err(format!(
+            "run_graph: output slot {} is never written",
+            out_slot
+        ));
     }
     Ok((num_steps, num_slots, out_slot as u8))
 }
@@ -812,16 +914,16 @@ impl LayerRegistry {
     #[wasm_bindgen(js_name = layerExists)]
     pub fn layer_exists(&self, layer_type: u8, layer_id: LayerId) -> bool {
         match layer_type {
-            LAYER_LINEAR     => self.linears.contains_key(&layer_id),
-            LAYER_NORM       => self.norms.contains_key(&layer_id),
-            LAYER_CONV       => self.convs.contains_key(&layer_id),
+            LAYER_LINEAR => self.linears.contains_key(&layer_id),
+            LAYER_NORM => self.norms.contains_key(&layer_id),
+            LAYER_CONV => self.convs.contains_key(&layer_id),
             LAYER_ACTIVATION => self.activations.contains_key(&layer_id),
-            LAYER_EMBEDDING  => self.embeddings.contains_key(&layer_id),
-            LAYER_POOL       => self.pools.contains_key(&layer_id),
-            LAYER_SHIFT      => self.shifts.contains_key(&layer_id),
-            LAYER_GHOST      => self.ghosts.contains_key(&layer_id),
-            LAYER_SEBLOCK    => self.seblocks.contains_key(&layer_id),
-            LAYER_BINARY     => self.binaries.contains_key(&layer_id),
+            LAYER_EMBEDDING => self.embeddings.contains_key(&layer_id),
+            LAYER_POOL => self.pools.contains_key(&layer_id),
+            LAYER_SHIFT => self.shifts.contains_key(&layer_id),
+            LAYER_GHOST => self.ghosts.contains_key(&layer_id),
+            LAYER_SEBLOCK => self.seblocks.contains_key(&layer_id),
+            LAYER_BINARY => self.binaries.contains_key(&layer_id),
             LAYER_FEATURE_NORM => self.feature_norms.contains_key(&layer_id),
             _ => false,
         }

@@ -147,27 +147,18 @@ mod tests {
 
     #[test]
     fn exact_envelope_rejects_trailing_and_truncated_bytes() {
-        let valid = vec![
-            1, 0, 0, 0,
-            2, 0, 0, 0,
-            1, 4, 7, 0, 0, 0, 0, 0, 1,
-            1,
-        ];
+        let valid = vec![1, 0, 0, 0, 2, 0, 0, 0, 1, 4, 7, 0, 0, 0, 0, 0, 1, 1];
 
         let mut trailing = valid.clone();
         trailing.push(0xFF);
-        assert!(
-            decode_graph_plan(&trailing)
-                .unwrap_err()
-                .contains("malformed plan length")
-        );
+        assert!(decode_graph_plan(&trailing)
+            .unwrap_err()
+            .contains("malformed plan length"));
 
         let mut truncated = valid;
         truncated.pop();
-        assert!(
-            decode_graph_plan(&truncated)
-                .unwrap_err()
-                .contains("malformed plan length")
-        );
+        assert!(decode_graph_plan(&truncated)
+            .unwrap_err()
+            .contains("malformed plan length"));
     }
 }

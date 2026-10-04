@@ -49,7 +49,10 @@ mod tests {
         for axis in 0..4 {
             let params = ReductionAxisParams::new(axis).unwrap();
             assert_eq!(params.encode(), [axis as u8]);
-            assert_eq!(ReductionAxisParams::decode(&params.encode()).unwrap(), params);
+            assert_eq!(
+                ReductionAxisParams::decode(&params.encode()).unwrap(),
+                params
+            );
             assert_eq!(params.axis(), axis);
         }
         assert!(ReductionAxisParams::new(4).is_err());

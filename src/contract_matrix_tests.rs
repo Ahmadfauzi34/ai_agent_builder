@@ -21,7 +21,8 @@ struct MatrixCase {
 }
 
 fn contract_schema() -> Value {
-    serde_json::from_str(&agent_contract_schema()).expect("canonical agent contract schema must parse")
+    serde_json::from_str(&agent_contract_schema())
+        .expect("canonical agent contract schema must parse")
 }
 
 fn generated_negative_matrix(schema: &Value) -> Vec<MatrixCase> {
@@ -82,13 +83,17 @@ fn run_success_case(operation: &str) {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let slot = workspace.reserve_slot("matrix".into()).unwrap();
             workspace.release_slot(slot).unwrap();
-            assert!(workspace.get("_slots".into(), slot.to_string()).contains("\"state\":\"free\""));
+            assert!(workspace
+                .get("_slots".into(), slot.to_string())
+                .contains("\"state\":\"free\""));
         }
         "workspaceInitUnary" => {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(3).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             let out = workspace_init_unary(
                 &mut workspace,
@@ -240,7 +245,15 @@ fn run_negative_case(case: &MatrixCase) {
             let spec = AgentLayerSpec::add(id);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, "add".into()).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_BINARY, id));
         }
@@ -248,11 +261,21 @@ fn run_negative_case(case: &MatrixCase) {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(3).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 1, "relu".into()).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                1,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_ACTIVATION, id));
         }
@@ -260,12 +283,22 @@ fn run_negative_case(case: &MatrixCase) {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(3).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, "relu".into()).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(registry.layer_exists(LAYER_ACTIVATION, id));
         }
@@ -276,7 +309,15 @@ fn run_negative_case(case: &MatrixCase) {
             let spec = AgentLayerSpec::relu(77);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, "relu".into()).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_ACTIVATION, 77));
         }
@@ -284,11 +325,21 @@ fn run_negative_case(case: &MatrixCase) {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(3).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, "x".repeat(4001)).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                "x".repeat(4001)
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_ACTIVATION, id));
         }
@@ -296,12 +347,22 @@ fn run_negative_case(case: &MatrixCase) {
             let mut workspace = AgentWorkspace::new(2).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(2).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             workspace.reserve_slot("blocker".into()).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_unary(&mut workspace, &mut builder, &mut registry, &spec, 0, "relu".into()).is_err());
+            assert!(workspace_init_unary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_ACTIVATION, id));
         }
@@ -309,11 +370,22 @@ fn run_negative_case(case: &MatrixCase) {
             let mut workspace = AgentWorkspace::new(3).unwrap();
             let mut registry = LayerRegistry::new();
             let mut builder = AgentGraphBuilder::new(3).unwrap();
-            let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+            let id = workspace
+                .reserve_layer_id(&registry, "relu".into())
+                .unwrap();
             let spec = AgentLayerSpec::relu(id);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, 0, 0, "relu".into()).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_ACTIVATION, id));
         }
@@ -330,7 +402,16 @@ fn run_negative_case(case: &MatrixCase) {
             };
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, left, right, "add".into()).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                left,
+                right,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_BINARY, id));
         }
@@ -343,7 +424,16 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, 0, 0, "add".into()).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(registry.layer_exists(LAYER_BINARY, id));
         }
@@ -354,7 +444,16 @@ fn run_negative_case(case: &MatrixCase) {
             let spec = AgentLayerSpec::add(78);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, 0, 0, "add".into()).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_BINARY, 78));
         }
@@ -366,7 +465,16 @@ fn run_negative_case(case: &MatrixCase) {
             let spec = AgentLayerSpec::add(id);
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, 0, 0, "x".repeat(4001)).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                0,
+                "x".repeat(4001)
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_BINARY, id));
         }
@@ -379,7 +487,16 @@ fn run_negative_case(case: &MatrixCase) {
             workspace.reserve_slot("blocker".into()).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_init_binary(&mut workspace, &mut builder, &mut registry, &spec, 0, 0, "add".into()).is_err());
+            assert!(workspace_init_binary(
+                &mut workspace,
+                &mut builder,
+                &mut registry,
+                &spec,
+                0,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert!(!registry.layer_exists(LAYER_BINARY, id));
         }
@@ -391,7 +508,15 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_unary(&mut workspace, &mut builder, &registry, &spec, 0, "add".into()).is_err());
+            assert!(workspace_wire_unary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireUnary", "slot.readable") => {
@@ -402,7 +527,15 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_unary(&mut workspace, &mut builder, &registry, &spec, 1, "relu".into()).is_err());
+            assert!(workspace_wire_unary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                1,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireUnary", "registry.identity_exact") => {
@@ -414,7 +547,15 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&live).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_unary(&mut workspace, &mut builder, &registry, &supplied, 0, "wrong".into()).is_err());
+            assert!(workspace_wire_unary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &supplied,
+                0,
+                "wrong".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireUnary", "label.within_limit") => {
@@ -425,7 +566,15 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_unary(&mut workspace, &mut builder, &registry, &spec, 0, "x".repeat(4001)).is_err());
+            assert!(workspace_wire_unary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                "x".repeat(4001)
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireUnary", "slot.free_exists") => {
@@ -437,7 +586,15 @@ fn run_negative_case(case: &MatrixCase) {
             workspace.reserve_slot("blocker".into()).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_unary(&mut workspace, &mut builder, &registry, &spec, 0, "relu".into()).is_err());
+            assert!(workspace_wire_unary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert_eq!(workspace.get("_layers".into(), "85".into()), "null");
         }
@@ -449,7 +606,16 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_binary(&mut workspace, &mut builder, &registry, &spec, 0, 0, "relu".into()).is_err());
+            assert!(workspace_wire_binary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                0,
+                "relu".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireBinary", "slot.readable") => {
@@ -465,7 +631,16 @@ fn run_negative_case(case: &MatrixCase) {
             };
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_binary(&mut workspace, &mut builder, &registry, &spec, left, right, "add".into()).is_err());
+            assert!(workspace_wire_binary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                left,
+                right,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireBinary", "registry.identity_exact") => {
@@ -477,7 +652,16 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&live).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_binary(&mut workspace, &mut builder, &registry, &supplied, 0, 0, "wrong".into()).is_err());
+            assert!(workspace_wire_binary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &supplied,
+                0,
+                0,
+                "wrong".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireBinary", "label.within_limit") => {
@@ -488,7 +672,16 @@ fn run_negative_case(case: &MatrixCase) {
             registry.init_agent_layer(&spec).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_binary(&mut workspace, &mut builder, &registry, &spec, 0, 0, "x".repeat(4001)).is_err());
+            assert!(workspace_wire_binary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                0,
+                "x".repeat(4001)
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
         }
         ("workspaceWireBinary", "slot.free_exists") => {
@@ -500,7 +693,16 @@ fn run_negative_case(case: &MatrixCase) {
             workspace.reserve_slot("blocker".into()).unwrap();
             let before = workspace.snapshot();
             let steps = builder.num_steps();
-            assert!(workspace_wire_binary(&mut workspace, &mut builder, &registry, &spec, 0, 0, "add".into()).is_err());
+            assert!(workspace_wire_binary(
+                &mut workspace,
+                &mut builder,
+                &registry,
+                &spec,
+                0,
+                0,
+                "add".into()
+            )
+            .is_err());
             assert_workspace_and_builder_unchanged(&workspace, &builder, &before, steps);
             assert_eq!(workspace.get("_layers".into(), "90".into()), "null");
         }
@@ -527,13 +729,10 @@ fn run_negative_case(case: &MatrixCase) {
             let before_workspace = workspace.snapshot();
             let before_steps = builder.num_steps();
             let before_params = registry.total_params();
-            assert!(workspace_compile_for_runtime_subject(
-                &mut workspace,
-                &builder,
-                &registry,
-                1,
-            )
-            .is_err());
+            assert!(
+                workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1,)
+                    .is_err()
+            );
             assert_workspace_and_builder_unchanged(
                 &workspace,
                 &builder,
@@ -566,13 +765,10 @@ fn run_negative_case(case: &MatrixCase) {
             let before_workspace = workspace.snapshot();
             let before_steps = builder.num_steps();
             let before_params = registry.total_params();
-            assert!(workspace_compile_for_runtime_subject(
-                &mut workspace,
-                &builder,
-                &registry,
-                1,
-            )
-            .is_err());
+            assert!(
+                workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1,)
+                    .is_err()
+            );
             assert_workspace_and_builder_unchanged(
                 &workspace,
                 &builder,
@@ -604,13 +800,10 @@ fn run_negative_case(case: &MatrixCase) {
 
             let before_workspace = workspace.snapshot();
             let before_steps = builder.num_steps();
-            assert!(workspace_compile_for_runtime_subject(
-                &mut workspace,
-                &builder,
-                &registry,
-                2,
-            )
-            .is_err());
+            assert!(
+                workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 2,)
+                    .is_err()
+            );
             assert_workspace_and_builder_unchanged(
                 &workspace,
                 &builder,
@@ -647,13 +840,10 @@ fn run_negative_case(case: &MatrixCase) {
             let before_workspace = workspace.snapshot();
             let before_steps = builder.num_steps();
             let before_params = registry.total_params();
-            assert!(workspace_compile_for_runtime_subject(
-                &mut workspace,
-                &builder,
-                &registry,
-                1,
-            )
-            .is_err());
+            assert!(
+                workspace_compile_for_runtime_subject(&mut workspace, &builder, &registry, 1,)
+                    .is_err()
+            );
             assert_workspace_and_builder_unchanged(
                 &workspace,
                 &builder,
@@ -662,7 +852,10 @@ fn run_negative_case(case: &MatrixCase) {
             );
             assert_eq!(registry.total_params(), before_params);
         }
-        other => panic!("unhandled generated contract matrix cell: {other:?} / binding {:?}", case.slot_binding),
+        other => panic!(
+            "unhandled generated contract matrix cell: {other:?} / binding {:?}",
+            case.slot_binding
+        ),
     }
 }
 
@@ -676,7 +869,11 @@ fn schema_driven_contract_matrix_executes_positive_and_negative_cells() {
     }
 
     let cases = generated_negative_matrix(&schema);
-    assert!(cases.len() >= 20, "expected a non-trivial generated matrix, got {}", cases.len());
+    assert!(
+        cases.len() >= 20,
+        "expected a non-trivial generated matrix, got {}",
+        cases.len()
+    );
     for case in &cases {
         run_negative_case(case);
     }
@@ -704,7 +901,10 @@ fn assert_shadow_matches(workspace: &AgentWorkspace, shadow: &[ShadowSlot]) {
             ShadowSlot::Free => "\"state\":\"free\"",
             ShadowSlot::Reserved => "\"state\":\"reserved\"",
         };
-        assert!(row.contains(marker), "slot {index} expected {expected:?}, row={row}");
+        assert!(
+            row.contains(marker),
+            "slot {index} expected {expected:?}, row={row}"
+        );
     }
 }
 

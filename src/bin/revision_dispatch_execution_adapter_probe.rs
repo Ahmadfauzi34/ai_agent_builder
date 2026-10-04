@@ -81,20 +81,22 @@ fn run() -> Result<(), String> {
     let inbox_len_before = inbox.len();
 
     let mut chain = ResolutionRevisionChain::from_approved(review.snapshot())?;
-    let intent = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::ProposeRevision,
-        "agent",
-    )?;
+    let intent =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::ProposeRevision, "agent")?;
     let request = create_revision_dispatch_request(&inbox, &intent, &chain, "r1", None)?;
 
     let before = chain.snapshot();
     let receipt = execute_revision_dispatch_request(&inbox, &intent, &request, &mut chain)?;
     let after = chain.snapshot();
 
-    ensure(before.revisions.is_empty(), "chain was not empty before execution");
-    ensure(after.revisions.len() == 1, "execution did not create exactly one revision");
+    ensure(
+        before.revisions.is_empty(),
+        "chain was not empty before execution",
+    );
+    ensure(
+        after.revisions.len() == 1,
+        "execution did not create exactly one revision",
+    );
     ensure(
         receipt.request_fingerprint == request.request_fingerprint(),
         "receipt/request fingerprint correlation drift",
@@ -107,7 +109,10 @@ fn run() -> Result<(), String> {
         receipt.execution_trigger == "explicit_caller_invocation",
         "execution trigger drift",
     );
-    ensure(receipt.authorization_claim == "none", "authorization claim drift");
+    ensure(
+        receipt.authorization_claim == "none",
+        "authorization claim drift",
+    );
     ensure(receipt.mutation == "committed", "mutation state drift");
     ensure(
         after.revision(&receipt.revision_id).is_some(),
@@ -134,7 +139,10 @@ fn run() -> Result<(), String> {
         "wrong-route request mutated chain",
     );
 
-    ensure(inbox.len() == inbox_len_before, "execution adapter mutated evidence inbox");
+    ensure(
+        inbox.len() == inbox_len_before,
+        "execution adapter mutated evidence inbox",
+    );
 
     println!(
         "{}",

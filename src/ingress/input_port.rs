@@ -15,14 +15,19 @@
 //! ## Bukan tanggung jawab modul ini
 //! - Eksekusi graph → `graph`; validasi tensor → `protocol`.
 
+pub use crate::facade::ingress::{
+    input_port_capabilities, workspace_bind_input_port_metadata,
+    workspace_clear_input_port_metadata, workspace_input_port_metadata,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::workspace::{AgentWorkspace, WorkspaceInputPortMetadata};
 
-const INPUT_PORT_V1: &str = include_str!("../../docs/contracts/agent-input-port.v1.json");
-const MAX_ROLE_BYTES: usize = 64;
-const MAX_SOURCE_BYTES: usize = 256;
-const MAX_FINGERPRINT_BYTES: usize = 256;
+pub(crate) const INPUT_PORT_V1: &str =
+    include_str!("../../docs/contracts/agent-input-port.v1.json");
+pub(crate) const MAX_ROLE_BYTES: usize = 64;
+pub(crate) const MAX_SOURCE_BYTES: usize = 256;
+pub(crate) const MAX_FINGERPRINT_BYTES: usize = 256;
 
 const CANONICAL_ROLES: [&str; 7] = [
     "observation",
@@ -50,25 +55,34 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn validate_bounded(value: &str, max: usize, context: &str, allow_empty: bool) -> Result<(), String> {
+pub(crate) fn validate_bounded(
+    value: &str,
+    max: usize,
+    context: &str,
+    allow_empty: bool,
+) -> Result<(), String> {
     if !allow_empty && value.is_empty() {
         return Err(format!("{context}: value must be non-empty"));
     }
     if value.len() > max {
-        return Err(format!("{context}: {} bytes exceeds limit {max}", value.len()));
+        return Err(format!(
+            "{context}: {} bytes exceeds limit {max}",
+            value.len()
+        ));
     }
     Ok(())
 }
 
 pub(crate) fn role_valid(role: &str) -> bool {
-    CANONICAL_ROLES.contains(&role) || (
-        role.starts_with("x-")
+    CANONICAL_ROLES.contains(&role)
+        || (role.starts_with("x-")
             && role.len() > 2
-            && role.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b'.'))
-    )
+            && role.bytes().all(|b| {
+                b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'_' | b'.')
+            }))
 }
 
-fn metadata_json(metadata: &WorkspaceInputPortMetadata) -> String {
+pub(crate) fn metadata_json(metadata: &WorkspaceInputPortMetadata) -> String {
     format!(
         concat!(
             "{{",
@@ -77,9 +91,9 @@ fn metadata_json(metadata: &WorkspaceInputPortMetadata) -> String {
             "\"slot\":0,",
             "\"role\":\"{}\",",
             "\"provenance\":{{",
-                "\"source\":\"{}\",",
-                "\"revision\":{},",
-                "\"fingerprint\":{}",
+            "\"source\":\"{}\",",
+            "\"revision\":{},",
+            "\"fingerprint\":{}",
             "}}",
             "}}"
         ),
@@ -92,69 +106,6 @@ fn metadata_json(metadata: &WorkspaceInputPortMetadata) -> String {
             format!("\"{}\"", json_escape(&metadata.fingerprint))
         }
     )
-}
-
-#[wasm_bindgen(js_name = inputPortCapabilities)]
-pub fn input_port_capabilities() -> String {
-    INPUT_PORT_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = workspaceBindInputPortMetadata)]
-pub fn workspace_bind_input_port_metadata(
-    workspace: &mut AgentWorkspace,
-    role: String,
-    source: String,
-    revision: u64,
-    fingerprint: String,
-) -> Result<bool, String> {
-    validate_bounded(&role, MAX_ROLE_BYTES, "workspaceBindInputPortMetadata.role", false)?;
-    if !role_valid(&role) {
-        return Err(format!(
-            "workspaceBindInputPortMetadata.role: unsupported role {role}; use canonical role or x- extension namespace"
-        ));
-    }
-    validate_bounded(&source, MAX_SOURCE_BYTES, "workspaceBindInputPortMetadata.source", false)?;
-    validate_bounded(
-        &fingerprint,
-        MAX_FINGERPRINT_BYTES,
-        "workspaceBindInputPortMetadata.fingerprint",
-        true,
-    )?;
-
-    Ok(workspace.set_input_port_metadata(WorkspaceInputPortMetadata {
-        role,
-        source,
-        revision,
-        fingerprint,
-    }))
-}
-
-#[wasm_bindgen(js_name = workspaceClearInputPortMetadata)]
-pub fn workspace_clear_input_port_metadata(workspace: &mut AgentWorkspace) -> bool {
-    workspace.clear_input_port_metadata_internal()
-}
-
-#[wasm_bindgen(js_name = workspaceInputPortMetadata)]
-pub fn workspace_input_port_metadata(workspace: &AgentWorkspace) -> String {
-    match workspace.input_port_metadata() {
-        Some(metadata) => format!(
-            "{{\"status\":\"bound\",\"metadata\":{},\"runtime_subject_bound\":{}}}",
-            metadata_json(metadata),
-            if workspace.runtime_subject_binding().is_some() {
-                "true"
-            } else {
-                "false"
-            }
-        ),
-        None => format!(
-            "{{\"status\":\"unbound\",\"slot\":0,\"runtime_subject_bound\":{},\"policy\":\"semantic_role_optional\"}}",
-            if workspace.runtime_subject_binding().is_some() {
-                "true"
-            } else {
-                "false"
-            }
-        ),
-    }
 }
 
 #[cfg(test)]

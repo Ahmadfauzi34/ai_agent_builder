@@ -1,6 +1,6 @@
 use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
 use burn_research::input_contract::{
-    input_contract_compatibility, input_contract_capabilities, workspace_bind_input_contract,
+    input_contract_capabilities, input_contract_compatibility, workspace_bind_input_contract,
     workspace_clear_input_contract, workspace_input_contract,
 };
 use burn_research::interaction_fault::interaction_check_init_unary;
@@ -11,8 +11,7 @@ use burn_research::workspace_ops::workspace_init_unary;
 
 #[test]
 fn input_contract_is_optional_and_artifact_discoverable() {
-    let caps: serde_json::Value =
-        serde_json::from_str(&input_contract_capabilities()).unwrap();
+    let caps: serde_json::Value = serde_json::from_str(&input_contract_capabilities()).unwrap();
     assert_eq!(caps["schema_id"], "burn-research.agent-input-contract.v1");
     assert_eq!(caps["scope"]["slot"], 0);
     assert_eq!(caps["scope"]["dtype"], "f32");
@@ -42,7 +41,9 @@ fn shape_proven_mismatch_rejects_before_canonical_init_mutation() {
     )
     .unwrap();
 
-    let layer_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let spec = AgentLayerSpec::linear(layer_id, 2, 1, false).unwrap();
 
     let compatibility: serde_json::Value =
@@ -100,15 +101,14 @@ fn valid_shape_unknown_layout_remains_allowed_but_not_overclaimed() {
     )
     .unwrap();
 
-    let layer_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let spec = AgentLayerSpec::linear(layer_id, 2, 1, false).unwrap();
 
     let compatibility: serde_json::Value =
         serde_json::from_str(&input_contract_compatibility(&workspace, &spec)).unwrap();
-    assert_eq!(
-        compatibility["status"],
-        "shape_compatible_layout_unknown"
-    );
+    assert_eq!(compatibility["status"], "shape_compatible_layout_unknown");
     assert!(compatibility["compatible"].is_null());
 
     let output = workspace_init_unary(
@@ -129,19 +129,12 @@ fn clearing_contract_restores_backward_compatible_defer_to_runtime_behavior() {
     let mut builder = AgentGraphBuilder::new(3).unwrap();
     let mut registry = LayerRegistry::new();
 
-    workspace_bind_input_contract(
-        &mut workspace,
-        1,
-        2,
-        2,
-        1,
-        "unknown".into(),
-        "".into(),
-    )
-    .unwrap();
+    workspace_bind_input_contract(&mut workspace, 1, 2, 2, 1, "unknown".into(), "".into()).unwrap();
     assert!(workspace_clear_input_contract(&mut workspace));
 
-    let layer_id = workspace.reserve_layer_id(&registry, "linear".into()).unwrap();
+    let layer_id = workspace
+        .reserve_layer_id(&registry, "linear".into())
+        .unwrap();
     let spec = AgentLayerSpec::linear(layer_id, 2, 1, false).unwrap();
 
     let compatibility: serde_json::Value =

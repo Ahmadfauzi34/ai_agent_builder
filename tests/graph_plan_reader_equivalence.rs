@@ -132,7 +132,8 @@ fn public_readers_agree_on_graph_plan_first_use_order() {
     assert_eq!(imported_graph.program_plan(), plan);
     assert_eq!(imported_graph.program_identity(), identity);
 
-    let imported_binding = GraphParameterBinding::build(&imported_graph, &imported_registry).unwrap();
+    let imported_binding =
+        GraphParameterBinding::build(&imported_graph, &imported_registry).unwrap();
     let imported_owner_keys = imported_binding
         .owners()
         .iter()

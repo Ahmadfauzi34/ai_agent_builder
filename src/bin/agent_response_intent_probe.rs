@@ -9,9 +9,7 @@ use burn_research::resolution_runtime_bridge::RuntimeSubjectProjection;
 #[cfg(not(target_arch = "wasm32"))]
 use burn_research::runtime_evidence_interpretation::EvidenceResponseAction;
 #[cfg(not(target_arch = "wasm32"))]
-use burn_research::runtime_resolution_evidence::{
-    ResolutionEvidenceInbox, RuntimeEvidence,
-};
+use burn_research::runtime_resolution_evidence::{ResolutionEvidenceInbox, RuntimeEvidence};
 
 #[cfg(not(target_arch = "wasm32"))]
 fn fail(message: impl AsRef<str>) -> ! {
@@ -107,7 +105,10 @@ fn run() -> Result<(), String> {
         "agent-probe",
     )?;
     let revision_preflight = preflight_response_intent(&inbox, &revision_intent);
-    ensure(revision_preflight.ready, "revision response intent was not preflight-ready");
+    ensure(
+        revision_preflight.ready,
+        "revision response intent was not preflight-ready",
+    );
     ensure(
         revision_preflight.status == "ready_nonexecuting",
         "unexpected revision response intent status",
@@ -117,18 +118,10 @@ fn run() -> Result<(), String> {
         "preflight must not authorize execution",
     );
 
-    let reverify_first = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::Reverify,
-        "agent-probe",
-    )?;
-    let reverify_second = create_agent_response_intent(
-        &inbox,
-        0,
-        EvidenceResponseAction::Reverify,
-        "agent-probe",
-    )?;
+    let reverify_first =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-probe")?;
+    let reverify_second =
+        create_agent_response_intent(&inbox, 0, EvidenceResponseAction::Reverify, "agent-probe")?;
     ensure(
         reverify_first.response_intent_fingerprint()
             == reverify_second.response_intent_fingerprint(),
@@ -152,7 +145,10 @@ fn run() -> Result<(), String> {
         "passed-evidence unavailable candidate did not fail closed",
     );
 
-    ensure(inbox.len() == before_len, "response intent creation mutated inbox");
+    ensure(
+        inbox.len() == before_len,
+        "response intent creation mutated inbox",
+    );
     ensure(
         resolution == before_resolution,
         "response intent creation mutated Resolution state",
@@ -169,8 +165,7 @@ fn run() -> Result<(), String> {
         "response intent selection authority drifted",
     );
     ensure(
-        intent_json["execution_authorized"] == false
-            && intent_json["execution_effect"] == "none",
+        intent_json["execution_authorized"] == false && intent_json["execution_effect"] == "none",
         "response intent overclaimed execution authority",
     );
     ensure(

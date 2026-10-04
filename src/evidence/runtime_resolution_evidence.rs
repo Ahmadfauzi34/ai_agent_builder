@@ -1,3 +1,4 @@
+pub use crate::facade::evidence::runtime_resolution_evidence_capabilities;
 use wasm_bindgen::prelude::*;
 
 use crate::authorization::{AuthorizationPolicy, AuthorizationSnapshot};
@@ -6,7 +7,7 @@ use crate::resolution::ResolutionSnapshot;
 use crate::resolution_runtime_bridge::RuntimeSubjectProjection;
 use crate::workspace::AgentWorkspace;
 
-const RUNTIME_RESOLUTION_EVIDENCE_V1: &str =
+pub(crate) const RUNTIME_RESOLUTION_EVIDENCE_V1: &str =
     include_str!("../../docs/contracts/runtime-resolution-evidence.v1.json");
 
 pub const MAX_RUNTIME_EVIDENCE_ENTRIES: usize = 64;
@@ -31,11 +32,7 @@ fn json_escape(value: &str) -> String {
     out
 }
 
-fn validate_nonempty_bounded(
-    value: &str,
-    max_bytes: usize,
-    context: &str,
-) -> Result<(), String> {
+fn validate_nonempty_bounded(value: &str, max_bytes: usize, context: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         return Err(format!("{context}: value must be non-empty"));
     }
@@ -282,7 +279,7 @@ impl RuntimeEvidencePayload {
                     json_escape(detail),
                     semantic,
                 )
-            },
+            }
             Self::MathProgramVerifierReceipt {
                 receipt_id,
                 label,
@@ -469,10 +466,7 @@ impl RuntimeEvidence {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn parse_json_object(
-        raw: &str,
-        context: &str,
-    ) -> Result<serde_json::Value, String> {
+    fn parse_json_object(raw: &str, context: &str) -> Result<serde_json::Value, String> {
         let value: serde_json::Value =
             serde_json::from_str(raw).map_err(|err| format!("{context}: invalid JSON: {err}"))?;
         if !value.is_object() {
@@ -494,11 +488,7 @@ impl RuntimeEvidence {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn require_bool(
-        value: &serde_json::Value,
-        field: &str,
-        context: &str,
-    ) -> Result<bool, String> {
+    fn require_bool(value: &serde_json::Value, field: &str, context: &str) -> Result<bool, String> {
         value
             .get(field)
             .and_then(serde_json::Value::as_bool)
@@ -506,11 +496,7 @@ impl RuntimeEvidence {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn require_u64(
-        value: &serde_json::Value,
-        field: &str,
-        context: &str,
-    ) -> Result<u64, String> {
+    fn require_u64(value: &serde_json::Value, field: &str, context: &str) -> Result<u64, String> {
         value
             .get(field)
             .and_then(serde_json::Value::as_u64)
@@ -675,12 +661,7 @@ impl RuntimeEvidence {
             CONTEXT,
         )?;
         Self::require_exact_string(&receipt, "authority", "wasm_verifier", CONTEXT)?;
-        Self::require_exact_string(
-            &receipt,
-            "verifier",
-            "CompiledGraph.verifyFlat",
-            CONTEXT,
-        )?;
+        Self::require_exact_string(&receipt, "verifier", "CompiledGraph.verifyFlat", CONTEXT)?;
         Self::require_exact_string(
             &receipt,
             "reference_authority",
@@ -690,8 +671,8 @@ impl RuntimeEvidence {
 
         let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
         let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
-        let receipt_id = u32::try_from(receipt_id)
-            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let receipt_id =
+            u32::try_from(receipt_id).map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
         let program_identity = receipt
             .get("program_identity")
@@ -893,11 +874,8 @@ impl RuntimeEvidence {
     /// The original runtime receipt remains authoritative; this adapter creates observation-only
     /// reverse evidence and does not authenticate host transport.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn from_math_program_verifier_receipt_json(
-        receipt_json: &str,
-    ) -> Result<Self, String> {
-        const CONTEXT: &str =
-            "RuntimeEvidence.from_math_program_verifier_receipt_json";
+    pub fn from_math_program_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
+        const CONTEXT: &str = "RuntimeEvidence.from_math_program_verifier_receipt_json";
         let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
         Self::require_exact_string(
             &receipt,
@@ -906,12 +884,7 @@ impl RuntimeEvidence {
             CONTEXT,
         )?;
         Self::require_exact_string(&receipt, "authority", "wasm_verifier", CONTEXT)?;
-        Self::require_exact_string(
-            &receipt,
-            "verifier",
-            "MathProgram.verifyFlat",
-            CONTEXT,
-        )?;
+        Self::require_exact_string(&receipt, "verifier", "MathProgram.verifyFlat", CONTEXT)?;
         Self::require_exact_string(
             &receipt,
             "reference_authority",
@@ -921,8 +894,8 @@ impl RuntimeEvidence {
 
         let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
         let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
-        let receipt_id = u32::try_from(receipt_id)
-            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let receipt_id =
+            u32::try_from(receipt_id).map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
         let program_identity = receipt
             .get("program_identity")
@@ -955,11 +928,8 @@ impl RuntimeEvidence {
     /// This adapter fixes the full authority class. A caller cannot relabel graph,
     /// MathProgram-only, or vector-comparator receipts as direct-math evidence.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn from_direct_math_verifier_receipt_json(
-        receipt_json: &str,
-    ) -> Result<Self, String> {
-        const CONTEXT: &str =
-            "RuntimeEvidence.from_direct_math_verifier_receipt_json";
+    pub fn from_direct_math_verifier_receipt_json(receipt_json: &str) -> Result<Self, String> {
+        const CONTEXT: &str = "RuntimeEvidence.from_direct_math_verifier_receipt_json";
         let receipt = Self::parse_json_object(receipt_json, CONTEXT)?;
         Self::require_exact_string(
             &receipt,
@@ -974,29 +944,19 @@ impl RuntimeEvidence {
             "DirectMath.verifyAgainstMathProgramV9",
             CONTEXT,
         )?;
-        Self::require_exact_string(
-            &receipt,
-            "candidate_authority",
-            "burn_direct_math",
-            CONTEXT,
-        )?;
+        Self::require_exact_string(&receipt, "candidate_authority", "burn_direct_math", CONTEXT)?;
         Self::require_exact_string(
             &receipt,
             "reference_authority",
             "burn_math_program",
             CONTEXT,
         )?;
-        Self::require_exact_string(
-            &receipt,
-            "reference_program_generation",
-            "v9",
-            CONTEXT,
-        )?;
+        Self::require_exact_string(&receipt, "reference_program_generation", "v9", CONTEXT)?;
 
         let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
         let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
-        let receipt_id = u32::try_from(receipt_id)
-            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let receipt_id =
+            u32::try_from(receipt_id).map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let operation_id = Self::require_string(&receipt, "operation_id", CONTEXT)?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
         let reference_program_identity = receipt
@@ -1039,17 +999,12 @@ impl RuntimeEvidence {
         )?;
         Self::require_exact_string(&receipt, "authority", "wasm_comparator", CONTEXT)?;
         Self::require_exact_string(&receipt, "verifier", "mathVerifyVectors", CONTEXT)?;
-        Self::require_exact_string(
-            &receipt,
-            "reference_authority",
-            "caller_supplied",
-            CONTEXT,
-        )?;
+        Self::require_exact_string(&receipt, "reference_authority", "caller_supplied", CONTEXT)?;
 
         let subject = Self::runtime_subject_from_receipt(&receipt, CONTEXT)?;
         let receipt_id = Self::require_u64(&receipt, "receipt_id", CONTEXT)?;
-        let receipt_id = u32::try_from(receipt_id)
-            .map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
+        let receipt_id =
+            u32::try_from(receipt_id).map_err(|_| format!("{CONTEXT}: receipt_id exceeds u32"))?;
         let label = Self::require_string(&receipt, "label", CONTEXT)?;
         let result = receipt
             .get("result")
@@ -1075,7 +1030,11 @@ impl RuntimeEvidence {
         let predicate = predicate.into();
         let message = message.into();
 
-        validate_nonempty_bounded(&code, MAX_SHORT_FIELD_BYTES, "RuntimeEvidence.agent_fault.code")?;
+        validate_nonempty_bounded(
+            &code,
+            MAX_SHORT_FIELD_BYTES,
+            "RuntimeEvidence.agent_fault.code",
+        )?;
         validate_nonempty_bounded(
             &class,
             MAX_SHORT_FIELD_BYTES,
@@ -1124,11 +1083,7 @@ impl RuntimeEvidence {
         if receipt_id == 0 {
             return Err(format!("{context}: receipt id must be > 0"));
         }
-        validate_nonempty_bounded(
-            &label,
-            MAX_SHORT_FIELD_BYTES,
-            &format!("{context}.label"),
-        )?;
+        validate_nonempty_bounded(&label, MAX_SHORT_FIELD_BYTES, &format!("{context}.label"))?;
         validate_nonempty_bounded(
             &program_identity,
             MAX_PROGRAM_IDENTITY_BYTES,
@@ -1232,8 +1187,7 @@ impl RuntimeEvidence {
     ) -> Result<Self, String> {
         if receipt_id == 0 {
             return Err(
-                "RuntimeEvidence.math_program_verifier_receipt: receipt id must be > 0"
-                    .to_string(),
+                "RuntimeEvidence.math_program_verifier_receipt: receipt id must be > 0".to_string(),
             );
         }
         let label = label.into();
@@ -1279,8 +1233,7 @@ impl RuntimeEvidence {
     ) -> Result<Self, String> {
         if receipt_id == 0 {
             return Err(
-                "RuntimeEvidence.direct_math_verifier_receipt: receipt id must be > 0"
-                    .to_string(),
+                "RuntimeEvidence.direct_math_verifier_receipt: receipt id must be > 0".to_string(),
             );
         }
         let operation_id = operation_id.into();
@@ -1331,7 +1284,9 @@ impl RuntimeEvidence {
         detail: impl Into<String>,
     ) -> Result<Self, String> {
         if receipt_id == 0 {
-            return Err("RuntimeEvidence.vector_verifier_receipt: receipt id must be > 0".to_string());
+            return Err(
+                "RuntimeEvidence.vector_verifier_receipt: receipt id must be > 0".to_string(),
+            );
         }
         let label = label.into();
         let detail = detail.into();
@@ -1485,8 +1440,7 @@ impl RuntimeEvidence {
         before_revision_count: usize,
         after_revision_count: usize,
     ) -> Result<Self, String> {
-        const CONTEXT: &str =
-            "RuntimeEvidence.bound_revision_dispatch_execution_receipt_for_inbox";
+        const CONTEXT: &str = "RuntimeEvidence.bound_revision_dispatch_execution_receipt_for_inbox";
         if after_revision_count != before_revision_count.saturating_add(1) {
             return Err(format!(
                 "{CONTEXT}: revision count delta must be exactly one, got {before_revision_count}->{after_revision_count}"
@@ -1508,11 +1462,7 @@ impl RuntimeEvidence {
             (&revision_id, "revision_id"),
             (&revision_key, "revision_key"),
         ] {
-            validate_nonempty_bounded(
-                value,
-                MAX_SHORT_FIELD_BYTES,
-                &format!("{CONTEXT}.{field}"),
-            )?;
+            validate_nonempty_bounded(value, MAX_SHORT_FIELD_BYTES, &format!("{CONTEXT}.{field}"))?;
         }
         if let Some(parent_revision_id) = parent_revision_id.as_deref() {
             validate_nonempty_bounded(
@@ -1793,24 +1743,24 @@ impl ResolutionEvidenceInbox {
                 "\"entry_count\":{},",
                 "\"max_entries\":{},",
                 "\"summary\":{{",
-                    "\"agent_faults\":{},",
-                    "\"graph_verifier_passed\":{},",
-                    "\"graph_verifier_failed\":{},",
-                    "\"graph_verifier_with_semantic_context\":{},",
-                    "\"math_program_verifier_passed\":{},",
-                    "\"math_program_verifier_failed\":{},",
-                    "\"direct_math_verifier_passed\":{},",
-                    "\"direct_math_verifier_failed\":{},",
-                    "\"vector_verifier_passed\":{},",
-                    "\"vector_verifier_failed\":{},",
-                    "\"revision_dispatch_committed\":{}",
+                "\"agent_faults\":{},",
+                "\"graph_verifier_passed\":{},",
+                "\"graph_verifier_failed\":{},",
+                "\"graph_verifier_with_semantic_context\":{},",
+                "\"math_program_verifier_passed\":{},",
+                "\"math_program_verifier_failed\":{},",
+                "\"direct_math_verifier_passed\":{},",
+                "\"direct_math_verifier_failed\":{},",
+                "\"vector_verifier_passed\":{},",
+                "\"vector_verifier_failed\":{},",
+                "\"revision_dispatch_committed\":{}",
                 "}},",
                 "\"resolution_effect\":{{",
-                    "\"diagnostic_created\":false,",
-                    "\"state_transition\":\"none\",",
-                    "\"revision_created\":false,",
-                    "\"action_selected\":false,",
-                    "\"interpretation_required\":true",
+                "\"diagnostic_created\":false,",
+                "\"state_transition\":\"none\",",
+                "\"revision_created\":false,",
+                "\"action_selected\":false,",
+                "\"interpretation_required\":true",
                 "}},",
                 "\"entries\":[{}]",
                 "}}"
@@ -1832,11 +1782,6 @@ impl ResolutionEvidenceInbox {
             entries,
         )
     }
-}
-
-#[wasm_bindgen(js_name = runtimeResolutionEvidenceCapabilities)]
-pub fn runtime_resolution_evidence_capabilities() -> String {
-    RUNTIME_RESOLUTION_EVIDENCE_V1.to_string()
 }
 
 #[cfg(test)]
@@ -1878,9 +1823,7 @@ mod tests {
         }
     }
 
-    fn semantic_graph_receipt(
-        projection: &RuntimeSubjectProjection,
-    ) -> serde_json::Value {
+    fn semantic_graph_receipt(projection: &RuntimeSubjectProjection) -> serde_json::Value {
         let program_identity = serde_json::json!({
             "schema": "burn-research.program-identity.v1",
             "plan_hex": "0100000000000100000001000000",
@@ -1966,8 +1909,11 @@ mod tests {
     #[test]
     fn graph_receipt_adapter_canonicalizes_program_identity_for_runtime_correlation() {
         let snapshot = resolved_snapshot("intent-canonical-graph");
-        let projection =
-            projection("intent-canonical-graph", snapshot.revision, "spec-canonical-graph");
+        let projection = projection(
+            "intent-canonical-graph",
+            snapshot.revision,
+            "spec-canonical-graph",
+        );
         let receipt = semantic_graph_receipt(&projection);
 
         let evidence =
@@ -2048,8 +1994,7 @@ mod tests {
         assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
         assert_eq!(evidence.outcome(), "passed");
 
-        let evidence_json: serde_json::Value =
-            serde_json::from_str(&evidence.to_json()).unwrap();
+        let evidence_json: serde_json::Value = serde_json::from_str(&evidence.to_json()).unwrap();
         assert_eq!(
             evidence_json["payload"]["semantic_context_fingerprint"],
             "fnv1a64:semantic-context"
@@ -2077,8 +2022,7 @@ mod tests {
         assert!(inbox.record(evidence).unwrap());
         assert_eq!(snapshot, before);
 
-        let inbox_json: serde_json::Value =
-            serde_json::from_str(&inbox.to_json()).unwrap();
+        let inbox_json: serde_json::Value = serde_json::from_str(&inbox.to_json()).unwrap();
         assert_eq!(
             inbox_json["summary"]["graph_verifier_with_semantic_context"],
             1
@@ -2108,29 +2052,24 @@ mod tests {
         assert!(err.contains("must be present together"));
 
         let mut bad_fingerprint = semantic_graph_receipt(&projection);
-        bad_fingerprint["semantic_context_fingerprint"] =
-            serde_json::json!("fnv1a64:different");
-        let err = RuntimeEvidence::from_graph_verifier_receipt_json(
-            &bad_fingerprint.to_string(),
-        )
-        .unwrap_err();
+        bad_fingerprint["semantic_context_fingerprint"] = serde_json::json!("fnv1a64:different");
+        let err = RuntimeEvidence::from_graph_verifier_receipt_json(&bad_fingerprint.to_string())
+            .unwrap_err();
         assert!(err.contains("semantic_context_fingerprint does not match"));
 
         let mut bad_program = semantic_graph_receipt(&projection);
         bad_program["semantic_execution_context"]["program_identity"]["plan_hex"] =
             serde_json::json!("different");
-        let err =
-            RuntimeEvidence::from_graph_verifier_receipt_json(&bad_program.to_string()).unwrap_err();
+        let err = RuntimeEvidence::from_graph_verifier_receipt_json(&bad_program.to_string())
+            .unwrap_err();
         assert!(err.contains("program_identity does not match"));
 
         let mut bad_lineage = semantic_graph_receipt(&projection);
         bad_lineage["semantic_execution_context"]["semantic_lifecycle_identity"]
             ["base_semantic_graph_identity"]["fingerprint"] =
             serde_json::json!("fnv1a64:different-graph");
-        let err = RuntimeEvidence::from_graph_verifier_receipt_json(
-            &bad_lineage.to_string(),
-        )
-        .unwrap_err();
+        let err = RuntimeEvidence::from_graph_verifier_receipt_json(&bad_lineage.to_string())
+            .unwrap_err();
         assert!(err.contains("base graph identity does not match"));
     }
 
@@ -2150,8 +2089,7 @@ mod tests {
 
         let evidence =
             RuntimeEvidence::from_graph_verifier_receipt_json(&receipt.to_string()).unwrap();
-        let evidence_json: serde_json::Value =
-            serde_json::from_str(&evidence.to_json()).unwrap();
+        let evidence_json: serde_json::Value = serde_json::from_str(&evidence.to_json()).unwrap();
         assert!(evidence_json["payload"]
             .get("semantic_execution_context")
             .is_none());
@@ -2161,8 +2099,7 @@ mod tests {
 
         let mut inbox = ResolutionEvidenceInbox::new(&snapshot, &projection).unwrap();
         assert!(inbox.record(evidence).unwrap());
-        let inbox_json: serde_json::Value =
-            serde_json::from_str(&inbox.to_json()).unwrap();
+        let inbox_json: serde_json::Value = serde_json::from_str(&inbox.to_json()).unwrap();
         assert_eq!(
             inbox_json["summary"]["graph_verifier_with_semantic_context"],
             0
@@ -2336,8 +2273,7 @@ mod tests {
         })
         .to_string();
 
-        let evidence =
-            RuntimeEvidence::from_math_program_verifier_receipt_json(&receipt).unwrap();
+        let evidence = RuntimeEvidence::from_math_program_verifier_receipt_json(&receipt).unwrap();
         assert_eq!(evidence.source_authority(), "wasm_verifier");
         assert_eq!(evidence.evidence_authority(), "observation_only");
         assert_eq!(evidence.transport_integrity(), "host_structured_unverified");
@@ -2372,10 +2308,7 @@ mod tests {
             "result": {"passed": true}
         })
         .to_string();
-        assert!(
-            RuntimeEvidence::from_math_program_verifier_receipt_json(&graph_receipt)
-                .is_err()
-        );
+        assert!(RuntimeEvidence::from_math_program_verifier_receipt_json(&graph_receipt).is_err());
 
         let vector_receipt = serde_json::json!({
             "schema_version": 1,
@@ -2389,10 +2322,7 @@ mod tests {
             "result": {"passed": true}
         })
         .to_string();
-        assert!(
-            RuntimeEvidence::from_math_program_verifier_receipt_json(&vector_receipt)
-                .is_err()
-        );
+        assert!(RuntimeEvidence::from_math_program_verifier_receipt_json(&vector_receipt).is_err());
 
         let forged_identity = serde_json::json!({
             "schema_version": 1,
@@ -2411,8 +2341,7 @@ mod tests {
         })
         .to_string();
         assert!(
-            RuntimeEvidence::from_math_program_verifier_receipt_json(&forged_identity)
-                .is_err()
+            RuntimeEvidence::from_math_program_verifier_receipt_json(&forged_identity).is_err()
         );
     }
 
@@ -2468,8 +2397,7 @@ mod tests {
         })
         .to_string();
 
-        let evidence =
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
+        let evidence = RuntimeEvidence::from_direct_math_verifier_receipt_json(&receipt).unwrap();
 
         assert_eq!(evidence.source_authority(), "wasm_verifier");
         assert_eq!(evidence.evidence_authority(), "observation_only");
@@ -2513,63 +2441,49 @@ mod tests {
         }
 
         let mut wrong_verifier = base_receipt();
-        wrong_verifier["verifier"] =
-            serde_json::Value::String("MathProgram.verifyFlat".into());
-        assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(
-                &wrong_verifier.to_string()
-            )
-            .is_err()
-        );
+        wrong_verifier["verifier"] = serde_json::Value::String("MathProgram.verifyFlat".into());
+        assert!(RuntimeEvidence::from_direct_math_verifier_receipt_json(
+            &wrong_verifier.to_string()
+        )
+        .is_err());
 
         let mut wrong_candidate = base_receipt();
         wrong_candidate["candidate_authority"] =
             serde_json::Value::String("caller_supplied".into());
-        assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(
-                &wrong_candidate.to_string()
-            )
-            .is_err()
-        );
+        assert!(RuntimeEvidence::from_direct_math_verifier_receipt_json(
+            &wrong_candidate.to_string()
+        )
+        .is_err());
 
         let mut wrong_reference = base_receipt();
         wrong_reference["reference_authority"] =
             serde_json::Value::String("burn_compiled_graph".into());
-        assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(
-                &wrong_reference.to_string()
-            )
-            .is_err()
-        );
+        assert!(RuntimeEvidence::from_direct_math_verifier_receipt_json(
+            &wrong_reference.to_string()
+        )
+        .is_err());
 
         let mut wrong_generation = base_receipt();
-        wrong_generation["reference_program_generation"] =
-            serde_json::Value::String("v8".into());
-        assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(
-                &wrong_generation.to_string()
-            )
-            .is_err()
-        );
+        wrong_generation["reference_program_generation"] = serde_json::Value::String("v8".into());
+        assert!(RuntimeEvidence::from_direct_math_verifier_receipt_json(
+            &wrong_generation.to_string()
+        )
+        .is_err());
 
         let mut wrong_identity = base_receipt();
         wrong_identity["program_identity"]["schema"] =
             serde_json::Value::String("burn-research.program-identity.v1".into());
-        assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(
-                &wrong_identity.to_string()
-            )
-            .is_err()
-        );
+        assert!(RuntimeEvidence::from_direct_math_verifier_receipt_json(
+            &wrong_identity.to_string()
+        )
+        .is_err());
 
         let mut vector = base_receipt();
         vector["authority"] = serde_json::Value::String("wasm_comparator".into());
         vector["verifier"] = serde_json::Value::String("mathVerifyVectors".into());
-        vector["reference_authority"] =
-            serde_json::Value::String("caller_supplied".into());
+        vector["reference_authority"] = serde_json::Value::String("caller_supplied".into());
         assert!(
-            RuntimeEvidence::from_direct_math_verifier_receipt_json(&vector.to_string())
-                .is_err()
+            RuntimeEvidence::from_direct_math_verifier_receipt_json(&vector.to_string()).is_err()
         );
     }
 

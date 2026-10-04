@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::protocol::{
-        PacketHeader, BINARY_ADD, LAYER_BINARY, LAYER_POOL, LAYER_SHIFT, OP_INIT,
-        POOL_MAXPOOL1D, SHIFT_UP,
+        PacketHeader, BINARY_ADD, LAYER_BINARY, LAYER_POOL, LAYER_SHIFT, OP_INIT, POOL_MAXPOOL1D,
+        SHIFT_UP,
     };
     use crate::registry::LayerRegistry;
 
@@ -21,7 +21,10 @@ mod tests {
     }
 
     fn assert_present_stateless_state(reg: &mut LayerRegistry, id: u32, layer_type: u8) {
-        assert_eq!(reg.get_layer_state(id, layer_type).unwrap(), Vec::<u8>::new());
+        assert_eq!(
+            reg.get_layer_state(id, layer_type).unwrap(),
+            Vec::<u8>::new()
+        );
         // Stateless state has one canonical encoding: empty bytes.
         assert!(reg.load_layer_state(id, layer_type, &[9, 8, 7]).is_err());
         assert!(reg.load_layer_state(id, layer_type, &[]).is_ok());

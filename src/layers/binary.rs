@@ -1,6 +1,7 @@
+pub use crate::facade::wasm_types::WasmBinary;
+use crate::WasmTensor;
 use burn::prelude::*;
 use wasm_bindgen::prelude::*;
-use crate::WasmTensor;
 
 // Parameter-free binary op. `dim` hanya bermakna untuk Concat.
 #[derive(Debug, Clone, Copy)]
@@ -90,47 +91,3 @@ impl Binary {
 }
 
 // --- WASM WRAPPER (stateless; named constructors infallible, seperti pool/shift) ---
-#[wasm_bindgen]
-pub struct WasmBinary {
-    inner: Binary,
-}
-
-#[wasm_bindgen]
-impl WasmBinary {
-    #[wasm_bindgen(js_name = newAdd)]
-    pub fn new_add() -> WasmBinary {
-        WasmBinary { inner: Binary::new(BinaryOp::Add, 0) }
-    }
-    #[wasm_bindgen(js_name = newSub)]
-    pub fn new_sub() -> WasmBinary {
-        WasmBinary { inner: Binary::new(BinaryOp::Sub, 0) }
-    }
-    #[wasm_bindgen(js_name = newMul)]
-    pub fn new_mul() -> WasmBinary {
-        WasmBinary { inner: Binary::new(BinaryOp::Mul, 0) }
-    }
-    #[wasm_bindgen(js_name = newMatmul)]
-    pub fn new_matmul() -> WasmBinary {
-        WasmBinary { inner: Binary::new(BinaryOp::Matmul, 0) }
-    }
-    #[wasm_bindgen(js_name = newConcat)]
-    pub fn new_concat(dim: usize) -> WasmBinary {
-        WasmBinary { inner: Binary::new(BinaryOp::Concat, dim) }
-    }
-
-    /// Dua input. Shape-mismatch -> thrown string (bukan trap).
-    #[wasm_bindgen(js_name = forwardBinary)]
-    pub fn forward_binary(
-        &self,
-        a: &WasmTensor,
-        b: &WasmTensor,
-    ) -> Result<WasmTensor, String> {
-        let out = self.inner.forward(a.inner.clone(), b.inner.clone())?;
-        Ok(WasmTensor { inner: out })
-    }
-
-    // Parameter-free
-    pub fn num_params(&self) -> usize {
-        0
-    }
-}

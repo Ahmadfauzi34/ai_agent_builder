@@ -130,7 +130,9 @@ fn validate_payload(kind: u8, payload: &[u8]) -> Result<(), String> {
     match kind {
         PARAM_NONE => {
             if !payload.is_empty() {
-                return Err("MathProgram v4 step: plain parameter kind requires empty payload".into());
+                return Err(
+                    "MathProgram v4 step: plain parameter kind requires empty payload".into(),
+                );
             }
         }
         PARAM_CLAMP | PARAM_EPSILON => {
@@ -187,7 +189,11 @@ mod tests {
 
     #[test]
     fn scalar_payload_requires_exact_eight_bytes() {
-        let payload = [1.0f32.to_bits().to_le_bytes(), 2.0f32.to_bits().to_le_bytes()].concat();
+        let payload = [
+            1.0f32.to_bits().to_le_bytes(),
+            2.0f32.to_bits().to_le_bytes(),
+        ]
+        .concat();
         let value = record(PARAM_CLAMP, payload);
         assert_eq!(V4StepRecord::decode_exact(&value.encode()).unwrap(), value);
         assert!(V4StepRecord::new(1, 1, 0, 0, 1, PARAM_CLAMP, vec![0; 4]).is_err());
@@ -211,7 +217,10 @@ mod tests {
         let value = record(PARAM_SELECT_AXIS, select.encode());
         let encoded = value.encode();
         assert_eq!(V4StepRecord::decode_exact(&encoded).unwrap(), value);
-        assert_eq!(u32::from_le_bytes([encoded[6], encoded[7], encoded[8], encoded[9]]) as usize, value.payload.len());
+        assert_eq!(
+            u32::from_le_bytes([encoded[6], encoded[7], encoded[8], encoded[9]]) as usize,
+            value.payload.len()
+        );
     }
 
     #[test]
@@ -231,9 +240,18 @@ mod tests {
 
     #[test]
     fn semantic_payload_change_changes_record_bytes() {
-        let a = record(PARAM_SELECT_AXIS, SelectAxisParams::new(1, &[0, 2, 1]).unwrap().encode());
-        let b = record(PARAM_SELECT_AXIS, SelectAxisParams::new(1, &[0, 2, 1]).unwrap().encode());
-        let c = record(PARAM_SELECT_AXIS, SelectAxisParams::new(1, &[2, 0, 1]).unwrap().encode());
+        let a = record(
+            PARAM_SELECT_AXIS,
+            SelectAxisParams::new(1, &[0, 2, 1]).unwrap().encode(),
+        );
+        let b = record(
+            PARAM_SELECT_AXIS,
+            SelectAxisParams::new(1, &[0, 2, 1]).unwrap().encode(),
+        );
+        let c = record(
+            PARAM_SELECT_AXIS,
+            SelectAxisParams::new(1, &[2, 0, 1]).unwrap().encode(),
+        );
         assert_eq!(a.encode(), b.encode());
         assert_ne!(a.encode(), c.encode());
     }

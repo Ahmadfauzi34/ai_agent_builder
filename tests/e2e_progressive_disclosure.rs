@@ -1,6 +1,6 @@
 use burn_research::agent::{AgentGraphBuilder, AgentLayerSpec};
 use burn_research::layers::activation::WasmActivation;
-use burn_research::protocol::{ACT_RELU, LAYER_ACTIVATION, OP_INIT, PacketHeader};
+use burn_research::protocol::{PacketHeader, ACT_RELU, LAYER_ACTIVATION, OP_INIT};
 use burn_research::registry::LayerRegistry;
 use burn_research::workspace::AgentWorkspace;
 use burn_research::workspace_ops::{
@@ -48,7 +48,9 @@ fn level4_workspace_canonical_path_executes() {
     let mut registry = LayerRegistry::new();
     let mut builder = AgentGraphBuilder::new(2).unwrap();
 
-    let id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+    let id = workspace
+        .reserve_layer_id(&registry, "relu".into())
+        .unwrap();
     let spec = AgentLayerSpec::relu(id);
     let out = workspace_init_unary(
         &mut workspace,

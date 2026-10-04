@@ -1,13 +1,14 @@
+use super::super::state_record::deterministic_record_bytes;
 use burn::nn::pool::{AdaptiveAvgPool2d, AdaptiveAvgPool2dConfig};
 use burn::nn::{Linear, LinearConfig, Relu, Sigmoid};
 use burn::prelude::*;
-use super::super::state_record::deterministic_record_bytes;
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmSeBlock;
 use crate::{WasmBackend, WasmTensor};
 
 #[inline]
-fn reject_invalid_config<T>(message: String) -> T {
+pub(crate) fn reject_invalid_config<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
         wasm_bindgen::throw_str(&message)
@@ -126,7 +127,7 @@ fn validate_linear_params(
     }
 }
 
-fn validate_seblock_state_structure(
+pub(crate) fn validate_seblock_state_structure(
     current: &SeBlockRecord<WasmBackend>,
     incoming: &SeBlockRecord<WasmBackend>,
 ) -> Result<(), String> {
@@ -144,56 +145,6 @@ fn validate_seblock_state_structure(
         &incoming.fc2.weight,
         &incoming.fc2.bias,
     )
-}
-
-// --- WASM WRAPPER ---
-#[wasm_bindgen]
-pub struct WasmSeBlock {
-    inner: SeBlock<WasmBackend>,
-}
-
-#[wasm_bindgen]
-impl WasmSeBlock {
-    #[wasm_bindgen(constructor)]
-    /// Fallible constructor (complaint #14): invalid configs are a per-call
-    /// `Err`, never a panic/`throw_str`, so corrupt bundle bytes cannot wedge
-    /// the in-process WASM runtime.
-    pub fn try_new(channels: usize, reduction: Option<usize>) -> Result<WasmSeBlock, String> {
-        let device = Default::default();
-        let mut config = SeBlockConfig::new(channels);
-        if let Some(r) = reduction {
-            config.reduction = r;
-        }
-        let inner = config.try_init(&device).unwrap_or_else(reject_invalid_config);
-        Ok(WasmSeBlock { inner })
-    }
-
-    pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
-        let x = input.inner.clone();
-        let out = self.inner.forward(x);
-        WasmTensor { inner: out }
-    }
-
-    pub fn num_params(&self) -> usize {
-        self.inner.num_params()
-    }
-
-    pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
-        let device = Default::default();
-        let record: SeBlockRecord<WasmBackend> = crate::layers::state_record::decode_bin_record(
-            data,
-            &device,
-            "SEBlock loadState",
-        )?;
-        let current = self.inner.clone().into_record();
-        validate_seblock_state_structure(&current, &record)?;
-        self.inner = self.inner.clone().load_record(record);
-        Ok(())
-    }
-
-    pub fn get_state(&self) -> Result<Vec<u8>, String> {
-        deterministic_record_bytes(&self.inner)
-    }
 }
 
 #[cfg(test)]

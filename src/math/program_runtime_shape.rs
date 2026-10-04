@@ -60,10 +60,7 @@ mod tests {
         let reference = WasmTensor::new(&[0.0; 6], &[2, 3, 1, 1]);
         let output = expand_like(&source, &reference).unwrap();
         assert_eq!(output.shape(), vec![2, 3, 1, 1]);
-        assert_eq!(
-            output.to_array(),
-            vec![10.0, 10.0, 10.0, 20.0, 20.0, 20.0]
-        );
+        assert_eq!(output.to_array(), vec![10.0, 10.0, 10.0, 20.0, 20.0, 20.0]);
     }
 
     #[test]

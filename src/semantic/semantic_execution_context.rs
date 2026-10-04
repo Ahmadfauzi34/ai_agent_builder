@@ -1,3 +1,6 @@
+pub use crate::facade::semantic::{
+    semantic_execution_context, semantic_execution_context_capabilities,
+};
 use wasm_bindgen::prelude::*;
 
 use crate::agent::AgentGraphBuilder;
@@ -6,7 +9,7 @@ use crate::input_port_edge_binding::semantic_graph_identity_json;
 use crate::registry::LayerRegistry;
 use crate::semantic_lifecycle::semantic_lifecycle_identity_json;
 
-const SEMANTIC_EXECUTION_CONTEXT_V1: &str =
+pub(crate) const SEMANTIC_EXECUTION_CONTEXT_V1: &str =
     include_str!("../../docs/contracts/agent-semantic-execution-context.v1.json");
 
 fn json_escape(value: &str) -> String {
@@ -52,10 +55,10 @@ impl SemanticExecutionContext {
                 "\"schema_id\":\"burn-research.semantic-execution-context.v1\",",
                 "\"projection_only\":true,",
                 "\"authority\":{{",
-                    "\"execution_identity\":\"CompiledGraph.programIdentity\",",
-                    "\"semantic_graph\":\"AgentGraphBuilder.semanticGraphIdentity\",",
-                    "\"semantic_lifecycle\":\"AgentGraphBuilder.semanticLifecycleIdentity\",",
-                    "\"context\":\"derived_projection\"",
+                "\"execution_identity\":\"CompiledGraph.programIdentity\",",
+                "\"semantic_graph\":\"AgentGraphBuilder.semanticGraphIdentity\",",
+                "\"semantic_lifecycle\":\"AgentGraphBuilder.semanticLifecycleIdentity\",",
+                "\"context\":\"derived_projection\"",
                 "}},",
                 "\"program_identity\":{},",
                 "\"semantic_graph_identity\":{},",
@@ -70,7 +73,11 @@ impl SemanticExecutionContext {
             self.program_identity,
             self.semantic_graph_identity,
             self.semantic_lifecycle_identity,
-            if self.lifecycle_coverage_complete { "true" } else { "false" },
+            if self.lifecycle_coverage_complete {
+                "true"
+            } else {
+                "false"
+            },
             json_escape(&self.context_fingerprint),
         )
     }
@@ -81,9 +88,9 @@ pub(crate) fn semantic_execution_context_for(
     graph: &CompiledGraph,
     registry: &LayerRegistry,
 ) -> Result<SemanticExecutionContext, String> {
-    graph
-        .validate_registry_binding(registry)
-        .map_err(|error| format!("semanticExecutionContext: graph registry binding invalid: {error}"))?;
+    graph.validate_registry_binding(registry).map_err(|error| {
+        format!("semanticExecutionContext: graph registry binding invalid: {error}")
+    })?;
 
     if builder.num_slots() != graph.slot_count() {
         return Err(format!(
@@ -95,7 +102,11 @@ pub(crate) fn semantic_execution_context_for(
 
     let replay = builder
         .compile_with_output(registry, graph.output_slot())
-        .map_err(|error| format!("semanticExecutionContext: current builder cannot compile to graph output: {error}"))?;
+        .map_err(|error| {
+            format!(
+                "semanticExecutionContext: current builder cannot compile to graph output: {error}"
+            )
+        })?;
 
     let graph_program_identity = graph.program_identity();
     let replay_program_identity = replay.program_identity();
@@ -136,20 +147,6 @@ pub(crate) fn semantic_execution_context_for(
     })
 }
 
-#[wasm_bindgen(js_name = semanticExecutionContextCapabilities)]
-pub fn semantic_execution_context_capabilities() -> String {
-    SEMANTIC_EXECUTION_CONTEXT_V1.to_string()
-}
-
-#[wasm_bindgen(js_name = semanticExecutionContext)]
-pub fn semantic_execution_context(
-    builder: &AgentGraphBuilder,
-    graph: &CompiledGraph,
-    registry: &LayerRegistry,
-) -> Result<String, String> {
-    semantic_execution_context_for(builder, graph, registry).map(|context| context.json())
-}
-
 #[cfg(test)]
 mod tests {
     use super::semantic_execution_context_for;
@@ -158,9 +155,7 @@ mod tests {
     use crate::input_port_consumer::InputPortConsumerSpec;
     use crate::input_port_edge_binding::bind_input_port_consumer_edge;
     use crate::registry::LayerRegistry;
-    use crate::semantic_lifecycle::{
-        bind_semantic_lifecycle_transition, SemanticTransitionSpec,
-    };
+    use crate::semantic_lifecycle::{bind_semantic_lifecycle_transition, SemanticTransitionSpec};
     use crate::workspace::AgentWorkspace;
     use crate::workspace_ops::workspace_init_unary;
 
@@ -179,7 +174,9 @@ mod tests {
         )
         .unwrap();
 
-        let layer_id = workspace.reserve_layer_id(&registry, "relu".into()).unwrap();
+        let layer_id = workspace
+            .reserve_layer_id(&registry, "relu".into())
+            .unwrap();
         let spec = AgentLayerSpec::relu(layer_id);
         let output = workspace_init_unary(
             &mut workspace,
@@ -218,7 +215,10 @@ mod tests {
         assert_eq!(graph.program_identity(), program_before);
         assert_eq!(before.program_identity, after.program_identity);
         assert_ne!(before.context_fingerprint, after.context_fingerprint);
-        assert_ne!(before.semantic_graph_identity, after.semantic_graph_identity);
+        assert_ne!(
+            before.semantic_graph_identity,
+            after.semantic_graph_identity
+        );
         assert_ne!(
             before.semantic_lifecycle_identity,
             after.semantic_lifecycle_identity

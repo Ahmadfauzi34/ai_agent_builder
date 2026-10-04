@@ -1,13 +1,17 @@
+pub use crate::facade::math::tensor_transform_capabilities;
 use burn::prelude::*;
 use burn::tensor::{Int, TensorData};
 use wasm_bindgen::prelude::*;
 
+pub use crate::facade::wasm_types::WasmTensorTransform;
 use crate::{WasmBackend, WasmTensor};
 
-fn checked_element_count(dims: [usize; 4], context: &str) -> Result<usize, String> {
+pub(crate) fn checked_element_count(dims: [usize; 4], context: &str) -> Result<usize, String> {
     dims.into_iter().try_fold(1usize, |count, dim| {
         if dim == 0 {
-            return Err(format!("{context}: zero-sized dimensions are not allowed in v1"));
+            return Err(format!(
+                "{context}: zero-sized dimensions are not allowed in v1"
+            ));
         }
         count
             .checked_mul(dim)
@@ -15,7 +19,7 @@ fn checked_element_count(dims: [usize; 4], context: &str) -> Result<usize, Strin
     })
 }
 
-fn parse_rank4_shape(shape: &[usize], context: &str) -> Result<[usize; 4], String> {
+pub(crate) fn parse_rank4_shape(shape: &[usize], context: &str) -> Result<[usize; 4], String> {
     if shape.len() != 4 {
         return Err(format!(
             "{context}: expected exactly 4 dimensions, got {}",
@@ -27,7 +31,7 @@ fn parse_rank4_shape(shape: &[usize], context: &str) -> Result<[usize; 4], Strin
     Ok(dims)
 }
 
-fn parse_permutation(axes: &[usize]) -> Result<[usize; 4], String> {
+pub(crate) fn parse_permutation(axes: &[usize]) -> Result<[usize; 4], String> {
     if axes.len() != 4 {
         return Err(format!(
             "TensorTransform.permute: expected exactly 4 axes, got {}",
@@ -53,7 +57,7 @@ fn parse_permutation(axes: &[usize]) -> Result<[usize; 4], String> {
     Ok([axes[0], axes[1], axes[2], axes[3]])
 }
 
-fn parse_slice_ranges(
+pub(crate) fn parse_slice_ranges(
     dims: [usize; 4],
     starts: &[usize],
     ends: &[usize],
@@ -85,7 +89,11 @@ fn parse_slice_ranges(
     Ok((starts, ends))
 }
 
-fn validate_select_indices(dims: [usize; 4], axis: usize, indices: &[usize]) -> Result<(), String> {
+pub(crate) fn validate_select_indices(
+    dims: [usize; 4],
+    axis: usize,
+    indices: &[usize],
+) -> Result<(), String> {
     if axis >= 4 {
         return Err(format!(
             "TensorTransform.selectAxis: axis {axis} is out of range for rank 4"
@@ -108,107 +116,6 @@ fn validate_select_indices(dims: [usize; 4], axis: usize, indices: &[usize]) -> 
         }
     }
     Ok(())
-}
-
-#[wasm_bindgen(js_name = tensorTransformCapabilities)]
-pub fn tensor_transform_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema\":\"burn-research.tensor-transform.v1\",",
-        "\"rank\":4,",
-        "\"ops\":[\"reshape\",\"transpose\",\"permute\",\"slice\",\"selectAxis\"],",
-        "\"contracts\":{",
-        "\"reshape\":\"exact_rank4_equal_element_count\",",
-        "\"permute\":\"complete_unique_axes\",",
-        "\"slice\":\"bounded_nonempty_ranges\",",
-        "\"selectAxis\":\"validated_axis_and_indices\"",
-        "}",
-        "}"
-    )
-    .to_string()
-}
-
-/// Stateless rank-4 tensor/layout transform surface.
-///
-/// Every operation validates shape/axis/range/index metadata before calling Burn so malformed
-/// requests fail as controlled errors rather than backend panics or unchecked indexing behavior.
-#[wasm_bindgen]
-pub struct WasmTensorTransform;
-
-#[wasm_bindgen]
-impl WasmTensorTransform {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> WasmTensorTransform {
-        WasmTensorTransform
-    }
-
-    pub fn reshape(&self, input: &WasmTensor, shape: &[usize]) -> Result<WasmTensor, String> {
-        let target = parse_rank4_shape(shape, "TensorTransform.reshape")?;
-        let source = input.inner.dims();
-        let source_count = checked_element_count(source, "TensorTransform.reshape source")?;
-        let target_count = checked_element_count(target, "TensorTransform.reshape target")?;
-        if source_count != target_count {
-            return Err(format!(
-                "TensorTransform.reshape: element-count mismatch: source {source:?} has {source_count}, target {target:?} has {target_count}"
-            ));
-        }
-        Ok(WasmTensor {
-            inner: input.inner.clone().reshape(target),
-        })
-    }
-
-    pub fn transpose(&self, input: &WasmTensor) -> WasmTensor {
-        WasmTensor {
-            inner: input.inner.clone().swap_dims(2, 3),
-        }
-    }
-
-    pub fn permute(&self, input: &WasmTensor, axes: &[usize]) -> Result<WasmTensor, String> {
-        let axes = parse_permutation(axes)?;
-        Ok(WasmTensor {
-            inner: input.inner.clone().permute(axes),
-        })
-    }
-
-    pub fn slice(
-        &self,
-        input: &WasmTensor,
-        starts: &[usize],
-        ends: &[usize],
-    ) -> Result<WasmTensor, String> {
-        let dims = input.inner.dims();
-        let (starts, ends) = parse_slice_ranges(dims, starts, ends)?;
-        Ok(WasmTensor {
-            inner: input.inner.clone().slice([
-                starts[0]..ends[0],
-                starts[1]..ends[1],
-                starts[2]..ends[2],
-                starts[3]..ends[3],
-            ]),
-        })
-    }
-
-    #[wasm_bindgen(js_name = selectAxis)]
-    pub fn select_axis(
-        &self,
-        input: &WasmTensor,
-        axis: usize,
-        indices: &[usize],
-    ) -> Result<WasmTensor, String> {
-        let dims = input.inner.dims();
-        validate_select_indices(dims, axis, indices)?;
-
-        let device = input.inner.device();
-        let index_values: Vec<i64> = indices.iter().map(|&value| value as i64).collect();
-        let index_tensor = Tensor::<WasmBackend, 1, Int>::from_data(
-            TensorData::new(index_values, [indices.len()]),
-            &device,
-        );
-
-        Ok(WasmTensor {
-            inner: input.inner.clone().select(axis, index_tensor),
-        })
-    }
 }
 
 #[cfg(test)]
@@ -249,11 +156,12 @@ mod tests {
         let ops = WasmTensorTransform::new();
         let values: Vec<f32> = (1..=12).map(|value| value as f32).collect();
         let input = WasmTensor::new(&values, &[1, 2, 2, 3]);
-        let output = ops
-            .slice(&input, &[0, 0, 0, 1], &[1, 2, 2, 3])
-            .unwrap();
+        let output = ops.slice(&input, &[0, 0, 0, 1], &[1, 2, 2, 3]).unwrap();
         assert_eq!(output.shape(), vec![1, 2, 2, 2]);
-        assert_eq!(output.to_array(), vec![2.0, 3.0, 5.0, 6.0, 8.0, 9.0, 11.0, 12.0]);
+        assert_eq!(
+            output.to_array(),
+            vec![2.0, 3.0, 5.0, 6.0, 8.0, 9.0, 11.0, 12.0]
+        );
         assert!(ops.slice(&input, &[0, 0, 0, 2], &[1, 2, 2, 2]).is_err());
         assert!(ops.slice(&input, &[0, 0, 0, 0], &[1, 2, 2, 4]).is_err());
     }

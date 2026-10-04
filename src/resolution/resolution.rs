@@ -354,7 +354,9 @@ impl ResolutionWorkflow {
         )?;
         let reason = reason.into();
         if reason.trim().is_empty() {
-            return Err(format!("ResolutionWorkflow: {label} reason must not be empty"));
+            return Err(format!(
+                "ResolutionWorkflow: {label} reason must not be empty"
+            ));
         }
         self.state = state;
         self.advance_revision(label)
@@ -520,7 +522,10 @@ mod tests {
         let snapshot = workflow.snapshot();
         assert_eq!(snapshot.intent_id, "intent-audit");
         assert_eq!(snapshot.state, ResolutionState::Resolved);
-        assert_eq!(snapshot.diagnostics[0].resolution.as_deref(), Some("probability"));
+        assert_eq!(
+            snapshot.diagnostics[0].resolution.as_deref(),
+            Some("probability")
+        );
     }
 
     #[test]

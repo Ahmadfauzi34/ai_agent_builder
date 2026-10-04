@@ -18,28 +18,29 @@
 //! ## Bukan tanggung jawab modul ini
 //! - Engine layer → `layers/*`; kepemilikan instance → `registry`.
 
-use std::fmt::Write as _;
-use wasm_bindgen::prelude::*;
 use crate::coprocessor::verify_vectors_report;
 use crate::graph_plan::{decode_graph_plan, decode_graph_plan_header, GraphPlanStep};
 use crate::multi_input_graph::{
-    multi_input_graph_capabilities as multi_input_graph_capabilities_json,
-    MultiInputGraphPlan, MultiInputInputBundle,
+    multi_input_graph_capabilities as multi_input_graph_capabilities_json, MultiInputGraphPlan,
+    MultiInputInputBundle,
 };
 use crate::protocol::{LAYER_BINARY, LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK};
 use crate::registry::LayerRegistry;
 use crate::WasmTensor;
+use std::fmt::Write as _;
+use wasm_bindgen::prelude::*;
 
 // Sibling modules are declared as `pub mod` in `super` (src/graph/mod.rs);
 // refer to them via `super::` instead of private `#[path]` copies so each
 // file compiles exactly once (a `#[path]` copy here would double-compile
 // the #[wasm_bindgen] exports).
-use super::graph_plan_explain;
-pub use super::graph_execution_trace::TracedMultiInputRun;
 pub use super::graph_candidate_verification::MultiInputVerificationCases;
+pub use super::graph_execution_trace::TracedMultiInputRun;
 pub use super::graph_mutation_transaction::{
-    GraphMutationTransaction, CheckpointBranchSet, checkpoint_branch_capabilities,
+    checkpoint_branch_capabilities, CheckpointBranchSet, GraphMutationTransaction,
 };
+use super::graph_plan_explain;
+pub use crate::facade::graph::{multi_input_graph_capabilities, program_capabilities};
 
 // Satu sumber kebenaran arity untuk graph + registry.
 pub(crate) const ARITY_UNARY: u8 = 1;
@@ -141,8 +142,7 @@ impl CompiledGraph {
 
         // The shared decoder owns only frozen byte structure. Registry, arity,
         // slot-lifecycle and execution policy remain below in CompiledGraph.
-        let decoded =
-            decode_graph_plan(plan).map_err(|error| format!("compile_graph: {error}"))?;
+        let decoded = decode_graph_plan(plan).map_err(|error| format!("compile_graph: {error}"))?;
         debug_assert_eq!(decoded.num_steps, num_steps);
         debug_assert_eq!(decoded.num_slots, num_slots);
 
@@ -255,7 +255,9 @@ impl CompiledGraph {
                 return Err(format!("run: external input slot {slot} out of range"));
             }
             if slots[slot_index].is_some() {
-                return Err(format!("run: external input slot {slot} is bound more than once"));
+                return Err(format!(
+                    "run: external input slot {slot} is bound more than once"
+                ));
             }
             slots[slot_index] = Some(tensor.clone());
         }
@@ -303,12 +305,13 @@ impl CompiledMultiInputGraph {
         plan: &MultiInputGraphPlan,
     ) -> Result<Self, String> {
         let input_plan_bytes = plan.validate_for_compile()?;
-        let required_slots = plan.ports().iter().map(|port| port.slot).collect::<Vec<_>>();
-        let graph = CompiledGraph::build_with_external_slots(
-            registry,
-            plan.graph_plan(),
-            &required_slots,
-        )?;
+        let required_slots = plan
+            .ports()
+            .iter()
+            .map(|port| port.slot)
+            .collect::<Vec<_>>();
+        let graph =
+            CompiledGraph::build_with_external_slots(registry, plan.graph_plan(), &required_slots)?;
         Ok(Self {
             graph,
             plan: plan.clone(),
@@ -382,15 +385,18 @@ impl CompiledMultiInputGraph {
         if !ready {
             return Err("CompiledMultiInputGraph.runWithTrace: input or registry preflight failed; execution was not started".into());
         }
-        super::graph_execution_trace::run(self, registry, bundle, start_step, max_steps, max_tensor_bytes)
+        super::graph_execution_trace::run(
+            self,
+            registry,
+            bundle,
+            start_step,
+            max_steps,
+            max_tensor_bytes,
+        )
     }
 
     #[wasm_bindgen(js_name = preflight)]
-    pub fn preflight(
-        &self,
-        registry: &LayerRegistry,
-        bundle: &MultiInputInputBundle,
-    ) -> String {
+    pub fn preflight(&self, registry: &LayerRegistry, bundle: &MultiInputInputBundle) -> String {
         self.preflight_state(registry, bundle).1
     }
 
@@ -464,37 +470,10 @@ impl CompiledMultiInputGraph {
     }
 }
 
-#[wasm_bindgen(js_name = programCapabilities)]
-pub fn program_capabilities() -> String {
-    concat!(
-        "{",
-        "\"schema_version\":1,",
-        "\"identity_schema\":\"burn-research.program-identity.v1\",",
-        "\"entry\":\"CompiledGraph\",",
-        "\"plan\":\"programPlan\",",
-        "\"identity\":\"programIdentity\",",
-        "\"binding_validation\":\"validateRegistryBinding\",",
-        "\"execution_binding\":\"required\",",
-        "\"identity_scope\":\"graph_plan_plus_layer_init_identity\",",
-        "\"mutable_state_in_identity\":false",
-        "}"
-    )
-    .to_string()
-}
-
-#[wasm_bindgen(js_name = multiInputGraphCapabilities)]
-pub fn multi_input_graph_capabilities() -> String {
-    multi_input_graph_capabilities_json()
-}
-
 #[wasm_bindgen]
 impl CompiledGraph {
     #[wasm_bindgen(js_name = run)]
-    pub fn run(
-        &self,
-        registry: &LayerRegistry,
-        input: &WasmTensor,
-    ) -> Result<WasmTensor, String> {
+    pub fn run(&self, registry: &LayerRegistry, input: &WasmTensor) -> Result<WasmTensor, String> {
         // A compiled graph is structurally bound to the init identities validated at compile time.
         // Mutable weights/state may change under the same init identity, but structural re-init
         // requires recompiling the canonical plan before execution.
@@ -564,11 +543,17 @@ impl CompiledGraph {
     }
 
     #[wasm_bindgen(js_name = numSteps)]
-    pub fn step_count(&self) -> u32 { self.steps.len() as u32 }
+    pub fn step_count(&self) -> u32 {
+        self.steps.len() as u32
+    }
     #[wasm_bindgen(js_name = numSlots)]
-    pub fn slot_count(&self) -> u32 { self.num_slots }
+    pub fn slot_count(&self) -> u32 {
+        self.num_slots
+    }
     #[wasm_bindgen(js_name = outSlot)]
-    pub fn output_slot(&self) -> u8 { self.out_slot }
+    pub fn output_slot(&self) -> u8 {
+        self.out_slot
+    }
 }
 
 #[cfg(test)]
@@ -613,7 +598,9 @@ mod tests {
         for value in &mut weights {
             *value += 1.0;
         }
-        registry.set_weights_flat(7, LAYER_LINEAR, &weights).unwrap();
+        registry
+            .set_weights_flat(7, LAYER_LINEAR, &weights)
+            .unwrap();
 
         let after = graph.run(&registry, &input).unwrap().to_array();
         assert_ne!(before, after);
@@ -635,7 +622,9 @@ mod tests {
 
         assert!(graph.validate_registry_binding(&registry).is_err());
         assert!(graph.run(&registry, &input).is_err());
-        assert!(graph.verify_flat(&registry, &input, &[0.0, 0.0], 0.0, 0.0).is_err());
+        assert!(graph
+            .verify_flat(&registry, &input, &[0.0, 0.0], 0.0, 0.0)
+            .is_err());
 
         let rebound = registry.compile_graph(&plan).unwrap();
         assert_ne!(rebound.program_identity(), old_identity);
