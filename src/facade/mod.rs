@@ -1,14 +1,14 @@
-//! Fasad WASM tunggal (Opsi C, Fase 1).
+//! Fasad WASM tunggal (Opsi C, Fase 1 + Fase 2 + Fase 3).
 //!
 //! Seluruh `#[wasm_bindgen]` yang *pindah murni* dikumpulkan di sini:
 //! - free function `#[wasm_bindgen]` (nama export JS = nama Rust, jadi pindah
 //!   modul tidak mengubah permukaan JS),
 //! - struct `Wasm*` yang memang sudah merupakan adapter tipis WASM,
-//! - item `#[wasm_bindgen]` yang sebelumnya didefinisikan di `src/lib.rs`.
-//!
-//! Yang BELUM pindah (Fase 2): 13 domain-struct + `#[wasm_bindgen] impl`
-//! block — method-nya saling mengoper struct WASM lain by reference sehingga
-//! butuh wrapper graph dengan desain per-tipe, bukan sekadar pindah file.
+//! - item `#[wasm_bindgen]` yang sebelumnya didefinisikan di `src/lib.rs`,
+//! - blok `#[wasm_bindgen] impl` untuk struct domain (Fase 2: 13 struct,
+//!   Fase 3: 4 blok kakek terakhir — MultiInputGraphPlan,
+//!   MultiInputInputBundle, SemanticIngressManifest, AgentWorkspace).
+//!   Struct tetap di domain dengan `#[wasm_bindgen]` sebagai marker ABI.
 //!
 //! Kompatibilitas: setiap item yang pindah di-re-export rangkap sehingga
 //! `burn_research::<item>` (root) dan `burn_research::<domain-lama>::<item>`

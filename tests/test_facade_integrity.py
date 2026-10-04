@@ -271,6 +271,15 @@ FASE2_STRUCTS = [
     "InputPortConsumerSpec",
 ]
 
+# Opsi C Fase 3: the last grandfathered #[wasm_bindgen] impl blocks in domain
+# files (out of scope for Fase 2), moved to src/facade/.
+FASE3_STRUCTS = [
+    "MultiInputGraphPlan",
+    "MultiInputInputBundle",
+    "SemanticIngressManifest",
+    "AgentWorkspace",
+]
+
 
 def facade_impl_targets():
     """Type names with #[wasm_bindgen] impl blocks under src/facade/."""
@@ -327,9 +336,7 @@ class TestFase2StructAttr(unittest.TestCase):
 
 class TestFase2ImplPlacement(unittest.TestCase):
     """RC-fase2-impl-block-placement: #[wasm_bindgen] impl blocks for the 13
-    Fase-2 domain structs live in src/facade/, never in domain files.
-    (Pre-existing wasm impls for other types, e.g. MultiInputGraphPlan in
-    multi_input_graph.rs, are grandfathered and out of scope.)"""
+    Fase-2 domain structs live in src/facade/, never in domain files."""
 
     def test_no_wasm_impl_for_fase2_structs_outside_facade(self):
         bad = []
@@ -342,6 +349,54 @@ class TestFase2ImplPlacement(unittest.TestCase):
             ):
                 if m.group(1) in FASE2_STRUCTS:
                     bad.append((str(path.relative_to(REPO)), m.group(1)))
+        self.assertEqual(bad, [], f"wasm impl blocks outside facade: {bad}")
+
+
+class TestFase3ImplPlacement(unittest.TestCase):
+    """RC-fase3-impl-block-placement: the last grandfathered #[wasm_bindgen]
+    impl blocks (MultiInputGraphPlan, MultiInputInputBundle,
+    SemanticIngressManifest) were moved to src/facade/ in Fase 3.
+    After Fase 3, NO #[wasm_bindgen] impl block may remain in domain files."""
+
+    def test_no_wasm_impl_for_fase3_structs_outside_facade(self):
+        bad = []
+        for path in SRC.rglob("*.rs"):
+            if path.is_relative_to(FACADE):
+                continue
+            src = path.read_text()
+            for m in re.finditer(
+                r"#\[wasm_bindgen[^\n]*\]\n(?:#\[[^\n]*\]\n)*impl (\w+)", src
+            ):
+                if m.group(1) in FASE3_STRUCTS:
+                    bad.append((str(path.relative_to(REPO)), m.group(1)))
+        self.assertEqual(bad, [], f"wasm impl blocks outside facade: {bad}")
+
+    def test_fase3_impls_exist_in_facade(self):
+        missing = []
+        for name in FASE3_STRUCTS:
+            found = False
+            for path in FACADE.rglob("*.rs"):
+                src = path.read_text()
+                if re.search(
+                    r"#\[wasm_bindgen[^\n]*\]\n(?:#\[[^\n]*\]\n)*impl " + name + r"\b",
+                    src,
+                ):
+                    found = True
+                    break
+            if not found:
+                missing.append(name)
+        self.assertEqual(missing, [], f"Fase-3 impl blocks missing from facade: {missing}")
+
+    def test_no_wasm_impl_anywhere_outside_facade(self):
+        bad = []
+        for path in SRC.rglob("*.rs"):
+            if path.is_relative_to(FACADE):
+                continue
+            src = path.read_text()
+            for m in re.finditer(
+                r"#\[wasm_bindgen[^\n]*\]\n(?:#\[[^\n]*\]\n)*impl (\w+)", src
+            ):
+                bad.append((str(path.relative_to(REPO)), m.group(1)))
         self.assertEqual(bad, [], f"wasm impl blocks outside facade: {bad}")
 
 

@@ -10,8 +10,9 @@
 //!   ditolak dengan pesan yang menyebut batasnya (batas desain).
 //! - `ARITY_UNARY` / `ARITY_BINARY` adalah satu-satunya sumber kebenaran
 //!   arity untuk graph + registry.
-//! - Submodul (`plan_explain`, `execution_trace`, `candidate_verification`,
-//!   `mutation_transaction`) di-declare sebagai `pub mod` di
+//! - Submodul (`graph_plan_explain`, `graph_execution_trace`,
+//!   `graph_candidate_verification`, `graph_mutation_transaction`)
+//!   di-declare sebagai `pub mod` di
 //!   `src/graph/mod.rs`; file ini merujuknya via `super::` agar setiap file
 //!   dikompilasi tepat sekali.
 //!
@@ -43,6 +44,9 @@ use super::graph_plan_explain;
 pub use crate::facade::graph::{multi_input_graph_capabilities, program_capabilities};
 
 // Satu sumber kebenaran arity untuk graph + registry.
+// Catatan: `crate::math::program` mem-mirror dua konstanta ini secara privat
+// (domain lokal, tanpa aliran silang); jika nilai di sini berubah, mirror di
+// sana WAJIB ikut berubah.
 pub(crate) const ARITY_UNARY: u8 = 1;
 pub(crate) const ARITY_BINARY: u8 = 2;
 

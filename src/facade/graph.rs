@@ -14,7 +14,9 @@
 
 use wasm_bindgen::prelude::*;
 
+use crate::agent::AgentGraphBuilder;
 use crate::agent::AgentLayerSpec;
+use crate::contracts::validate_external_input_contract_declaration;
 use crate::coprocessor::verify_vectors_report;
 use crate::graph::graph_candidate_verification::{
     case_digest, MultiInputVerificationCases, VerificationCase, MAX_CASES, MAX_INPUT_BYTES,
@@ -32,10 +34,20 @@ use crate::graph::graph_parameters_wasm::apply_fresh_binding;
 use crate::graph::graph_parameters_wasm::read_fresh_binding;
 use crate::graph::graph_plan_explain;
 use crate::graph::multi_input_graph::multi_input_graph_capabilities as multi_input_graph_capabilities_json;
+use crate::graph::multi_input_graph::{
+    fnv1a64, port_contract_json, tensor_shape, tensor_value_fingerprint, validate_port_contract,
+};
+use crate::graph::multi_input_graph::{
+    BoundInput, InputPortBinding, MultiInputGraphPlan, MultiInputInputBundle,
+    MultiInputPortContract, PlanCursor, MAX_INPUT_PORTS, PLAN_MAGIC, PLAN_SCHEMA_ID,
+    PLAN_SCHEMA_VERSION,
+};
 use crate::graph::{CompiledGraph, CompiledMultiInputGraph, ARITY_BINARY};
 use crate::graph_parameters::GraphParameterBinding;
 use crate::graph_plan::decode_graph_plan;
-use crate::multi_input_graph::MultiInputInputBundle;
+use crate::ingress::input_port::{
+    role_valid, MAX_FINGERPRINT_BYTES, MAX_ROLE_BYTES, MAX_SOURCE_BYTES,
+};
 use crate::program_bundle::{export_multi_input_program_bundle, import_multi_input_program_bundle};
 use crate::protocol::{LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK};
 use crate::registry::LayerRegistry;
@@ -1014,5 +1026,292 @@ impl CheckpointBranchSet {
         )?;
         self.promoted_branch = Some(branch_id.into());
         Ok(promoted)
+    }
+}
+
+#[wasm_bindgen]
+impl MultiInputGraphPlan {
+    #[wasm_bindgen(constructor)]
+    pub fn new(builder: &AgentGraphBuilder) -> Result<MultiInputGraphPlan, String> {
+        let graph_plan = builder.plan_bytes()?;
+        let decoded = decode_graph_plan(&graph_plan)
+            .map_err(|error| format!("MultiInputGraphPlan.new: {error}"))?;
+        Ok(Self {
+            graph_plan,
+            num_slots: decoded.num_slots,
+            ports: Vec::new(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = fromBytes)]
+    pub fn from_bytes(bytes: &[u8]) -> Result<MultiInputGraphPlan, String> {
+        let mut cursor = PlanCursor::new(bytes);
+        if cursor.take(PLAN_MAGIC.len(), "magic")? != PLAN_MAGIC {
+            return Err("MultiInputGraphPlan.fromBytes: invalid magic".into());
+        }
+        let version = cursor.read_u32("schema version")?;
+        if version != PLAN_SCHEMA_VERSION {
+            return Err(format!(
+                "MultiInputGraphPlan.fromBytes: unsupported schema version {version}"
+            ));
+        }
+        let graph_len = cursor.read_u32("graph plan length")? as usize;
+        let port_count = usize::from(cursor.read_u8("port count")?);
+        if port_count > MAX_INPUT_PORTS {
+            return Err(format!(
+                "MultiInputGraphPlan.fromBytes: port count {port_count} exceeds {MAX_INPUT_PORTS}"
+            ));
+        }
+        let graph_plan = cursor.take(graph_len, "graph plan")?.to_vec();
+        let decoded = decode_graph_plan(&graph_plan)
+            .map_err(|error| format!("MultiInputGraphPlan.fromBytes: {error}"))?;
+        let mut ports = Vec::with_capacity(port_count);
+        let mut prior_slot = None;
+        for _ in 0..port_count {
+            let slot = cursor.read_u8("input slot")?;
+            if prior_slot.is_some_and(|prior| prior >= slot) {
+                return Err(
+                    "MultiInputGraphPlan.fromBytes: input ports must be unique and sorted by slot"
+                        .into(),
+                );
+            }
+            prior_slot = Some(slot);
+            let role_len = usize::from(cursor.read_u8("role length")?);
+            let role = std::str::from_utf8(cursor.take(role_len, "role")?)
+                .map_err(|_| "MultiInputGraphPlan.fromBytes: role is not valid UTF-8".to_string())?
+                .to_string();
+            let shape = [
+                cursor.read_u32("shape dim0")?,
+                cursor.read_u32("shape dim1")?,
+                cursor.read_u32("shape dim2")?,
+                cursor.read_u32("shape dim3")?,
+            ];
+            let layout_len = usize::from(cursor.read_u16("layout length")?);
+            let layout = std::str::from_utf8(cursor.take(layout_len, "layout")?)
+                .map_err(|_| {
+                    "MultiInputGraphPlan.fromBytes: layout is not valid UTF-8".to_string()
+                })?
+                .to_string();
+            let require_fingerprint = match cursor.read_u8("fingerprint policy")? {
+                0 => false,
+                1 => true,
+                value => {
+                    return Err(format!(
+                        "MultiInputGraphPlan.fromBytes: invalid fingerprint policy {value}"
+                    ))
+                }
+            };
+            let minimum_revision = cursor.read_u64("minimum revision")?;
+            let port = MultiInputPortContract {
+                slot,
+                role,
+                shape,
+                layout,
+                require_fingerprint,
+                minimum_revision,
+            };
+            validate_port_contract(&port, decoded.num_slots)
+                .map_err(|error| format!("MultiInputGraphPlan.fromBytes: {error}"))?;
+            ports.push(port);
+        }
+        if !cursor.is_finished() {
+            return Err("MultiInputGraphPlan.fromBytes: trailing bytes after final port".into());
+        }
+        Ok(Self {
+            graph_plan,
+            num_slots: decoded.num_slots,
+            ports,
+        })
+    }
+
+    #[wasm_bindgen(js_name = addInputPort)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_input_port(
+        &mut self,
+        slot: u8,
+        role: String,
+        dim0: u32,
+        dim1: u32,
+        dim2: u32,
+        dim3: u32,
+        layout: String,
+        require_fingerprint: bool,
+        minimum_revision: u64,
+    ) -> Result<bool, String> {
+        let port = MultiInputPortContract {
+            slot,
+            role,
+            shape: [dim0, dim1, dim2, dim3],
+            layout,
+            require_fingerprint,
+            minimum_revision,
+        };
+        validate_port_contract(&port, self.num_slots)?;
+        match self.ports.iter().find(|existing| existing.slot == slot) {
+            Some(existing) if existing == &port => return Ok(false),
+            Some(_) => {
+                return Err(format!(
+                    "MultiInputGraphPlan.addInputPort: conflicting definition for slot {slot}"
+                ))
+            }
+            None => {}
+        }
+        if self.ports.len() >= MAX_INPUT_PORTS {
+            return Err(format!(
+                "MultiInputGraphPlan.addInputPort: maximum {MAX_INPUT_PORTS} ports reached"
+            ));
+        }
+        self.ports.push(port);
+        self.ports.sort_by_key(|port| port.slot);
+        Ok(true)
+    }
+
+    #[wasm_bindgen(js_name = portCount)]
+    pub fn port_count(&self) -> u32 {
+        self.ports.len() as u32
+    }
+
+    #[wasm_bindgen(js_name = inputSlots)]
+    pub fn input_slots(&self) -> Vec<u8> {
+        self.ports.iter().map(|port| port.slot).collect()
+    }
+
+    #[wasm_bindgen(js_name = programPlan)]
+    pub fn program_plan(&self) -> Vec<u8> {
+        self.graph_plan.clone()
+    }
+
+    #[wasm_bindgen(js_name = planFingerprint)]
+    pub fn plan_fingerprint(&self) -> Result<String, String> {
+        self.fingerprint_internal()
+    }
+
+    #[wasm_bindgen(js_name = toBytes)]
+    pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        self.encode()
+    }
+
+    #[wasm_bindgen(js_name = toJSON)]
+    pub fn to_json(&self) -> Result<String, String> {
+        let ports = self
+            .ports
+            .iter()
+            .map(port_contract_json)
+            .collect::<Vec<_>>()
+            .join(",");
+        let fingerprint = self.fingerprint_internal()?;
+        Ok(format!(
+            "{{\"schema_version\":1,\"schema_id\":\"{}\",\"plan_fingerprint\":\"{}\",\"topology_plan_bytes\":{},\"input_ports\":[{}],\"runtime_policy\":\"all_declared_inputs_must_be_bound_before_execution\",\"execution_authorized\":false}}",
+            PLAN_SCHEMA_ID,
+            fingerprint,
+            self.graph_plan.len(),
+            ports,
+        ))
+    }
+}
+
+#[wasm_bindgen]
+impl MultiInputInputBundle {
+    #[wasm_bindgen(constructor)]
+    pub fn new(plan: &MultiInputGraphPlan) -> Result<MultiInputInputBundle, String> {
+        let plan_bytes = plan.validate_for_compile()?;
+        let plan_fingerprint = fnv1a64(plan_bytes.iter().copied());
+        Ok(Self {
+            plan_bytes,
+            plan_fingerprint,
+            ports: plan
+                .ports
+                .iter()
+                .cloned()
+                .map(|contract| InputPortBinding {
+                    contract,
+                    bound: None,
+                })
+                .collect(),
+        })
+    }
+
+    #[wasm_bindgen(js_name = bindInput)]
+    pub fn bind_input(
+        &mut self,
+        slot: u8,
+        tensor: &WasmTensor,
+        role: String,
+        layout: String,
+        source: String,
+        revision: u64,
+        fingerprint: String,
+    ) -> Result<bool, String> {
+        let index = self
+            .ports
+            .iter()
+            .position(|port| port.contract.slot == slot)
+            .ok_or_else(|| {
+                format!("MultiInputInputBundle.bindInput: slot {slot} is not declared in the plan")
+            })?;
+        if role.is_empty() || role.len() > MAX_ROLE_BYTES || !role_valid(&role) {
+            return Err(format!(
+                "MultiInputInputBundle.bindInput: unsupported role {role:?}"
+            ));
+        }
+        if source.is_empty() || source.len() > MAX_SOURCE_BYTES {
+            return Err(format!(
+                "MultiInputInputBundle.bindInput: source must be 1..={MAX_SOURCE_BYTES} bytes"
+            ));
+        }
+        if fingerprint.len() > MAX_FINGERPRINT_BYTES {
+            return Err(format!("MultiInputInputBundle.bindInput: fingerprint exceeds {MAX_FINGERPRINT_BYTES} bytes"));
+        }
+        let actual_shape = tensor_shape(tensor)?;
+        validate_external_input_contract_declaration(actual_shape, &layout)
+            .map_err(|error| format!("MultiInputInputBundle.bindInput: {error}"))?;
+        let value_fingerprint = tensor_value_fingerprint(tensor)?;
+        if let Some(existing) = self.ports[index].bound.as_ref() {
+            if existing.role == role
+                && existing.layout == layout
+                && existing.source == source
+                && existing.revision == revision
+                && existing.fingerprint == fingerprint
+                && existing.value_fingerprint == value_fingerprint
+            {
+                return Ok(false);
+            }
+            return Err(format!("MultiInputInputBundle.bindInput: slot {slot} is already bound; clear it before replacement"));
+        }
+        self.ports[index].bound = Some(BoundInput {
+            tensor: tensor.clone(),
+            role,
+            layout,
+            source,
+            revision,
+            fingerprint,
+            value_fingerprint,
+        });
+        Ok(true)
+    }
+
+    #[wasm_bindgen(js_name = clearInput)]
+    pub fn clear_input(&mut self, slot: u8) -> bool {
+        let Some(port) = self
+            .ports
+            .iter_mut()
+            .find(|port| port.contract.slot == slot)
+        else {
+            return false;
+        };
+        port.bound.take().is_some()
+    }
+
+    #[wasm_bindgen(js_name = boundPortCount)]
+    pub fn bound_port_count(&self) -> u32 {
+        self.ports
+            .iter()
+            .filter(|port| port.bound.is_some())
+            .count() as u32
+    }
+
+    #[wasm_bindgen(js_name = planFingerprint)]
+    pub fn plan_fingerprint(&self) -> String {
+        self.plan_fingerprint.clone()
     }
 }

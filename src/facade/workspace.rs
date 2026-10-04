@@ -12,7 +12,14 @@ use crate::agent::AgentLayerSpec;
 use crate::graph::CompiledGraph;
 use crate::protocol::LAYER_BINARY;
 use crate::registry::LayerRegistry;
+use crate::semantic::semantic_ingress_manifest::validate_text;
 use crate::workspace::AgentWorkspace;
+use crate::workspace::{
+    json_escape, row_json, validate_row_fields, WorkspaceRow, INTERNAL_PREFIX, MAX_KEY_BYTES,
+    MAX_KIND_BYTES, MAX_ROWS, MAX_RUNTIME_PROGRAM_BINDINGS, MAX_STATE_BYTES, MAX_TABLE_BYTES,
+    MAX_VALUE_BYTES, TABLE_ATTESTATIONS, TABLE_EVENTS, TABLE_LAYERS, TABLE_PROOFS, TABLE_SLOTS,
+    TABLE_VERIFIER_RECEIPTS,
+};
 use crate::workspace_ops::ensure_registry_matches_spec;
 use crate::workspace_ops::ensure_workspace_layer_reserved;
 use crate::workspace_ops::finalize_initialized_binary;
@@ -280,4 +287,397 @@ pub fn workspace_compile_for_runtime_subject(
     let graph = builder.compile_with_output(registry, output_slot)?;
     workspace.bind_runtime_program_identity(graph.program_identity())?;
     Ok(graph)
+}
+
+#[wasm_bindgen]
+impl AgentWorkspace {
+    #[wasm_bindgen(constructor)]
+    pub fn new(num_slots: u32) -> Result<AgentWorkspace, String> {
+        if !(1..=64).contains(&num_slots) {
+            return Err(format!(
+                "AgentWorkspace: num_slots must be 1..=64, got {num_slots}"
+            ));
+        }
+
+        let mut workspace = Self {
+            num_slots,
+            next_layer_id: 1,
+            next_proof_id: 1,
+            next_attestation_id: 1,
+            next_verifier_receipt_id: 1,
+            next_event_id: 1,
+            input_contract: None,
+            input_port_metadata: None,
+            runtime_subject_binding: None,
+            runtime_program_identities: Vec::new(),
+            rows: Vec::new(),
+        };
+
+        for slot in 0..num_slots {
+            workspace.rows.push(WorkspaceRow {
+                table: TABLE_SLOTS.to_string(),
+                key: slot.to_string(),
+                kind: "slot".to_string(),
+                state: if slot == 0 { "input" } else { "free" }.to_string(),
+                value: String::new(),
+            });
+        }
+
+        Ok(workspace)
+    }
+
+    /// Generic user-space row upsert. Tables prefixed with `_` are reserved for workspace internals.
+    pub fn put(
+        &mut self,
+        table: String,
+        key: String,
+        kind: String,
+        state: String,
+        value: String,
+    ) -> Result<(), String> {
+        if table.starts_with(INTERNAL_PREFIX) {
+            return Err(format!(
+                "AgentWorkspace.put: table {table} is reserved for internal state"
+            ));
+        }
+        validate_row_fields(&table, &key, &kind, &state, &value, "AgentWorkspace.put")?;
+        self.ensure_insert_capacity(&table, &key)?;
+        self.upsert_internal(&table, key, kind, state, value)
+    }
+
+    /// Query any table, including read-only inspection of internal tables.
+    pub fn query(&self, table: String, kind: Option<String>, state: Option<String>) -> String {
+        self.query_rows(&table, kind.as_deref(), state.as_deref())
+    }
+
+    pub fn get(&self, table: String, key: String) -> String {
+        self.find_row_index(&table, &key)
+            .map(|index| row_json(&self.rows[index]))
+            .unwrap_or_else(|| "null".to_string())
+    }
+
+    pub fn remove(&mut self, table: String, key: String) -> Result<bool, String> {
+        if table.starts_with(INTERNAL_PREFIX) {
+            return Err(format!(
+                "AgentWorkspace.remove: table {table} is reserved for internal state"
+            ));
+        }
+        if let Some(index) = self.find_row_index(&table, &key) {
+            self.rows.remove(index);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    #[wasm_bindgen(js_name = tableNames)]
+    pub fn table_names(&self) -> String {
+        let mut names = self
+            .rows
+            .iter()
+            .map(|row| row.table.as_str())
+            .collect::<Vec<_>>();
+        names.sort_unstable();
+        names.dedup();
+        let body = names
+            .into_iter()
+            .map(|name| format!("\"{}\"", json_escape(name)))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("[{}]", body)
+    }
+
+    /// Return the explicit metadata quotas for agent planning.
+    pub fn limits(&self) -> String {
+        format!(
+            "{{\"max_rows\":{MAX_ROWS},\"max_table_bytes\":{MAX_TABLE_BYTES},\"max_key_bytes\":{MAX_KEY_BYTES},\"max_kind_bytes\":{MAX_KIND_BYTES},\"max_state_bytes\":{MAX_STATE_BYTES},\"max_value_bytes\":{MAX_VALUE_BYTES}}}"
+        )
+    }
+
+    #[wasm_bindgen(js_name = reserveSlot)]
+    pub fn reserve_slot(&mut self, owner: String) -> Result<u8, String> {
+        validate_text(
+            &owner,
+            MAX_VALUE_BYTES,
+            "AgentWorkspace.reserveSlot.owner",
+            false,
+        )?;
+        let index = self
+            .rows
+            .iter()
+            .position(|row| row.table == TABLE_SLOTS && row.state == "free")
+            .ok_or_else(|| "AgentWorkspace.reserveSlot: no free slot available".to_string())?;
+        let slot = self.rows[index]
+            .key
+            .parse::<u8>()
+            .map_err(|_| "AgentWorkspace.reserveSlot: internal slot key is invalid".to_string())?;
+        self.rows[index].state = "reserved".to_string();
+        self.rows[index].value = owner;
+        Ok(slot)
+    }
+
+    #[wasm_bindgen(js_name = releaseSlot)]
+    pub fn release_slot(&mut self, slot: u8) -> Result<(), String> {
+        if slot == 0 || u32::from(slot) >= self.num_slots {
+            return Err(format!(
+                "AgentWorkspace.releaseSlot: slot {slot} must be in 1..{}",
+                self.num_slots
+            ));
+        }
+        let key = slot.to_string();
+        let index = self
+            .find_row_index(TABLE_SLOTS, &key)
+            .ok_or_else(|| format!("AgentWorkspace.releaseSlot: slot {slot} not found"))?;
+        let state = self.rows[index].state.as_str();
+        if state != "reserved" {
+            return Err(format!(
+                "AgentWorkspace.releaseSlot: slot {slot} cannot transition {state}->free; expected reserved->free"
+            ));
+        }
+        self.rows[index].state = "free".to_string();
+        self.rows[index].value.clear();
+        Ok(())
+    }
+
+    #[wasm_bindgen(js_name = reserveLayerId)]
+    pub fn reserve_layer_id(
+        &mut self,
+        registry: &LayerRegistry,
+        label: String,
+    ) -> Result<u32, String> {
+        validate_text(
+            &label,
+            MAX_VALUE_BYTES,
+            "AgentWorkspace.reserveLayerId.label",
+            true,
+        )?;
+        let mut candidate = self.next_layer_id;
+        loop {
+            if !Self::layer_id_in_use(registry, candidate)
+                && !self.workspace_layer_id_reserved(candidate)
+            {
+                self.upsert_internal(
+                    TABLE_LAYERS,
+                    candidate.to_string(),
+                    "layer".into(),
+                    "reserved".into(),
+                    label,
+                )?;
+                self.next_layer_id = candidate.checked_add(1).ok_or_else(|| {
+                    "AgentWorkspace.reserveLayerId: allocator exhausted".to_string()
+                })?;
+                return Ok(candidate);
+            }
+            candidate = candidate
+                .checked_add(1)
+                .ok_or_else(|| "AgentWorkspace.reserveLayerId: allocator exhausted".to_string())?;
+        }
+    }
+
+    /// Reconcile a typed layer with the actual registry after caller initializes it manually.
+    #[wasm_bindgen(js_name = syncLayer)]
+    pub fn sync_layer(
+        &mut self,
+        registry: &LayerRegistry,
+        spec: &AgentLayerSpec,
+        label: String,
+    ) -> Result<(), String> {
+        if !registry.layer_exists(spec.layer_type(), spec.layer_id()) {
+            return Err(format!(
+                "AgentWorkspace.syncLayer: layer type 0x{:02X} id {} is not initialized in registry",
+                spec.layer_type(),
+                spec.layer_id()
+            ));
+        }
+
+        let actual = registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+        let mut expected_registry = LayerRegistry::new();
+        expected_registry.init_agent_layer(spec)?;
+        let expected =
+            expected_registry.layer_init_fingerprint(spec.layer_type(), spec.layer_id())?;
+        if actual != expected {
+            return Err(format!(
+                "AgentWorkspace.syncLayer: registry init identity mismatch for layer type 0x{:02X} id {}; supplied AgentLayerSpec does not match the live layer",
+                spec.layer_type(),
+                spec.layer_id()
+            ));
+        }
+
+        let value = format!(
+            "label={};type={};variant={}",
+            label,
+            spec.layer_type(),
+            spec.variant()
+        );
+        self.upsert_internal(
+            TABLE_LAYERS,
+            spec.layer_id().to_string(),
+            "layer".into(),
+            "initialized".into(),
+            value,
+        )
+    }
+
+    /// Forget only workspace metadata. This never mutates LayerRegistry.
+    #[wasm_bindgen(js_name = forgetLayer)]
+    pub fn forget_layer(&mut self, layer_id: u32) -> bool {
+        let key = layer_id.to_string();
+        if let Some(index) = self.find_row_index(TABLE_LAYERS, &key) {
+            self.rows.remove(index);
+            true
+        } else {
+            false
+        }
+    }
+
+    #[wasm_bindgen(js_name = recordProof)]
+    pub fn record_proof(
+        &mut self,
+        label: String,
+        passed: bool,
+        max_error: f64,
+        detail: String,
+    ) -> Result<u32, String> {
+        if !max_error.is_finite() || max_error < 0.0 {
+            return Err(format!(
+                "AgentWorkspace.recordProof: max_error must be finite and >= 0, got {max_error}"
+            ));
+        }
+        let proof_id = self.next_proof_id;
+        let value = format!("max_error={max_error};{detail}");
+        self.upsert_internal(
+            TABLE_PROOFS,
+            proof_id.to_string(),
+            label,
+            if passed { "passed" } else { "failed" }.into(),
+            value,
+        )?;
+        self.next_proof_id = proof_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.recordProof: id allocator exhausted".to_string())?;
+        Ok(proof_id)
+    }
+
+    #[wasm_bindgen(js_name = recordEvent)]
+    pub fn record_event(
+        &mut self,
+        kind: String,
+        reference: String,
+        detail: String,
+    ) -> Result<u32, String> {
+        validate_text(
+            &kind,
+            MAX_KIND_BYTES,
+            "AgentWorkspace.recordEvent.kind",
+            false,
+        )?;
+        let event_id = self.next_event_id;
+        let value = format!("ref={reference};{detail}");
+        self.upsert_internal(
+            TABLE_EVENTS,
+            event_id.to_string(),
+            kind,
+            "recorded".into(),
+            value,
+        )?;
+        self.next_event_id = event_id
+            .checked_add(1)
+            .ok_or_else(|| "AgentWorkspace.recordEvent: id allocator exhausted".to_string())?;
+        Ok(event_id)
+    }
+
+    pub fn snapshot(&self) -> String {
+        let count = |table: &str| self.rows.iter().filter(|row| row.table == table).count();
+        let custom_tables = self
+            .rows
+            .iter()
+            .filter(|row| !row.table.starts_with(INTERNAL_PREFIX))
+            .map(|row| row.table.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        let free_slots = self
+            .rows
+            .iter()
+            .filter(|row| row.table == TABLE_SLOTS && row.state == "free")
+            .count();
+        let input_contract = self
+            .input_contract
+            .as_ref()
+            .map(|contract| {
+                format!(
+                    "{{\"shape\":[{},{},{},{}],\"layout\":\"{}\",\"semantics\":\"{}\"}}",
+                    contract.shape[0],
+                    contract.shape[1],
+                    contract.shape[2],
+                    contract.shape[3],
+                    json_escape(&contract.layout),
+                    json_escape(&contract.semantics),
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
+        let input_port_metadata = self
+            .input_port_metadata
+            .as_ref()
+            .map(|metadata| {
+                format!(
+                    concat!(
+                        "{{",
+                        "\"role\":\"{}\",",
+                        "\"source\":\"{}\",",
+                        "\"revision\":{},",
+                        "\"fingerprint\":\"{}\"",
+                        "}}"
+                    ),
+                    json_escape(&metadata.role),
+                    json_escape(&metadata.source),
+                    metadata.revision,
+                    json_escape(&metadata.fingerprint),
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
+        let runtime_subject = self
+            .runtime_subject_binding
+            .as_ref()
+            .map(|binding| {
+                format!(
+                    concat!(
+                        "{{",
+                        "\"intent_id\":\"{}\",",
+                        "\"workflow_revision\":{},",
+                        "\"approval_id\":\"{}\",",
+                        "\"subject_kind\":\"{}\",",
+                        "\"subject_identity\":\"{}\",",
+                        "\"authorization_policy_id\":\"{}\",",
+                        "\"authorization_policy_revision\":{},",
+                        "\"authorization_is_revision\":{}",
+                        "}}"
+                    ),
+                    json_escape(&binding.intent_id),
+                    binding.workflow_revision,
+                    json_escape(&binding.approval_id),
+                    json_escape(&binding.subject_kind),
+                    json_escape(&binding.subject_identity),
+                    json_escape(&binding.authorization_policy_id),
+                    binding.authorization_policy_revision,
+                    binding.authorization_is_revision,
+                )
+            })
+            .unwrap_or_else(|| "null".to_string());
+        format!(
+            "{{\"num_slots\":{},\"free_slots\":{},\"layers\":{},\"proofs\":{},\"attestations\":{},\"verifier_receipts\":{},\"events\":{},\"custom_tables\":{},\"rows\":{},\"input_contract\":{},\"input_port_metadata\":{},\"runtime_subject\":{},\"runtime_program_bindings\":{{\"count\":{},\"max\":{MAX_RUNTIME_PROGRAM_BINDINGS},\"identity_policy\":\"exact_program_identity\"}},\"max_rows\":{MAX_ROWS}}}",
+            self.num_slots,
+            free_slots,
+            count(TABLE_LAYERS),
+            count(TABLE_PROOFS),
+            count(TABLE_ATTESTATIONS),
+            count(TABLE_VERIFIER_RECEIPTS),
+            count(TABLE_EVENTS),
+            custom_tables,
+            self.rows.len(),
+            input_contract,
+            input_port_metadata,
+            runtime_subject,
+            self.runtime_program_identities.len(),
+        )
+    }
 }

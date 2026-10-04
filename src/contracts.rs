@@ -1,13 +1,15 @@
 //! # Kontrak: `contracts`
 //!
 //! ## Tanggung jawab
-//! Meng-embed kontrak JSON kanonis dari `docs/contracts/` via `include_str!` dan
-//! mengekspos validasi skema + `LayoutTag` untuk tata letak layer.
+//! Re-export API kontrak JSON kanonis dari `facade::contracts` (validasi
+//! skema + tata letak layer). Embedding via `include_str!` dari
+//! `docs/contracts/` tinggal di facade pasca-pemisahan ABI Opsi C; modul
+//! ini menjaga kompatibilitas path import.
 //!
 //! ## Invariant
-//! - Setiap `include_str!("docs/contracts/*.json")` merujuk ke file yang ada dan
-//!   versinya terkunci (`*.v1.json`); perubahan kontrak = file versi baru,
-//!   bukan edit diam-diam.
+//! - Setiap `include_str!("docs/contracts/*.json")` (di `facade::contracts`)
+//!   merujuk ke file yang ada dan versinya terkunci (`*.v1.json`);
+//!   perubahan kontrak = file versi baru, bukan edit diam-diam.
 //! - `LayoutTag` adalah satu-satunya sumber kebenaran tag tata letak yang
 //!   dipakai validasi.
 //!
