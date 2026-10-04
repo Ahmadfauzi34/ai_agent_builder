@@ -57,6 +57,10 @@ pub const OP_ENTROPY: u8 = 0x51;
 pub const OP_CROSS_ENTROPY: u8 = 0x52;
 pub const OP_KL_DIVERGENCE: u8 = 0x53;
 
+// Mirror privat dari `crate::graph::{ARITY_UNARY, ARITY_BINARY}` (sumber
+// kebenaran arity untuk graph + registry). Disimpan lokal agar `math` tidak
+// bergantung ke `graph` (arah dependensi salah); NILAI WAJIB SAMA — jika
+// definisi di graph berubah, mirror ini harus ikut berubah.
 const ARITY_UNARY: u8 = 1;
 const ARITY_BINARY: u8 = 2;
 const PARAM_NONE: u8 = 0;
@@ -1010,6 +1014,15 @@ impl MathProgram {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arity_mirror_matches_graph_canonical() {
+        // Regression (audit Opsi F): `math` mem-mirror `ARITY_*` dari `graph`
+        // secara privat agar tidak bergantung ke `graph`. Mirror ini WAJIB
+        // sama nilainya dengan sumber kebenaran di `crate::graph`.
+        assert_eq!(ARITY_UNARY, crate::graph::ARITY_UNARY);
+        assert_eq!(ARITY_BINARY, crate::graph::ARITY_BINARY);
+    }
 
     fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
         assert_eq!(actual.len(), expected.len());

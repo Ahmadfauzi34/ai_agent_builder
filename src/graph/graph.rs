@@ -44,6 +44,9 @@ use super::graph_plan_explain;
 pub use crate::facade::graph::{multi_input_graph_capabilities, program_capabilities};
 
 // Satu sumber kebenaran arity untuk graph + registry.
+// Catatan: `crate::math::program` mem-mirror dua konstanta ini secara privat
+// (domain lokal, tanpa aliran silang); jika nilai di sini berubah, mirror di
+// sana WAJIB ikut berubah.
 pub(crate) const ARITY_UNARY: u8 = 1;
 pub(crate) const ARITY_BINARY: u8 = 2;
 
