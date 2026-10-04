@@ -10,8 +10,9 @@
 //!   ditolak dengan pesan yang menyebut batasnya (batas desain).
 //! - `ARITY_UNARY` / `ARITY_BINARY` adalah satu-satunya sumber kebenaran
 //!   arity untuk graph + registry.
-//! - Submodul (`plan_explain`, `execution_trace`, `candidate_verification`,
-//!   `mutation_transaction`) di-declare sebagai `pub mod` di
+//! - Submodul (`graph_plan_explain`, `graph_execution_trace`,
+//!   `graph_candidate_verification`, `graph_mutation_transaction`)
+//!   di-declare sebagai `pub mod` di
 //!   `src/graph/mod.rs`; file ini merujuknya via `super::` agar setiap file
 //!   dikompilasi tepat sekali.
 //!

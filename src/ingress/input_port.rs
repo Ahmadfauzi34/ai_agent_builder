@@ -9,8 +9,8 @@
 //! - Setiap port punya kapabilitas yang dapat di-discovery
 //!   (`input_port_capabilities`); binding metadata eksplisit lewat
 //!   `workspace_bind_input_port_metadata` dan dapat dibersihkan.
-//! - Kontrak input di-embed dari `docs/agent-input-*.v1.json` dan versinya
-//!   terkunci.
+//! - Kontrak input di-embed dari `docs/contracts/agent-input-*.v1.json`
+//!   dan versinya terkunci.
 //!
 //! ## Bukan tanggung jawab modul ini
 //! - Eksekusi graph → `graph`; validasi tensor → `protocol`.
