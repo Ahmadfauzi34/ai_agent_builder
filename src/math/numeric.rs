@@ -17,7 +17,12 @@ pub(crate) fn validate_same_shape(a: &WasmTensor, b: &WasmTensor, op: &str) -> R
 }
 
 pub(crate) fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"
@@ -28,8 +33,20 @@ pub(crate) fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), S
 }
 
 pub(crate) fn validate_nonnegative(input: &WasmTensor, context: &str) -> Result<(), String> {
-    validate_finite(input, context)?;
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // Single materialization for both checks (was: validate_finite + to_array).
+    // Two passes preserve the original error precedence (finiteness first).
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!(
+                "{context}: non-finite value at index {index}: {value}"
+            ));
+        }
+    }
+    for (index, &value) in values.iter().enumerate() {
         if value < 0.0 {
             return Err(format!(
                 "{context}: negative value at index {index}: {value}"
@@ -40,8 +57,20 @@ pub(crate) fn validate_nonnegative(input: &WasmTensor, context: &str) -> Result<
 }
 
 pub(crate) fn validate_positive(input: &WasmTensor, context: &str) -> Result<(), String> {
-    validate_finite(input, context)?;
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // Single materialization for both checks (was: validate_finite + to_array).
+    // Two passes preserve the original error precedence (finiteness first).
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!(
+                "{context}: non-finite value at index {index}: {value}"
+            ));
+        }
+    }
+    for (index, &value) in values.iter().enumerate() {
         if value <= 0.0 {
             return Err(format!(
                 "{context}: value must be > 0 at index {index}, got {value}"
@@ -52,8 +81,20 @@ pub(crate) fn validate_positive(input: &WasmTensor, context: &str) -> Result<(),
 }
 
 pub(crate) fn validate_nonzero(input: &WasmTensor, context: &str) -> Result<(), String> {
-    validate_finite(input, context)?;
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // Single materialization for both checks (was: validate_finite + to_array).
+    // Two passes preserve the original error precedence (finiteness first).
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if !value.is_finite() {
+            return Err(format!(
+                "{context}: non-finite value at index {index}: {value}"
+            ));
+        }
+    }
+    for (index, &value) in values.iter().enumerate() {
         if value == 0.0 {
             return Err(format!("{context}: zero denominator at index {index}"));
         }
@@ -74,6 +115,31 @@ pub(crate) fn checked_output(
 mod tests {
     use super::{numeric_kernel_capabilities, WasmNumericKernel};
     use crate::WasmTensor;
+
+    #[test]
+    fn fused_validators_preserve_error_precedence() {
+        // The fused validators (nonnegative/positive/nonzero) must report
+        // non-finite before the specific violation, matching the old
+        // validate_finite-then-check call sequence.
+        let both = WasmTensor::new(&[-1.0, f32::NAN], &[1, 2, 1, 1]);
+        let err = super::validate_nonnegative(&both, "test").unwrap_err();
+        assert!(err.contains("non-finite"), "unexpected error: {err}");
+
+        let negative = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
+        let err = super::validate_nonnegative(&negative, "test").unwrap_err();
+        assert!(err.contains("negative"), "unexpected error: {err}");
+
+        let valid = WasmTensor::new(&[0.0, 2.0], &[1, 2, 1, 1]);
+        assert!(super::validate_nonnegative(&valid, "test").is_ok());
+
+        let both_positive = WasmTensor::new(&[f32::INFINITY, -1.0], &[1, 2, 1, 1]);
+        let err = super::validate_positive(&both_positive, "test").unwrap_err();
+        assert!(err.contains("non-finite"), "unexpected error: {err}");
+
+        let zero = WasmTensor::new(&[f32::NAN, 0.0], &[1, 2, 1, 1]);
+        let err = super::validate_nonzero(&zero, "test").unwrap_err();
+        assert!(err.contains("non-finite"), "unexpected error: {err}");
+    }
 
     fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
         assert_eq!(actual.len(), expected.len());

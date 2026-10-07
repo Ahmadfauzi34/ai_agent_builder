@@ -101,7 +101,12 @@ pub(crate) fn checked_scalar_output(
             "{context}: internal scalar-output shape invariant failed, got {shape:?}"
         ));
     }
-    for (index, value) in output.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = output.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite output at index {index}: {value}"

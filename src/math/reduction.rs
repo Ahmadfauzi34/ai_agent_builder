@@ -11,7 +11,12 @@ fn validate_input(input: &WasmTensor, context: &str) -> Result<[usize; 4], Strin
             ));
         }
     }
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"
@@ -43,7 +48,12 @@ fn checked_output(
             "{context}: keepdim shape invariant failed, expected {expected:?}, got {actual:?}"
         ));
     }
-    for (index, value) in output.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = output.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite output at index {index}: {value}"
