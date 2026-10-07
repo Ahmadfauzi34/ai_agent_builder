@@ -85,13 +85,33 @@ fn bool_json(value: bool) -> &'static str {
     }
 }
 
-pub(crate) fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in bytes {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100000001b3);
+/// Incremental FNV-1a 64 hasher. `fnv1a64` is the one-shot form; use the
+/// hasher directly to feed multiple byte slices without concatenating them.
+pub(crate) struct Fnv1a64(u64);
+
+impl Fnv1a64 {
+    pub(crate) fn new() -> Self {
+        Self(0xcbf29ce484222325)
     }
-    format!("fnv1a64:{hash:016x}")
+
+    pub(crate) fn update(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.0 ^= u64::from(byte);
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
+
+    pub(crate) fn finish(self) -> String {
+        format!("fnv1a64:{:016x}", self.0)
+    }
+}
+
+pub(crate) fn fnv1a64(bytes: impl IntoIterator<Item = u8>) -> String {
+    let mut hasher = Fnv1a64::new();
+    for byte in bytes {
+        hasher.update(&[byte]);
+    }
+    hasher.finish()
 }
 
 pub(crate) fn tensor_shape(tensor: &WasmTensor) -> Result<[u32; 4], String> {
@@ -106,15 +126,24 @@ pub(crate) fn tensor_shape(tensor: &WasmTensor) -> Result<[u32; 4], String> {
 
 pub(crate) fn tensor_value_fingerprint(tensor: &WasmTensor) -> Result<String, String> {
     let shape = tensor_shape(tensor)?;
-    let values = tensor.to_array();
-    let mut bytes = Vec::with_capacity(16 + values.len().saturating_mul(4));
+    let data = tensor.inner.to_data();
+    // Fail closed on non-f32 (the old path validated f32 via as_slice::<f32>()).
+    // This probe materializes nothing.
+    data.as_slice::<f32>()
+        .map_err(|_| "multi-input: tensor value fingerprint requires an f32 tensor".to_string())?;
+    // Single pass, zero intermediate allocation: feed the shape bytes and the
+    // raw value bytes straight into the hasher. The preimage is byte-identical
+    // to the old 3-pass serialization on little-endian targets (wasm32 is
+    // LE-only): into_data()/to_data() normalizes to logical row-major order,
+    // and f32 in-memory bytes equal value.to_bits().to_le_bytes().
+    // WARNING: the fingerprint string must stay stable — it feeds bindInput
+    // idempotency and JSON evidence. Guarded by fingerprint_one_pass_matches_legacy.
+    let mut hasher = Fnv1a64::new();
     for dim in shape {
-        bytes.extend_from_slice(&dim.to_le_bytes());
+        hasher.update(&dim.to_le_bytes());
     }
-    for value in values {
-        bytes.extend_from_slice(&value.to_bits().to_le_bytes());
-    }
-    Ok(fnv1a64(bytes))
+    hasher.update(data.as_bytes());
+    Ok(hasher.finish())
 }
 
 pub(crate) fn validate_port_contract(
@@ -638,6 +667,68 @@ mod tests {
 
     fn tensor(values: &[f32]) -> WasmTensor {
         WasmTensor::new(values, &[1, 2, 1, 1])
+    }
+
+    /// Legacy 3-pass serialization, kept as the equivalence oracle for
+    /// tensor_value_fingerprint. Must stay byte-identical to the
+    /// pre-optimization implementation (to_array + per-element to_bits LE).
+    fn legacy_fingerprint(tensor: &WasmTensor) -> String {
+        let shape = super::tensor_shape(tensor).unwrap();
+        let values = tensor.to_array();
+        let mut bytes = Vec::with_capacity(16 + values.len().saturating_mul(4));
+        for dim in shape {
+            bytes.extend_from_slice(&dim.to_le_bytes());
+        }
+        for value in values {
+            bytes.extend_from_slice(&value.to_bits().to_le_bytes());
+        }
+        super::fnv1a64(bytes)
+    }
+
+    #[test]
+    fn fingerprint_one_pass_matches_legacy() {
+        // Contiguous tensor.
+        let values: Vec<f32> = (0..24).map(|i| i as f32 * 0.5 - 3.0).collect();
+        let contiguous = WasmTensor::new(&values, &[2, 3, 2, 2]);
+        assert_eq!(
+            super::tensor_value_fingerprint(&contiguous).unwrap(),
+            legacy_fingerprint(&contiguous)
+        );
+
+        // Non-contiguous permuted view: to_data() must normalize to logical
+        // row-major order so the raw bytes match the logical serialization.
+        let permuted = WasmTensor {
+            inner: contiguous.inner.clone().permute([0, 2, 1, 3]),
+        };
+        assert_eq!(
+            super::tensor_value_fingerprint(&permuted).unwrap(),
+            legacy_fingerprint(&permuted)
+        );
+        let reversed = WasmTensor {
+            inner: contiguous.inner.clone().permute([3, 2, 1, 0]),
+        };
+        assert_eq!(
+            super::tensor_value_fingerprint(&reversed).unwrap(),
+            legacy_fingerprint(&reversed)
+        );
+
+        // Special values are bit-preserved by both paths (-0.0 != 0.0 in bits,
+        // NaN/infinities keep their payloads).
+        let special = [
+            0.0,
+            -0.0,
+            f32::NAN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            1e-30,
+            std::f32::consts::PI,
+            -2.5,
+        ];
+        let special_tensor = WasmTensor::new(&special, &[2, 2, 2, 1]);
+        assert_eq!(
+            super::tensor_value_fingerprint(&special_tensor).unwrap(),
+            legacy_fingerprint(&special_tensor)
+        );
     }
 
     fn bind_valid_inputs(bundle: &mut MultiInputInputBundle) {
