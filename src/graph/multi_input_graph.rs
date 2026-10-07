@@ -721,7 +721,7 @@ mod tests {
             f32::INFINITY,
             f32::NEG_INFINITY,
             1e-30,
-            3.14159,
+            std::f32::consts::PI,
             -2.5,
         ];
         let special_tensor = WasmTensor::new(&special, &[2, 2, 2, 1]);
