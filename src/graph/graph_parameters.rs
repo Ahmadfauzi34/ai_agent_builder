@@ -177,16 +177,22 @@ impl GraphParameterBinding {
             match classify_owner(layer_type, &fingerprint)? {
                 ParameterClass::Stateless => continue,
                 ParameterClass::FlatTrainable => {
-                    let weights = registry
-                        .get_weights_flat(layer_id, layer_type)
+                    // Length-aware: build() only needs the flat length (and the
+                    // empty check), not the materialized floats. The old code
+                    // called get_weights_flat() per owner and discarded the
+                    // vector after .len()/.is_empty() — paying a full
+                    // into_data() buffer materialization per owner. The
+                    // weight_layout() call below stays: it only reads dims
+                    // metadata (cheap into_record handle clone), never floats.
+                    let len = registry
+                        .weights_flat_len(layer_id, layer_type)
                         .map_err(|error| format!("graph parameter binding: {error}"))?;
+                    if len == 0 {
+                        continue;
+                    }
                     let layout = registry
                         .weight_layout(layer_id, layer_type)
                         .map_err(|error| format!("graph parameter binding: {error}"))?;
-                    if weights.is_empty() {
-                        continue;
-                    }
-                    let len = weights.len();
                     let offset = total_len;
                     total_len = checked_total_len(total_len, len)?;
                     owners.push(GraphParameterOwner {
@@ -346,9 +352,8 @@ impl GraphParameterBinding {
                 ));
             }
             let current_len = registry
-                .get_weights_flat(owner.layer_id, owner.layer_type)
-                .map_err(|error| format!("graph parameter apply: {error}"))?
-                .len();
+                .weights_flat_len(owner.layer_id, owner.layer_type)
+                .map_err(|error| format!("graph parameter apply: {error}"))?;
             if current_len != owner.len {
                 return Err(format!(
                     "graph parameter apply: layer type 0x{:02X} id {} expected {} floats, current bridge exposes {}",

@@ -389,6 +389,33 @@ mod tests {
             &conv.weight_layout(),
         );
     }
+    #[test]
+    fn weights_flat_len_is_length_aware_alias_of_flat_len() {
+        use crate::layers::conv::WasmConv;
+        use crate::layers::embedding::WasmEmbedding;
+        use crate::layers::linear::WasmLinear;
+        use crate::layers::norm::WasmNorm;
+        // Guard for GraphParameterBinding::build()'s length-aware path:
+        // weights_len() must stay exactly get_weights_flat().len() for every
+        // FlatTrainable type, otherwise binding offsets silently drift.
+        let lin = WasmLinear::new(3, 2, true);
+        assert_eq!(lin.weights_len(), lin.get_weights_flat().unwrap().len());
+        let lin_nb = WasmLinear::new(3, 2, false);
+        assert_eq!(
+            lin_nb.weights_len(),
+            lin_nb.get_weights_flat().unwrap().len()
+        );
+        let emb = WasmEmbedding::new(3, 2);
+        assert_eq!(emb.weights_len(), emb.get_weights_flat().unwrap().len());
+        let conv = WasmConv::new_conv2d(1, 1, 1, 1, None, None, None, None);
+        assert_eq!(conv.weights_len(), conv.get_weights_flat().unwrap().len());
+        let ln = WasmNorm::new_layer_norm(4, None);
+        assert_eq!(ln.weights_len(), ln.get_weights_flat().unwrap().len());
+        let rms = WasmNorm::new_rms_norm(4, None);
+        assert_eq!(rms.weights_len(), rms.get_weights_flat().unwrap().len());
+        let bn = WasmNorm::new_batch_norm(4, None);
+        assert_eq!(bn.weights_len(), bn.get_weights_flat().unwrap().len());
+    }
 
     // ---- JANGKAR M1b BARU: float-bridge + layout norm (trainable-only) ----
     #[test]

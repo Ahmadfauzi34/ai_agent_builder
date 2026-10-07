@@ -664,6 +664,56 @@ impl LayerRegistry {
 }
 
 // ============================================================
+// Length-aware weight accessor (internal — NOT exported to JS).
+//
+// GraphParameterBinding::build() and the apply_flat() prevalidation only need
+// the flat length, not the materialized floats. weights_flat_len() sums the
+// per-layer weight_segs() lengths, which equals get_weights_flat().len() for
+// all four FlatTrainable types (same segments, same order, dims products),
+// without the per-param into_data() full-buffer materialization. On the
+// WasmBackend (ndarray) into_data() may copy the whole buffer, so the old
+// path paid a full read + allocation per owner just to call .len() on it.
+//
+// Sync rule: if a new FlatTrainable layer type is added, extend the match
+// below AND the weights_flat_len_is_length_aware_alias_of_flat_len test —
+// binding offsets depend on weights_len() == get_weights_flat().len().
+// ============================================================
+impl LayerRegistry {
+    pub(crate) fn weights_flat_len(
+        &self,
+        layer_id: LayerId,
+        layer_type: u8,
+    ) -> Result<usize, String> {
+        match layer_type {
+            LAYER_LINEAR => Ok(self
+                .linears
+                .get(&layer_id)
+                .ok_or("Linear not found")?
+                .weights_len()),
+            LAYER_CONV => Ok(self
+                .convs
+                .get(&layer_id)
+                .ok_or("Conv not found")?
+                .weights_len()),
+            LAYER_EMBEDDING => Ok(self
+                .embeddings
+                .get(&layer_id)
+                .ok_or("Embedding not found")?
+                .weights_len()),
+            LAYER_NORM => Ok(self
+                .norms
+                .get(&layer_id)
+                .ok_or("Norm not found")?
+                .weights_len()),
+            _ => Err(format!(
+                "weightsFlatLen: not yet supported for type 0x{:02X}",
+                layer_type
+            )),
+        }
+    }
+}
+
+// ============================================================
 // IMPL #3 — BINARY (stateless 2-input)
 // ============================================================
 #[wasm_bindgen]

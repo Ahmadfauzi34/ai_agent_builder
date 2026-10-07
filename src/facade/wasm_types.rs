@@ -917,6 +917,13 @@ impl WasmConv {
 
 #[wasm_bindgen]
 impl WasmConv {
+    /// WARNING — load-bearing invariant: the segment list and order here MUST
+    /// stay in sync with `weight_segs()` / `weights_len()` below.
+    /// `GraphParameterBinding::build()` derives binding offsets from
+    /// `weights_len()` alone, so drift here silently corrupts parameter
+    /// slicing in get/setGraphParametersFlat. If you change this function,
+    /// update `weight_segs()` and extend the
+    /// `weights_flat_len_is_length_aware_alias_of_flat_len` test.
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.clone().into_record();
@@ -979,6 +986,17 @@ impl WasmConv {
             }
         }
         segs
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats. The sum of `weight_segs()` lengths equals the
+    /// flat length because both walk the same segments in the same order
+    /// (guarded by `weight_layout_consistent_with_flat` and
+    /// `weights_flat_len_is_length_aware_alias_of_flat_len`).
+    /// Only dims metadata is read (via a cheap `into_record()` handle clone);
+    /// no per-param `into_data()` full-buffer materialization happens here.
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
     }
 
     pub fn weight_layout(&self) -> String {
@@ -1074,6 +1092,13 @@ impl WasmEmbedding {
         }
     }
 
+    /// WARNING — load-bearing invariant: the segment list and order here MUST
+    /// stay in sync with `weight_segs()` / `weights_len()` below.
+    /// `GraphParameterBinding::build()` derives binding offsets from
+    /// `weights_len()` alone, so drift here silently corrupts parameter
+    /// slicing in get/setGraphParametersFlat. If you change this function,
+    /// update `weight_segs()` and extend the
+    /// `weights_flat_len_is_length_aware_alias_of_flat_len` test.
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.clone().into_record();
@@ -1121,6 +1146,12 @@ impl WasmEmbedding {
                 vec![("weight", r.weight.dims().iter().product::<usize>())]
             }
         }
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
     }
 
     pub fn weight_layout(&self) -> String {
@@ -1228,6 +1259,13 @@ impl WasmLinear {
         vec![self.in_dim, self.out_dim]
     }
 
+    /// WARNING — load-bearing invariant: the segment list and order here MUST
+    /// stay in sync with `weight_segs()` / `weights_len()` below.
+    /// `GraphParameterBinding::build()` derives binding offsets from
+    /// `weights_len()` alone, so drift here silently corrupts parameter
+    /// slicing in get/setGraphParametersFlat. If you change this function,
+    /// update `weight_segs()` and extend the
+    /// `weights_flat_len_is_length_aware_alias_of_flat_len` test.
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.inner.clone().into_record();
@@ -1289,6 +1327,12 @@ impl WasmLinear {
             segs.push(("bias", b.dims().iter().product::<usize>()));
         }
         segs
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
     }
 
     pub fn weight_layout(&self) -> String {
@@ -1430,6 +1474,13 @@ impl WasmNorm {
 
 #[wasm_bindgen]
 impl WasmNorm {
+    /// WARNING — load-bearing invariant: the segment list and order here MUST
+    /// stay in sync with `weight_segs()` / `weights_len()` below.
+    /// `GraphParameterBinding::build()` derives binding offsets from
+    /// `weights_len()` alone, so drift here silently corrupts parameter
+    /// slicing in get/setGraphParametersFlat. If you change this function,
+    /// update `weight_segs()` and extend the
+    /// `weights_flat_len_is_length_aware_alias_of_flat_len` test.
     #[wasm_bindgen(js_name = getWeightsFlat)]
     pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
         let rec = self.inner.clone().into_record();
@@ -1514,6 +1565,12 @@ impl WasmNorm {
             segs.push(("beta", norm_param_len(b)));
         }
         segs
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
     }
 
     pub fn weight_layout(&self) -> String {
