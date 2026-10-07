@@ -477,4 +477,15 @@ mod tests {
         assert!(layout.contains("\"name\":\"gamma\""));
         assert!(layout.contains("\"name\":\"beta\""));
     }
+    #[test]
+    fn to_array_into_vec_matches_logical_order() {
+        // into_vec must return the same logical-order values as the old
+        // as_slice().to_vec() path, on contiguous and non-contiguous tensors.
+        let t = WasmTensor::new(&[1.0, -2.5, 3.25, 0.0], &[2, 2, 1, 1]);
+        assert_eq!(t.to_array(), vec![1.0, -2.5, 3.25, 0.0]);
+        let permuted = WasmTensor {
+            inner: t.inner.clone().permute([1, 0, 2, 3]),
+        };
+        assert_eq!(permuted.to_array(), vec![1.0, 3.25, -2.5, 0.0]);
+    }
 }

@@ -42,8 +42,13 @@ impl WasmTensor {
     }
 
     pub fn to_array(&self) -> Vec<f32> {
-        let data = self.inner.to_data();
-        data.as_slice::<f32>().unwrap().to_vec()
+        // into_vec reuses the TensorData allocation when it is f32-aligned
+        // (zero-copy detach); falls back to a single copy otherwise.
+        // The old path always paid that copy via as_slice().to_vec().
+        self.inner
+            .to_data()
+            .into_vec::<f32>()
+            .expect("WasmTensor::to_array: tensor is not f32")
     }
 
     pub fn shape(&self) -> Vec<usize> {
