@@ -8,7 +8,12 @@ use crate::WasmTensor;
 pub(crate) const DEFAULT_EPSILON: f64 = 1e-12;
 
 pub(crate) fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"

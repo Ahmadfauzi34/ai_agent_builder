@@ -19,7 +19,12 @@ pub(crate) fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Resu
             "{context}: expected feature-vector layout [B,F,1,1], got {shape:?}"
         ));
     }
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"
@@ -40,7 +45,12 @@ pub(crate) fn checked_output(
             "{context}: internal reduction shape invariant failed, got {shape:?}"
         ));
     }
-    for (index, value) in output.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = output.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite output at index {index}: {value}"

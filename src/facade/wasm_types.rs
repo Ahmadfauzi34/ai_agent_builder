@@ -1851,7 +1851,12 @@ impl WasmNumericKernel {
 
     #[wasm_bindgen(js_name = allFinite)]
     pub fn all_finite(&self, input: &WasmTensor) -> bool {
-        input.to_array().into_iter().all(f32::is_finite)
+        // One materialization, no intermediate Vec: iterate the slice directly.
+        let data = input.inner.to_data();
+        let values = data
+            .as_slice::<f32>()
+            .expect("NumericKernel.allFinite: tensor is not f32");
+        values.iter().all(|value| value.is_finite())
     }
 }
 

@@ -24,7 +24,12 @@ fn validate_same_shape(
 }
 
 fn validate_finite(input: &WasmTensor, context: &str) -> Result<(), String> {
-    for (index, value) in input.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"
@@ -46,7 +51,12 @@ fn validate_numeric_predicate_output(
         ));
     }
 
-    for (index, value) in output.to_array().into_iter().enumerate() {
+    // One materialization, no intermediate Vec: iterate the slice directly.
+    let data = output.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
         let bits = value.to_bits();
         if bits != 0.0f32.to_bits() && bits != 1.0f32.to_bits() {
             return Err(format!(
