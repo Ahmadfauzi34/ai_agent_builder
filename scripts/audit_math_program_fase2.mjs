@@ -24,7 +24,7 @@ function tensor(values, shape) {
   return new m.WasmTensor(new Float32Array(values), new Uint32Array(shape));
 }
 function values(t) {
-  return Array.from(t.toArray());
+  return Array.from(t.to_array());
 }
 function close(actual, expected, tol, label) {
   check(actual.length === expected.length, `${label}: length ${actual.length} != ${expected.length}`);
