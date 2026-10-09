@@ -3,7 +3,8 @@ use crate::math::program_shape_params::{
     SHAPE_PARAM_BYTES,
 };
 use crate::math::{
-    WasmLinearAlgebra, WasmNumericKernel, WasmProbability, WasmStatistics, WasmTensorTransform,
+    numeric::validate_finite as validate_program_input_finite, WasmLinearAlgebra,
+    WasmNumericKernel, WasmProbability, WasmStatistics, WasmTensorTransform,
 };
 use crate::WasmTensor;
 
@@ -855,7 +856,23 @@ impl MathProgram {
                 self.num_inputs
             ));
         }
-        self.execute(&[input.clone()])
+        // Fase 2: validate once at entry; steps use unchecked kernels below.
+        validate_program_input_finite(input, "MathProgram.run1 input")?;
+        self.execute_unchecked(&[input.clone()])
+    }
+
+    /// Fase 2: skips entry validation. For Core steps of v4+ programs, whose
+    /// slots already hold validated tensors. SAFETY: caller must guarantee
+    /// `input` is finite (validated at the outer program's entry, or a
+    /// validated step output).
+    pub(crate) fn run1_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        if self.num_inputs != 1 {
+            return Err(format!(
+                "MathProgram.run1: program requires {} inputs",
+                self.num_inputs
+            ));
+        }
+        self.execute_unchecked(&[input.clone()])
     }
 
     pub fn run2(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
@@ -865,10 +882,31 @@ impl MathProgram {
                 self.num_inputs
             ));
         }
-        self.execute(&[a.clone(), b.clone()])
+        // Fase 2: validate once at entry; steps use unchecked kernels below.
+        validate_program_input_finite(a, "MathProgram.run2 input a")?;
+        validate_program_input_finite(b, "MathProgram.run2 input b")?;
+        self.execute_unchecked(&[a.clone(), b.clone()])
     }
 
-    fn execute(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
+    /// Fase 2: skips entry validation. See `run1_unchecked` for the invariant.
+    pub(crate) fn run2_unchecked(
+        &self,
+        a: &WasmTensor,
+        b: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        if self.num_inputs != 2 {
+            return Err(format!(
+                "MathProgram.run2: program requires {} inputs",
+                self.num_inputs
+            ));
+        }
+        self.execute_unchecked(&[a.clone(), b.clone()])
+    }
+
+    /// Fase 2: step dispatch with input-unchecked kernels. Every tensor read
+    /// from `inputs`/slots is finite by the entry-validation + validated-output
+    /// invariant; output validation is retained inside each `_unchecked` twin.
+    fn execute_unchecked(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
         if inputs.len() != self.num_inputs as usize {
             return Err(format!(
                 "MathProgram: expected {} inputs, got {}",
@@ -898,11 +936,11 @@ impl MathProgram {
 
             let output = if step.arity == ARITY_UNARY {
                 match step.op {
-                    OP_ABS => numeric.abs(a),
-                    OP_SQRT => numeric.sqrt(a),
-                    OP_EXP => numeric.exp(a),
-                    OP_LOG => numeric.log(a),
-                    OP_CLAMP => numeric.clamp(a, step.param_a(), step.param_b()),
+                    OP_ABS => numeric.abs_unchecked(a),
+                    OP_SQRT => numeric.sqrt_unchecked(a),
+                    OP_EXP => numeric.exp_unchecked(a),
+                    OP_LOG => numeric.log_unchecked(a),
+                    OP_CLAMP => numeric.clamp_unchecked(a, step.param_a(), step.param_b()),
                     OP_TRANSPOSE => Ok(tensor.transpose(a)),
                     OP_RESHAPE => {
                         let shape = step
@@ -931,15 +969,15 @@ impl MathProgram {
                             })?;
                         tensor.slice(a, &starts, &ends)
                     }
-                    OP_L2_NORM => linalg.l2_norm(a),
-                    OP_SUM => statistics.sum(a),
-                    OP_MEAN => statistics.mean(a),
-                    OP_VARIANCE_POPULATION => statistics.variance_population(a),
-                    OP_STD_POPULATION => statistics.std_population(a),
-                    OP_MIN => statistics.min(a),
-                    OP_MAX => statistics.max(a),
-                    OP_NORMALIZE => probability.normalize(a),
-                    OP_ENTROPY => probability.entropy(a),
+                    OP_L2_NORM => linalg.l2_norm_unchecked(a),
+                    OP_SUM => statistics.sum_unchecked(a),
+                    OP_MEAN => statistics.mean_unchecked(a),
+                    OP_VARIANCE_POPULATION => statistics.variance_population_unchecked(a),
+                    OP_STD_POPULATION => statistics.std_population_unchecked(a),
+                    OP_MIN => statistics.min_unchecked(a),
+                    OP_MAX => statistics.max_unchecked(a),
+                    OP_NORMALIZE => probability.normalize_unchecked(a),
+                    OP_ENTROPY => probability.entropy_unchecked(a),
                     _ => Err(format!(
                         "MathProgram.run: step {index} unsupported unary opcode 0x{:02X}",
                         step.op
@@ -953,18 +991,18 @@ impl MathProgram {
                     )
                 })?;
                 match step.op {
-                    OP_ADD => numeric.add(a, b),
-                    OP_SUB => numeric.sub(a, b),
-                    OP_MUL => numeric.mul(a, b),
-                    OP_DIV => numeric.div(a, b),
-                    OP_DOT => linalg.dot(a, b),
-                    OP_L2_DISTANCE => linalg.l2_distance(a, b),
-                    OP_MATMUL => linalg.matmul(a, b),
+                    OP_ADD => numeric.add_unchecked(a, b),
+                    OP_SUB => numeric.sub_unchecked(a, b),
+                    OP_MUL => numeric.mul_unchecked(a, b),
+                    OP_DIV => numeric.div_unchecked(a, b),
+                    OP_DOT => linalg.dot_unchecked(a, b),
+                    OP_L2_DISTANCE => linalg.l2_distance_unchecked(a, b),
+                    OP_MATMUL => linalg.matmul_unchecked(a, b),
                     OP_COSINE_SIMILARITY => {
-                        linalg.cosine_similarity(a, b, Some(step.param_a() as f64))
+                        linalg.cosine_similarity_unchecked(a, b, Some(step.param_a() as f64))
                     }
-                    OP_CROSS_ENTROPY => probability.cross_entropy(a, b),
-                    OP_KL_DIVERGENCE => probability.kl_divergence(a, b),
+                    OP_CROSS_ENTROPY => probability.cross_entropy_unchecked(a, b),
+                    OP_KL_DIVERGENCE => probability.kl_divergence_unchecked(a, b),
                     _ => Err(format!(
                         "MathProgram.run: step {index} unsupported binary opcode 0x{:02X}",
                         step.op

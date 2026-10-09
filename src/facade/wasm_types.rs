@@ -52,18 +52,23 @@ use crate::layers::shape_contract::{
 use crate::layers::state_record::deterministic_record_bytes;
 use crate::math::linalg::{
     checked_output as linalg_checked_output, validate_epsilon, validate_feature_pair,
-    validate_feature_shape, validate_finite as linalg_validate_finite, DEFAULT_EPSILON,
+    validate_feature_pair_shape, validate_feature_shape,
+    validate_finite as linalg_validate_finite, DEFAULT_EPSILON,
 };
 use crate::math::numeric::{
     checked_output as numeric_checked_output, validate_finite as numeric_validate_finite,
-    validate_nonnegative, validate_nonzero, validate_positive, validate_same_shape,
+    validate_nonnegative, validate_nonnegative_assuming_finite, validate_nonzero,
+    validate_nonzero_assuming_finite, validate_positive, validate_positive_assuming_finite,
+    validate_same_shape,
 };
 use crate::math::probability::{
     batch_masses, checked_scalar_output, safe_log_input, validate_nonnegative_finite,
-    validate_normalized, validate_pair,
+    validate_distribution_assuming_finite, validate_normalized,
+    validate_normalized_assuming_finite, validate_pair,
+    validate_pair_assuming_finite,
 };
 use crate::math::statistics::{
-    checked_output as statistics_checked_output, validate_feature_tensor,
+    checked_output as statistics_checked_output, validate_feature_layout, validate_feature_tensor,
 };
 use crate::math::tensor::{
     checked_element_count, parse_permutation, parse_rank4_shape, parse_slice_ranges,
@@ -1698,6 +1703,26 @@ impl WasmLinearAlgebra {
         }
         linalg_validate_finite(a, "LinearAlgebra.matmul lhs")?;
         linalg_validate_finite(b, "LinearAlgebra.matmul rhs")?;
+        self.matmul_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn matmul_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        let da = a.inner.dims();
+        let db = b.inner.dims();
+        if da.iter().any(|&d| d == 0) || db.iter().any(|&d| d == 0) {
+            return Err(format!(
+                "LinearAlgebra.matmul: zero-sized dimensions are not supported in v1: {da:?} @ {db:?}"
+            ));
+        }
+        if da[0] != db[0] || da[1] != db[1] || da[3] != db[2] {
+            return Err(format!(
+                "LinearAlgebra.matmul: incompatible shapes {da:?} @ {db:?}; expected [B,G,M,K] @ [B,G,K,N]"
+            ));
+        }
         linalg_checked_output(
             a.inner.clone().matmul(b.inner.clone()),
             "LinearAlgebra.matmul output",
@@ -1706,6 +1731,15 @@ impl WasmLinearAlgebra {
 
     pub fn dot(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_pair(a, b, "LinearAlgebra.dot")?;
+        self.dot_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn dot_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_pair_shape(a, b, "LinearAlgebra.dot")?;
         linalg_checked_output(
             a.inner.clone().mul(b.inner.clone()).sum_dim(1),
             "LinearAlgebra.dot output",
@@ -1716,6 +1750,15 @@ impl WasmLinearAlgebra {
     pub fn l2_norm(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_shape(input.inner.dims(), "LinearAlgebra.l2Norm")?;
         linalg_validate_finite(input, "LinearAlgebra.l2Norm input")?;
+        self.l2_norm_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn l2_norm_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_shape(input.inner.dims(), "LinearAlgebra.l2Norm")?;
         let squared = input.inner.clone().mul(input.inner.clone());
         linalg_checked_output(squared.sum_dim(1).sqrt(), "LinearAlgebra.l2Norm output")
     }
@@ -1728,6 +1771,20 @@ impl WasmLinearAlgebra {
         epsilon: Option<f64>,
     ) -> Result<WasmTensor, String> {
         validate_feature_pair(a, b, "LinearAlgebra.cosineSimilarity")?;
+        self.cosine_similarity_unchecked(a, b, epsilon)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn cosine_similarity_unchecked(
+        &self,
+        a: &WasmTensor,
+        b: &WasmTensor,
+        epsilon: Option<f64>,
+    ) -> Result<WasmTensor, String> {
+        validate_feature_pair_shape(a, b, "LinearAlgebra.cosineSimilarity")?;
         let epsilon = validate_epsilon(
             epsilon.unwrap_or(DEFAULT_EPSILON),
             "LinearAlgebra.cosineSimilarity",
@@ -1746,6 +1803,15 @@ impl WasmLinearAlgebra {
     #[wasm_bindgen(js_name = l2Distance)]
     pub fn l2_distance(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_pair(a, b, "LinearAlgebra.l2Distance")?;
+        self.l2_distance_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn l2_distance_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_pair_shape(a, b, "LinearAlgebra.l2Distance")?;
         let delta = a.inner.clone().sub(b.inner.clone());
         let squared = delta.clone().mul(delta);
         linalg_checked_output(squared.sum_dim(1).sqrt(), "LinearAlgebra.l2Distance output")
@@ -1775,6 +1841,15 @@ impl WasmNumericKernel {
         validate_same_shape(a, b, "add")?;
         numeric_validate_finite(a, "NumericKernel.add lhs")?;
         numeric_validate_finite(b, "NumericKernel.add rhs")?;
+        self.add_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn add_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "add")?;
         numeric_checked_output(
             a.inner.clone().add(b.inner.clone()),
             "NumericKernel.add output",
@@ -1785,6 +1860,15 @@ impl WasmNumericKernel {
         validate_same_shape(a, b, "sub")?;
         numeric_validate_finite(a, "NumericKernel.sub lhs")?;
         numeric_validate_finite(b, "NumericKernel.sub rhs")?;
+        self.sub_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn sub_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "sub")?;
         numeric_checked_output(
             a.inner.clone().sub(b.inner.clone()),
             "NumericKernel.sub output",
@@ -1795,6 +1879,15 @@ impl WasmNumericKernel {
         validate_same_shape(a, b, "mul")?;
         numeric_validate_finite(a, "NumericKernel.mul lhs")?;
         numeric_validate_finite(b, "NumericKernel.mul rhs")?;
+        self.mul_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn mul_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "mul")?;
         numeric_checked_output(
             a.inner.clone().mul(b.inner.clone()),
             "NumericKernel.mul output",
@@ -1805,6 +1898,16 @@ impl WasmNumericKernel {
         validate_same_shape(a, b, "div")?;
         numeric_validate_finite(a, "NumericKernel.div lhs")?;
         validate_nonzero(b, "NumericKernel.div rhs")?;
+        self.div_unchecked(a, b)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn div_unchecked(&self, a: &WasmTensor, b: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "div")?;
+        validate_nonzero_assuming_finite(b, "NumericKernel.div rhs")?;
         numeric_checked_output(
             a.inner.clone().div(b.inner.clone()),
             "NumericKernel.div output",
@@ -1813,25 +1916,68 @@ impl WasmNumericKernel {
 
     pub fn abs(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         numeric_validate_finite(input, "NumericKernel.abs input")?;
+        self.abs_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn abs_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         numeric_checked_output(input.inner.clone().abs(), "NumericKernel.abs output")
     }
 
     pub fn sqrt(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_nonnegative(input, "NumericKernel.sqrt input")?;
+        self.sqrt_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn sqrt_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_nonnegative_assuming_finite(input, "NumericKernel.sqrt input")?;
         numeric_checked_output(input.inner.clone().sqrt(), "NumericKernel.sqrt output")
     }
 
     pub fn exp(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         numeric_validate_finite(input, "NumericKernel.exp input")?;
+        self.exp_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn exp_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         numeric_checked_output(input.inner.clone().exp(), "NumericKernel.exp output")
     }
 
     pub fn log(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_positive(input, "NumericKernel.log input")?;
+        self.log_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn log_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_positive_assuming_finite(input, "NumericKernel.log input")?;
         numeric_checked_output(input.inner.clone().log(), "NumericKernel.log output")
     }
 
     pub fn clamp(&self, input: &WasmTensor, min: f32, max: f32) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.clamp input")?;
+        self.clamp_unchecked(input, min, max)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn clamp_unchecked(&self, input: &WasmTensor, min: f32, max: f32) -> Result<WasmTensor, String> {
         if !min.is_finite() || !max.is_finite() {
             return Err(format!(
                 "NumericKernel.clamp: bounds must be finite, got min={min}, max={max}"
@@ -1842,7 +1988,6 @@ impl WasmNumericKernel {
                 "NumericKernel.clamp: min must be <= max, got min={min}, max={max}"
             ));
         }
-        numeric_validate_finite(input, "NumericKernel.clamp input")?;
         numeric_checked_output(
             input.inner.clone().clamp(min, max),
             "NumericKernel.clamp output",
@@ -1898,8 +2043,47 @@ impl WasmProbability {
         Ok(output)
     }
 
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn normalize_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        let (shape, values) = validate_normalized_assuming_finite(input, "Probability.normalize")?;
+        let masses = batch_masses(&values, shape[0], shape[1]);
+        for (batch_index, mass) in masses.into_iter().enumerate() {
+            if !mass.is_finite() || mass <= 0.0 {
+                return Err(format!(
+                    "Probability.normalize: batch {batch_index} must have strictly positive finite mass; got {mass}"
+                ));
+            }
+        }
+
+        let mass = input.inner.clone().sum_dim(1);
+        let denominator = mass.repeat_dim(1, shape[1]);
+        let output = WasmTensor {
+            inner: input.inner.clone().div(denominator),
+        };
+        validate_normalized(&output, "Probability.normalize output")?;
+        Ok(output)
+    }
+
     pub fn entropy(&self, p: &WasmTensor) -> Result<WasmTensor, String> {
         let (shape, _) = validate_normalized(p, "Probability.entropy")?;
+        let safe_p = safe_log_input(p.inner.clone());
+        let terms = p.inner.clone().mul(safe_p.log());
+        checked_scalar_output(
+            terms.sum_dim(1).neg(),
+            shape[0],
+            "Probability.entropy output",
+        )
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn entropy_unchecked(&self, p: &WasmTensor) -> Result<WasmTensor, String> {
+        let (shape, _) = validate_distribution_assuming_finite(p, "Probability.entropy")?;
         let safe_p = safe_log_input(p.inner.clone());
         let terms = p.inner.clone().mul(safe_p.log());
         checked_scalar_output(
@@ -1921,9 +2105,41 @@ impl WasmProbability {
         )
     }
 
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn cross_entropy_unchecked(&self, p: &WasmTensor, q: &WasmTensor) -> Result<WasmTensor, String> {
+        let (shape, _, _) = validate_pair_assuming_finite(p, q, "Probability.crossEntropy")?;
+        let safe_q = safe_log_input(q.inner.clone());
+        let terms = p.inner.clone().mul(safe_q.log());
+        checked_scalar_output(
+            terms.sum_dim(1).neg(),
+            shape[0],
+            "Probability.crossEntropy output",
+        )
+    }
+
     #[wasm_bindgen(js_name = klDivergence)]
     pub fn kl_divergence(&self, p: &WasmTensor, q: &WasmTensor) -> Result<WasmTensor, String> {
         let (shape, _, _) = validate_pair(p, q, "Probability.klDivergence")?;
+        let safe_p = safe_log_input(p.inner.clone());
+        let safe_q = safe_log_input(q.inner.clone());
+        let log_ratio = safe_p.log().sub(safe_q.log());
+        let terms = p.inner.clone().mul(log_ratio);
+        checked_scalar_output(
+            terms.sum_dim(1),
+            shape[0],
+            "Probability.klDivergence output",
+        )
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn kl_divergence_unchecked(&self, p: &WasmTensor, q: &WasmTensor) -> Result<WasmTensor, String> {
+        let (shape, _, _) = validate_pair_assuming_finite(p, q, "Probability.klDivergence")?;
         let safe_p = safe_log_input(p.inner.clone());
         let safe_q = safe_log_input(q.inner.clone());
         let log_ratio = safe_p.log().sub(safe_q.log());
@@ -3490,17 +3706,44 @@ impl WasmStatistics {
 
     pub fn sum(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.sum")?;
+        self.sum_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn sum_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.sum")?;
         statistics_checked_output(input.inner.clone().sum_dim(1), "Statistics.sum output")
     }
 
     pub fn mean(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.mean")?;
+        self.mean_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn mean_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.mean")?;
         statistics_checked_output(input.inner.clone().mean_dim(1), "Statistics.mean output")
     }
 
     #[wasm_bindgen(js_name = variancePopulation)]
     pub fn variance_population(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.variancePopulation")?;
+        self.variance_population_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn variance_population_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.variancePopulation")?;
         statistics_checked_output(
             input.inner.clone().var_bias(1),
             "Statistics.variancePopulation output",
@@ -3510,6 +3753,15 @@ impl WasmStatistics {
     #[wasm_bindgen(js_name = stdPopulation)]
     pub fn std_population(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.stdPopulation")?;
+        self.std_population_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn std_population_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.stdPopulation")?;
         statistics_checked_output(
             input.inner.clone().var_bias(1).sqrt(),
             "Statistics.stdPopulation output",
@@ -3518,11 +3770,29 @@ impl WasmStatistics {
 
     pub fn min(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.min")?;
+        self.min_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn min_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.min")?;
         statistics_checked_output(input.inner.clone().min_dim(1), "Statistics.min output")
     }
 
     pub fn max(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_tensor(input, "Statistics.max")?;
+        self.max_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn max_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.max")?;
         statistics_checked_output(input.inner.clone().max_dim(1), "Statistics.max output")
     }
 }

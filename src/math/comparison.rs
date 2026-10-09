@@ -104,7 +104,28 @@ impl TensorComparison {
         let shape = validate_same_shape(lhs, rhs, "Comparison.lessEqual01")?;
         validate_finite(lhs, "Comparison.lessEqual01 lhs")?;
         validate_finite(rhs, "Comparison.lessEqual01 rhs")?;
+        self.less_equal_01_shape(shape, lhs, rhs)
+    }
 
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation is retained.
+    pub(crate) fn less_equal_01_unchecked(
+        &self,
+        lhs: &WasmTensor,
+        rhs: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        let shape = validate_same_shape(lhs, rhs, "Comparison.lessEqual01")?;
+        self.less_equal_01_shape(shape, lhs, rhs)
+    }
+
+    fn less_equal_01_shape(
+        &self,
+        shape: [usize; 4],
+        lhs: &WasmTensor,
+        rhs: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
         let output = WasmTensor {
             inner: lhs.inner.clone().lower_equal(rhs.inner.clone()).float(),
         };

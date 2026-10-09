@@ -89,12 +89,96 @@ pub(crate) fn validate_pair(
     Ok((p_shape, p_values, q_values))
 }
 
+/// Fase 2 structural enforcement: domain-only variants that assume finiteness.
+///
+/// SAFETY: the caller must guarantee `input` holds only finite values — either
+/// validated once at program entry, or produced by a step whose output was
+/// validated (checked_output family) or is finite by construction. These skip
+/// the finite scan but retain the stronger domain checks (nonnegativity,
+/// unit-mass, Q-support), so a program feeding an unnormalized tensor into
+/// entropy still fails loudly.
+pub(crate) fn validate_normalized_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<([usize; 4], Vec<f32>), String> {
+    // Input contract mirrors Probability.normalize: nonnegative with strictly
+    // positive finite mass (NOT yet summing to 1 — normalization is the op).
+    let (shape, values) = validate_positive_mass_assuming_finite(input, context)?;
+    Ok((shape, values))
+}
+
+/// Fase 2: like `validate_normalized_assuming_finite`, but additionally
+/// requires unit mass. For entropy / cross-entropy / KL inputs, which must
+/// already be distributions.
+pub(crate) fn validate_distribution_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<([usize; 4], Vec<f32>), String> {
+    let (shape, values) = validate_positive_mass_assuming_finite(input, context)?;
+    let masses = batch_masses(&values, shape[0], shape[1]);
+    for (batch_index, mass) in masses.into_iter().enumerate() {
+        if !mass.is_finite() || (mass - 1.0).abs() > NORMALIZATION_TOLERANCE {
+            return Err(format!(
+                "{context}: batch {batch_index} must sum to 1 within tolerance {NORMALIZATION_TOLERANCE}; got {mass}"
+            ));
+        }
+    }
+    Ok((shape, values))
+}
+
+fn validate_positive_mass_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<([usize; 4], Vec<f32>), String> {
+    let shape = validate_layout(input, context)?;
+    let values = input.to_array();
+    for (index, &value) in values.iter().enumerate() {
+        if value < 0.0 {
+            return Err(format!(
+                "{context}: probabilities/weights must be >= 0; index {index} has {value}"
+            ));
+        }
+    }
+    let masses = batch_masses(&values, shape[0], shape[1]);
+    for (batch_index, mass) in masses.into_iter().enumerate() {
+        if !mass.is_finite() || mass <= 0.0 {
+            return Err(format!(
+                "{context}: batch {batch_index} must have strictly positive finite mass; got {mass}"
+            ));
+        }
+    }
+    Ok((shape, values))
+}
+
+pub(crate) fn validate_pair_assuming_finite(
+    p: &WasmTensor,
+    q: &WasmTensor,
+    context: &str,
+) -> Result<([usize; 4], Vec<f32>, Vec<f32>), String> {
+    let (p_shape, p_values) =
+        validate_distribution_assuming_finite(p, &format!("{context} P"))?;
+    let (q_shape, q_values) =
+        validate_distribution_assuming_finite(q, &format!("{context} Q"))?;
+    if p_shape != q_shape {
+        return Err(format!(
+            "{context}: distribution shape mismatch {p_shape:?} vs {q_shape:?}"
+        ));
+    }
+    for (index, (&pv, &qv)) in p_values.iter().zip(q_values.iter()).enumerate() {
+        if pv > 0.0 && qv == 0.0 {
+            return Err(format!(
+                "{context}: Q has zero support at index {index} where P is positive ({pv})"
+            ));
+        }
+    }
+    Ok((p_shape, p_values, q_values))
+}
+
 pub(crate) fn checked_scalar_output(
     inner: Tensor<crate::WasmBackend, 4>,
     batch: usize,
     context: &str,
-) -> Result<WasmTensor, String> {
-    let output = WasmTensor { inner };
+) -> Result<WasmTensor, String> {    let output = WasmTensor { inner };
     let shape = output.inner.dims();
     if shape != [batch, 1, 1, 1] {
         return Err(format!(

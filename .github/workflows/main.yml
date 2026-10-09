@@ -151,6 +151,9 @@ jobs:
       - name: Run distribution smoke test
         run: node scripts/smoke_distribution.mjs pkg
 
+      - name: Audit MathProgram Fase 2 (entry validation + unchecked steps) at the wasm boundary
+        run: node scripts/audit_math_program_fase2.mjs pkg
+
       - name: Generate WASM runtime surface snapshot from the packaged runtime
         run: node scripts/generate_wasm_surface_actual.mjs pkg --write
 

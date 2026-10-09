@@ -5,7 +5,9 @@ use wasm_bindgen::prelude::*;
 pub use crate::facade::wasm_types::WasmStatistics;
 use crate::WasmTensor;
 
-pub(crate) fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Result<(), String> {
+/// Fase 2: layout-only check assuming finiteness (see numeric.rs for the
+/// safety invariant). Used by `_unchecked` kernel twins.
+pub(crate) fn validate_feature_layout(input: &WasmTensor, context: &str) -> Result<(), String> {
     let shape = input.inner.dims();
     let [batch, features, h, w] = shape;
     if batch == 0 {
@@ -19,6 +21,11 @@ pub(crate) fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Resu
             "{context}: expected feature-vector layout [B,F,1,1], got {shape:?}"
         ));
     }
+    Ok(())
+}
+
+pub(crate) fn validate_feature_tensor(input: &WasmTensor, context: &str) -> Result<(), String> {
+    validate_feature_layout(input, context)?;
     // One materialization, no intermediate Vec: iterate the slice directly.
     let data = input.inner.to_data();
     let values = data
