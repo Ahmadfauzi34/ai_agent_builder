@@ -41,6 +41,8 @@ pub mod program_v7_wasm;
 pub mod program_v8;
 pub mod program_v8_wasm;
 pub mod program_v9;
+#[cfg(test)]
+mod program_fase2_audit;
 pub mod program_v9_wasm;
 pub(crate) mod program_value_source;
 pub mod program_wasm;

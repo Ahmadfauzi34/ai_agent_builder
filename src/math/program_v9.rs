@@ -10,6 +10,7 @@ use crate::math::index_source::TensorIndexSource;
 use crate::math::program_index_params::{IndexAxisParams, PARAM_INDEX_AXIS};
 use crate::math::program_step_record::{ProgramStepRecord, STEP_HEADER_BYTES};
 use crate::math::program_v8::{MathProgramV8, MathProgramV8Builder};
+use crate::math::numeric::validate_finite as validate_program_input_finite;
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
@@ -724,7 +725,18 @@ impl MathProgramV9 {
                 inputs.len()
             ));
         }
+        // Fase 2: validate once at entry; steps use unchecked kernels.
+        for (index, input) in inputs.iter().enumerate() {
+            validate_program_input_finite(
+                input,
+                &format!("MathProgramV9.runInputs input {index}"),
+            )?;
+        }
 
+        self.execute_inputs(inputs)
+    }
+
+    fn execute_inputs(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         for (index, input) in inputs.iter().enumerate() {
             slots[index] = Some(input.clone());
@@ -745,14 +757,14 @@ impl MathProgramV9 {
                         format!("MathProgramV9.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = if *arity == 1 {
-                        program.run_inputs(&[a.clone()])?
+                        program.run_inputs_unchecked(&[a.clone()])?
                     } else {
                         let b = slots[*in_b as usize].as_ref().ok_or_else(|| {
                             format!(
                                 "MathProgramV9.runInputs: step {index} second input slot {in_b} is empty"
                             )
                         })?;
-                        program.run_inputs(&[a.clone(), b.clone()])?
+                        program.run_inputs_unchecked(&[a.clone(), b.clone()])?
                     };
                     (*out, value)
                 }
@@ -775,7 +787,7 @@ impl MathProgramV9 {
                     let rhs_value = slots[*rhs as usize].as_ref().ok_or_else(|| {
                         format!("MathProgramV9.runInputs: step {index} rhs slot {rhs} is empty")
                     })?;
-                    (*out, comparison.less_equal_01(lhs_value, rhs_value)?)
+                    (*out, comparison.less_equal_01_unchecked(lhs_value, rhs_value)?)
                 }
             };
             slots[out as usize] = Some(value);

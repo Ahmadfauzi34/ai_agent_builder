@@ -11,6 +11,7 @@ use crate::math::program_v4_step::{
     V4StepRecord, PARAM_CLAMP as RECORD_PARAM_CLAMP, PARAM_EPSILON as RECORD_PARAM_EPSILON,
     PARAM_NONE,
 };
+use crate::math::numeric::validate_finite as validate_program_input_finite;
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
@@ -706,7 +707,36 @@ impl MathProgramV5 {
                 inputs.len()
             ));
         }
+        // Fase 2: validate once at entry; steps use unchecked kernels.
+        for (index, input) in inputs.iter().enumerate() {
+            validate_program_input_finite(
+                input,
+                &format!("MathProgramV5.runInputs input {index}"),
+            )?;
+        }
 
+        self.execute_inputs(inputs)
+    }
+
+    /// Fase 2: skips entry validation; for delegation from v6+ programs whose
+    /// slots already hold validated tensors. SAFETY: caller must guarantee all
+    /// `inputs` are finite.
+    pub(crate) fn run_inputs_unchecked(
+        &self,
+        inputs: &[WasmTensor],
+    ) -> Result<WasmTensor, String> {
+        if inputs.len() != self.num_inputs as usize {
+            return Err(format!(
+                "MathProgramV5.runInputs: expected {} inputs, got {}",
+                self.num_inputs,
+                inputs.len()
+            ));
+        }
+
+        self.execute_inputs(inputs)
+    }
+
+    fn execute_inputs(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         for (index, input) in inputs.iter().enumerate() {
             slots[index] = Some(input.clone());
@@ -725,14 +755,14 @@ impl MathProgramV5 {
                         format!("MathProgramV5.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = match *arity {
-                        1 => program.run1(a),
+                        1 => program.run1_unchecked(a),
                         2 => {
                             let b = slots[*in_b as usize].as_ref().ok_or_else(|| {
                                 format!(
                                     "MathProgramV5.runInputs: step {index} second input slot {in_b} is empty"
                                 )
                             })?;
-                            program.run2(a, b)
+                            program.run2_unchecked(a, b)
                         }
                         other => Err(format!(
                             "MathProgramV5.runInputs: step {index} unsupported arity {other}"
@@ -748,7 +778,7 @@ impl MathProgramV5 {
                     let value = slots[*input as usize].as_ref().ok_or_else(|| {
                         format!("MathProgramV5.runInputs: step {index} input slot {input} is empty")
                     })?;
-                    (*out, program.run1(value)?)
+                    (*out, program.run1_unchecked(value)?)
                 }
             };
             slots[out as usize] = Some(value);

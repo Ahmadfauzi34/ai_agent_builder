@@ -9,7 +9,7 @@ use crate::math::program_shape_params::{
 use crate::math::program_v4_step::{
     V4StepRecord, PARAM_CLAMP as V4_PARAM_CLAMP, PARAM_EPSILON as V4_PARAM_EPSILON, PARAM_NONE,
 };
-use crate::math::WasmTensorTransform;
+use crate::math::{numeric::validate_finite as validate_program_input_finite, WasmTensorTransform};
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
@@ -634,6 +634,21 @@ impl MathProgramV4 {
                 self.num_inputs
             ));
         }
+        // Fase 2: validate once at entry; Core steps use unchecked kernels.
+        validate_program_input_finite(input, "MathProgramV4.run1 input")?;
+        self.execute(&[input.clone()])
+    }
+
+    /// Fase 2: skips entry validation; for SelectAxis delegation from v5+.
+    /// SAFETY: caller guarantees `input` is finite (validated at the outer
+    /// program's entry, or a validated step output).
+    pub(crate) fn run1_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        if self.num_inputs != 1 {
+            return Err(format!(
+                "MathProgramV4.run1: program requires {} inputs",
+                self.num_inputs
+            ));
+        }
         self.execute(&[input.clone()])
     }
 
@@ -644,6 +659,9 @@ impl MathProgramV4 {
                 self.num_inputs
             ));
         }
+        // Fase 2: validate once at entry; Core steps use unchecked kernels.
+        validate_program_input_finite(a, "MathProgramV4.run2 input a")?;
+        validate_program_input_finite(b, "MathProgramV4.run2 input b")?;
         self.execute(&[a.clone(), b.clone()])
     }
 
@@ -667,14 +685,14 @@ impl MathProgramV4 {
                         format!("MathProgramV4.run step {index}: input slot {in_a} is empty")
                     })?;
                     if *arity == 1 {
-                        program.run1(a)
+                        program.run1_unchecked(a)
                     } else {
                         let b = slots[*in_b as usize].as_ref().ok_or_else(|| {
                             format!(
                                 "MathProgramV4.run step {index}: second input slot {in_b} is empty"
                             )
                         })?;
-                        program.run2(a, b)
+                        program.run2_unchecked(a, b)
                     }
                 }
                 ExecutableStep::SelectAxis { params, input, .. } => {

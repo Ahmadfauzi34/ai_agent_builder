@@ -3,14 +3,7 @@ use burn::prelude::*;
 use crate::WasmTensor;
 
 fn validate_input(input: &WasmTensor, context: &str) -> Result<[usize; 4], String> {
-    let shape = input.inner.dims();
-    for (axis, dim) in shape.iter().copied().enumerate() {
-        if dim == 0 {
-            return Err(format!(
-                "{context}: zero-sized dimension at axis {axis} is not supported in reduction v1"
-            ));
-        }
-    }
+    let shape = validate_input_shape(input, context)?;
     // One materialization, no intermediate Vec: iterate the slice directly.
     let data = input.inner.to_data();
     let values = data
@@ -20,6 +13,20 @@ fn validate_input(input: &WasmTensor, context: &str) -> Result<[usize; 4], Strin
         if !value.is_finite() {
             return Err(format!(
                 "{context}: non-finite value at index {index}: {value}"
+            ));
+        }
+    }
+    Ok(shape)
+}
+
+/// Fase 2: shape-only input check assuming finiteness (see numeric.rs for the
+/// safety invariant). Used by `_unchecked` reduction twins.
+fn validate_input_shape(input: &WasmTensor, context: &str) -> Result<[usize; 4], String> {
+    let shape = input.inner.dims();
+    for (axis, dim) in shape.iter().copied().enumerate() {
+        if dim == 0 {
+            return Err(format!(
+                "{context}: zero-sized dimension at axis {axis} is not supported in reduction v1"
             ));
         }
     }
@@ -100,6 +107,25 @@ impl TensorReduction {
     pub fn sum_axis(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
         let shape = validate_input(input, "Reduction.sumAxis input")?;
         let axis = checked_axis(axis, "Reduction.sumAxis")?;
+        self.sum_axis_unchecked_shape(shape, input, axis)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation is retained.
+    pub(crate) fn sum_axis_unchecked(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
+        let shape = validate_input_shape(input, "Reduction.sumAxis input")?;
+        let axis = checked_axis(axis, "Reduction.sumAxis")?;
+        self.sum_axis_unchecked_shape(shape, input, axis)
+    }
+
+    fn sum_axis_unchecked_shape(
+        &self,
+        shape: [usize; 4],
+        input: &WasmTensor,
+        axis: usize,
+    ) -> Result<WasmTensor, String> {
         checked_output(
             input.inner.clone().sum_dim(axis),
             shape,
@@ -111,6 +137,25 @@ impl TensorReduction {
     pub fn mean_axis(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
         let shape = validate_input(input, "Reduction.meanAxis input")?;
         let axis = checked_axis(axis, "Reduction.meanAxis")?;
+        self.mean_axis_unchecked_shape(shape, input, axis)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation is retained.
+    pub(crate) fn mean_axis_unchecked(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
+        let shape = validate_input_shape(input, "Reduction.meanAxis input")?;
+        let axis = checked_axis(axis, "Reduction.meanAxis")?;
+        self.mean_axis_unchecked_shape(shape, input, axis)
+    }
+
+    fn mean_axis_unchecked_shape(
+        &self,
+        shape: [usize; 4],
+        input: &WasmTensor,
+        axis: usize,
+    ) -> Result<WasmTensor, String> {
         checked_output(
             input.inner.clone().mean_dim(axis),
             shape,
@@ -122,6 +167,25 @@ impl TensorReduction {
     pub fn min_axis(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
         let shape = validate_input(input, "Reduction.minAxis input")?;
         let axis = checked_axis(axis, "Reduction.minAxis")?;
+        self.min_axis_unchecked_shape(shape, input, axis)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation is retained.
+    pub(crate) fn min_axis_unchecked(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
+        let shape = validate_input_shape(input, "Reduction.minAxis input")?;
+        let axis = checked_axis(axis, "Reduction.minAxis")?;
+        self.min_axis_unchecked_shape(shape, input, axis)
+    }
+
+    fn min_axis_unchecked_shape(
+        &self,
+        shape: [usize; 4],
+        input: &WasmTensor,
+        axis: usize,
+    ) -> Result<WasmTensor, String> {
         checked_output(
             input.inner.clone().min_dim(axis),
             shape,
@@ -133,6 +197,25 @@ impl TensorReduction {
     pub fn max_axis(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
         let shape = validate_input(input, "Reduction.maxAxis input")?;
         let axis = checked_axis(axis, "Reduction.maxAxis")?;
+        self.max_axis_unchecked_shape(shape, input, axis)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation is retained.
+    pub(crate) fn max_axis_unchecked(&self, input: &WasmTensor, axis: u32) -> Result<WasmTensor, String> {
+        let shape = validate_input_shape(input, "Reduction.maxAxis input")?;
+        let axis = checked_axis(axis, "Reduction.maxAxis")?;
+        self.max_axis_unchecked_shape(shape, input, axis)
+    }
+
+    fn max_axis_unchecked_shape(
+        &self,
+        shape: [usize; 4],
+        input: &WasmTensor,
+        axis: usize,
+    ) -> Result<WasmTensor, String> {
         checked_output(
             input.inner.clone().max_dim(axis),
             shape,

@@ -15,6 +15,7 @@ use crate::math::program_v4_step::{
     PARAM_NONE,
 };
 use crate::math::program_v5::MathProgramV5;
+use crate::math::numeric::validate_finite as validate_program_input_finite;
 use crate::math::program_value_source::{
     fill_like, FillLikeParams, FILL_LIKE_PARAM_BYTES, PARAM_FILL_LIKE,
 };
@@ -756,7 +757,36 @@ impl MathProgramV6 {
                 inputs.len()
             ));
         }
+        // Fase 2: validate once at entry; steps use unchecked kernels.
+        for (index, input) in inputs.iter().enumerate() {
+            validate_program_input_finite(
+                input,
+                &format!("MathProgramV6.runInputs input {index}"),
+            )?;
+        }
 
+        self.execute_inputs(inputs)
+    }
+
+    /// Fase 2: skips entry validation; for delegation from v7+ programs whose
+    /// slots already hold validated tensors. SAFETY: caller must guarantee all
+    /// `inputs` are finite.
+    pub(crate) fn run_inputs_unchecked(
+        &self,
+        inputs: &[WasmTensor],
+    ) -> Result<WasmTensor, String> {
+        if inputs.len() != self.num_inputs as usize {
+            return Err(format!(
+                "MathProgramV6.runInputs: expected {} inputs, got {}",
+                self.num_inputs,
+                inputs.len()
+            ));
+        }
+
+        self.execute_inputs(inputs)
+    }
+
+    fn execute_inputs(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         for (index, input) in inputs.iter().enumerate() {
             slots[index] = Some(input.clone());
@@ -784,7 +814,7 @@ impl MathProgramV6 {
                         a
                     };
                     let local_inputs = [a.clone(), b.clone(), a.clone()];
-                    (*out, program.run_inputs(&local_inputs)?)
+                    (*out, program.run_inputs_unchecked(&local_inputs)?)
                 }
                 ExecutableStep::FillLike {
                     reference,

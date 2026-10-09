@@ -7,6 +7,7 @@
 use crate::math::program_runtime_shape::expand_like;
 use crate::math::program_step_record::{ProgramStepRecord, STEP_HEADER_BYTES};
 use crate::math::program_v6::{MathProgramV6, MathProgramV6Builder};
+use crate::math::numeric::validate_finite as validate_program_input_finite;
 use crate::WasmTensor;
 
 const PLAN_MAGIC: &[u8; 4] = b"BRMP";
@@ -650,7 +651,36 @@ impl MathProgramV7 {
                 inputs.len()
             ));
         }
+        // Fase 2: validate once at entry; steps use unchecked kernels.
+        for (index, input) in inputs.iter().enumerate() {
+            validate_program_input_finite(
+                input,
+                &format!("MathProgramV7.runInputs input {index}"),
+            )?;
+        }
 
+        self.execute_inputs(inputs)
+    }
+
+    /// Fase 2: skips entry validation; for delegation from v8+ programs whose
+    /// slots already hold validated tensors. SAFETY: caller must guarantee all
+    /// `inputs` are finite.
+    pub(crate) fn run_inputs_unchecked(
+        &self,
+        inputs: &[WasmTensor],
+    ) -> Result<WasmTensor, String> {
+        if inputs.len() != self.num_inputs as usize {
+            return Err(format!(
+                "MathProgramV7.runInputs: expected {} inputs, got {}",
+                self.num_inputs,
+                inputs.len()
+            ));
+        }
+
+        self.execute_inputs(inputs)
+    }
+
+    fn execute_inputs(&self, inputs: &[WasmTensor]) -> Result<WasmTensor, String> {
         let mut slots: Vec<Option<WasmTensor>> = vec![None; self.num_slots as usize];
         for (index, input) in inputs.iter().enumerate() {
             slots[index] = Some(input.clone());
@@ -669,14 +699,14 @@ impl MathProgramV7 {
                         format!("MathProgramV7.runInputs: step {index} input slot {in_a} is empty")
                     })?;
                     let value = if *arity == 1 {
-                        program.run_inputs(&[a.clone()])?
+                        program.run_inputs_unchecked(&[a.clone()])?
                     } else {
                         let b = slots[*in_b as usize].as_ref().ok_or_else(|| {
                             format!(
                                 "MathProgramV7.runInputs: step {index} second input slot {in_b} is empty"
                             )
                         })?;
-                        program.run_inputs(&[a.clone(), b.clone()])?
+                        program.run_inputs_unchecked(&[a.clone(), b.clone()])?
                     };
                     (*out, value)
                 }

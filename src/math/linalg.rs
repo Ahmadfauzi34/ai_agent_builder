@@ -39,7 +39,9 @@ pub(crate) fn validate_feature_shape(shape: [usize; 4], context: &str) -> Result
     Ok(())
 }
 
-pub(crate) fn validate_feature_pair(
+/// Fase 2: shape-only pair check assuming finiteness (see numeric.rs for the
+/// safety invariant). Used by `_unchecked` kernel twins.
+pub(crate) fn validate_feature_pair_shape(
     a: &WasmTensor,
     b: &WasmTensor,
     context: &str,
@@ -53,6 +55,15 @@ pub(crate) fn validate_feature_pair(
             "{context}: feature shape mismatch {a_shape:?} vs {b_shape:?}"
         ));
     }
+    Ok(())
+}
+
+pub(crate) fn validate_feature_pair(
+    a: &WasmTensor,
+    b: &WasmTensor,
+    context: &str,
+) -> Result<(), String> {
+    validate_feature_pair_shape(a, b, context)?;
     validate_finite(a, &format!("{context} lhs"))?;
     validate_finite(b, &format!("{context} rhs"))?;
     Ok(())

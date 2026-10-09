@@ -111,6 +111,66 @@ pub(crate) fn checked_output(
     Ok(output)
 }
 
+/// Fase 2 structural enforcement: domain-only checks that assume finiteness.
+///
+/// SAFETY: the caller must guarantee `input` holds only finite values — either
+/// validated once at program entry, or produced by a step whose output was
+/// validated (checked_output family) or is finite by construction (pure
+/// transforms, fill_like with finite scalar, expand_like, indices_like).
+/// These skip the finite scan but retain the stronger domain check, so a
+/// program feeding e.g. a negative tensor into sqrt still fails loudly.
+pub(crate) fn validate_nonnegative_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<(), String> {
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if value < 0.0 {
+            return Err(format!(
+                "{context}: negative value at index {index}: {value}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_positive_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<(), String> {
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if value <= 0.0 {
+            return Err(format!(
+                "{context}: non-positive value at index {index}: {value}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_nonzero_assuming_finite(
+    input: &WasmTensor,
+    context: &str,
+) -> Result<(), String> {
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    for (index, &value) in values.iter().enumerate() {
+        if value == 0.0 {
+            return Err(format!("{context}: zero denominator at index {index}"));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{numeric_kernel_capabilities, WasmNumericKernel};
