@@ -154,6 +154,12 @@ jobs:
       - name: Audit MathProgram Fase 2 (entry validation + unchecked steps) at the wasm boundary
         run: node scripts/audit_math_program_fase2.mjs pkg
 
+      - name: Audit WASM memory oracle (deterministic leak detection via linear memory pages)
+        run: node scripts/audit_wasm_memory.mjs pkg
+
+      - name: Audit WASM OOM boundary (graceful failure at the 4 GiB ceiling)
+        run: node scripts/audit_wasm_oom.mjs pkg
+
       - name: Generate WASM runtime surface snapshot from the packaged runtime
         run: node scripts/generate_wasm_surface_actual.mjs pkg --write
 
