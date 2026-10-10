@@ -148,4 +148,22 @@ function tensor(n, fill) {
   check(pages() === base, `T6 to_array cycles stable (${base} pages)`);
 }
 
+// ---- T7: layer state cycles (differential pair with tests/mem_differential.rs) ----
+{
+  for (let i = 0; i < 5; i++) {
+    const reg = new m.LayerRegistry();
+    reg.initAgentLayer(m.AgentLayerSpec.linear(1, 8, 4));
+    const st = reg.getLayerState(1, 0x01);
+    reg.loadLayerState(1, 0x01, st);
+  }
+  const base = pages();
+  for (let i = 0; i < 50; i++) {
+    const reg = new m.LayerRegistry();
+    reg.initAgentLayer(m.AgentLayerSpec.linear(1, 8, 4));
+    const st = reg.getLayerState(1, 0x01);
+    reg.loadLayerState(1, 0x01, st);
+  }
+  check(pages() === base, `T7 layer state cycles stable (${base} pages)`);
+}
+
 console.log('\nmemory oracle: all checks passed');
