@@ -53,6 +53,11 @@ where
 /// Decode the same bincode payload used by Burn's `BinBytesRecorder`, while
 /// keeping malformed or non-canonical bytes on our fallible boundary instead
 /// of reaching recorder/load_record panic paths in Burn 0.20.1.
+///
+/// The decode runs under the tiered byte limit from
+/// [`decode_from_slice_limited`]: a corrupt varint length prefix can no
+/// longer make the decoder `with_capacity(huge)` (complaint #14 — a 226-byte
+/// payload once grew WASM linear memory by 1 GiB before failing).
 pub(crate) fn decode_bin_record<B, R>(
     data: &[u8],
     device: &B::Device,
@@ -63,8 +68,7 @@ where
     R: Record<B>,
 {
     let (record, consumed): (BurnRecord<R::Item<FullPrecisionSettings>, B>, usize) =
-        bincode::serde::decode_from_slice(data, bincode::config::standard())
-            .map_err(|err| format!("{context}: invalid Burn bincode record: {err}"))?;
+        decode_from_slice_limited(data, context)?;
 
     if consumed != data.len() {
         return Err(format!(

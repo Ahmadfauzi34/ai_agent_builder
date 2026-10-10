@@ -119,4 +119,33 @@ mod tests {
             before
         );
     }
+
+    #[test]
+    fn corrupt_length_prefix_is_rejected_without_huge_allocation() {
+        // Complaint #14 regression: a corrupt varint length prefix must not
+        // make the decoder attempt a huge allocation. The tiered byte limit
+        // (64 KiB for this ~200-byte state) rejects the 1 GiB claim via
+        // LimitExceeded instead of Vec::with_capacity(1 GiB).
+        let mut layer = WasmLinear::new(3, 2, true);
+        let weights = deterministic_weights(3 * 2 + 2);
+        layer.set_weights_flat(&weights).expect("set weights");
+        let before = layer.get_weights_flat().expect("read weights");
+        let state = layer.get_state().expect("serialize state");
+
+        let mut corrupt = vec![0xFD]; // bincode varint u64 marker
+        corrupt.extend_from_slice(&0x4000_0000u64.to_le_bytes()); // 1 GiB
+        corrupt.extend_from_slice(&state[1..]);
+
+        let err = layer
+            .load_state(&corrupt)
+            .expect_err("corrupt length prefix must be rejected");
+        assert!(
+            err.contains("LimitExceeded"),
+            "expected LimitExceeded, got: {err}"
+        );
+        assert_eq!(
+            layer.get_weights_flat().expect("weights after rejection"),
+            before
+        );
+    }
 }
