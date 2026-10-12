@@ -65,6 +65,11 @@ const executionReceiptTarget = path.join(pkgDir, 'ingress_execution_receipt.mjs'
 const branchPromotionLineageTarget = path.join(pkgDir, 'branch_promotion_lineage.mjs');
 const operationRegistryTarget = path.join(pkgDir, 'operation_contract_registry.mjs');
 const replayLedgerInitTarget = path.join(pkgDir, 'init_ingress_replay_ledger.mjs');
+// wasm-opt: engine-provided low-level optimization helper (dedicated dir).
+// Copied whole so a packed bundle carries the helper and the helper finds
+// its engine next to itself (see scripts/wasm-opt/README.md).
+const wasmOptSource = path.resolve('scripts/wasm-opt');
+const wasmOptTarget = path.join(pkgDir, 'wasm-opt');
 
 const generatedPackageFiles = [
   'burn_research_bg.wasm.d.ts',
@@ -88,6 +93,7 @@ const packagedHostFiles = [
 const requiredManifestFiles = [
   ...generatedPackageFiles,
   ...packagedHostFiles,
+  'wasm-opt',
   'wasm-surface.actual.json',
 ];
 
@@ -121,6 +127,10 @@ fs.copyFileSync(executionReceiptSource, executionReceiptTarget);
 fs.copyFileSync(branchPromotionLineageSource, branchPromotionLineageTarget);
 fs.copyFileSync(operationRegistrySource, operationRegistryTarget);
 fs.copyFileSync(replayLedgerInitSource, replayLedgerInitTarget);
+if (!fs.existsSync(wasmOptSource)) {
+  throw new Error(`wasm-opt helper source is missing: ${wasmOptSource}`);
+}
+fs.cpSync(wasmOptSource, wasmOptTarget, { recursive: true });
 for (const [name, source] of Object.entries(docSources)) {
   const target = path.join(docsDir, name);
   if (name.endsWith('.md')) {
