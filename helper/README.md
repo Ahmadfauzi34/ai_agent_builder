@@ -55,6 +55,6 @@ Port shapes are 4-D (`[1, 2, 1, 1]` style). Constructors: `linear`, `relu`,
 
 Defaults to `<repo>/pkg/` (the `wasm-pack build --target web --out-dir pkg`
 output). Override with `BURN_WASM_PKG_DIR`. When this helper is packaged
-(`scripts/package_node_host.mjs` copies it to `<pkg>/wasm-opt/`), it
+(`scripts/package_node_host.mjs` copies it to `<pkg>/helper/`), it
 automatically resolves the engine next to itself — so a packed bundle carries
 the helper and the helper finds its engine.

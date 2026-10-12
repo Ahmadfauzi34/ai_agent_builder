@@ -10,9 +10,9 @@ import fs from 'node:fs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Engine package dir resolution (in order):
 //   1. BURN_WASM_PKG_DIR env override (explicit).
-//   2. Packed layout: this file lives at <pkg>/wasm-opt/lib/, so the
+//   2. Packed layout: this file lives at <pkg>/helper/lib/, so the
 //      engine files are two levels up (<pkg>/burn_research_bg.wasm).
-//   3. Repo source layout: <repo>/scripts/wasm-opt/lib/, engine at
+//   3. Repo source layout: <repo>/helper/lib/, engine at
 //      <repo>/pkg/ (as produced by `wasm-pack build --target web --out-dir pkg`).
 function resolvePkgDir() {
   if (process.env.BURN_WASM_PKG_DIR) return path.resolve(process.env.BURN_WASM_PKG_DIR);
