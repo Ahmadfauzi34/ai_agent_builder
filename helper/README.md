@@ -9,9 +9,12 @@ gets a tight loop: **propose → measure → judge**, all backed by the engine.
 - `node bin/opt_profile.mjs <spec.json> [iterations] [--trace]`
   Per-phase wall time + linear-memory page deltas for build/bind/run
   (1 cold + steady iterations), steady-state median/min/max, `leak_free` check.
-  `--trace` adds the per-step memory map (which step holds the bytes) via the
-  engine's own `runWithTrace`. The `engine` section also reports `wasm_bytes`
-  (bundle-size metric). JSON envelope on stdout; exit 0/2.
+  `--trace` adds the per-step map via the engine's own `runWithTrace`: each
+  step traced individually (median of 3 runs) reporting `wall_ms` + `out_bytes`,
+  plus a `hotspots` summary (slowest step, biggest step). `wall_ms` is traced
+  wall time (includes capture overhead) — use for relative comparison between
+  steps. The `engine` section also reports `wasm_bytes` (bundle-size metric).
+  JSON envelope on stdout; exit 0/2.
 - `node bin/opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations]`
   The design loop: numerical equivalence via `MultiInputVerificationCases` plus
   profiled time/memory delta for both. Verdict is numbers: `ACCEPT`
