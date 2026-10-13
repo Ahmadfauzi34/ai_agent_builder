@@ -3,6 +3,34 @@ use burn::record::{BinBytesRecorder, BurnRecord, FullPrecisionSettings, Record, 
 use burn::tensor::backend::Backend;
 use burn::tensor::{Bool, Int, Tensor};
 
+/// Byte-limit tier for a state-record payload of `len` bytes.
+///
+/// The limit is a const generic in bincode 2.0.1, so callers dispatch on the
+/// input length to the smallest tier covering it with headroom. The 8x
+/// headroom covers bincode's container claim accounting (`claim_container_read`
+/// books `size_of::<T>()` per element, which over-estimates for nested
+/// containers). Single state records beyond 128 MiB are rejected outright.
+///
+/// This is the single source of truth for the tier policy: both the live
+/// decode path and the callable guard below consult it.
+pub(crate) fn tier_limit_for_len(len: usize) -> Result<usize, String> {
+    let need = len.saturating_mul(8);
+    if need <= (1_usize << 16) {
+        Ok(65536)
+    } else if need <= (1_usize << 20) {
+        Ok(1048576)
+    } else if need <= (1_usize << 24) {
+        Ok(16777216)
+    } else if need <= (1_usize << 30) {
+        Ok(1073741824)
+    } else {
+        Err(format!(
+            "state record too large: {} bytes (max 128 MiB)",
+            len
+        ))
+    }
+}
+
 /// Decode a bincode payload with a byte limit derived from the input length.
 ///
 /// Complaint #14: `bincode::config::standard()` has no byte limit, so a single
@@ -13,12 +41,6 @@ use burn::tensor::{Bool, Int, Tensor};
 /// turns those inputs into a plain per-call `DecodeError::LimitExceeded`
 /// instead, and any allocation the decoder still attempts is O(input size),
 /// which cannot fail in a functioning instance.
-///
-/// The limit is a const generic in bincode 2.0.1, so dispatch on the input
-/// length to the smallest tier covering it with headroom. The 8x headroom
-/// covers bincode's container claim accounting (`claim_container_read` books
-/// `size_of::<T>()` per element, which over-estimates for nested containers).
-/// Single state records beyond 128 MiB are rejected outright.
 fn decode_from_slice_limited<'a, T>(data: &'a [u8], context: &str) -> Result<(T, usize), String>
 where
     T: serde::de::DeserializeOwned,
@@ -33,20 +55,15 @@ where
         };
     }
 
-    let need = data.len().saturating_mul(8);
-    if need <= (1_usize << 16) {
-        tier! {65536}
-    } else if need <= (1_usize << 20) {
-        tier! {1048576}
-    } else if need <= (1_usize << 24) {
-        tier! {16777216}
-    } else if need <= (1_usize << 30) {
-        tier! {1073741824}
-    } else {
-        Err(format!(
-            "{context}: state record too large: {} bytes (max 128 MiB)",
-            data.len()
-        ))
+    match tier_limit_for_len(data.len()) {
+        Ok(65536) => tier! {65536},
+        Ok(1048576) => tier! {1048576},
+        Ok(16777216) => tier! {16777216},
+        Ok(1073741824) => tier! {1073741824},
+        Ok(other) => Err(format!(
+            "{context}: internal tier error: unexpected limit {other}"
+        )),
+        Err(e) => Err(format!("{context}: {e}")),
     }
 }
 
@@ -157,4 +174,39 @@ where
     BinBytesRecorder::<FullPrecisionSettings>::default()
         .record(record, ())
         .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tier_tests {
+    use super::tier_limit_for_len;
+
+    #[test]
+    fn tier_boundaries_cover_input_lengths() {
+        // need = len * 8; tier edges at need == 2^16 / 2^20 / 2^24 / 2^30.
+        assert_eq!(tier_limit_for_len(0).unwrap(), 65536);
+        assert_eq!(tier_limit_for_len(8192).unwrap(), 65536); // need == 65536
+        assert_eq!(tier_limit_for_len(8193).unwrap(), 1048576);
+        assert_eq!(tier_limit_for_len(131072).unwrap(), 1048576); // need == 2^20
+        assert_eq!(tier_limit_for_len(131073).unwrap(), 16777216);
+        assert_eq!(tier_limit_for_len(2097152).unwrap(), 16777216); // need == 2^24
+        assert_eq!(tier_limit_for_len(2097153).unwrap(), 1073741824);
+        assert_eq!(tier_limit_for_len(134217728).unwrap(), 1073741824); // 128 MiB
+    }
+
+    #[test]
+    fn tier_rejects_beyond_128mib() {
+        let err = tier_limit_for_len(134217729).unwrap_err();
+        assert!(err.contains("too large"), "unexpected: {err}");
+        // saturating_mul must not wrap into a small tier on huge inputs
+        let err = tier_limit_for_len(usize::MAX).unwrap_err();
+        assert!(err.contains("too large"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn killer_payload_shape_maps_to_smallest_tier() {
+        // The Fase C killer: 226 corrupt bytes once grew WASM memory by 1 GiB.
+        // The guard maps it to the 64 KiB tier, so any varint claim inside is
+        // bounded there at decode time (LimitExceeded, no giant allocation).
+        assert_eq!(tier_limit_for_len(226).unwrap(), 65536);
+    }
 }

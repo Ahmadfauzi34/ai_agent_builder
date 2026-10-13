@@ -694,6 +694,7 @@
     "bindSemanticLifecycleTransition",
     "checkpointBranchCapabilities",
     "comparisonCapabilities",
+    "decodeGuardCheck",
     "describeGraph",
     "describeWorkspace",
     "esCapabilities",

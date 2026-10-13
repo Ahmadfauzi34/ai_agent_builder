@@ -18,7 +18,7 @@ function resolvePkgDir() {
   if (process.env.BURN_WASM_PKG_DIR) return path.resolve(process.env.BURN_WASM_PKG_DIR);
   const packed = path.join(HERE, '..', '..');
   if (fs.existsSync(path.join(packed, 'burn_research_bg.wasm'))) return packed;
-  return path.join(HERE, '..', '..', '..', 'pkg');
+  return path.join(HERE, '..', '..', 'pkg');
 }
 const PKG_DIR = resolvePkgDir();
 

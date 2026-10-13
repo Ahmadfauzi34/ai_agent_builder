@@ -17,6 +17,7 @@
 pub mod agent;
 pub mod contracts;
 pub mod coprocessor;
+pub mod decode_guard;
 pub mod es;
 pub mod evidence;
 pub mod graph;

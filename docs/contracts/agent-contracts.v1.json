@@ -723,7 +723,8 @@
       "workspaceWireUnary",
       "workspaceWireBinary",
       "workspaceCompile",
-      "workspaceCompileForRuntimeSubject"
+      "workspaceCompileForRuntimeSubject",
+      "decodeGuardCheck"
     ],
     "escape_hatches": [
       "workspaceCompile",

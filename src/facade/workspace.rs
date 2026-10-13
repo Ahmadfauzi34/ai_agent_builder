@@ -45,7 +45,7 @@ pub fn workspace_capabilities() -> String {
         "\"atomicity\":{\"compile\":\"non_mutating_output_override\",\"subject_bound_compile\":\"bind_exact_program_identity_only_after_successful_compile\",\"workspace_init\":\"transactional_post_registry_rollback\"},",
         "\"slot_lifecycle\":{\"states\":[\"input\",\"free\",\"reserved\"],\"readable\":[\"input\",\"reserved\"],\"reserve\":\"free->reserved\",\"release\":\"reserved->free\",\"invalid_transition\":\"error_no_mutation\"},",
         "\"layout_policy\":{\"known_incompatible\":\"reject_before_mutation\",\"unknown\":\"defer_to_runtime\",\"implicit_relayout\":\"forbidden\"},",
-        "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\",\"workspaceCompileForRuntimeSubject\"],",
+        "\"ops\":[\"workspaceInitUnary\",\"workspaceInitBinary\",\"workspaceWireUnary\",\"workspaceWireBinary\",\"workspaceCompile\",\"workspaceCompileForRuntimeSubject\",\"decodeGuardCheck\"],",
         "\"workspace_methods\":[\"reserveLayerId\",\"reserveSlot\",\"releaseSlot\",\"syncLayer\",\"forgetLayer\",\"recordProof\",\"recordEvent\",\"put\",\"get\",\"query\",\"remove\",\"tableNames\",\"snapshot\",\"limits\"],",
         "\"escape_hatches\":[\"workspaceCompile\",\"AgentLayerSpec\",\"AgentGraphBuilder\",\"LayerRegistry\",\"raw_protocol\"],",
         "\"recommended_flow\":[\"bind_runtime_subject_if_used\",\"reserve_layer\",\"construct_spec\",\"init_or_wire\",\"subject_bound_compile_if_bound\",\"run\",\"verify\"]",

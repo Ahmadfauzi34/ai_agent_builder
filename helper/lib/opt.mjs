@@ -65,31 +65,60 @@ function wasmFileBytes() {
   }
 }
 
-// Per-step memory map via the engine's own trace facility.
-// Returns [{index, layer, kind, in_slots, out_slot, out_shape, out_bytes}]
-// so an agent can see WHICH step holds the bytes (memory hotspot map).
+// Callable tiered-limit guard (complaint #14).
+//
+// Asks the engine's own guard decision function whether a state-record
+// payload of the given bytes would be accepted and under which bincode byte
+// limit tier — without decoding anything. Only the input length is inspected,
+// so probing is always safe. Returns the parsed verdict:
+// {input_bytes, tier_limit|null, accepted, reason|null}.
+export function guardCheck(rt, bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+  return JSON.parse(rt.decodeGuardCheck(u8));
+}
+
+// Per-step map via the engine's own trace facility.
+// Returns [{index, layer, kind, in_slots, out_slot, out_shape, out_bytes, wall_ms}]
+// so an agent can see WHICH step holds the bytes AND which step costs wall time
+// (memory hotspot map + time hotspot map).
+// Each step is traced individually (runWithTrace with max_steps=1) and timed;
+// wall_ms is the median of `repeats` runs. Note: this is traced wall time —
+// it includes trace-capture overhead, so use it for relative comparison
+// between steps, not as absolute kernel cost.
 // Pure observation: does not affect the profiled run.
-export function traceSteps(rt, spec, reg, g, bundle, maxTensorBytes = 1024 * 1024) {
-  const traced = g.runWithTrace(reg, bundle, 0, spec.steps.length, maxTensorBytes);
-  let rep;
-  try {
-    rep = JSON.parse(traced.report());
-  } finally {
-    if (traced.free) traced.free();
-  }
-  return (rep.steps ?? []).map((s) => {
-    const stepDef = spec.steps[s.index] ?? {};
+export function traceSteps(rt, spec, reg, g, bundle,
+    { maxTensorBytes = 1024 * 1024, repeats = 3 } = {}) {
+  const steps = [];
+  for (let i = 0; i < spec.steps.length; i++) {
+    const dts = [];
+    let stepObs = null;
+    for (let r = 0; r < repeats; r++) {
+      const t0 = performance.now();
+      const traced = g.runWithTrace(reg, bundle, i, 1, maxTensorBytes);
+      const dt = performance.now() - t0;
+      try {
+        const rep = JSON.parse(traced.report());
+        stepObs = (rep.steps ?? [])[0] ?? stepObs;
+      } finally {
+        if (traced.free) traced.free();
+      }
+      dts.push(dt);
+    }
+    if (!stepObs) throw new Error(`trace: no observation for step ${i}`);
+    const stepDef = spec.steps[i] ?? {};
     const layerDef = spec.layers[stepDef.layer] ?? {};
-    return {
-      index: s.index,
-      layer: layerDef.constructor ?? `type:${s.layer_type}`,
-      kind: stepDef.kind ?? (s.arity === 2 ? 'binary' : 'unary'),
-      in_slots: s.input_slots ?? [],
-      out_slot: s.output_slot ?? null,
-      out_shape: s.observation?.shape ?? null,
-      out_bytes: s.observation?.byte_length ?? null,
-    };
-  });
+    steps.push({
+      index: i,
+      layer: layerDef.constructor ?? `type:${stepObs.layer_type}`,
+      kind: stepDef.kind ?? (stepObs.arity === 2 ? 'binary' : 'unary'),
+      in_slots: stepObs.input_slots ?? [],
+      out_slot: stepObs.output_slot ?? null,
+      out_shape: stepObs.observation?.shape ?? null,
+      out_bytes: stepObs.observation?.byte_length ?? null,
+      wall_ms: +median(dts).toFixed(3),
+    });
+  }
+  return steps;
 }
 
 // Profile one spec: build/bind/run phases with wall time and page deltas.
@@ -143,14 +172,21 @@ export function profileSpec(rt, spec, { iterations = 11, trace = false } = {}) {
   // Leak-free iff every steady iteration leaves the page count unchanged.
   const leakFree = steadyPages.every((d) => d === 0);
 
-  // Optional per-step memory map. Needs a fresh bundle because the profile
-  // run above freed its bundle; rebuild cheaply (not timed).
+  // Optional per-step map (memory + wall time). Needs a fresh bundle because
+  // the profile run above freed its bundle; rebuild cheaply (not timed).
   let steps = null;
+  let hotspots = null;
   if (trace) {
     const { reg: reg2, plan: plan2, g: g2 } = buildGraph(rt, spec);
     const bundle2 = makeBundle(rt, plan2, spec.inputs, ports);
     try {
       steps = traceSteps(rt, spec, reg2, g2, bundle2);
+      const byTime = [...steps].sort((a, b) => b.wall_ms - a.wall_ms)[0];
+      const byBytes = [...steps].sort((a, b) => (b.out_bytes ?? 0) - (a.out_bytes ?? 0))[0];
+      hotspots = {
+        slowest_step: byTime ? { index: byTime.index, layer: byTime.layer, wall_ms: byTime.wall_ms } : null,
+        biggest_step: byBytes ? { index: byBytes.index, layer: byBytes.layer, out_bytes: byBytes.out_bytes } : null,
+      };
     } finally {
       if (bundle2.free) bundle2.free();
       if (g2.free) g2.free();
@@ -172,6 +208,7 @@ export function profileSpec(rt, spec, { iterations = 11, trace = false } = {}) {
       leak_free: leakFree,
     },
     steps,
+    hotspots,
     output_shape: outputShape,
     output_preview: outputValues,
   };
