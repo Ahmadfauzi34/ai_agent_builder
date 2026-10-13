@@ -15,6 +15,10 @@ gets a tight loop: **propose → measure → judge**, all backed by the engine.
   wall time (includes capture overhead) — use for relative comparison between
   steps. The `engine` section also reports `wasm_bytes` (bundle-size metric).
   JSON envelope on stdout; exit 0/2.
+- `node bin/opt_guard.mjs <file> | --bytes N` — probe the engine's tiered-limit
+  guard (complaint #14): would a state-record payload of this size be accepted,
+  and under which bincode byte limit tier? Only the input length is inspected,
+  so probing is always safe. Exit 0 when accepted, 2 when rejected.
 - `node bin/opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations]`
   The design loop: numerical equivalence via `MultiInputVerificationCases` plus
   profiled time/memory delta for both. Verdict is numbers: `ACCEPT`

@@ -65,6 +65,18 @@ function wasmFileBytes() {
   }
 }
 
+// Callable tiered-limit guard (complaint #14).
+//
+// Asks the engine's own guard decision function whether a state-record
+// payload of the given bytes would be accepted and under which bincode byte
+// limit tier — without decoding anything. Only the input length is inspected,
+// so probing is always safe. Returns the parsed verdict:
+// {input_bytes, tier_limit|null, accepted, reason|null}.
+export function guardCheck(rt, bytes) {
+  const u8 = bytes instanceof Uint8Array ? bytes : Uint8Array.from(bytes);
+  return JSON.parse(rt.decodeGuardCheck(u8));
+}
+
 // Per-step map via the engine's own trace facility.
 // Returns [{index, layer, kind, in_slots, out_slot, out_shape, out_bytes, wall_ms}]
 // so an agent can see WHICH step holds the bytes AND which step costs wall time
