@@ -138,6 +138,7 @@ fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
         LAYER_GHOST => reg.ghosts.contains_key(&layer_id),
         LAYER_SEBLOCK => reg.seblocks.contains_key(&layer_id),
         LAYER_BINARY => reg.binaries.contains_key(&layer_id),
+        LAYER_FEATURE_NORM => reg.feature_norms.contains_key(&layer_id),
         _ => false,
     }
 }
@@ -217,3 +218,50 @@ pub(crate) fn validate_plan(reg: &LayerRegistry, plan: &[u8]) -> Result<(u32, u3
 // #[wasm_bindgen] impl LayerRegistry — dipindah ke src/facade/registry.rs (Opsi C Fase 2).
 
 // #[wasm_bindgen] impl LayerRegistry — dipindah ke src/facade/registry.rs (Opsi C Fase 2).
+
+#[cfg(test)]
+mod contains_layer_tests {
+    use super::*;
+    use crate::facade::wasm_types::WasmFeatureNorm;
+
+    fn plan_with_feature_norm_step(layer_id: u32) -> Vec<u8> {
+        let mut plan = vec![];
+        plan.extend_from_slice(&1u32.to_le_bytes()); // num_steps
+        plan.extend_from_slice(&2u32.to_le_bytes()); // num_slots
+        plan.push(crate::graph::ARITY_UNARY);
+        plan.push(LAYER_FEATURE_NORM);
+        plan.extend_from_slice(&layer_id.to_le_bytes());
+        plan.push(0); // in_slot
+        plan.push(0); // in_slot2 (unused for unary)
+        plan.push(1); // out_slot
+        plan.push(1); // plan output slot
+        plan
+    }
+
+    #[test]
+    fn validate_plan_accepts_registered_feature_norm() {
+        // Regression: contains_layer had no LAYER_FEATURE_NORM arm, so any
+        // plan with a feature_norm step failed validation with
+        // "layer type 0x14 id N not found" even though the layer was
+        // registered and every other dispatch site handled 0x14.
+        let mut reg = LayerRegistry::new();
+        reg.feature_norms.insert(
+            7,
+            WasmFeatureNorm::new_feature_norm(None).expect("feature norm init"),
+        );
+        let (steps, slots, out) =
+            validate_plan(&reg, &plan_with_feature_norm_step(7)).expect("plan must validate");
+        assert_eq!((steps, slots, out), (1, 2, 1));
+    }
+
+    #[test]
+    fn validate_plan_still_rejects_unknown_feature_norm_id() {
+        // Negative control: an unregistered id must keep failing.
+        let reg = LayerRegistry::new();
+        let err = validate_plan(&reg, &plan_with_feature_norm_step(7)).unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "unexpected error: {err}"
+        );
+    }
+}
