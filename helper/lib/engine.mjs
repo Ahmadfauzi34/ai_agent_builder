@@ -37,25 +37,39 @@ export async function loadWasm() {
   return rt;
 }
 
-// Numeric layer-type codes; linear == 1.
-export const LAYER_TYPE = { linear: 1 };
+// Numeric layer-type codes (src/protocol.rs); these are the types whose
+// weights setWeightsFlat supports.
+export const LAYER_TYPE = { linear: 1, norm: 2, conv: 3, embedding: 5 };
+
+// Spec constructor name -> LAYER_TYPE key, for the weighted layer types.
+const WEIGHTED_CONSTRUCTORS = {
+  linear: 'linear',
+  batchNorm: 'norm',
+  groupNorm: 'norm',
+  instanceNorm: 'norm',
+  layerNorm: 'norm',
+  rmsNorm: 'norm',
+  conv1d: 'conv',
+  conv2d: 'conv',
+  convTranspose2d: 'conv',
+  embedding: 'embedding',
+};
 
 // Build {reg, plan, g} from a spec (layers/steps/ports/weights).
 // Weight layout is column-major (audited).
 export function buildGraph(rt, spec) {
   const reg = new rt.LayerRegistry();
   const specs = [];
-  const weighted = []; // {registryId, type, values}
-  for (const decl of spec.layers) {
+  const weighted = new Map(); // layer index -> {registryId, type}
+  for (const [index, decl] of spec.layers.entries()) {
     const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
     if (typeof s !== 'object' || s === null) {
       throw new Error(`unknown layer constructor: ${decl.constructor}`);
     }
     reg.initAgentLayer(s);
     specs.push(s);
-    if (decl.constructor === 'linear') {
-      weighted.push({ registryId: decl.args[0], type: LAYER_TYPE.linear });
-    }
+    const wt = WEIGHTED_CONSTRUCTORS[decl.constructor];
+    if (wt) weighted.set(index, { registryId: decl.args[0], type: LAYER_TYPE[wt] });
   }
   const b = new rt.AgentGraphBuilder(spec.numSlots);
   for (const step of spec.steps) {
@@ -73,7 +87,7 @@ export function buildGraph(rt, spec) {
   }
   // Deterministic zero-init is the audited default; explicit weights override.
   for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
-    const w = weighted[Number(indexStr)];
+    const w = weighted.get(Number(indexStr));
     if (!w) throw new Error(`weights for layer index ${indexStr}: not a weighted layer`);
     reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
   }

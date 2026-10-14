@@ -58,6 +58,11 @@ unlike host RSS.
 Port shapes are 4-D (`[1, 2, 1, 1]` style). Constructors: `linear`, `relu`,
 `add` (also `sigmoid`, `tanh`, `mul`, … — anything `AgentLayerSpec` exposes).
 
+Weights (optional, column-major) are supported for `linear`, all `*Norm`
+(`batchNorm`, `groupNorm`, `instanceNorm`, `layerNorm`, `rmsNorm`), all conv
+(`conv1d`, `conv2d`, `convTranspose2d`), and `embedding` — the same set the
+engine's `setWeightsFlat` accepts. Keys are layer indices into `layers`.
+
 ## Engine location
 
 Defaults to `<repo>/pkg/` (the `wasm-pack build --target web --out-dir pkg`
