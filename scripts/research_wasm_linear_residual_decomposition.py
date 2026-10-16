@@ -343,7 +343,7 @@ def main() -> None:
         (consumer / "src").mkdir(parents=True)
         package_path = package_dir.as_posix().replace('"', '\\"')
         (consumer / "Cargo.toml").write_text(
-            f'''[package]\nname = "burn-research-wasm-linear-residual-decomposition"\nversion = "0.0.0"\nedition = "2021"\n\n[dependencies]\nburn-research = {{ path = "{package_path}" }}\nburn = { version = "0.20.0", default-features = false, features = ["std", "wgpu"] }\nserde_json = "1.0"\n''',
+            f'''[package]\nname = "burn-research-wasm-linear-residual-decomposition"\nversion = "0.0.0"\nedition = "2021"\n\n[dependencies]\nburn-research = {{ path = "{package_path}" }}\nburn = {{ version = "0.20.0", default-features = false, features = ["std", "wgpu"] }}\nserde_json = "1.0"\n''',
             encoding="utf-8",
         )
         (consumer / "src" / "main.rs").write_text(RUST_CONSUMER, encoding="utf-8")
