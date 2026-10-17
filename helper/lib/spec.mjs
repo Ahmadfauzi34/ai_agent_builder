@@ -26,3 +26,13 @@ export function portBySlot(spec) {
   for (const p of spec.ports) m.set(p.slot, p);
   return m;
 }
+
+// Sub-spec for the session-free validatePlan op.
+export function planFragment(spec) {
+  return {
+    numSlots: spec.numSlots,
+    steps: spec.steps,
+    ports: spec.ports,
+    outputSlot: spec.outputSlot,
+  };
+}
