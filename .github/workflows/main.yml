@@ -395,6 +395,10 @@ jobs:
   supply-chain-audit:
     name: Supply-chain audit (cargo audit)
     runs-on: ubuntu-latest
+    # rustsec/audit-check posts result annotations via the Checks API.
+    permissions:
+      checks: write
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
