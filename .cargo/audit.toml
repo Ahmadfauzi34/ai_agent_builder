@@ -1,0 +1,22 @@
+# Supply-chain audit configuration for `cargo audit`
+# (consumed by the `supply-chain-audit` CI job via rustsec/audit-check).
+#
+# DOCUMENTED exception below -- not a blind ignore:
+# - RUSTSEC-2026-0367 / -0368 / -0369 are genuine CVEs in the `zip` crate,
+#   but `zip` only exists in Cargo.lock as an *unactivated* transitive entry:
+#       burn -> burn-candle (optional dep, never enabled)
+#           -> candle-core 0.9.2 -> zip
+#   `cargo tree -i zip` prints nothing: no compiled code touches it.
+#   Cargo keeps optional dependencies in the lockfile by design, and
+#   `cargo generate-lockfile` cannot evict the entry.
+# - The ignore is advisory-ID-specific: any NEW advisory on a dependency
+#   that is actually built still fails CI. The regression value of the
+#   gate is fully intact.
+# - `paste` / `bincode` "unmaintained" warnings are intentionally NOT
+#   ignored: they are informational and do not fail the audit.
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0367",
+    "RUSTSEC-2026-0368",
+    "RUSTSEC-2026-0369",
+]
