@@ -3,6 +3,8 @@
 //
 // An agent designing a low-level optimization proposes a candidate spec;
 // the engine itself judges it:
+//   0. static shape/dataflow gate on both specs (ported from the burn-math
+//      skill during the 2026-10-20 two-way reconciliation),
 //   1. numerical equivalence vs the baseline (MultiInputVerificationCases),
 //   2. profiled time/memory delta for both (Fase A memory oracle).
 // Verdict is numbers, not feelings.
@@ -13,6 +15,7 @@ import fs from 'node:fs';
 import { loadEngineWithOracle, profileSpec } from '../lib/opt.mjs';
 import { buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
+import { checkSpec } from '../lib/shapecore.mjs';
 import { printJson } from '../lib/json.mjs';
 
 const [baseFile, candFile, casesFile, iterArg] = process.argv.slice(2);
@@ -29,6 +32,26 @@ try {
     ? JSON.parse(fs.readFileSync(casesFile, 'utf8'))
     : [baseSpec.inputs];
   if (!Array.isArray(cases) || cases.length === 0) throw new Error('cases must be a non-empty array');
+
+  // 0. Static gate: shape + dataflow check BEFORE the engine spins up.
+  //    Catches dim mismatch in milliseconds with a precise step index.
+  for (const [label, s] of [['baseline', baseSpec], ['candidate', candSpec]]) {
+    const chk = checkSpec(s);
+    if (!chk.ok) {
+      printJson({
+        ok: false,
+        error: `${label} spec failed static shape/dataflow check`,
+        error_envelope: {
+          code: 'shape_mismatch',
+          phase: 'staticGate',
+          mismatches: chk.mismatches,
+          dataflow_issues: chk.dataflow.issues,
+          remediation_hint: 'fix the listed steps, then re-run; shapecheck.mjs shows the same report standalone',
+        },
+      });
+      process.exit(2);
+    }
+  }
 
   const { rt } = await loadEngineWithOracle();
 
