@@ -115,6 +115,9 @@ export function traceSteps(rt, spec, reg, g, bundle,
       out_slot: stepObs.output_slot ?? null,
       out_shape: stepObs.observation?.shape ?? null,
       out_bytes: stepObs.observation?.byte_length ?? null,
+      capture_status: stepObs.observation?.capture_status ?? null,
+      finite_values: stepObs.observation?.finite_values ?? null,
+      value_sha256: stepObs.observation?.value_sha256 ?? null,
       wall_ms: +median(dts).toFixed(3),
     });
   }
