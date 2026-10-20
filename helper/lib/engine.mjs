@@ -26,6 +26,24 @@ export function pkgDir() {
   return PKG_DIR;
 }
 
+// Location of the host runner script (spawned by lib/runner.mjs).
+// Packed layout: <pkg>/interactive_multi_input_ingress.mjs.
+// Repo source layout: <repo>/scripts/interactive_multi_input_ingress.mjs.
+export function runnerPath() {
+  const packed = path.join(PKG_DIR, 'interactive_multi_input_ingress.mjs');
+  if (fs.existsSync(packed)) return packed;
+  return path.join(HERE, '..', '..', 'scripts', 'interactive_multi_input_ingress.mjs');
+}
+
+// Location of the agent layer catalog (read by lib/rewrites.mjs, lib/shapes.mjs).
+// Packed layout: <pkg>/docs/agent-layer-catalog.v1.json.
+// Repo source layout: <repo>/docs/contracts/agent-layer-catalog.v1.json.
+export function catalogPath() {
+  const packed = path.join(PKG_DIR, 'docs', 'agent-layer-catalog.v1.json');
+  if (fs.existsSync(packed)) return packed;
+  return path.join(HERE, '..', '..', 'docs', 'contracts', 'agent-layer-catalog.v1.json');
+}
+
 export async function loadWasm() {
   const jsPath = path.join(PKG_DIR, 'burn_research.js');
   const wasmPath = path.join(PKG_DIR, 'burn_research_bg.wasm');

@@ -1,10 +1,13 @@
-# wasm-opt — engine-provided low-level optimization helper
+# wasm-opt — engine-provided agent tooling
 
-The burn WASM engine **provides** the helper: measurement comes from the engine
-itself, not from outside guesses. An agent designing a low-level optimization
-gets a tight loop: **propose → measure → judge**, all backed by the engine.
+The burn WASM engine **provides** the tooling: measurement comes from the engine
+itself, not from outside guesses. An agent gets a tight loop:
+**propose → measure → judge**, all backed by the engine — from low-level
+optimization profiling to full math verification with provenance.
 
 ## CLIs
+
+### Optimization (Fase A oracle)
 
 - `node bin/opt_profile.mjs <spec.json> [iterations] [--trace]`
   Per-phase wall time + linear-memory page deltas for build/bind/run
@@ -24,6 +27,55 @@ gets a tight loop: **propose → measure → judge**, all backed by the engine.
   profiled time/memory delta for both. Verdict is numbers: `ACCEPT`
   (equivalent + faster), `EQUIVALENT but slower`, or `REJECT` (not equivalent).
   Exit 0 iff equivalent.
+
+### Core verification (the math boundary)
+
+- `node bin/validate.mjs <spec.json>` — session-free plan check: validates the
+  spec structure (ports, steps, dataflow) without creating a session. Exit 0
+  when valid, 2 with structured remediation hints when not.
+- `node bin/run.mjs <spec.json>` — validate → create → setWeights → bind → run,
+  one shot. Prints outputs + execution gate + host provenance.
+- `node bin/verify.mjs <baseline.json> <candidate.json> [cases.json]`
+  Baseline-vs-candidate graph verification: numerical equivalence with
+  tolerances, the verdict behind `opt_compare`.
+- `node bin/checkpoint.mjs export <spec.json> | verify <bundle> <sha>`
+  Export a program bundle with integrity proof (sha256), or verify a bundle's
+  integrity session-free.
+
+### Correctness probes
+
+- `node bin/gradcheck.mjs <spec.json>` — numeric gradient (finite-difference)
+  Jacobian of a spec, optionally verified against an agent-supplied analytic
+  Jacobian.
+- `node bin/soak.mjs <spec.json> [N=100]` — long-run determinism proof: N runs
+  with fresh input bundles, all outputs bit-identical (sha256).
+- `node bin/quant_verify.mjs <spec.json>` — weight-quantization simulation
+  (int8/fp16) + verification of error bounds.
+- `node bin/diff_ref.mjs <spec.json>` — differential testing: engine output vs
+  an independent reference implementation.
+- `node bin/cost_model.mjs <spec.json>` — per-op cost table + predicted vs
+  measured total time.
+- `node bin/shapecheck.mjs <spec.json>` — static shape + dataflow check, no
+  engine needed. Fast pre-pass before heavier tools.
+- `node bin/fuzz_cases.mjs` — deterministic test-case generation for
+  verify/diff_ref.
+- `node bin/prng_check.mjs` — certify and re-verify deterministic PRNG streams.
+
+### Graph rewrites (proof-backed)
+
+- `node bin/rewrite.mjs list | apply <name> <spec.json>` — apply a cataloged,
+  proof-backed graph rewrite (see `references/rewrites.v1.json`). A transform
+  without a recorded proof is not in the catalog.
+
+### Domain packs
+
+- `node bin/weight_lab.mjs` — the manual-weighting workbench: build/analyze
+  weight matrices (spectral radius, orthonormality), gate candidates, certify
+  into `references/weight_repertoire.v1.json`. See `references/weights.md`.
+- `node bin/geom_build.mjs <chain.json>` — 3D transform chain → engine spec.
+- `node bin/geom_batch.mjs` — batched 3D model → 2D screen projection.
+- `node bin/geom_project.mjs` — 3D model → 2D screen projection, end to end.
+  See `references/geom3.md`.
 
 ## How it measures
 

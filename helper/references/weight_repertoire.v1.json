@@ -1,0 +1,29 @@
+{
+ "version": 1,
+ "sets": [
+  {
+   "name": "elastic",
+   "kind": "map",
+   "W": [
+    [
+     1.2,
+     -0.4
+    ],
+    [
+     0.5,
+     0.8
+    ]
+   ],
+   "b": [
+    20,
+    -10
+   ],
+   "fingerprint": "f6ec16ab5845bba9c41153c28ecbfb4bf4f4227890cc5f92c6c606ae7a78bc96",
+   "properties": [],
+   "probe_max_abs_err": 0,
+   "probes": 1,
+   "engine": "f32 burn-math (audited 2d8f42d)",
+   "certified_at": "2026-10-16T08:40:46.855Z"
+  }
+ ]
+}
