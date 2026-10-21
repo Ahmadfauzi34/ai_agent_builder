@@ -9,12 +9,23 @@
 // without commit the live graph is untouched — abandoning the transaction
 // is the rollback.
 //
-// Proven engine semantics (audited 2026-10-20): the verification gate
-// requires the candidate's PROGRAM IDENTITY to equal the baseline's, so
-// the promotable edit class is state edits (setWeights). Structural edits
-// (replace/insert/remove/reconnect/setOutput) can be staged, but the
-// engine rejects them at verifyCases with an identity-gate error, which
-// this CLI surfaces faithfully as {stage:"verifyCases", equivalent:null}.
+// Engine semantics (corrected 2026-10-21; the 2026-10-20 claim below it was
+// wrong): the verifier checks that the graphs inside the verification cases
+// match what was staged — the baseline case side must be the live baseline,
+// the candidate case side must be the STAGED candidate. It does NOT require
+// candidate program identity == baseline identity. Structural edits
+// (replace/insert/remove/reconnect/setOutput) verify and promote fine when
+// output-equivalent over the cases. The old CLI built both case sides from
+// the live graph, which made the engine reject every identity-changing edit
+// with "baseline or candidate program identity changed" — an artifact of the
+// CLI, not an engine limitation. The CLI now imports the staged candidate
+// bundle into a fresh registry and builds the candidate case side from it.
+//
+// (Superseded 2026-10-20 note, kept for provenance: it claimed the gate
+// required candidate identity == baseline identity, limiting promotion to
+// state edits. Disproven by probe 2026-10-21: insertStep verified
+// equivalent=true and committed via both the transaction and the branch
+// path once the cases were built correctly.)
 //
 // Usage: node graph_mutate.mjs <spec.json> <mutation.json> [cases.json] [absTol=1e-6] [relTol=1e-6]
 //   mutation.json: {"commit": bool, "edits": [
@@ -99,9 +110,14 @@ try {
   }
 
   const stage = JSON.parse(tx.stageCandidate());
-  const vc = new rt.MultiInputVerificationCases(g, g);
+  // The candidate case side must be built from the STAGED candidate, not the
+  // live graph: import the staged bundle into a fresh registry (see header).
+  const regC = new rt.LayerRegistry();
+  const gC = rt.importMultiInputProgramBundle(regC, Buffer.from(tx.candidateBundle()));
+  const planC = rt.MultiInputGraphPlan.fromBytes(gC.inputPlanV1());
+  const vc = new rt.MultiInputVerificationCases(g, gC);
   for (const c of cases) {
-    vc.addCase(makeBundle(rt, plan, c, ports), makeBundle(rt, plan, c, ports));
+    vc.addCase(makeBundle(rt, plan, c, ports), makeBundle(rt, planC, c, ports));
   }
   let verdict;
   try {
@@ -134,7 +150,10 @@ try {
     process.exit(2);
   }
   const newG = tx.commitByReceipt(reg, g, identity, baselineSha, verdict.receipt_digest, true);
-  const bundle = makeBundle(rt, plan, cases[0], ports);
+  // Run the promoted graph with the CANDIDATE plan: for structural edits the
+  // promoted graph's plan is planC (input ports are contract-fixed, so this
+  // is also correct for weight-only edits).
+  const bundle = makeBundle(rt, planC, cases[0], ports);
   const out = newG.run(reg, bundle);
   const values = Array.from(out.to_array());
   out.free();
