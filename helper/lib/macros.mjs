@@ -115,6 +115,46 @@ export const MACROS = {
       };
     },
   },
+  attention_head: {
+    description: 'single-head dot-product attention: softmax(Q @ K^T, dim=keys) @ V. Unscaled (fold 1/sqrt(d) into Q upstream if needed). Works for self- and cross-attention (Sq may differ from Skv).',
+    params: ['d_model', 'q_slot', 'k_slot', 'v_slot', 'out_slot'],
+    expand(p, alloc) {
+      need(p, 'd_model');
+      const sQ = need(p, 'q_slot'), sK = need(p, 'k_slot'), sV = need(p, 'v_slot');
+      const sOut = need(p, 'out_slot');
+      // The engine matmul contracts the last two axes, so QK^T is built via
+      // a [B,1] batch trick: Q -> [B,1,Sq,F], K -> [B,1,F,Skv].
+      const sTq1 = alloc.slot(), sTq2 = alloc.slot(), sTk = alloc.slot();
+      const sScores = alloc.slot(), sW = alloc.slot();
+      const sTv1 = alloc.slot(), sTv2 = alloc.slot(), sO = alloc.slot(), sTo = alloc.slot();
+      const L = [];
+      for (let i = 0; i < 10; i++) L.push(alloc.layerId());
+      return {
+        layers: [
+          { constructor: 'transpose', args: [L[0], 2, 3] }, // Q: [B,Sq,F,1] -> [B,Sq,1,F]
+          { constructor: 'transpose', args: [L[1], 1, 2] }, //   -> [B,1,Sq,F]
+          { constructor: 'transpose', args: [L[2], 1, 3] }, // K: [B,Skv,F,1] -> [B,1,F,Skv]
+          { constructor: 'matmul', args: [L[3]] },          // scores [B,1,Sq,Skv]
+          { constructor: 'softmax', args: [L[4], 3] },      // weights over keys (axis 3)
+          { constructor: 'transpose', args: [L[5], 2, 3] }, // V: [B,Skv,F,1] -> [B,Skv,1,F]
+          { constructor: 'transpose', args: [L[6], 1, 2] }, //   -> [B,1,Skv,F]
+          { constructor: 'matmul', args: [L[7]] },          // out [B,1,Sq,F]
+          { constructor: 'transpose', args: [L[8], 1, 2] }, //   -> [B,Sq,1,F]
+          { constructor: 'transpose', args: [L[9], 2, 3] }, //   -> [B,Sq,F,1]
+        ],
+        steps: [
+          unary(0, sQ, sTq1), unary(1, sTq1, sTq2),
+          unary(2, sK, sTk),
+          binary(3, sTq2, sTk, sScores),
+          unary(4, sScores, sW),
+          unary(5, sV, sTv1), unary(6, sTv1, sTv2),
+          binary(7, sW, sTv2, sO),
+          unary(8, sO, sTo), unary(9, sTo, sOut),
+        ],
+        weighted: [],
+      };
+    },
+  },
 };
 
 // Expand one macro invocation into a complete runnable spec.
