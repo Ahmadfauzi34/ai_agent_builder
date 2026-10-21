@@ -103,7 +103,28 @@ jobs:
         run: cargo check --target wasm32-unknown-unknown --verbose
 
       - name: Install wasm-pack
-        uses: jetli/wasm-pack-action@v0.4.0
+        shell: bash
+        env:
+          WASM_PACK_VERSION: v0.15.0
+        run: |
+          set -euxo pipefail
+          # Replaces jetli/wasm-pack-action@v0.4.0 (2026-10-21): the action
+          # moves the extracted binary with a cross-filesystem rename, which
+          # fails with EXDEV on current runner images (/tmp and $HOME on
+          # different mounts). A direct download + `install` copy into
+          # $HOME/.cargo/bin is immune to EXDEV.
+          archive="wasm-pack-${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl --fail --location --retry 3 \
+            "https://github.com/rustwasm/wasm-pack/releases/download/${WASM_PACK_VERSION}/${archive}" \
+            -o "${{ runner.temp }}/${archive}"
+          stage="${{ runner.temp }}/wasm-pack-install"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          tar -xzf "${{ runner.temp }}/${archive}" -C "$stage"
+          install -m 755 \
+            "$stage/wasm-pack-${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack" \
+            "$HOME/.cargo/bin/wasm-pack"
+          wasm-pack --version
 
       - name: Cache Binaryen
         id: cache-binaryen
