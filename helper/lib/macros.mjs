@@ -92,6 +92,29 @@ export const MACROS = {
       };
     },
   },
+  transformer_ffn: {
+    description: 'transformer feed-forward block: linear -> gelu -> linear + residual add; requires in_dim == out_dim (d_ff defaults to 4*d_model)',
+    params: ['d_model', 'd_ff', 'in_slot', 'out_slot'],
+    expand(p, alloc) {
+      const d = need(p, 'd_model'), dff = p.d_ff ?? 4 * d;
+      const sIn = need(p, 'in_slot'), sOut = need(p, 'out_slot');
+      const sH1 = alloc.slot(), sH2 = alloc.slot(), sH3 = alloc.slot();
+      const l0 = alloc.layerId(), l1 = alloc.layerId(), l2 = alloc.layerId(), l3 = alloc.layerId();
+      return {
+        layers: [
+          lin(l0, d, dff),
+          { constructor: 'gelu', args: [l1] },
+          lin(l2, dff, d),
+          { constructor: 'add', args: [l3] },
+        ],
+        steps: [
+          unary(0, sIn, sH1), unary(1, sH1, sH2), unary(2, sH2, sH3),
+          binary(3, sH3, sIn, sOut),
+        ],
+        weighted: [0, 2],
+      };
+    },
+  },
 };
 
 // Expand one macro invocation into a complete runnable spec.
