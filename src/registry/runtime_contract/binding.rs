@@ -6,9 +6,9 @@ use crate::protocol::{
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
     LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
-    LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
+    LAYER_SHIFT, LAYER_TRANSPOSE, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
-    SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP,
+    SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
 };
 
 use super::super::LayerRegistry;
@@ -111,6 +111,14 @@ fn infer_operation_id(layer_type: u8, variant: u8) -> Result<&'static str, Strin
             _ => {
                 return Err(format!(
                     "operationBindingSnapshot: unknown binary variant 0x{variant:02X}"
+                ))
+            }
+        },
+        LAYER_TRANSPOSE => match variant {
+            TRANSPOSE_SWAP => "transpose",
+            _ => {
+                return Err(format!(
+                    "operationBindingSnapshot: unknown transpose variant 0x{variant:02X}"
                 ))
             }
         },

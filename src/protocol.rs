@@ -54,6 +54,7 @@ pub const LAYER_GHOST: u8 = 0x11;
 pub const LAYER_SEBLOCK: u8 = 0x12;
 pub const LAYER_BINARY: u8 = 0x13;
 pub const LAYER_FEATURE_NORM: u8 = 0x14;
+pub const LAYER_TRANSPOSE: u8 = 0x15;
 // ============================================================
 // VARIANTS — Pilihan dalam 1 engine
 // ============================================================
@@ -104,6 +105,9 @@ pub const BINARY_SUB: u8 = 0x01;
 pub const BINARY_MUL: u8 = 0x02;
 pub const BINARY_MATMUL: u8 = 0x03;
 pub const BINARY_CONCAT: u8 = 0x04;
+
+// Transpose variants
+pub const TRANSPOSE_SWAP: u8 = 0x00;
 
 // ============================================================
 // PACKET HEADER — Fixed 8 bytes

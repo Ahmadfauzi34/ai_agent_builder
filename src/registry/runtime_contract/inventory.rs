@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 
 use crate::protocol::{
     LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
-    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT,
+    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT, LAYER_TRANSPOSE,
 };
 
 use super::super::LayerRegistry;
@@ -42,6 +42,7 @@ fn live_instance_count(registry: &LayerRegistry) -> usize {
         + registry.seblocks.len()
         + registry.binaries.len()
         + registry.feature_norms.len()
+        + registry.transposes.len()
 }
 
 fn instance_param_count(
@@ -105,6 +106,11 @@ fn instance_param_count(
             .get(&layer_id)
             .map(|layer| layer.num_params())
             .ok_or_else(|| format!("inventorySnapshot: feature norm id {layer_id} is not live")),
+        LAYER_TRANSPOSE => registry
+            .transposes
+            .get(&layer_id)
+            .map(|layer| layer.num_params())
+            .ok_or_else(|| format!("inventorySnapshot: transpose id {layer_id} is not live")),
         _ => Err(format!(
             "inventorySnapshot: unsupported live layer type 0x{layer_type:02X} id {layer_id}"
         )),

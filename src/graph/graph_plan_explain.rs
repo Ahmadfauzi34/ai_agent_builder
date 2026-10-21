@@ -6,7 +6,7 @@ use crate::graph_plan::GraphPlanStep;
 use crate::protocol::{
     PayloadCursor, ACT_GLU, ACT_SWIGLU, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL,
     BINARY_SUB, LAYER_ACTIVATION, LAYER_BINARY, LAYER_FEATURE_NORM, LAYER_LINEAR, LAYER_NORM,
-    LAYER_SHIFT,
+    LAYER_SHIFT, LAYER_TRANSPOSE,
 };
 use crate::registry::runtime_contract;
 use crate::registry::LayerRegistry;
@@ -129,6 +129,23 @@ fn infer_shape(step: &GraphPlanStep, identity: &str, inputs: &[Option<Shape>]) -
         }
         LAYER_ACTIVATION if variant != ACT_GLU && variant != ACT_SWIGLU => Projection::known(input),
         LAYER_SHIFT | LAYER_NORM => Projection::known(input),
+        LAYER_TRANSPOSE => {
+            // Payload: layer_id u32, dim0 u32, dim1 u32. Swap the two axes.
+            let mut cursor = PayloadCursor::new(&payload);
+            let dims = cursor
+                .read_u32()
+                .and_then(|_| Ok((cursor.read_u32()?, cursor.read_u32()?)));
+            let Ok((d0, d1)) = dims else {
+                return Projection::unknown("transpose_dimensions_unreadable");
+            };
+            let (d0, d1) = (d0 as usize, d1 as usize);
+            if d0 >= 4 || d1 >= 4 {
+                return Projection::incompatible("transpose_axis_out_of_range");
+            }
+            let mut output = input;
+            output.swap(d0, d1);
+            Projection::known(output)
+        }
         LAYER_FEATURE_NORM => {
             if input[1] == 0 || input[2] != 1 || input[3] != 1 {
                 Projection::incompatible("feature_norm_input_shape_mismatch")

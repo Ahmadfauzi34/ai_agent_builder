@@ -36,6 +36,7 @@ use crate::layers::embedding::WasmEmbedding;
 use crate::layers::linear::WasmLinear;
 use crate::layers::norm::WasmNorm;
 use crate::layers::pool::WasmPool;
+use crate::facade::wasm_types::WasmTranspose;
 use crate::protocol::*;
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -90,6 +91,7 @@ pub struct LayerRegistry {
     pub(crate) seblocks: HashMap<LayerId, WasmSeBlock>,
     pub(crate) binaries: HashMap<LayerId, WasmBinary>,
     pub(crate) feature_norms: HashMap<LayerId, WasmFeatureNorm>,
+    pub(crate) transposes: HashMap<LayerId, WasmTranspose>,
     pub(crate) init_identities: HashMap<LayerKey, LayerInitIdentity>,
     pub(crate) cached_params: usize,
 }
@@ -139,6 +141,7 @@ fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
         LAYER_SEBLOCK => reg.seblocks.contains_key(&layer_id),
         LAYER_BINARY => reg.binaries.contains_key(&layer_id),
         LAYER_FEATURE_NORM => reg.feature_norms.contains_key(&layer_id),
+        LAYER_TRANSPOSE => reg.transposes.contains_key(&layer_id),
         _ => false,
     }
 }
@@ -263,5 +266,71 @@ mod contains_layer_tests {
             err.contains("not found"),
             "unexpected error: {err}"
         );
+    }
+
+    fn plan_with_transpose_step(layer_id: u32) -> Vec<u8> {
+        let mut plan = vec![];
+        plan.extend_from_slice(&1u32.to_le_bytes()); // num_steps
+        plan.extend_from_slice(&2u32.to_le_bytes()); // num_slots
+        plan.push(crate::graph::ARITY_UNARY);
+        plan.push(LAYER_TRANSPOSE);
+        plan.extend_from_slice(&layer_id.to_le_bytes());
+        plan.push(0); // in_slot
+        plan.push(0); // in_slot2 (unused for unary)
+        plan.push(1); // out_slot
+        plan.push(1); // plan output slot
+        plan
+    }
+
+    #[test]
+    fn validate_plan_accepts_registered_transpose() {
+        // Same regression class as feature_norm (0x14): every dispatch
+        // site must know 0x15, or a registered transpose fails validation.
+        use crate::facade::wasm_types::WasmTranspose;
+        let mut reg = LayerRegistry::new();
+        reg.transposes.insert(
+            7,
+            WasmTranspose::new(1, 2).expect("transpose init"),
+        );
+        let (steps, slots, out) =
+            validate_plan(&reg, &plan_with_transpose_step(7)).expect("plan must validate");
+        assert_eq!((steps, slots, out), (1, 2, 1));
+    }
+
+    #[test]
+    fn validate_plan_still_rejects_unknown_transpose_id() {
+        let reg = LayerRegistry::new();
+        let err = validate_plan(&reg, &plan_with_transpose_step(7)).unwrap_err();
+        assert!(
+            err.contains("not found"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn transpose_end_to_end_spec_init_forward() {
+        // Full wiring: JS-facing constructor -> registry init -> forward.
+        // K: [1,2,2,1] transposed on dims (1,2) -> [1,2,2,1] with
+        // sequence and feature axes exchanged (the K^T of QK^T).
+        use crate::agent::AgentLayerSpec;
+        use crate::WasmTensor;
+        let mut reg = LayerRegistry::new();
+        let spec = AgentLayerSpec::transpose(3, 1, 2).expect("spec");
+        reg.init_agent_layer(&spec).expect("init");
+        assert!(reg.layer_exists(LAYER_TRANSPOSE, 3));
+        let input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 2, 2, 1]);
+        let out = reg
+            .forward_layer(3, LAYER_TRANSPOSE, &input)
+            .expect("forward");
+        assert_eq!(out.shape(), vec![1, 2, 2, 1]);
+        assert_eq!(out.to_array(), vec![1.0, 3.0, 2.0, 4.0]);
+    }
+
+    #[test]
+    fn transpose_spec_rejects_out_of_range_axis() {
+        use crate::agent::AgentLayerSpec;
+        assert!(AgentLayerSpec::transpose(1, 0, 4).is_err());
+        assert!(AgentLayerSpec::transpose(1, 4, 0).is_err());
+        assert!(AgentLayerSpec::transpose(1, 2, 3).is_ok());
     }
 }
