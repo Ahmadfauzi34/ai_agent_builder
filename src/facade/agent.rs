@@ -23,7 +23,8 @@ use crate::protocol::{
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, FLAG_BIAS, LAYER_ACTIVATION, LAYER_BINARY, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK, NORM_BATCH,
+    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK, LAYER_TRANSPOSE,
+    NORM_BATCH,
     NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
     POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP,
     VARIANT_NONE,
@@ -769,6 +770,18 @@ impl AgentLayerSpec {
     #[wasm_bindgen(js_name = concat)]
     pub fn concat(layer_id: u32, dim: u32) -> AgentLayerSpec {
         Self::binary_with_dim(layer_id, BINARY_CONCAT, dim)
+    }
+
+    #[wasm_bindgen(js_name = transpose)]
+    pub fn transpose(layer_id: u32, dim0: u32, dim1: u32) -> Result<AgentLayerSpec, String> {
+        for (name, d) in [("dim0", dim0), ("dim1", dim1)] {
+            if d >= 4 {
+                return Err(format!(
+                    "AgentLayerSpec.transpose: {name} must be in 0..4, got {d}"
+                ));
+            }
+        }
+        Ok(Self::transpose_spec(layer_id, dim0, dim1))
     }
 
     #[wasm_bindgen(js_name = layerId)]

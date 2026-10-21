@@ -32,5 +32,6 @@ pub mod layout;
 pub mod linear;
 pub mod norm;
 pub mod pool;
+pub mod transpose;
 pub(crate) mod shape_contract;
 pub(crate) mod state_record;

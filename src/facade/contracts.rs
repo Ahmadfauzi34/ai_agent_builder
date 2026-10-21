@@ -11,7 +11,7 @@ use crate::agent::AgentLayerSpec;
 use crate::protocol::{
     ACT_PRELU, ACT_SWIGLU, CONV_CONV1D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV,
     LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL,
-    LAYER_SEBLOCK, LAYER_SHIFT, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
+    LAYER_SEBLOCK, LAYER_SHIFT, LAYER_TRANSPOSE, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
     POOL_AVGPOOL1D, POOL_MAXPOOL1D,
 };
 use wasm_bindgen::prelude::*;
@@ -137,6 +137,9 @@ fn layout_profile_for(layer_type: u8, variant: u8) -> LayoutProfile {
             },
         },
         LAYER_BINARY => input_output(LayoutTag::Dynamic),
+        // Transpose swaps two axes: the output layout is no longer the
+        // input's named layout, so it is honestly Dynamic.
+        LAYER_TRANSPOSE => input_output(LayoutTag::Dynamic),
         _ => input_output(LayoutTag::Dynamic),
     }
 }

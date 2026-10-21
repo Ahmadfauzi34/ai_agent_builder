@@ -46,6 +46,7 @@ use crate::layers::norm::{
 use crate::layers::pool::{
     pool_fail, validate_pool1d_params, validate_pool2d_params, Pooling, PoolingConfig,
 };
+use crate::layers::transpose::Transpose;
 use crate::layers::shape_contract::{
     require_axis_size, require_singleton_axis, require_singleton_spatial,
 };
@@ -3881,5 +3882,35 @@ impl WasmTensorTransform {
         Ok(WasmTensor {
             inner: input.inner.clone().select(axis, index_tensor),
         })
+    }
+}
+
+// ======================================================================
+// src/layers/transpose.rs — WasmTranspose
+// ======================================================================
+
+pub struct WasmTranspose {
+    inner: Transpose,
+}
+
+impl WasmTranspose {
+    pub fn new(dim0: usize, dim1: usize) -> Result<WasmTranspose, String> {
+        Ok(WasmTranspose {
+            inner: Transpose::new(dim0, dim1)?,
+        })
+    }
+
+    pub fn dims(&self) -> (usize, usize) {
+        self.inner.dims()
+    }
+
+    pub fn forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        let out = self.inner.forward(input.inner.clone());
+        Ok(WasmTensor { inner: out })
+    }
+
+    // Parameter-free
+    pub fn num_params(&self) -> usize {
+        0
     }
 }

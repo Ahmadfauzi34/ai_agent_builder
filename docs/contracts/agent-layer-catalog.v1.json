@@ -1018,6 +1018,30 @@
       ],
       "fallible": false,
       "layout_contract_key": "concat"
+    },
+    "transpose": {
+      "family": "unary",
+      "arity": 1,
+      "signature": "transpose(id,dim0,dim1)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim0",
+          "type": "u32",
+          "optional": false
+        },
+        {
+          "name": "dim1",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": true,
+      "layout_contract_key": "transpose"
     }
   }
 }

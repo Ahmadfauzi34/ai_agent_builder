@@ -28,6 +28,7 @@ use crate::layers::pool::WasmPool;
 use crate::protocol::*;
 use crate::registry::{read_run_step, validate_plan, LayerId, LayerInitIdentity, LayerRegistry};
 use crate::WasmTensor;
+use crate::facade::wasm_types::WasmTranspose;
 use std::collections::HashMap;
 
 #[wasm_bindgen(js_name = layerRegistryOperationBindingCapabilities)]
@@ -106,6 +107,7 @@ impl LayerRegistry {
             seblocks: HashMap::new(),
             binaries: HashMap::new(),
             feature_norms: HashMap::new(),
+            transposes: HashMap::new(),
             init_identities: HashMap::new(),
             cached_params: 0,
         }
@@ -128,6 +130,7 @@ impl LayerRegistry {
             LAYER_SEBLOCK => self.init_seblock(header, payload),
             LAYER_BINARY => self.init_binary(header, payload),
             LAYER_FEATURE_NORM => self.init_feature_norm(header, payload),
+            LAYER_TRANSPOSE => self.init_transpose(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
         };
         if result.is_ok() {
@@ -226,6 +229,11 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "FeatureNorm not found".to_string())?
                 .forward(input),
+            LAYER_TRANSPOSE => self
+                .transposes
+                .get(&layer_id)
+                .ok_or_else(|| "Transpose not found".to_string())?
+                .forward(input),
             _ => Err(format!(
                 "Unknown layer type for forward: 0x{:02X}",
                 layer_type
@@ -251,7 +259,7 @@ impl LayerRegistry {
                 .get_state(),
             LAYER_GHOST => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM | LAYER_TRANSPOSE => {
                 if self.layer_exists(layer_type, layer_id) {
                     Ok(vec![])
                 } else {
@@ -311,6 +319,7 @@ impl LayerRegistry {
             LAYER_POOL => self.pools.remove(&layer_id).is_some(),
             LAYER_SHIFT => self.shifts.remove(&layer_id).is_some(),
             LAYER_BINARY => self.binaries.remove(&layer_id).is_some(),
+            LAYER_TRANSPOSE => self.transposes.remove(&layer_id).is_some(),
             LAYER_FEATURE_NORM => remove_layer!(self, feature_norms, layer_id),
             _ => false,
         };
@@ -518,6 +527,22 @@ impl LayerRegistry {
             _ => return Err(format!("Unknown shift variant: 0x{:02X}", header.variant)),
         };
         self.shifts.insert(id, layer);
+        Ok(())
+    }
+
+    fn init_transpose(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        if header.variant != TRANSPOSE_SWAP {
+            return Err(format!(
+                "Unknown transpose variant: 0x{:02X}",
+                header.variant
+            ));
+        }
+        let mut c = PayloadCursor::new(payload);
+        let id = c.read_u32()?;
+        let dim0 = c.read_u32()? as usize;
+        let dim1 = c.read_u32()? as usize;
+        let layer = WasmTranspose::new(dim0, dim1)?;
+        self.transposes.insert(id, layer);
         Ok(())
     }
 
@@ -812,6 +837,7 @@ impl LayerRegistry {
             LAYER_SEBLOCK => self.seblocks.contains_key(&layer_id),
             LAYER_BINARY => self.binaries.contains_key(&layer_id),
             LAYER_FEATURE_NORM => self.feature_norms.contains_key(&layer_id),
+            LAYER_TRANSPOSE => self.transposes.contains_key(&layer_id),
             _ => false,
         }
     }
