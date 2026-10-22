@@ -16,7 +16,7 @@ use crate::es::optimizer::{
     strict_config, EsOptimizer, DEFAULT_LR, DEFAULT_POP, DEFAULT_SIGMA, LINEAR_DEMO_IN_DIM,
     LINEAR_DEMO_OUT_DIM, LINEAR_DEMO_PARAM_DIM,
 };
-use crate::es::rng::Rng;
+use crate::es::rng::{AnyRng, Rng, RngKind};
 use crate::es::strategy::{EsStrategy, Strategy};
 
 /// Compare an external implementation result with a trusted numerical reference.
@@ -39,6 +39,40 @@ pub fn math_verify_vectors(
 // Method bodies byte-identik; nama export JS tidak berubah.
 // ============================================================
 
+impl EsOptimizer {
+    /// Konstruktor dalam dengan pilihan PRNG eksplisit.
+    /// `new` (legacy) memanggil ini dengan `RngKind::Mulberry32`.
+    /// Di luar `#[wasm_bindgen] impl` karena wasm_bindgen hanya
+    /// mengizinkan fungsi publik di block-nya.
+    fn from_parts(
+        dim: usize,
+        strategy: u8,
+        seed: u32,
+        kind: RngKind,
+        pop: usize,
+        sigma: f32,
+        lr: f32,
+    ) -> EsOptimizer {
+        let mut rng = AnyRng::new(kind, seed);
+        let strat = match strategy {
+            1 => Strategy::mu_lambda(dim, (pop / 2).max(1), pop, sigma, &mut rng),
+            _ => Strategy::openes(dim, pop / 2, sigma, lr, &mut rng),
+        };
+        EsOptimizer {
+            strategy: strat,
+            rng,
+            dim,
+            last_candidates: Vec::new(),
+            last_report: String::from("{}"),
+            gen: 0,
+            best_fitness: f64::NEG_INFINITY,
+            best_params: Vec::new(),
+            stagnation: 0,
+            awaiting_fitness: false,
+        }
+    }
+}
+
 #[wasm_bindgen]
 impl EsOptimizer {
     /// Legacy forgiving constructor retained for compatibility.
@@ -58,23 +92,7 @@ impl EsOptimizer {
         let pop = pop.unwrap_or(DEFAULT_POP).max(2) as usize;
         let sigma = sigma.unwrap_or(DEFAULT_SIGMA);
         let lr = lr.unwrap_or(DEFAULT_LR);
-        let mut rng = Rng::new(seed);
-        let strat = match strategy {
-            1 => Strategy::mu_lambda(dim, (pop / 2).max(1), pop, sigma, &mut rng),
-            _ => Strategy::openes(dim, pop / 2, sigma, lr, &mut rng),
-        };
-        EsOptimizer {
-            strategy: strat,
-            rng,
-            dim,
-            last_candidates: Vec::new(),
-            last_report: String::from("{}"),
-            gen: 0,
-            best_fitness: f64::NEG_INFINITY,
-            best_params: Vec::new(),
-            stagnation: 0,
-            awaiting_fitness: false,
-        }
+        Self::from_parts(dim, strategy, seed, RngKind::Mulberry32, pop, sigma, lr)
     }
 
     /// Strict proof-boundary factory. Unlike the legacy constructor, this never silently
@@ -97,6 +115,40 @@ impl EsOptimizer {
             Some(pop),
             Some(sigma),
             strict_lr,
+        ))
+    }
+
+    /// Strict factory dengan pilihan PRNG eksplisit (#14).
+    ///
+    /// `rng_kind`: 0 = mulberry32 (default lama), 1 = pcg32, 2 = philox4x32.
+    /// Tidak seperti `new`, factory ini TIDAK pernah memperbaiki diam-diam:
+    /// `rng_kind` tak dikenal, strategi tak dikenal, dan hiperparameter
+    /// invalid semuanya menjadi `Err` yang menyebut pelakunya.
+    #[wasm_bindgen(js_name = withRng)]
+    pub fn with_rng(
+        dim: u32,
+        strategy: u8,
+        seed: u32,
+        rng_kind: u8,
+        pop: Option<u32>,
+        sigma: Option<f32>,
+        lr: Option<f32>,
+    ) -> Result<EsOptimizer, String> {
+        let kind = RngKind::from_u8(rng_kind).ok_or_else(|| {
+            format!(
+                "EsOptimizer.withRng: unknown rng_kind {rng_kind}; want 0=mulberry32, 1=pcg32, 2=philox"
+            )
+        })?;
+        let (pop, sigma, strict_lr) = strict_config(dim, strategy, pop, sigma, lr)?;
+        // strict_config menjamin dim > 0; tidak ada clamping diam-diam di sini.
+        Ok(Self::from_parts(
+            dim as usize,
+            strategy,
+            seed,
+            kind,
+            pop as usize,
+            sigma,
+            strict_lr.unwrap_or(DEFAULT_LR),
         ))
     }
 

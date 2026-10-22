@@ -1,11 +1,11 @@
-use super::rng::Rng;
+use super::rng::AnyRng;
 
 pub trait EsStrategy {
     fn name(&self) -> &'static str;
     fn dim(&self) -> usize;
     fn sigma(&self) -> f32;
     fn lr(&self) -> f32;
-    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>>;
+    fn ask(&mut self, rng: &mut AnyRng) -> Vec<Vec<f32>>;
     fn tell(&mut self, fitness: &[f64]);
     fn mean(&self) -> Vec<f32>;
 }
@@ -21,7 +21,7 @@ pub struct OpenEs {
 }
 
 impl OpenEs {
-    pub fn new(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut Rng) -> Self {
+    pub fn new(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut AnyRng) -> Self {
         let mean = (0..dim).map(|_| rng.gaussian() * 0.1).collect();
         Self {
             dim,
@@ -58,7 +58,7 @@ impl EsStrategy for OpenEs {
         self.lr
     }
 
-    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
+    fn ask(&mut self, rng: &mut AnyRng) -> Vec<Vec<f32>> {
         self.eps.clear();
         let mut cands = Vec::with_capacity(self.half * 2);
         for _ in 0..self.half {
@@ -132,7 +132,7 @@ pub struct MuLambda {
 }
 
 impl MuLambda {
-    pub fn new(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut Rng) -> Self {
+    pub fn new(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut AnyRng) -> Self {
         let parents = (0..mu)
             .map(|_| (0..dim).map(|_| rng.gaussian() * 0.5).collect())
             .collect();
@@ -161,7 +161,7 @@ impl EsStrategy for MuLambda {
         0.0
     } // tidak ada lr eksplisit; dilaporkan 0 supaya JSON seragam
 
-    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
+    fn ask(&mut self, rng: &mut AnyRng) -> Vec<Vec<f32>> {
         if self.mu == 0 || self.parents.len() != self.mu || !self.sigma.is_finite() {
             self.last_children.clear();
             return Vec::new();
@@ -220,10 +220,10 @@ pub enum Strategy {
 }
 
 impl Strategy {
-    pub fn openes(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut Rng) -> Self {
+    pub fn openes(dim: usize, half: usize, sigma: f32, lr: f32, rng: &mut AnyRng) -> Self {
         Strategy::OpenEs(OpenEs::new(dim, half, sigma, lr, rng))
     }
-    pub fn mu_lambda(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut Rng) -> Self {
+    pub fn mu_lambda(dim: usize, mu: usize, lambda: usize, sigma: f32, rng: &mut AnyRng) -> Self {
         Strategy::MuLambda(MuLambda::new(dim, mu, lambda, sigma, rng))
     }
 
@@ -262,7 +262,7 @@ impl EsStrategy for Strategy {
             Strategy::MuLambda(s) => s.lr(),
         }
     }
-    fn ask(&mut self, rng: &mut Rng) -> Vec<Vec<f32>> {
+    fn ask(&mut self, rng: &mut AnyRng) -> Vec<Vec<f32>> {
         match self {
             Strategy::OpenEs(s) => s.ask(rng),
             Strategy::MuLambda(s) => s.ask(rng),
@@ -285,11 +285,11 @@ impl EsStrategy for Strategy {
 #[cfg(test)]
 mod tests {
     use super::{EsStrategy, MuLambda, OpenEs};
-    use crate::es::rng::Rng;
+    use crate::es::rng::{AnyRng, RngKind};
 
     #[test]
     fn openes_tell_before_ask_is_noop() {
-        let mut rng = Rng::new(7);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 7);
         let mut strategy = OpenEs::new(3, 2, 0.2, 0.1, &mut rng);
         let before = strategy.mean();
         strategy.tell(&[1.0, 0.0, -1.0, -2.0]);
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn openes_non_finite_fitness_does_not_mutate_or_consume_batch() {
-        let mut rng = Rng::new(8);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 8);
         let mut strategy = OpenEs::new(2, 2, 0.2, 0.1, &mut rng);
         let _ = strategy.ask(&mut rng);
         let before = strategy.mean();
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn openes_valid_batch_is_single_use() {
-        let mut rng = Rng::new(9);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 9);
         let mut strategy = OpenEs::new(2, 2, 0.2, 0.1, &mut rng);
         let _ = strategy.ask(&mut rng);
         strategy.tell(&[2.0, -2.0, 1.0, -1.0]);
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn openes_zero_half_tell_is_noop() {
-        let mut rng = Rng::new(10);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 10);
         let mut strategy = OpenEs::new(2, 0, 0.2, 0.1, &mut rng);
         let before = strategy.mean();
         strategy.tell(&[]);
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_tell_before_ask_is_noop() {
-        let mut rng = Rng::new(11);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 11);
         let mut strategy = MuLambda::new(3, 2, 4, 0.2, &mut rng);
         let before = strategy.mean();
         strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_non_finite_fitness_does_not_mutate_or_consume_batch() {
-        let mut rng = Rng::new(12);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 12);
         let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
         let _ = strategy.ask(&mut rng);
         let before = strategy.mean();
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_valid_batch_is_single_use() {
-        let mut rng = Rng::new(13);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 13);
         let mut strategy = MuLambda::new(2, 2, 4, 0.2, &mut rng);
         let _ = strategy.ask(&mut rng);
         strategy.tell(&[4.0, 3.0, 2.0, 1.0]);
@@ -368,7 +368,7 @@ mod tests {
 
     #[test]
     fn mu_lambda_zero_parent_configuration_does_not_panic_on_ask() {
-        let mut rng = Rng::new(14);
+        let mut rng = AnyRng::new(RngKind::Mulberry32, 14);
         let mut strategy = MuLambda::new(2, 0, 4, 0.2, &mut rng);
         assert!(strategy.ask(&mut rng).is_empty());
     }
