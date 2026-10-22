@@ -3,7 +3,8 @@ use sha2::{Digest, Sha256};
 
 use crate::protocol::{
     LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
-    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK, LAYER_SHIFT, LAYER_TRANSPOSE,
+    LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_SHIFT, LAYER_TRANSPOSE,
 };
 
 use super::super::LayerRegistry;
@@ -43,6 +44,8 @@ fn live_instance_count(registry: &LayerRegistry) -> usize {
         + registry.binaries.len()
         + registry.feature_norms.len()
         + registry.transposes.len()
+        + registry.int_binaries.len()
+        + registry.int_casts.len()
 }
 
 fn instance_param_count(
@@ -111,6 +114,16 @@ fn instance_param_count(
             .get(&layer_id)
             .map(|layer| layer.num_params())
             .ok_or_else(|| format!("inventorySnapshot: transpose id {layer_id} is not live")),
+        LAYER_INT_BINARY => registry
+            .int_binaries
+            .get(&layer_id)
+            .map(|layer| layer.num_params())
+            .ok_or_else(|| format!("inventorySnapshot: int_binary id {layer_id} is not live")),
+        LAYER_INT_CAST => registry
+            .int_casts
+            .get(&layer_id)
+            .map(|layer| layer.num_params())
+            .ok_or_else(|| format!("inventorySnapshot: int_cast id {layer_id} is not live")),
         _ => Err(format!(
             "inventorySnapshot: unsupported live layer type 0x{layer_type:02X} id {layer_id}"
         )),

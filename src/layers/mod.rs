@@ -28,6 +28,7 @@ pub mod binary;
 pub mod conv;
 pub mod custom;
 pub mod embedding;
+pub mod int_ops;
 pub mod layout;
 pub mod linear;
 pub mod norm;

@@ -4,8 +4,10 @@ use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
-    CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    CONV_CONVTRANSPOSE2D, INT_BINARY_ADD, INT_BINARY_MATMUL, INT_BINARY_MUL, INT_BINARY_SUB,
+    INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV,
+    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST,
+    LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
     LAYER_SHIFT, LAYER_TRANSPOSE, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
     SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
@@ -119,6 +121,26 @@ fn infer_operation_id(layer_type: u8, variant: u8) -> Result<&'static str, Strin
             _ => {
                 return Err(format!(
                     "operationBindingSnapshot: unknown transpose variant 0x{variant:02X}"
+                ))
+            }
+        },
+        LAYER_INT_BINARY => match variant {
+            INT_BINARY_ADD => "intAdd",
+            INT_BINARY_SUB => "intSub",
+            INT_BINARY_MUL => "intMul",
+            INT_BINARY_MATMUL => "intMatmul",
+            _ => {
+                return Err(format!(
+                    "operationBindingSnapshot: unknown int_binary variant 0x{variant:02X}"
+                ))
+            }
+        },
+        LAYER_INT_CAST => match variant {
+            INT_CAST_TO_FLOAT => "intToFloat",
+            INT_CAST_FROM_FLOAT => "intFromFloat",
+            _ => {
+                return Err(format!(
+                    "operationBindingSnapshot: unknown int_cast variant 0x{variant:02X}"
                 ))
             }
         },

@@ -55,6 +55,8 @@ pub const LAYER_SEBLOCK: u8 = 0x12;
 pub const LAYER_BINARY: u8 = 0x13;
 pub const LAYER_FEATURE_NORM: u8 = 0x14;
 pub const LAYER_TRANSPOSE: u8 = 0x15;
+pub const LAYER_INT_BINARY: u8 = 0x16;
+pub const LAYER_INT_CAST: u8 = 0x17;
 // ============================================================
 // VARIANTS — Pilihan dalam 1 engine
 // ============================================================
@@ -108,6 +110,16 @@ pub const BINARY_CONCAT: u8 = 0x04;
 
 // Transpose variants
 pub const TRANSPOSE_SWAP: u8 = 0x00;
+
+// IntBinary variants (Boundary #5 — native integer path, i64)
+pub const INT_BINARY_ADD: u8 = 0x00;
+pub const INT_BINARY_SUB: u8 = 0x01;
+pub const INT_BINARY_MUL: u8 = 0x02;
+pub const INT_BINARY_MATMUL: u8 = 0x03;
+
+// IntCast variants (Boundary #5 — int <-> float bridge)
+pub const INT_CAST_TO_FLOAT: u8 = 0x00;
+pub const INT_CAST_FROM_FLOAT: u8 = 0x01;
 
 // ============================================================
 // PACKET HEADER — Fixed 8 bytes

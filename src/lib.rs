@@ -37,7 +37,7 @@ pub use semantic::{
 };
 // --- root re-exports: items moved to the WASM facade (Opsi C, Fase 1) ---
 // `burn_research::<item>` root paths keep working; JS surface unchanged.
-pub use facade::tensor::{TensorView, WasmTensor};
+pub use facade::tensor::{TensorView, WasmIntTensor, WasmTensor};
 pub use facade::wasm_types::{
     WasmActivation, WasmBinary, WasmComparison, WasmConv, WasmEmbedding, WasmFeatureNorm,
     WasmGhostModule, WasmIndexSource, WasmLinear, WasmLinearAlgebra, WasmMathProgram,

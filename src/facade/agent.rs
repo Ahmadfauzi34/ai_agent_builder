@@ -22,9 +22,10 @@ use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
-    CONV_CONVTRANSPOSE2D, FLAG_BIAS, LAYER_ACTIVATION, LAYER_BINARY, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK, LAYER_TRANSPOSE,
-    NORM_BATCH,
+    CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_MATMUL, INT_BINARY_MUL,
+    INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
+    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_TRANSPOSE, NORM_BATCH,
     NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
     POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP,
     VARIANT_NONE,
@@ -782,6 +783,38 @@ impl AgentLayerSpec {
             }
         }
         Ok(Self::transpose_spec(layer_id, dim0, dim1))
+    }
+
+    // Boundary #5: native integer path (i64 exact). Constructors mirror
+    // the f32 binary family; forward via forwardIntBinary / forwardIntCast*.
+    #[wasm_bindgen(js_name = intAdd)]
+    pub fn int_add(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_ADD)
+    }
+
+    #[wasm_bindgen(js_name = intSub)]
+    pub fn int_sub(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_SUB)
+    }
+
+    #[wasm_bindgen(js_name = intMul)]
+    pub fn int_mul(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_MUL)
+    }
+
+    #[wasm_bindgen(js_name = intMatmul)]
+    pub fn int_matmul(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_MATMUL)
+    }
+
+    #[wasm_bindgen(js_name = intToFloat)]
+    pub fn int_to_float(layer_id: u32) -> AgentLayerSpec {
+        Self::int_cast_spec(layer_id, INT_CAST_TO_FLOAT)
+    }
+
+    #[wasm_bindgen(js_name = intFromFloat)]
+    pub fn int_from_float(layer_id: u32) -> AgentLayerSpec {
+        Self::int_cast_spec(layer_id, INT_CAST_FROM_FLOAT)
     }
 
     #[wasm_bindgen(js_name = layerId)]
