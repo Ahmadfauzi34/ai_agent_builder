@@ -595,6 +595,7 @@
     "WasmIntTensor": [
       "byte_length",
       "constructor",
+      "fromNumbers",
       "shape",
       "to_array"
     ],
