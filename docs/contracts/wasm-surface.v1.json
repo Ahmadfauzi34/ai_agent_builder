@@ -131,7 +131,8 @@
       "runLinearDemo",
       "setLearningRate",
       "strict",
-      "tell"
+      "tell",
+      "withRng"
     ],
     "LayerRegistry": [
       "compileGraph",

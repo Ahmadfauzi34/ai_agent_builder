@@ -1,4 +1,4 @@
-use super::rng::Rng;
+use super::rng::AnyRng;
 use super::strategy::Strategy;
 pub use crate::facade::es::es_capabilities;
 use wasm_bindgen::prelude::*;
@@ -64,7 +64,7 @@ pub(crate) fn strict_config(
 #[wasm_bindgen]
 pub struct EsOptimizer {
     pub(crate) strategy: Strategy,
-    pub(crate) rng: Rng,
+    pub(crate) rng: AnyRng,
     pub(crate) dim: usize,
     pub(crate) last_candidates: Vec<Vec<f32>>,
     pub(crate) last_report: String,
@@ -97,6 +97,37 @@ mod tests {
         assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(0.0)).is_err());
         assert!(EsOptimizer::strict(2, 0, 1, Some(8), Some(0.1), Some(f32::INFINITY)).is_err());
         assert!(EsOptimizer::strict(2, 1, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+    }
+
+    #[test]
+    fn with_rng_selects_each_variant_and_rejects_unknown() {
+        use crate::es::rng::RngKind;
+        for (kind, name) in [(0u8, "mulberry32"), (1, "pcg32"), (2, "philox4x32")] {
+            let opt =
+                EsOptimizer::with_rng(3, 0, 42, kind, Some(8), Some(0.1), Some(0.05)).unwrap();
+            assert_eq!(opt.rng.kind(), RngKind::from_u8(kind).unwrap());
+            assert_eq!(opt.rng.kind().name(), name);
+        }
+        // kind tak dikenal -> Err yang menyebut pelakunya, bukan fallback diam-diam.
+        for bad in [3u8, 99, 255] {
+            match EsOptimizer::with_rng(3, 0, 42, bad, Some(8), Some(0.1), Some(0.05)) {
+                Ok(_) => panic!("kind {bad} seharusnya ditolak"),
+                Err(e) => assert!(e.contains("unknown rng_kind"), "pesan tak jujur: {e}"),
+            }
+        }
+        // strict juga untuk hiperparameter: strategi tak dikenal tetap ditolak.
+        assert!(EsOptimizer::with_rng(3, 9, 42, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+        assert!(EsOptimizer::with_rng(0, 0, 42, 1, Some(8), Some(0.1), Some(0.05)).is_err());
+    }
+
+    #[test]
+    fn with_rng_kind0_matches_legacy_stream() {
+        // kind=0 harus byte-identik dengan constructor legacy `new`.
+        let mut a = EsOptimizer::new(3, 0, 42, Some(8), Some(0.1), Some(0.05));
+        let mut b = EsOptimizer::with_rng(3, 0, 42, 0, Some(8), Some(0.1), Some(0.05)).unwrap();
+        for _ in 0..32 {
+            assert_eq!(a.rng.next_u32(), b.rng.next_u32());
+        }
     }
 
     #[test]
