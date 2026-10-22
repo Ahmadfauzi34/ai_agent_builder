@@ -208,6 +208,36 @@ impl WasmIntTensor {
             .expect("WasmIntTensor::to_array: tensor is not i64")
     }
 
+    /// Ergonomic constructor from plain JS numbers (Float64Array).
+    ///
+    /// Every element must be a *safe integer*: finite, integral, and
+    /// |v| <= 2^53 - 1 (the exact-integer range of f64). Anything else
+    /// is a clean `Err` naming the offending index — never a silent
+    /// rounding. For magnitudes beyond 2^53, use `new(BigInt64Array)`
+    /// instead, which carries the full i64 range exactly.
+    #[wasm_bindgen(js_name = fromNumbers)]
+    pub fn from_numbers(data: &[f64], shape: &[usize]) -> Result<WasmIntTensor, String> {
+        const MAX_SAFE: f64 = 9_007_199_254_740_991.0; // 2^53 - 1
+        let dims = normalize_rank4_shape(shape, "WasmIntTensor::fromNumbers")?;
+        let mut buf = Vec::with_capacity(data.len());
+        for (i, &v) in data.iter().enumerate() {
+            if !v.is_finite() || v.fract() != 0.0 || v.abs() > MAX_SAFE {
+                return Err(format!(
+                    "WasmIntTensor::fromNumbers: element {i} = {v} is not a safe integer \
+                     (must be finite, integral, |v| <= 2^53 - 1); \
+                     use new(BigInt64Array) for larger magnitudes"
+                ));
+            }
+            buf.push(v as i64);
+        }
+        validate_element_count(dims, buf.len(), "WasmIntTensor::fromNumbers")?;
+        let device = Default::default();
+        let tensor_data = TensorData::new(buf, dims);
+        Ok(WasmIntTensor {
+            inner: Tensor::from_data(tensor_data, &device),
+        })
+    }
+
     pub fn shape(&self) -> Vec<usize> {
         self.inner.dims().into()
     }
@@ -220,5 +250,58 @@ impl WasmIntTensor {
                     .ok_or_else(|| "WasmIntTensor::byte_length: byte length overflow".to_string())
             })
             .unwrap_or_else(|err| boundary_fail(err))
+    }
+}
+
+#[cfg(test)]
+mod int_tensor_tests {
+    use super::*;
+
+    #[test]
+    fn from_numbers_accepts_safe_integers() {
+        let t = WasmIntTensor::from_numbers(&[16777217.0, -3.0, 0.0], &[1, 3, 1, 1])
+            .expect("safe integers must convert");
+        assert_eq!(t.to_array(), vec![16777217i64, -3, 0]);
+    }
+
+    #[test]
+    fn from_numbers_rejects_fractional() {
+        let err = match WasmIntTensor::from_numbers(&[1.5], &[1, 1, 1, 1]) {
+            Ok(_) => panic!("fractional input must be rejected"),
+            Err(e) => e,
+        };
+        assert!(err.contains("element 0"), "unexpected: {err}");
+        assert!(err.contains("safe integer"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn from_numbers_rejects_beyond_safe_range() {
+        // 2^53 is not representable exactly in f64; the constructor must
+        // refuse rather than silently round.
+        let err = match WasmIntTensor::from_numbers(&[9_007_199_254_740_992.0], &[1, 1, 1, 1]) {
+            Ok(_) => panic!("2^53 must be rejected"),
+            Err(e) => e,
+        };
+        assert!(err.contains("safe integer"), "unexpected: {err}");
+    }
+
+    #[test]
+    fn from_numbers_rejects_non_finite() {
+        for v in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN] {
+            let err = match WasmIntTensor::from_numbers(&[v], &[1, 1, 1, 1]) {
+                Ok(_) => panic!("non-finite input must be rejected"),
+                Err(e) => e,
+            };
+            assert!(err.contains("safe integer"), "unexpected: {err}");
+        }
+    }
+
+    #[test]
+    fn from_numbers_validates_element_count() {
+        let err = match WasmIntTensor::from_numbers(&[1.0, 2.0], &[1, 3, 1, 1]) {
+            Ok(_) => panic!("element count mismatch must be rejected"),
+            Err(e) => e,
+        };
+        assert!(!err.is_empty());
     }
 }
