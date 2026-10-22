@@ -320,10 +320,8 @@ impl MultiInputGraphPlan {
     }
 
     pub(crate) fn validate_for_compile(&self) -> Result<Vec<u8>, String> {
-        if self.ports.len() < 2 {
-            return Err(
-                "MultiInputGraphPlan: at least two external input ports are required".into(),
-            );
+        if self.ports.is_empty() {
+            return Err("MultiInputGraphPlan: at least one external input port is required".into());
         }
         let bytes = self.encode()?;
         let slots = self.ports.iter().map(|port| port.slot).collect::<Vec<_>>();
@@ -667,6 +665,37 @@ mod tests {
 
     fn tensor(values: &[f32]) -> WasmTensor {
         WasmTensor::new(values, &[1, 2, 1, 1])
+    }
+
+    #[test]
+    fn single_port_plan_compiles_without_drain_port() {
+        // Boundary #2: a graph with exactly one external input port must
+        // compile. Previously the engine required >= 2 ports, forcing callers
+        // to add a dummy "drain" port for single-input graphs.
+        let mut registry = LayerRegistry::new();
+        let relu = AgentLayerSpec::relu(41);
+        registry.init_agent_layer(&relu).unwrap();
+        let mut builder = AgentGraphBuilder::new(2).unwrap();
+        builder.add_unary(&relu, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+        let mut plan = MultiInputGraphPlan::new(&builder).unwrap();
+        plan.add_input_port(
+            0,
+            "observation".into(),
+            1,
+            2,
+            1,
+            1,
+            "feature_axis1_singleton".into(),
+            false,
+            0,
+        )
+        .unwrap();
+        assert!(plan.validate_for_compile().is_ok());
+        assert!(CompiledMultiInputGraph::build(&registry, &plan).is_ok());
+        // Zero ports is still rejected.
+        let empty = MultiInputGraphPlan::new(&builder).unwrap();
+        assert!(empty.validate_for_compile().is_err());
     }
 
     /// Legacy 3-pass serialization, kept as the equivalence oracle for

@@ -182,7 +182,8 @@ export function expandMacro(inv) {
     weights[String(li + idBase)] = w;
   }
   // Drain otherwise-unused input ports through an identity linear so the
-  // spec passes engine port validation (minimum 2 ports, all consumed).
+  // spec passes engine port validation (minimum 1 port, all consumed;
+  // single-port graphs no longer need a drain at all).
   // The drain writes to slots nothing reads: semantically a no-op.
   const readSlots = new Set();
   for (const s of steps) {
