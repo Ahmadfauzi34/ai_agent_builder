@@ -33,6 +33,12 @@
       "hardSigmoid",
       "hardSwish",
       "instanceNorm",
+      "intAdd",
+      "intFromFloat",
+      "intMatmul",
+      "intMul",
+      "intSub",
+      "intToFloat",
       "layerId",
       "layerNorm",
       "layerType",
@@ -133,6 +139,9 @@
       "constructor",
       "destroyLayer",
       "forwardBinaryLayer",
+      "forwardIntBinary",
+      "forwardIntCastFromFloat",
+      "forwardIntCastToFloat",
       "forwardLayer",
       "getLayerState",
       "getWeightsFlat",
@@ -581,6 +590,12 @@
       "fromTensorView",
       "shape",
       "toTensorView",
+      "to_array"
+    ],
+    "WasmIntTensor": [
+      "byte_length",
+      "constructor",
+      "shape",
       "to_array"
     ],
     "WasmTensorTransform": [

@@ -36,7 +36,7 @@ use crate::layers::embedding::WasmEmbedding;
 use crate::layers::linear::WasmLinear;
 use crate::layers::norm::WasmNorm;
 use crate::layers::pool::WasmPool;
-use crate::facade::wasm_types::WasmTranspose;
+use crate::facade::wasm_types::{WasmIntBinary, WasmIntCast, WasmTranspose};
 use crate::protocol::*;
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -92,6 +92,8 @@ pub struct LayerRegistry {
     pub(crate) binaries: HashMap<LayerId, WasmBinary>,
     pub(crate) feature_norms: HashMap<LayerId, WasmFeatureNorm>,
     pub(crate) transposes: HashMap<LayerId, WasmTranspose>,
+    pub(crate) int_binaries: HashMap<LayerId, WasmIntBinary>,
+    pub(crate) int_casts: HashMap<LayerId, WasmIntCast>,
     pub(crate) init_identities: HashMap<LayerKey, LayerInitIdentity>,
     pub(crate) cached_params: usize,
 }
@@ -142,6 +144,8 @@ fn contains_layer(reg: &LayerRegistry, layer_type: u8, layer_id: u32) -> bool {
         LAYER_BINARY => reg.binaries.contains_key(&layer_id),
         LAYER_FEATURE_NORM => reg.feature_norms.contains_key(&layer_id),
         LAYER_TRANSPOSE => reg.transposes.contains_key(&layer_id),
+        LAYER_INT_BINARY => reg.int_binaries.contains_key(&layer_id),
+        LAYER_INT_CAST => reg.int_casts.contains_key(&layer_id),
         _ => false,
     }
 }
@@ -332,5 +336,81 @@ mod contains_layer_tests {
         assert!(AgentLayerSpec::transpose(1, 0, 4).is_err());
         assert!(AgentLayerSpec::transpose(1, 4, 0).is_err());
         assert!(AgentLayerSpec::transpose(1, 2, 3).is_ok());
+    }
+
+    #[test]
+    fn int_binary_end_to_end_spec_init_forward() {
+        // Boundary #5: full wiring for the native integer path —
+        // JS-facing constructor -> registry init -> forward, with
+        // exactness beyond the f32 2^24 boundary.
+        use crate::agent::AgentLayerSpec;
+        use crate::WasmIntTensor;
+        let mut reg = LayerRegistry::new();
+        let spec = AgentLayerSpec::int_add(11);
+        reg.init_agent_layer(&spec).expect("init");
+        assert!(reg.layer_exists(LAYER_INT_BINARY, 11));
+        let a = WasmIntTensor::new(&[16_777_217, 100], &[1, 2, 1, 1]);
+        let b = WasmIntTensor::new(&[1, -30], &[1, 2, 1, 1]);
+        let out = reg.forward_int_binary(11, &a, &b).expect("forward");
+        assert_eq!(out.shape(), vec![1, 2, 1, 1]);
+        assert_eq!(out.to_array(), vec![16_777_218, 70]);
+    }
+
+    #[test]
+    fn int_cast_end_to_end_both_directions() {
+        use crate::agent::AgentLayerSpec;
+        use crate::{WasmIntTensor, WasmTensor};
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_to_float(21))
+            .expect("init to_float");
+        reg.init_agent_layer(&AgentLayerSpec::int_from_float(22))
+            .expect("init from_float");
+        assert!(reg.layer_exists(LAYER_INT_CAST, 21));
+        assert!(reg.layer_exists(LAYER_INT_CAST, 22));
+
+        let ints = WasmIntTensor::new(&[42, -7], &[1, 2, 1, 1]);
+        let floats = reg
+            .forward_int_cast_to_float(21, &ints)
+            .expect("to_float");
+        assert_eq!(floats.to_array(), vec![42.0, -7.0]);
+
+        let back = WasmTensor::new(&[42.9, -7.9], &[1, 2, 1, 1]);
+        let ints2 = reg
+            .forward_int_cast_from_float(22, &back)
+            .expect("from_float");
+        assert_eq!(ints2.to_array(), vec![42, -7]);
+
+        // Wrong-direction use is a clean error, not a silent wrong answer.
+        assert!(reg.forward_int_cast_to_float(22, &ints).is_err());
+        assert!(reg.forward_int_cast_from_float(21, &back).is_err());
+    }
+
+    #[test]
+    fn int_layers_are_stateless_and_removable() {
+        use crate::agent::AgentLayerSpec;
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_mul(31))
+            .expect("init");
+        let state: Vec<u8> = reg.get_layer_state(31, LAYER_INT_BINARY).unwrap();
+        assert!(state.is_empty());
+        assert!(reg.destroy_layer(31, LAYER_INT_BINARY));
+        assert!(!reg.layer_exists(LAYER_INT_BINARY, 31));
+    }
+
+    #[test]
+    fn int_layer_rejected_from_f32_forward() {
+        // Int layers must not silently run through the f32 forward path
+        // (e.g. via a graph step): honest error instead.
+        use crate::agent::AgentLayerSpec;
+        use crate::WasmTensor;
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_add(41))
+            .expect("init");
+        let input = WasmTensor::new(&[1.0, 2.0], &[1, 2, 1, 1]);
+        let err = match reg.forward_layer(41, LAYER_INT_BINARY, &input) {
+            Ok(_) => panic!("int layer must not run through f32 forward"),
+            Err(e) => e,
+        };
+        assert!(err.contains("WasmIntTensor"), "unexpected error: {err}");
     }
 }

@@ -26,10 +26,13 @@ use crate::protocol::{
     ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH,
     BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM,
+    LAYER_POOL, LAYER_SEBLOCK,
     LAYER_SHIFT, LAYER_TRANSPOSE, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, OP_INIT,
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
     SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
+    INT_BINARY_ADD, INT_BINARY_SUB, INT_BINARY_MUL, INT_BINARY_MATMUL,
+    INT_CAST_TO_FLOAT, INT_CAST_FROM_FLOAT,
 };
 
 pub(crate) fn push_u32(payload: &mut Vec<u8>, value: u32) {
@@ -153,6 +156,18 @@ impl AgentLayerSpec {
         push_u32(&mut payload, dim0);
         push_u32(&mut payload, dim1);
         Self::from_payload(layer_id, LAYER_TRANSPOSE, TRANSPOSE_SWAP, 0, payload)
+    }
+
+    pub(crate) fn int_binary_spec(layer_id: u32, variant: u8) -> Self {
+        let mut payload = Vec::with_capacity(4);
+        push_u32(&mut payload, layer_id);
+        Self::from_payload(layer_id, LAYER_INT_BINARY, variant, 0, payload)
+    }
+
+    pub(crate) fn int_cast_spec(layer_id: u32, variant: u8) -> Self {
+        let mut payload = Vec::with_capacity(4);
+        push_u32(&mut payload, layer_id);
+        Self::from_payload(layer_id, LAYER_INT_CAST, variant, 0, payload)
     }
 
     pub(crate) fn norm_spec(
@@ -605,7 +620,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"multi_input_compile\":\"LayerRegistry.compileMultiInputGraph\",\"multi_input_run\":\"CompiledMultiInputGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
-            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\",\"transpose\"],",
+            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\",\"transpose\",\"intAdd\",\"intSub\",\"intMul\",\"intMatmul\",\"intToFloat\",\"intFromFloat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
             "\"batchNorm\":\"batchNorm(id,num_features,epsilon?)\",",
@@ -618,7 +633,13 @@ pub(crate) fn capability_manifest() -> String {
             "\"ghost\":\"ghost(id,in_ch,out_ch,kh,kw,ratio,sh?,sw?,ph?,pw?)\",",
             "\"seBlock\":\"seBlock(id,channels,reduction)\",",
             "\"swiGlu\":\"swiGlu(id,d_input,d_output,bias)\",",
-            "\"transpose\":\"transpose(id,dim0,dim1)\"}},",
+            "\"transpose\":\"transpose(id,dim0,dim1)\",",
+            "\"intAdd\":\"intAdd(id)\",",
+            "\"intSub\":\"intSub(id)\",",
+            "\"intMul\":\"intMul(id)\",",
+            "\"intMatmul\":\"intMatmul(id)\",",
+            "\"intToFloat\":\"intToFloat(id)\",",
+            "\"intFromFloat\":\"intFromFloat(id)\"}},",
             "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\",\"compileWithOutput\",\"multiInputPlanV1\"]}},",
             "\"optimizer\":{{\"entry\":\"EsOptimizer\",\"strategies\":{{\"openes\":0,\"mu_lambda\":1}},\"lifecycle\":\"ask->tell\"}},",
             "\"recommended_flow\":[\"discover\",\"construct_reference\",\"run_external_candidate\",\"verify\",\"revise_or_accept\"],",
@@ -634,7 +655,9 @@ pub(crate) fn capability_manifest() -> String {
             "\"ghost\":{{\"code\":{},\"arity\":1}},",
             "\"seblock\":{{\"code\":{},\"arity\":1}},",
             "\"binary\":{{\"code\":{},\"arity\":2,\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"concat\":{}}}}},",
-            "\"transpose\":{{\"code\":{},\"arity\":1,\"variants\":{{\"swap\":{}}}}}",
+            "\"transpose\":{{\"code\":{},\"arity\":1,\"variants\":{{\"swap\":{}}}}},",
+            "\"int_binary\":{{\"code\":{},\"arity\":2,\"dtype\":\"int64\",\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{}}}}},",
+            "\"int_cast\":{{\"code\":{},\"arity\":1,\"variants\":{{\"to_float\":{},\"from_float\":{}}}}}",
             "}}}}"
         ),
         LAYER_LINEAR,
@@ -686,6 +709,14 @@ pub(crate) fn capability_manifest() -> String {
         BINARY_CONCAT,
         LAYER_TRANSPOSE,
         TRANSPOSE_SWAP,
+        LAYER_INT_BINARY,
+        INT_BINARY_ADD,
+        INT_BINARY_SUB,
+        INT_BINARY_MUL,
+        INT_BINARY_MATMUL,
+        LAYER_INT_CAST,
+        INT_CAST_TO_FLOAT,
+        INT_CAST_FROM_FLOAT,
     )
 }
 

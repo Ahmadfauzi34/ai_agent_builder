@@ -27,8 +27,9 @@ use crate::layers::norm::WasmNorm;
 use crate::layers::pool::WasmPool;
 use crate::protocol::*;
 use crate::registry::{read_run_step, validate_plan, LayerId, LayerInitIdentity, LayerRegistry};
+use crate::WasmIntTensor;
 use crate::WasmTensor;
-use crate::facade::wasm_types::WasmTranspose;
+use crate::facade::wasm_types::{WasmIntBinary, WasmIntCast, WasmTranspose};
 use std::collections::HashMap;
 
 #[wasm_bindgen(js_name = layerRegistryOperationBindingCapabilities)]
@@ -108,6 +109,8 @@ impl LayerRegistry {
             binaries: HashMap::new(),
             feature_norms: HashMap::new(),
             transposes: HashMap::new(),
+            int_binaries: HashMap::new(),
+            int_casts: HashMap::new(),
             init_identities: HashMap::new(),
             cached_params: 0,
         }
@@ -131,6 +134,8 @@ impl LayerRegistry {
             LAYER_BINARY => self.init_binary(header, payload),
             LAYER_FEATURE_NORM => self.init_feature_norm(header, payload),
             LAYER_TRANSPOSE => self.init_transpose(header, payload),
+            LAYER_INT_BINARY => self.init_int_binary(header, payload),
+            LAYER_INT_CAST => self.init_int_cast(header, payload),
             _ => Err(format!("Unknown layer type: 0x{:02X}", header.layer_type)),
         };
         if result.is_ok() {
@@ -234,10 +239,66 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "Transpose not found".to_string())?
                 .forward(input),
+            LAYER_INT_BINARY | LAYER_INT_CAST => Err(
+                "Int layers operate on WasmIntTensor (i64); use forwardIntBinary / forwardIntCast"
+                    .to_string(),
+            ),
             _ => Err(format!(
                 "Unknown layer type for forward: 0x{:02X}",
                 layer_type
             )),
+        }
+    }
+
+    /// Boundary #5: forward for integer binary layers (i64 exact).
+    #[wasm_bindgen(js_name = forwardIntBinary)]
+    pub fn forward_int_binary(
+        &self,
+        layer_id: LayerId,
+        a: &WasmIntTensor,
+        b: &WasmIntTensor,
+    ) -> Result<WasmIntTensor, String> {
+        check_numel(&a.shape(), "forwardIntBinary input a")?;
+        check_numel(&b.shape(), "forwardIntBinary input b")?;
+        self.int_binaries
+            .get(&layer_id)
+            .ok_or_else(|| "IntBinary not found".to_string())?
+            .forward(a, b)
+    }
+
+    /// Boundary #5: int -> float cast (i64 -> f32; exact only for |x| <= 2^24).
+    #[wasm_bindgen(js_name = forwardIntCastToFloat)]
+    pub fn forward_int_cast_to_float(
+        &self,
+        layer_id: LayerId,
+        input: &WasmIntTensor,
+    ) -> Result<WasmTensor, String> {
+        check_numel(&input.shape(), "forwardIntCastToFloat input")?;
+        let layer = self
+            .int_casts
+            .get(&layer_id)
+            .ok_or_else(|| "IntCast not found".to_string())?;
+        match layer.kind() {
+            crate::layers::int_ops::IntCastKind::ToFloat => Ok(layer.forward_to_float(input)),
+            _ => Err("IntCast layer is not a to_float cast".to_string()),
+        }
+    }
+
+    /// Boundary #5: float -> int cast (f32 -> i64, truncating toward zero).
+    #[wasm_bindgen(js_name = forwardIntCastFromFloat)]
+    pub fn forward_int_cast_from_float(
+        &self,
+        layer_id: LayerId,
+        input: &WasmTensor,
+    ) -> Result<WasmIntTensor, String> {
+        check_numel(&input.shape(), "forwardIntCastFromFloat input")?;
+        let layer = self
+            .int_casts
+            .get(&layer_id)
+            .ok_or_else(|| "IntCast not found".to_string())?;
+        match layer.kind() {
+            crate::layers::int_ops::IntCastKind::FromFloat => Ok(layer.forward_from_float(input)),
+            _ => Err("IntCast layer is not a from_float cast".to_string()),
         }
     }
 
@@ -259,7 +320,8 @@ impl LayerRegistry {
                 .get_state(),
             LAYER_GHOST => self.ghosts.get(&layer_id).ok_or("Not found")?.get_state(),
             LAYER_SEBLOCK => self.seblocks.get(&layer_id).ok_or("Not found")?.get_state(),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM | LAYER_TRANSPOSE => {
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM | LAYER_TRANSPOSE
+            | LAYER_INT_BINARY | LAYER_INT_CAST => {
                 if self.layer_exists(layer_type, layer_id) {
                     Ok(vec![])
                 } else {
@@ -288,7 +350,8 @@ impl LayerRegistry {
             LAYER_EMBEDDING => load_layer_state!(self, embeddings, layer_id, data),
             LAYER_GHOST => load_layer_state!(self, ghosts, layer_id, data),
             LAYER_SEBLOCK => load_layer_state!(self, seblocks, layer_id, data),
-            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM => {
+            LAYER_POOL | LAYER_SHIFT | LAYER_BINARY | LAYER_FEATURE_NORM | LAYER_INT_BINARY
+            | LAYER_INT_CAST => {
                 if !self.layer_exists(layer_type, layer_id) {
                     return Err("Not found".into());
                 }
@@ -320,6 +383,8 @@ impl LayerRegistry {
             LAYER_SHIFT => self.shifts.remove(&layer_id).is_some(),
             LAYER_BINARY => self.binaries.remove(&layer_id).is_some(),
             LAYER_TRANSPOSE => self.transposes.remove(&layer_id).is_some(),
+            LAYER_INT_BINARY => self.int_binaries.remove(&layer_id).is_some(),
+            LAYER_INT_CAST => self.int_casts.remove(&layer_id).is_some(),
             LAYER_FEATURE_NORM => remove_layer!(self, feature_norms, layer_id),
             _ => false,
         };
@@ -543,6 +608,36 @@ impl LayerRegistry {
         let dim1 = c.read_u32()? as usize;
         let layer = WasmTranspose::new(dim0, dim1)?;
         self.transposes.insert(id, layer);
+        Ok(())
+    }
+
+    fn init_int_binary(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        let layer = match header.variant {
+            INT_BINARY_ADD => WasmIntBinary::new_add(),
+            INT_BINARY_SUB => WasmIntBinary::new_sub(),
+            INT_BINARY_MUL => WasmIntBinary::new_mul(),
+            INT_BINARY_MATMUL => WasmIntBinary::new_matmul(),
+            v => {
+                return Err(format!("Unknown int_binary variant: 0x{v:02X}"));
+            }
+        };
+        let mut c = PayloadCursor::new(payload);
+        let id = c.read_u32()?;
+        self.int_binaries.insert(id, layer);
+        Ok(())
+    }
+
+    fn init_int_cast(&mut self, header: &PacketHeader, payload: &[u8]) -> Result<(), String> {
+        let layer = match header.variant {
+            INT_CAST_TO_FLOAT => WasmIntCast::new_to_float(),
+            INT_CAST_FROM_FLOAT => WasmIntCast::new_from_float(),
+            v => {
+                return Err(format!("Unknown int_cast variant: 0x{v:02X}"));
+            }
+        };
+        let mut c = PayloadCursor::new(payload);
+        let id = c.read_u32()?;
+        self.int_casts.insert(id, layer);
         Ok(())
     }
 
@@ -838,6 +933,8 @@ impl LayerRegistry {
             LAYER_BINARY => self.binaries.contains_key(&layer_id),
             LAYER_FEATURE_NORM => self.feature_norms.contains_key(&layer_id),
             LAYER_TRANSPOSE => self.transposes.contains_key(&layer_id),
+            LAYER_INT_BINARY => self.int_binaries.contains_key(&layer_id),
+            LAYER_INT_CAST => self.int_casts.contains_key(&layer_id),
             _ => false,
         }
     }

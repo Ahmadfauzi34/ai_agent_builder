@@ -8,7 +8,7 @@
 //! di-import dari sana; tidak ada perubahan perilaku.
 
 use burn::prelude::*;
-use burn::tensor::TensorData;
+use burn::tensor::{Int, TensorData};
 use js_sys::Float32Array;
 use wasm_bindgen::prelude::*;
 
@@ -168,5 +168,57 @@ impl WasmTensor {
         view.write(slice);
         view.set_shape(dims.into())?;
         Ok(())
+    }
+}
+
+// ------------------------------------------------------------
+// WASM INT TENSOR — 4D integer tensor bridge (i64 exact)
+// ------------------------------------------------------------
+//
+// Boundary #5: the native integer path. Unlike WasmTensor (f32, where
+// integers above 2^24 lose exactness), WasmIntTensor carries Burn Int
+// elements — i64 on NdArray — so integer arithmetic is exact up to
+// 2^63 - 1. The JS boundary uses BigInt64Array (a JS Number cannot
+// hold i64 exactly).
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct WasmIntTensor {
+    pub(crate) inner: Tensor<WasmBackend, 4, Int>,
+}
+
+#[wasm_bindgen]
+impl WasmIntTensor {
+    #[wasm_bindgen(constructor)]
+    pub fn new(data: &[i64], shape: &[usize]) -> WasmIntTensor {
+        let dims = normalize_rank4_shape(shape, "WasmIntTensor::new")
+            .unwrap_or_else(|err| boundary_fail(err));
+        validate_element_count(dims, data.len(), "WasmIntTensor::new")
+            .unwrap_or_else(|err| boundary_fail(err));
+
+        let device = Default::default();
+        let tensor_data = TensorData::new(data.to_vec(), dims);
+        let tensor = Tensor::from_data(tensor_data, &device);
+        WasmIntTensor { inner: tensor }
+    }
+
+    pub fn to_array(&self) -> Vec<i64> {
+        self.inner
+            .to_data()
+            .into_vec::<i64>()
+            .expect("WasmIntTensor::to_array: tensor is not i64")
+    }
+
+    pub fn shape(&self) -> Vec<usize> {
+        self.inner.dims().into()
+    }
+
+    pub fn byte_length(&self) -> usize {
+        checked_element_count(self.inner.dims(), "WasmIntTensor::byte_length")
+            .and_then(|count| {
+                count
+                    .checked_mul(std::mem::size_of::<i64>())
+                    .ok_or_else(|| "WasmIntTensor::byte_length: byte length overflow".to_string())
+            })
+            .unwrap_or_else(|err| boundary_fail(err))
     }
 }

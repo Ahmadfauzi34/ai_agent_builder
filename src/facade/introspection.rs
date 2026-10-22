@@ -14,10 +14,13 @@ use crate::protocol::{
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
-    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
+    LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM,
+    LAYER_POOL, LAYER_SEBLOCK,
     LAYER_SHIFT, LAYER_TRANSPOSE, NORM_BATCH, NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS,
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
     SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
+    INT_BINARY_ADD, INT_BINARY_SUB, INT_BINARY_MUL, INT_BINARY_MATMUL,
+    INT_CAST_TO_FLOAT, INT_CAST_FROM_FLOAT,
 };
 use crate::registry::LayerRegistry;
 use crate::resolution_runtime_bridge::runtime_subject_binding_json;
@@ -175,6 +178,18 @@ fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str>
         },
         LAYER_TRANSPOSE => match variant? {
             TRANSPOSE_SWAP => Some("transpose"),
+            _ => None,
+        },
+        LAYER_INT_BINARY => match variant? {
+            INT_BINARY_ADD => Some("intAdd"),
+            INT_BINARY_SUB => Some("intSub"),
+            INT_BINARY_MUL => Some("intMul"),
+            INT_BINARY_MATMUL => Some("intMatmul"),
+            _ => None,
+        },
+        LAYER_INT_CAST => match variant? {
+            INT_CAST_TO_FLOAT => Some("intToFloat"),
+            INT_CAST_FROM_FLOAT => Some("intFromFloat"),
             _ => None,
         },
         _ => None,

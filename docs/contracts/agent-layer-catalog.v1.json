@@ -1042,6 +1042,96 @@
       ],
       "fallible": true,
       "layout_contract_key": "transpose"
+    },
+    "intAdd": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intAdd(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intAdd",
+      "dtype": "int64"
+    },
+    "intSub": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intSub(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intSub",
+      "dtype": "int64"
+    },
+    "intMul": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intMul(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intMul",
+      "dtype": "int64"
+    },
+    "intMatmul": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intMatmul(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intMatmul",
+      "dtype": "int64"
+    },
+    "intToFloat": {
+      "family": "int_cast",
+      "arity": 1,
+      "signature": "intToFloat(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intToFloat",
+      "dtype": "int64->float32"
+    },
+    "intFromFloat": {
+      "family": "int_cast",
+      "arity": 1,
+      "signature": "intFromFloat(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intFromFloat",
+      "dtype": "float32->int64"
     }
   }
 }

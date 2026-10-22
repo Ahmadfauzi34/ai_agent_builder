@@ -46,6 +46,7 @@ use crate::layers::norm::{
 use crate::layers::pool::{
     pool_fail, validate_pool1d_params, validate_pool2d_params, Pooling, PoolingConfig,
 };
+use crate::layers::int_ops::{IntBinary, IntBinaryOp, IntCast, IntCastKind};
 use crate::layers::transpose::Transpose;
 use crate::layers::shape_contract::{
     require_axis_size, require_singleton_axis, require_singleton_spatial,
@@ -81,7 +82,7 @@ use crate::math::{
     MathProgramV8, MathProgramV8Builder, MathProgramV9, MathProgramV9Builder, TensorComparison,
     TensorIndexSource, TensorReduction,
 };
-use crate::{WasmBackend, WasmTensor};
+use crate::{WasmBackend, WasmIntTensor, WasmTensor};
 use burn::nn::activation::HardSwish;
 use burn::nn::conv::{
     Conv1d, Conv1dConfig, Conv2d, Conv2dConfig, ConvTranspose2d, ConvTranspose2dConfig,
@@ -3907,6 +3908,97 @@ impl WasmTranspose {
     pub fn forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         let out = self.inner.forward(input.inner.clone());
         Ok(WasmTensor { inner: out })
+    }
+
+    // Parameter-free
+    pub fn num_params(&self) -> usize {
+        0
+    }
+}
+
+// ======================================================================
+// src/layers/int_ops.rs — WasmIntBinary / WasmIntCast (Boundary #5)
+// ======================================================================
+//
+// Native integer path: i64 tensors, exact integer arithmetic.
+// NOT #[wasm_bindgen] — plain Rust adapters used by the registry,
+// same as WasmTranspose.
+
+pub struct WasmIntBinary {
+    inner: IntBinary,
+}
+
+impl WasmIntBinary {
+    pub fn new_add() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Add),
+        }
+    }
+    pub fn new_sub() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Sub),
+        }
+    }
+    pub fn new_mul() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Mul),
+        }
+    }
+    pub fn new_matmul() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Matmul),
+        }
+    }
+
+    pub fn op(&self) -> IntBinaryOp {
+        self.inner.op()
+    }
+
+    pub fn forward(
+        &self,
+        a: &WasmIntTensor,
+        b: &WasmIntTensor,
+    ) -> Result<WasmIntTensor, String> {
+        let out = self.inner.forward(a.inner.clone(), b.inner.clone())?;
+        Ok(WasmIntTensor { inner: out })
+    }
+
+    // Parameter-free
+    pub fn num_params(&self) -> usize {
+        0
+    }
+}
+
+pub struct WasmIntCast {
+    inner: IntCast,
+}
+
+impl WasmIntCast {
+    pub fn new_to_float() -> WasmIntCast {
+        WasmIntCast {
+            inner: IntCast::new(IntCastKind::ToFloat),
+        }
+    }
+    pub fn new_from_float() -> WasmIntCast {
+        WasmIntCast {
+            inner: IntCast::new(IntCastKind::FromFloat),
+        }
+    }
+
+    pub fn kind(&self) -> IntCastKind {
+        self.inner.kind()
+    }
+
+    pub fn forward_to_float(&self, input: &WasmIntTensor) -> WasmTensor {
+        WasmTensor {
+            inner: self.inner.to_float(input.inner.clone()),
+        }
+    }
+
+    pub fn forward_from_float(&self, input: &WasmTensor) -> WasmIntTensor {
+        WasmIntTensor {
+            inner: self.inner.from_float(input.inner.clone()),
+        }
     }
 
     // Parameter-free
