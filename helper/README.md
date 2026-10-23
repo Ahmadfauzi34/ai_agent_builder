@@ -51,6 +51,10 @@ optimization profiling to full math verification with provenance.
   with fresh input bundles, all outputs bit-identical (sha256).
 - `node bin/quant_verify.mjs <spec.json>` — weight-quantization simulation
   (int8/fp16) + verification of error bounds.
+- `node bin/quant_equiv.mjs --in 4 --out 8 [--bias] [--scheme q8-per-block]
+  [--tol auto|<num>]` — verify the engine's REAL quantized state path
+  (getQuantizedState -> loadState -> forward) with ACCEPT/REJECT/MEASURED
+  verdicts; --tol auto derives the analytical tolerance from the report.
 - `node bin/diff_ref.mjs <spec.json>` — differential testing: engine output vs
   an independent reference implementation.
 - `node bin/cost_model.mjs <spec.json>` — per-op cost table + predicted vs
