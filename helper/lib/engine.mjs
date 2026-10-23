@@ -147,10 +147,13 @@ export function checkOperation(rt, opId, lhsShape, rhsShape, u32Params, f32Param
   const f32 = f32Params === undefined || f32Params === null
     ? new Float32Array(0)
     : Float32Array.from(f32Params);
+  // Null/undefined shapes degrade to [] so the engine returns a structured
+  // "rejected" verdict instead of a raw TypeError from Uint32Array.from
+  // (same hardening PR #387 applied to the params above; shapes were missed).
   const raw = rt.mathCheckOperation(
     opId,
-    Uint32Array.from(lhsShape),
-    Uint32Array.from(rhsShape),
+    Uint32Array.from(lhsShape ?? []),
+    Uint32Array.from(rhsShape ?? []),
     u32,
     f32,
   );

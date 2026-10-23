@@ -44,6 +44,9 @@ optimization profiling to full math verification with provenance.
 
 ### Correctness probes
 
+- `node bin/engine_hardening_test.mjs` — regression tests for the
+  agent-hardening helpers (`checkOperation` null guards, `withTensorScope`
+  teardown semantics). 9 checks, exit non-zero on failure.
 - `node bin/gradcheck.mjs <spec.json>` — numeric gradient (finite-difference)
   Jacobian of a spec, optionally verified against an agent-supplied analytic
   Jacobian.
