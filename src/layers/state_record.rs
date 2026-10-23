@@ -6,7 +6,6 @@ use burn::tensor::quantization::{
     compute_q_params, compute_range,
 };
 use burn::tensor::{Bool, Int, Tensor};
-use serde::Serialize;
 
 /// Byte-limit tier for a state-record payload of `len` bytes.
 ///
@@ -284,7 +283,7 @@ fn quant_scheme_for_shape(granularity: QuantGranularity, shape: &[usize]) -> Qua
 }
 
 /// Satu baris laporan per param terkuantisasi.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub(crate) struct QuantEntry {
     pub index: usize,
     pub shape: Vec<usize>,
@@ -295,13 +294,45 @@ pub(crate) struct QuantEntry {
 }
 
 /// Laporan kuantisasi satu module (untuk agen, sebagai JSON).
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug)]
 pub(crate) struct QuantReport {
     pub scheme: String,
     pub params: Vec<QuantEntry>,
     pub bytes_f32: usize,
     pub bytes_q8: usize,
     pub ratio: f32,
+}
+
+impl QuantReport {
+    /// Serialisasi JSON manual (tanpa serde_json: crate itu hanya dependency
+    /// non-wasm32 agar binary wasm tetap ramping).
+    /// Bentuk tetap: {"scheme":..,"params":[{index,shape,num_scales,
+    /// scale_max,bound}],"bytes_f32":..,"bytes_q8":..,"ratio":..}.
+    pub(crate) fn to_json(&self) -> String {
+        let mut s = String::from("{\"scheme\":\"");
+        s.push_str(&self.scheme);
+        s.push_str("\",\"params\":[");
+        for (i, p) in self.params.iter().enumerate() {
+            if i > 0 {
+                s.push(',');
+            }
+            let shape = p
+                .shape
+                .iter()
+                .map(|d| d.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            s.push_str(&format!(
+                "{{\"index\":{},\"shape\":[{}],\"num_scales\":{},\"scale_max\":{},\"bound\":{}}}",
+                p.index, shape, p.num_scales, p.scale_max, p.bound,
+            ));
+        }
+        s.push_str(&format!(
+            "],\"bytes_f32\":{},\"bytes_q8\":{},\"ratio\":{}}}",
+            self.bytes_f32, self.bytes_q8, self.ratio,
+        ));
+        s
+    }
 }
 
 /// ModuleMapper yang mengkuantisasi tiap param float dengan algoritma burn
@@ -409,9 +440,7 @@ where
         bytes_q8: out.len(),
         ratio: out.len() as f32 / bytes_f32.max(1) as f32,
     };
-    let report_json =
-        serde_json::to_string(&report).map_err(|e| format!("quant report: {e}"))?;
-    Ok((out, report_json))
+    Ok((out, report.to_json()))
 }
 
 /// Kembalikan inner bytes jika `data` ber-envelope kuantisasi; else `None`.
