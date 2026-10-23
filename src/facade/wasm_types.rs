@@ -236,8 +236,14 @@ impl WasmGhostModule {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "GhostModule loadState",
+        )?;
         let record: GhostModuleRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "GhostModule loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "GhostModule loadState")?;
         let current = self.inner.clone().into_record();
         validate_ghost_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -246,6 +252,24 @@ impl WasmGhostModule {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -288,8 +312,14 @@ impl WasmSeBlock {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "SEBlock loadState",
+        )?;
         let record: SeBlockRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "SEBlock loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "SEBlock loadState")?;
         let current = self.inner.clone().into_record();
         validate_seblock_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -298,6 +328,24 @@ impl WasmSeBlock {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -652,8 +700,14 @@ impl WasmActivation {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "Activation loadState",
+        )?;
         let record: ActivationRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "Activation loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "Activation loadState")?;
         let current = self.inner.clone().into_record();
         validate_activation_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -662,6 +716,24 @@ impl WasmActivation {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -817,8 +889,14 @@ impl WasmConv {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "Conv loadState",
+        )?;
         let record: ConvolutionRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "Conv loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "Conv loadState")?;
         let current = self.inner.clone().into_record();
         validate_conv_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -827,6 +905,24 @@ impl WasmConv {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -1044,8 +1140,14 @@ impl WasmEmbedding {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "Embedding loadState",
+        )?;
         let record: EmbeddingLayerRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "Embedding loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "Embedding loadState")?;
         let current = self.inner.clone().into_record();
         validate_embedding_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -1054,6 +1156,24 @@ impl WasmEmbedding {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -1205,8 +1325,14 @@ impl WasmLinear {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "Linear loadState",
+        )?;
         let record: LinearLayerRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "Linear loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "Linear loadState")?;
         let current = self.inner.clone().into_record();
         if record.inner.weight.dims() != current.inner.weight.dims() {
             return Err(format!(
@@ -1235,6 +1361,24 @@ impl WasmLinear {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
@@ -1414,8 +1558,14 @@ impl WasmNorm {
 
     pub fn load_state(&mut self, data: &[u8]) -> Result<(), String> {
         let device = Default::default();
+        let data = crate::layers::state_record::normalize_state_bytes(
+            data,
+            &self.inner,
+            &device,
+            "Norm loadState",
+        )?;
         let record: NormalizationRecord<WasmBackend> =
-            crate::layers::state_record::decode_bin_record(data, &device, "Norm loadState")?;
+            crate::layers::state_record::decode_bin_record(&data, &device, "Norm loadState")?;
         let current = self.inner.clone().into_record();
         validate_norm_state_structure(&current, &record)?;
         self.inner = self.inner.clone().load_record(record);
@@ -1424,6 +1574,24 @@ impl WasmNorm {
 
     pub fn get_state(&self) -> Result<Vec<u8>, String> {
         deterministic_record_bytes(&self.inner)
+    }
+
+    /// State terkuantisasi int8 (skema: "q8-per-tensor" | "q8-per-block").
+    /// Live layer tetap f32; yang terkuantisasi hanya representasi bytes ini.
+    /// `load_state` menerima bytes ini maupun bytes f32 biasa (auto-deteksi).
+    pub fn get_quantized_state(&self, scheme: &str) -> Result<Vec<u8>, String> {
+        let (bytes, _report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(bytes)
+    }
+
+    /// Laporan kuantisasi sebagai JSON: {scheme, params:[{index,shape,
+    /// num_scales,scale_max,bound}], bytes_f32, bytes_q8, ratio}.
+    /// `bound` = batas error absolut per elemen param tersebut.
+    pub fn quantize_state_report(&self, scheme: &str) -> Result<String, String> {
+        let (_bytes, report) =
+            crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
+        Ok(report)
     }
 }
 
