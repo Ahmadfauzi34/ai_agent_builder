@@ -55,6 +55,12 @@ optimization profiling to full math verification with provenance.
   [--tol auto|<num>]` — verify the engine's REAL quantized state path
   (getQuantizedState -> loadState -> forward) with ACCEPT/REJECT/MEASURED
   verdicts; --tol auto derives the analytical tolerance from the report.
+- `node bin/quant_budget.mjs <spec.json> <cases.json> --tol <num>
+  [--scheme q8-per-block] [--mode bound|measured]` — per-layer quantization
+  budget planner: which linear layers to quantize (int8) to maximize
+  checkpoint savings within an output-perturbation budget. Bound mode is
+  analytical and instant (compositional worst-case); measured mode runs
+  candidate plans and reports the exact delta.
 - `node bin/diff_ref.mjs <spec.json>` — differential testing: engine output vs
   an independent reference implementation.
 - `node bin/cost_model.mjs <spec.json>` — per-op cost table + predicted vs
