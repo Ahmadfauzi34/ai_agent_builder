@@ -126,3 +126,83 @@ export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
   }
   return bundle;
 }
+
+// ---------------------------------------------------------------------------
+// Agent-hardening helpers.
+// ---------------------------------------------------------------------------
+
+// mathCheckOperation with forgiving defaults.
+//
+// The raw wasm-bindgen export requires all 5 arguments; calling it with only
+// (opId, lhsShape, rhsShape) throws
+//   TypeError: Cannot read properties of undefined (reading 'length')
+// from passArray32ToWasm0. This wrapper defaults u32_params/f32_params to
+// empty arrays and accepts plain JS arrays for every shape/param argument.
+// Returns the parsed preflight object (the engine returns a JSON string).
+// Throws the engine's message for unknown operation ids.
+export function checkOperation(rt, opId, lhsShape, rhsShape, u32Params, f32Params) {
+  const u32 = u32Params === undefined || u32Params === null
+    ? new Uint32Array(0)
+    : Uint32Array.from(u32Params);
+  const f32 = f32Params === undefined || f32Params === null
+    ? new Float32Array(0)
+    : Float32Array.from(f32Params);
+  const raw = rt.mathCheckOperation(
+    opId,
+    Uint32Array.from(lhsShape),
+    Uint32Array.from(rhsShape),
+    u32,
+    f32,
+  );
+  return JSON.parse(raw);
+}
+
+// Scope arena for WasmTensor.
+//
+// WasmTensor objects live on the WASM heap; forgetting .free() leaks memory
+// that no JS GC will reclaim. withTensorScope runs fn(scope) and .free()s
+// every tensor created via scope.tensor() (or registered via scope.track())
+// when fn settles — including when fn throws. LIFO order.
+//
+//   const out = await withTensorScope(rt, async (scope) => {
+//     const a = scope.tensor([1, 2, 3], [1, 3, 1, 1]);
+//     const b = scope.tensor([4, 5, 6], [1, 3, 1, 1]);
+//     ... compute, return plain values (not tensors) ...
+//     return [4.5, 10.5];
+//   }); // a and b are freed here, even on throw
+//
+// scope.release(t) untracks a tensor (e.g. to return it to the caller —
+// returning a tracked tensor without release would hand back freed memory).
+export async function withTensorScope(rt, fn) {
+  const owned = [];
+  const scope = {
+    tensor(values, shape) {
+      const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(shape));
+      owned.push(t);
+      return t;
+    },
+    track(t) {
+      owned.push(t);
+      return t;
+    },
+    release(t) {
+      const i = owned.lastIndexOf(t);
+      if (i >= 0) owned.splice(i, 1);
+      return t;
+    },
+    get size() {
+      return owned.length;
+    },
+  };
+  try {
+    return await fn(scope);
+  } finally {
+    for (let i = owned.length - 1; i >= 0; i--) {
+      try {
+        owned[i].free();
+      } catch {
+        // Already freed manually, or never fully constructed: never fail teardown.
+      }
+    }
+  }
+}
