@@ -61,14 +61,6 @@ export function fetchQuantReports(rt, spec, scheme, infos = linearLayerInfos(spe
   });
 }
 
-// Weight-like (highest rank) vs bias-like param, structurally.
-function splitWeightBias(report) {
-  const params = [...(report.params ?? [])].sort((a, b) => b.shape.length - a.shape.length);
-  const weight = params[0];
-  const bias = params.find((p) => p !== weight && p.shape.length <= 1);
-  return { weight, bias };
-}
-
 // ||W||_oo = max abs row sum. W is [out,in], flat[k*out+i] == W[i][k].
 export function operatorNormInf(weights, inDim, outDim) {
   let m = 0;
@@ -105,7 +97,16 @@ function linearStepsInOrder(spec, infos) {
 // Compositional worst-case bound (oo-norm).
 // Returns { contribs: [{index, contrib}], total } where contrib_i bounds
 // layer i's quantization effect on the final output.
-export function analyticalContribs(spec, reports, inputBounds) {
+//
+// The per-layer perturbation uses the EXACT error operator norm ||ΔW||_oo
+// (ΔW = W - W_dequantized, via the real engine path), NOT the report's
+// analytical bound_W·inDim:
+//   |Δy_i| <= Σ_j|ΔW_ij|·|x_j| + |Δb_i| <= ||ΔW||_oo·||x||_oo + ||Δb||_oo.
+// Because ΔW is exact rather than estimated, the total remains a rigorous
+// worst-case bound — measured ~6x tighter than bound_W·inDim on outlier
+// weights (2026-10-24). Downstream amplification stays worst-case
+// (operator-norm product); that looseness is the documented price of the guarantee.
+export function analyticalContribs(spec, reports, inputBounds, rt, scheme) {
   const steps = spec.steps ?? [];
   const repByIndex = new Map(reports.map((r) => [r.index, r]));
 
@@ -151,9 +152,18 @@ export function analyticalContribs(spec, reports, inputBounds) {
       const ls = linSteps.find((s) => s.inSlot === a && s.outSlot === b);
       const sb = get(sens, b);
       sens.set(a, get(sens, a) + sb * ls.wNorm);
-      // |Δy_i| <= bound_W * inDim * ||x||_oo + bound_b  (report bound is max over blocks)
-      const { weight, bias } = splitWeightBias(ls.rep.report);
-      const pert = weight.bound * ls.rep.inDim * bound.get(a) + (bias ? bias.bound : 0);
+      // |Δy_i| <= Σ_j|ΔW_ij|·|x_j| + |Δb_i| <= ||ΔW||_oo·||x||_oo + ||Δb||_oo.
+      // ΔW/Δb are EXACT (dequantized via the engine), so this stays rigorous
+      // while being ~6x tighter than the report's bound_W·inDim on outliers.
+      const deq = dequantizedWeights(rt, ls.rep, scheme);
+      const nW = ls.rep.inDim * ls.rep.outDim;
+      const errW = operatorNormInf(
+        ls.rep.weights.slice(0, nW).map((w, i) => w - deq[i]),
+        ls.rep.inDim, ls.rep.outDim);
+      const errB = ls.rep.bias
+        ? Math.max(...ls.rep.weights.slice(nW).map((b, i) => Math.abs(b - deq[nW + i])))
+        : 0;
+      const pert = errW * bound.get(a) + errB;
       contribs.push({ index: step.layer, contrib: pert * sb });
     } else if (step.kind === 'unary' && decl?.constructor in LIPSCHITZ) {
       const [a, b] = step.slots;
@@ -302,7 +312,7 @@ export function measuredPlan(rt, spec, cases, scheme, tol, infos = linearLayerIn
 
 export function analyticalPlan(spec, cases, scheme, tol, rt, infos = linearLayerInfos(spec)) {
   const reports = fetchQuantReports(rt, spec, scheme, infos);
-  const { contribs, total } = analyticalContribs(spec, reports, inputBoundsFromCases(cases));
+  const { contribs, total } = analyticalContribs(spec, reports, inputBoundsFromCases(cases), rt, scheme);
   const items = contribs.map((c) => {
     const r = reports.find((x) => x.index === c.index);
     return { index: c.index, savedBytes: r.savedBytes, cost: c.contrib, report: r.report };

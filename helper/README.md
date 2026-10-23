@@ -59,8 +59,12 @@ optimization profiling to full math verification with provenance.
   [--scheme q8-per-block] [--mode bound|measured]` — per-layer quantization
   budget planner: which linear layers to quantize (int8) to maximize
   checkpoint savings within an output-perturbation budget. Bound mode is
-  analytical and instant (compositional worst-case); measured mode runs
-  candidate plans and reports the exact delta.
+  analytical and instant (compositional worst-case); its per-layer term
+  uses the EXACT error operator norm ||ΔW||_oo from dequantized weights
+  (rigorous, ~6x tighter than the report's bound_W·inDim on outliers).
+  Measured mode runs candidate plans and reports the exact delta.
+  `node bin/quant_budget.mjs --selftest` runs 9 regression checks
+  (exact-norm inequality, rigor bound>=measured, decisions).
 - `node bin/diff_ref.mjs <spec.json>` — differential testing: engine output vs
   an independent reference implementation.
 - `node bin/cost_model.mjs <spec.json>` — per-op cost table + predicted vs
