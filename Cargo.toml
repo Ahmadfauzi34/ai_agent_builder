@@ -10,7 +10,11 @@ crate-type = ["cdylib", "rlib"]
 # --- BURN ---
 burn = { version = "0.20.0", default-features = false, features = ["std", "wgpu"] }
 burn-wgpu = { version = "0.20.0" }
-burn-ndarray = { version = "0.20.0" }
+# Node 18 support: burn-ndarray default features include `simd`, which pulls
+# macerator whose wasm32 backend unconditionally emits Relaxed SIMD (f32x4_relaxed_madd),
+# an opcode Node 18 (V8 10.2) cannot compile. Drop `simd`; keep std + multi-threads.
+# SIMD128 strict ops (matrixmultiply sgemm) are kept via .cargo/config.toml.
+burn-ndarray = { version = "0.20.0", default-features = false, features = ["std", "multi-threads"] }
 
 # --- WASM ---
 wasm-bindgen = "0.2"

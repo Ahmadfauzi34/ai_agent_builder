@@ -413,6 +413,37 @@ jobs:
           name: burn-wasm-output
           path: pkg/
 
+  node18-smoke:
+    name: Node 18 distribution smoke test
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Download packaged bundle zip
+        uses: actions/download-artifact@v4
+        with:
+          name: burn-research-pkg-zip
+
+      - name: Unpack packaged bundle
+        run: |
+          set -euxo pipefail
+          unzip -q burn-research-pkg-*.zip
+          ls pkg/interactive_multi_input_ingress.mjs
+
+      # Regression gate for Node 18 support: the packaged WASM must not
+      # contain a Relaxed SIMD opcode (Node 18 / V8 10.2 cannot compile
+      # f32x4_relaxed_madd, prefixed opcode 263). If a future dependency
+      # reintroduces one, this smoke test fails here instead of on a
+      # Node 18 host.
+      - name: Run distribution smoke test under Node 18
+        run: node scripts/smoke_distribution.mjs pkg
+
   supply-chain-audit:
     name: Supply-chain audit (cargo audit)
     runs-on: ubuntu-latest

@@ -123,6 +123,38 @@ Do **not** classify this adapter as a workaround that should be removed merely b
 
 A Node failure with WASM surface conformance still green should first be investigated as a Node adapter/package/distribution problem, not as a missing WASM primitive.
 
+## Supported Node versions
+
+The packaged WASM is built to run on **Node 18, 20, and 22**. It
+requires fixed-width SIMD (`simd128`, stable in Node since 16) and
+deliberately does **not** use Relaxed SIMD: Node 18 (V8 10.2) cannot
+compile the Relaxed SIMD opcode `f32x4_relaxed_madd` (prefixed opcode
+263), so any build that emits it fails at `WebAssembly.Module`
+compile time on Node 18, before any computation runs, regardless of
+`--experimental-wasm-relaxed-simd`.
+
+Two build settings enforce this floor, and both are load-bearing:
+
+- `Cargo.toml`: `burn-ndarray` is used without its default `simd`
+  feature (only `std` + `multi-threads`). The default `simd` feature
+  pulls `macerator`, whose wasm32 backend unconditionally emits
+  `f32x4_relaxed_madd` / `f64x2_relaxed_madd` for its `Simd128`
+  backend. A global `-C target-feature=-relaxed-simd` alone does
+  **not** remove those opcodes (verified: a build with only that
+  flag still failed on Node 18 with the same opcode).
+- `.cargo/config.toml`: the wasm target is built with
+  `-C target-feature=+simd128,-relaxed-simd`, so the remaining
+  SIMD path (e.g. `matrixmultiply` sgemm, whose relaxed use is
+  `cfg`-gated) stays on strict SIMD128 ops.
+
+The CI job `node18-smoke` regression-tests this floor: it downloads
+the packaged `burn-research-pkg-zip` artifact from the main build and
+runs the distribution smoke test under Node 18. If a future
+dependency reintroduces a Relaxed SIMD opcode, that job goes red
+instead of the failure surfacing later on a Node 18 host. Node 20 and 22
+run the same package with no flag: with no Relaxed SIMD opcode
+in the binary, there is nothing left for the flag to enable.
+
 ## Browser status
 
 `burn_research.js` contains the generated browser-oriented wasm-bindgen entry and the default async initializer.
