@@ -60,12 +60,19 @@ const RULES = {
     if (inShapes[0][1] !== args[1]) throw new ShapeError(`instanceNorm num_channels ${args[1]} != channel dim ${inShapes[0][1]}`);
     return [...inShapes[0]];
   },
+  // layerNorm/rmsNorm normalize over the LAST axis (feature_last
+  // [B,*,*,F], feature_axis 3) — the engine rejects axis-3 mismatches
+  // at run time. The old rules checked axis 1 (channel), so shapecheck
+  // and run disagreed in both directions: a documented-shape spec was
+  // rejected statically but ran fine, and a channel-shape spec passed
+  // statically but failed at run. batch/group/instanceNorm are
+  // channel_first and correctly keep axis 1.
   layerNorm: (inShapes, args) => {
-    if (inShapes[0][1] !== args[1]) throw new ShapeError(`layerNorm size ${args[1]} != channel dim ${inShapes[0][1]}`);
+    if (inShapes[0][3] !== args[1]) throw new ShapeError(`layerNorm size ${args[1]} != feature dim ${inShapes[0][3]}`);
     return [...inShapes[0]];
   },
   rmsNorm: (inShapes, args) => {
-    if (inShapes[0][1] !== args[1]) throw new ShapeError(`rmsNorm size ${args[1]} != channel dim ${inShapes[0][1]}`);
+    if (inShapes[0][3] !== args[1]) throw new ShapeError(`rmsNorm size ${args[1]} != feature dim ${inShapes[0][3]}`);
     return [...inShapes[0]];
   },
 
@@ -111,8 +118,13 @@ const RULES = {
   },
 
   // ---- conv / pool (standard formulas) ----
+  // Option params arrive as null from JSON (there is no undefined in
+  // JSON). Destructuring defaults only fire on undefined, so null
+  // strides/padding used to flow into arithmetic. Normalize with ??
+  // so null means "default", like the engine's None.
   conv2d: (inShapes, args) => {
-    const [, inCh, outCh, kh, kw, sh = 1, sw = 1, ph = 0, pw = 0] = args;
+    const [, inCh, outCh, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sh = sh0 ?? 1, sw = sw0 ?? 1, ph = ph0 ?? 0, pw = pw0 ?? 0;
     const [n, c, h, w] = inShapes[0];
     if (c !== inCh) throw new ShapeError(`conv2d in_ch ${inCh} != channel dim ${c}`);
     const oh = Math.floor((h + 2 * ph - kh) / sh) + 1;
@@ -121,7 +133,8 @@ const RULES = {
     return [n, outCh, oh, ow];
   },
   convTranspose2d: (inShapes, args) => {
-    const [, inCh, outCh, kh, kw, sh = 1, sw = 1, ph = 0, pw = 0] = args;
+    const [, inCh, outCh, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sh = sh0 ?? 1, sw = sw0 ?? 1, ph = ph0 ?? 0, pw = pw0 ?? 0;
     const [n, c, h, w] = inShapes[0];
     if (c !== inCh) throw new ShapeError(`convTranspose2d in_ch ${inCh} != channel dim ${c}`);
     return [n, outCh, (h - 1) * sh - 2 * ph + kh, (w - 1) * sw - 2 * pw + kw];
