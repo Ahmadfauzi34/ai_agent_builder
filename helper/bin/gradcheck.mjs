@@ -20,7 +20,7 @@
 // Exit 0 iff no analytic given, or analytic matches within tol; 2 on mismatch.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 const [specFile, analyticFile, epsArg, tolArg] = process.argv.slice(2);
@@ -31,8 +31,7 @@ if (!specFile) {
 const eps = epsArg !== undefined ? Number(epsArg) : 1e-3;
 const tol = tolArg !== undefined ? Number(tolArg) : 1e-3;
 if (!(eps > 0) || !(tol > 0)) {
-  printJson({ ok: false, error: 'eps and tol must be positive numbers' });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: 'eps and tol must be positive numbers' }, 2);
 }
 
 function runOnce(g, reg, rt, plan, ports, inputs) {
@@ -101,7 +100,7 @@ try {
   }
   if (g.free) g.free();
 
-  printJson({
+  printJsonAndExit({
     ok: true,
     eps,
     tol,
@@ -116,9 +115,7 @@ try {
       'central differences; non-smooth ops (relu at the kink) yield a subgradient average',
       'only meaningful for continuous-valued inputs; discrete index inputs (e.g. embedding ids) are not differentiable',
     ],
-  });
-  process.exit(compared && !passed ? 2 : 0);
+  }, compared && !passed ? 2 : 0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

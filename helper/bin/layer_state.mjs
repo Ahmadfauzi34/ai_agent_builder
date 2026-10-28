@@ -25,7 +25,7 @@
 import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [sub, specFile, arg3, arg4] = process.argv.slice(2);
 if (!sub || !specFile || !['inspect', 'get', 'set'].includes(sub)) {
@@ -82,8 +82,7 @@ try {
       } catch { /* parameter-free or no flat weights */ }
       return entry;
     });
-    printJson({ ok: true, layers });
-    process.exit(0);
+    printJsonAndExit({ ok: true, layers }, 0);
   }
 
   const index = Number(arg3);
@@ -92,14 +91,13 @@ try {
 
   if (sub === 'get') {
     const state = reg.getLayerState(id, type);
-    printJson({
+    printJsonAndExit({
       ok: true,
       layer_index: index,
       state_bytes: state.length,
       state_sha256: sha256(state),
       state_base64: Buffer.from(state).toString('base64'),
-    });
-    process.exit(0);
+    }, 0);
   }
 
   // set
@@ -110,8 +108,7 @@ try {
   const bytes = Buffer.from(b64, 'base64');
   const guard = JSON.parse(rt.decodeGuardCheck(bytes));
   if (!guard.accepted) {
-    printJson({ ok: false, applied: false, guard });
-    process.exit(2);
+    printJsonAndExit({ ok: false, applied: false, guard }, 2);
   }
   reg.loadLayerState(id, type, bytes);
   const bundle = makeBundle(rt, plan, spec.inputs, portBySlot(spec));

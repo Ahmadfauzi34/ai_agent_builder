@@ -26,7 +26,7 @@
 // reported as unshardable.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [specFile, capArg] = process.argv.slice(2);
 if (!specFile) { console.error('usage: node shard_spec.mjs <spec.json> [maxWeights]'); process.exit(2); }
@@ -64,8 +64,7 @@ for (let li = 0; li < spec.layers.length; li++) {
 }
 
 if (unshardable.length > 0) {
-  printJson({ ok: false, sharded: false, error: 'input dim too wide for output sharding', unshardable });
-  process.exit(2);
+  printJsonAndExit({ ok: false, sharded: false, error: 'input dim too wide for output sharding', unshardable }, 2);
 }
 if (shardPlan.size === 0) {
   await printBig({ ok: true, sharded: false, max_weights: cap, spec }, 0);

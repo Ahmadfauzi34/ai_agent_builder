@@ -42,7 +42,7 @@
 import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 // Layer-type codes (engine capabilities.layer_types; same map as
 // lib/engine.mjs uses for wiring weights).
@@ -123,13 +123,12 @@ try {
   try {
     verdict = JSON.parse(tx.verifyCases(vc, absTol, relTol));
   } catch (e) {
-    printJson({
+    printJsonAndExit({
       ok: false, stage: 'verifyCases', error: String(e.message ?? e),
       baseline_state_sha256: baselineSha,
       candidate_state_sha256: stage.candidate_state_checkpoint_bytes_sha256 ?? null,
       equivalent: null, committed: false,
-    });
-    process.exit(2);
+    }, 2);
   }
 
   const base = {
@@ -142,12 +141,10 @@ try {
   };
 
   if (!mutation.commit) {
-    printJson({ ok: verdict.equivalent, committed: false, ...base });
-    process.exit(verdict.equivalent ? 0 : 2);
+    printJsonAndExit({ ok: verdict.equivalent, committed: false, ...base }, verdict.equivalent ? 0 : 2);
   }
   if (!verdict.equivalent) {
-    printJson({ ok: false, committed: false, error: 'candidate not equivalent; engine retains no passing receipt', ...base });
-    process.exit(2);
+    printJsonAndExit({ ok: false, committed: false, error: 'candidate not equivalent; engine retains no passing receipt', ...base }, 2);
   }
   const newG = tx.commitByReceipt(reg, g, identity, baselineSha, verdict.receipt_digest, true);
   // Run the promoted graph with the CANDIDATE plan: for structural edits the

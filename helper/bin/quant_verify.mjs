@@ -13,7 +13,7 @@
 // Prints {ok, mode, layers, totals, verification, verdict}. Exit 0 iff PASS.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
@@ -98,7 +98,7 @@ try {
   const v = JSON.parse(vc.verify(base.reg, base.g, quant.reg, quant.g, absTol, relTol));
 
   const pass = v.equivalent === true;
-  printJson({
+  printJsonAndExit({
     ok: true,
     mode,
     cases: cases.length,
@@ -121,9 +121,7 @@ try {
       'weight-only static quantization; activations stay fp32',
       'per-layer max_abs_weight_error shows where error ENTERS; verification max_abs_error shows where it MATTERS (end to end)',
     ],
-  });
-  process.exit(pass ? 0 : 2);
+  }, pass ? 0 : 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

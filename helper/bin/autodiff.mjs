@@ -18,15 +18,14 @@
 //     finite differences of the engine's forward pass. Exit 2 on failure.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 import { RULES, GAPS, ruleFor, ruleNames, inferShapes, makeMap, numel, backwardWithSaved } from '../lib/autodiff.mjs';
 import fs from 'node:fs';
 
 const [cmd, aFile, bFile] = process.argv.slice(2);
 
 if (cmd === 'map') {
-  printJson({ ok: true, ...makeMap() });
-  process.exit(0);
+  printJsonAndExit({ ok: true, ...makeMap() }, 0);
 }
 
 const rt = await loadWasm();
@@ -83,18 +82,16 @@ if (cmd === 'grad') {
   const dout = bFile ? JSON.parse(fs.readFileSync(bFile, 'utf8')) : null;
   try {
     const r = backward(spec, dout);
-    printJson({ ok: true, ...r });
+    printJsonAndExit({ ok: true, ...r }, 0);
   } catch (e) {
     failCli(e.message);
   }
-  process.exit(0);
 }
 
 if (cmd === 'prove-rules') {
   const { proveAll } = await import('./autodiff_prove.mjs');
   const r = await proveAll(runForward);
-  printJson(r);
-  process.exit(r.ok ? 0 : 2);
+  printJsonAndExit(r, r.ok ? 0 : 2);
 }
 
 if (cmd === 'verify-fd') {
@@ -139,8 +136,7 @@ if (cmd === 'verify-fd') {
       }
     }
   }
-  printJson({ ok, maxErr, mismatches: checks.slice(0, 5), note: ok ? 'backward() matches finite differences' : 'MISMATCH: map disagrees with oracle' });
-  process.exit(ok ? 0 : 2);
+  printJsonAndExit({ ok, maxErr, mismatches: checks.slice(0, 5), note: ok ? 'backward() matches finite differences' : 'MISMATCH: map disagrees with oracle' }, ok ? 0 : 2);
 }
 
 failCli('usage: node autodiff.mjs map | grad <spec.json> [dout.json] | prove-rules | verify-fd <spec.json> [eps] [tol] [dout.json]');

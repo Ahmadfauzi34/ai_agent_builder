@@ -19,7 +19,7 @@
 // per-op rows to a file for reuse across graphs. Exit 0; 2 on shape failure.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 import { traceSteps, profileSpec, median, loadEngineWithOracle } from '../lib/opt.mjs';
 import { mulberry32 } from '../lib/prng.mjs';
@@ -38,8 +38,7 @@ for (let i = 1; i < rawArgs.length; i++) {
   else iterations = Number(rawArgs[i]);
 }
 if (!Number.isInteger(iterations) || iterations < 2) {
-  printJson({ ok: false, error: 'iterations must be an integer >= 2' });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: 'iterations must be an integer >= 2' }, 2);
 }
 
 const port = (slot, shape) => ({ slot, role: 'observation', shape: [...shape], layout: 'feature_axis1_singleton' });
@@ -65,8 +64,7 @@ try {
   const spec = loadSpec(specFile);
   const chk = checkSpec(spec);
   if (!chk.ok) {
-    printJson({ ok: false, error: 'spec failed static shape/dataflow check', mismatches: chk.mismatches, dataflow_issues: chk.dataflow.issues });
-    process.exit(2);
+    printJsonAndExit({ ok: false, error: 'spec failed static shape/dataflow check', mismatches: chk.mismatches, dataflow_issues: chk.dataflow.issues }, 2);
   }
   const maxId = Math.max(...spec.layers.map((l) => l.args[0] ?? 0));
   const rng = mulberry32(0xc05);
@@ -148,7 +146,7 @@ try {
   for (const r of ranked) r.share_pct = r.ms_median == null || !total ? null : +(r.ms_median / total * 100).toFixed(1);
 
   if (tableFile) fs.writeFileSync(tableFile, JSON.stringify(ranked, null, 1));
-  printJson({
+  printJsonAndExit({
     ok: true,
     iterations,
     per_op: ranked,
@@ -162,9 +160,7 @@ try {
       'per-op costs are isolated microbenchmarks (steady median); predicted_total = Σ per-op',
       'prediction_error_pct measures model accuracy against the whole-graph run — the planning signal, not gospel',
     ],
-  });
-  process.exit(0);
+  }, 0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

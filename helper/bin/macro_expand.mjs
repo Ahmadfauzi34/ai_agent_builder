@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { expandMacro, macroNames } from '../lib/macros.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [cmd, aFile, bFile] = process.argv.slice(2);
 if (!cmd || !aFile || !['expand', 'prove'].includes(cmd)) {
@@ -33,8 +33,7 @@ try { spec = expandMacro(inv); }
 catch (e) { failCli(`expansion failed: ${e.message}`); }
 
 if (cmd === 'expand') {
-  printJson({ ok: true, spec });
-  process.exit(0);
+  printJsonAndExit({ ok: true, spec }, 0);
 }
 
 // prove
@@ -55,11 +54,10 @@ let vM, vR;
 try { vM = runOne(spec); } catch (e) { failCli(`macro spec failed on engine: ${e.message}`); }
 try { vR = runOne(ref); } catch (e) { failCli(`reference spec failed on engine: ${e.message}`); }
 const equivalent = vM.length === vR.length && vM.every((x, i) => x === vR[i]);
-printJson({
+printJsonAndExit({
   ok: equivalent, equivalent,
   outputsMacro: vM, outputsReference: vR,
   note: equivalent
     ? 'bit-identical outputs on the engine: the expansion faithfully implements the macro'
     : 'DIVERGENCE: expansion does not match the reference',
-});
-process.exit(equivalent ? 0 : 2);
+}, equivalent ? 0 : 2);
