@@ -10,19 +10,26 @@ import fs from 'node:fs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Engine package dir resolution (in order):
 //   1. BURN_WASM_PKG_DIR env override (explicit).
-//   2. Packed layout: this file lives at <pkg>/helper/lib/, so the
+//   2. CI-bundle layout: this file lives at <pkg>/helper/lib/, so the
 //      engine files are two levels up (<pkg>/burn_research_bg.wasm).
-//   3. Repo source layout: <repo>/helper/lib/, engine at
+//   3. Built-pack layout: this file lives at <pack>/lib/, so the engine
+//      is the sibling <pack>/engine-audit/ (the builder copies the full
+//      bundle there). WITHOUT this candidate, a standalone pack user
+//      running any shape/engine tool without the env var got a crash:
+//      catalogPath() fell back to a nonexistent parent-of-pack docs dir
+//      (proven by an isolated built-pack regression run, 2026-10-28).
+//   4. Repo source layout: <repo>/helper/lib/, engine at
 //      <repo>/pkg/ (as produced by `wasm-pack build --target web --out-dir pkg`).
 function resolvePkgDir() {
   if (process.env.BURN_WASM_PKG_DIR) return path.resolve(process.env.BURN_WASM_PKG_DIR);
   const packed = path.join(HERE, '..', '..');
   if (fs.existsSync(path.join(packed, 'burn_research_bg.wasm'))) return packed;
-  // Built-pack layout: this file lives at <pack>/helper/lib/, the engine
-  // at <pack>/engine-audit/. Same engine.mjs serves both layouts so the
-  // repo stays the single source of truth for the pack it builds.
+  // Same engine.mjs serves all layouts so the repo stays the single
+  // source of truth for the pack it builds.
   const packEngine = path.join(packed, 'engine-audit');
   if (fs.existsSync(path.join(packEngine, 'burn_research_bg.wasm'))) return packEngine;
+  const siblingEngine = path.join(HERE, '..', 'engine-audit');
+  if (fs.existsSync(path.join(siblingEngine, 'burn_research_bg.wasm'))) return siblingEngine;
   return path.join(HERE, '..', '..', 'pkg');
 }
 const PKG_DIR = resolvePkgDir();
