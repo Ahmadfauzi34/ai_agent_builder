@@ -479,6 +479,55 @@ jobs:
           BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
         run: node helper/bin/autodiff.mjs prove-rules
 
+      # Distribution (lane #4): everything above is the gate; the steps
+      # below only run on main, after the gate passes, and publish the
+      # built pack itself. On PRs the job still runs the gates but
+      # publishes nothing (github.ref is refs/pull/N/merge there).
+      # The release is rolling: one tag (agent-pack-latest, an anchor)
+      # and one asset with a stable name (burn-math-agent-pack.zip),
+      # overwritten on every main push, so the download URL never
+      # changes:
+      #   https://github.com/Ahmadfauzi34/ai_agent_builder/releases/download/agent-pack-latest/burn-math-agent-pack.zip
+      # Traceability lives inside the zip: MANIFEST.json carries
+      # pack_version = the source commit SHA plus the engine pins.
+      # Publishing uses only the preinstalled gh CLI and the default
+      # GITHUB_TOKEN (no third-party action); if the token ever lacks
+      # contents:write, only these last steps fail — the gates above
+      # have already passed.
+      - name: Build the release pack (main only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          set -euxo pipefail
+          node scripts/build_agent_pack.mjs --out "${{ runner.temp }}/burn-math-agent-pack" --engine pkg --version "${{ github.sha }}"
+          cd "${{ runner.temp }}"
+          zip -r -q burn-math-agent-pack.zip burn-math-agent-pack
+          ls -la burn-math-agent-pack.zip
+
+      - name: Upload release pack as CI artifact (main only)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: burn-math-agent-pack
+          path: ${{ runner.temp }}/burn-math-agent-pack.zip
+
+      - name: Publish to rolling release (main only)
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          cd "${{ runner.temp }}"
+          # Create the rolling release once; on later runs the view
+          # succeeds. The trailing `|| true` covers two main pushes
+          # racing the first creation (upload below stays strict).
+          gh release view agent-pack-latest >/dev/null 2>&1 || \
+            gh release create agent-pack-latest \
+              --title "Burn-math agent pack (latest)" \
+              --notes "Rolling build of the burn-math agent pack from main, published after the agent-pack gate passes. Each asset is the full standalone pack (tools + engine bundle + contracts index); MANIFEST.json inside pins the source commit and the engine bytes." || true
+          gh release upload agent-pack-latest burn-math-agent-pack.zip --clobber
+          gh release edit agent-pack-latest \
+            --notes "Rolling build of the burn-math agent pack from main, published after the agent-pack gate passes. Latest source commit: ${{ github.sha }}. Each asset is the full standalone pack (tools + engine bundle + contracts index); MANIFEST.json inside pins the source commit and the engine bytes."
+
   node18-smoke:
     name: Node 18 distribution smoke test
     runs-on: ubuntu-latest
