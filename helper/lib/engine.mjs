@@ -6,6 +6,17 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import fs from 'node:fs';
+import { webcrypto } from 'node:crypto';
+
+// Node 18 ESM quirk (lane #2, 2026-10-28): in Node 18, globalThis.crypto
+// is present in CJS contexts but UNDEFINED inside ESM modules — and the
+// wasm glue calls globalThis.crypto.getRandomValues for thread_rng
+// (ParamId generation on first layer creation). Without this line, every
+// engine-path forward under Node 18 panics with RuntimeError: unreachable
+// at the first buildGraph. wasm_direct.mjs already had this polyfill,
+// which is why verify passed under Node 18 while prove-rules trapped.
+// Node 24+ has crypto in ESM, so this is a no-op there.
+globalThis.crypto ??= webcrypto;
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // Engine package dir resolution (in order):
