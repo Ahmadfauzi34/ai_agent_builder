@@ -194,6 +194,9 @@ const RULES = {
   intAdd: binaryElementwise('intAdd'),
   intSub: binaryElementwise('intSub'),
   intMul: binaryElementwise('intMul'),
+  // Casts (ported from the agent pack for REG-01 completeness): shape
+  // preserved, element type changes (f32 <-> i64). Unary, like preserve.
+  intToFloat: preserve, intFromFloat: preserve,
 
   matmul: (inShapes) => {
     const [a, b] = inShapes;

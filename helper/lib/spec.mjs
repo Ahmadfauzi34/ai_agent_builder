@@ -228,3 +228,44 @@ export function planFragment(spec) {
     outputSlot: spec.outputSlot,
   };
 }
+
+// Ported from the agent pack (was pack-only; the skill never needed it
+// because skill validate went through the session engine). Shared by
+// lib/wasm_direct.mjs and bin/validate.mjs: the in-process plan-port
+// check (minimum 2 ports, every declared port consumed).
+export function analyzePlanPorts(spec) {
+  const minimum_ports = 2;
+  const declared = (spec.ports ?? []).map((p) => p?.slot).filter((s) => isU32(s));
+  const declaredSet = new Set(declared);
+  const written = new Set();
+  const consumed = new Set();
+  for (const step of (spec.steps ?? [])) {
+    if (!step || !Array.isArray(step.slots)) continue;
+    const slots = step.slots;
+    const inputs = step.kind === 'binary' ? slots.slice(0, 2) : slots.slice(0, 1);
+    const out = step.kind === 'binary' ? slots[2] : slots[1];
+    for (const slot of inputs) {
+      if (!written.has(slot) && declaredSet.has(slot)) consumed.add(slot);
+    }
+    if (out !== undefined) written.add(out);
+  }
+  if (!written.has(spec.outputSlot) && declaredSet.has(spec.outputSlot)) {
+    consumed.add(spec.outputSlot);
+  }
+  const bySlot = (a, b) => a - b;
+  const declared_ports = [...declared].sort(bySlot);
+  const consumed_ports = [...consumed].sort(bySlot);
+  const unused_ports = [...declared].filter((s) => !consumed.has(s)).sort(bySlot);
+  const valid = declared_ports.length >= minimum_ports && unused_ports.length === 0;
+  const code = valid
+    ? 'ok'
+    : (declared_ports.length < minimum_ports ? 'plan_minimum_ports' : 'plan_unused_ports');
+  return {
+    minimum_ports,
+    declared_ports,
+    consumed_ports,
+    unused_ports,
+    valid,
+    code,
+  };
+}
