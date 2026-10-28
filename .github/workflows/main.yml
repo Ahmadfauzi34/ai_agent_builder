@@ -510,6 +510,15 @@ jobs:
       - name: Run distribution smoke test under Node 18
         run: node scripts/smoke_distribution.mjs pkg
 
+      # Regression gate for the Node 18 crypto trap (lane #2, 2026-10-28):
+      # engine.mjs loads wasm in-process, and Node 18 ESM sees
+      # globalThis.crypto as undefined, so the first thread_rng use
+      # (ParamId at layer creation) panicked with RuntimeError: unreachable.
+      # prove-rules exercises exactly that path (in-process forward via
+      # engine.mjs); without the crypto polyfill it fails 0/22 here.
+      - name: Prove autodiff rules under Node 18
+        run: BURN_WASM_PKG_DIR=pkg node helper/bin/autodiff.mjs prove-rules
+
   supply-chain-audit:
     name: Supply-chain audit (cargo audit)
     runs-on: ubuntu-latest
