@@ -13,14 +13,15 @@ export function checkSpec(spec) {
   if (!(spec.outputSlot >= 0 && spec.outputSlot < spec.numSlots))
     dataflowIssues.push(`outputSlot ${spec.outputSlot} out of range 0..${spec.numSlots - 1}`);
 
-  // Written-ness and shape-known-ness are SEPARATE. slotShapes used to
-  // serve both jobs, so a step whose constructor has no shape rule
-  // (ruleFor === null) never marked its outSlot written — every later
-  // reader was falsely accused of read-before-written and valid specs
-  // (matmul, transpose, ...) failed shapecheck while the engine ran
-  // them fine. writtenSlots tracks "a value exists here" (ports + every
-  // step that runs, rule or not); slotShapes tracks only shapes we
-  // actually know. Malformed ports/steps are reported, never thrown.
+  // Ported from pack v2.4 (Audit_7 E2/E5): written-ness and
+  // shape-known-ness are SEPARATE. slotShapes used to serve both jobs,
+  // so a step whose constructor has no shape rule (ruleFor === null)
+  // never marked its outSlot written — every later reader was falsely
+  // accused of read-before-written and valid specs (matmul, transpose)
+  // failed shapecheck while the engine ran them fine. writtenSlots
+  // tracks "a value exists here" (ports + every step that runs, rule or
+  // not); slotShapes tracks only shapes we actually know.
+  // Malformed ports/steps are reported, never thrown (pack v2.3).
   const slotShapes = new Map();
   const writtenSlots = new Set();
   const seenPortSlots = new Set();
@@ -31,7 +32,7 @@ export function checkSpec(spec) {
     }
     if (seenPortSlots.has(p.slot)) dataflowIssues.push(`duplicate port slot ${p.slot}`);
     seenPortSlots.add(p.slot);
-    if (!(p.slot >= 0 && p.slot < spec.numSlots)) {
+    if (!Number.isInteger(p.slot) || !(p.slot >= 0 && p.slot < spec.numSlots)) {
       dataflowIssues.push(`port slot ${p.slot} out of range`);
       continue;
     }
@@ -89,13 +90,13 @@ export function checkSpec(spec) {
     const outSlot = st.slots[st.slots.length - 1];
     let blocked = false;
     for (const s of [...inSlots, outSlot]) {
-      if (!(s >= 0 && s < spec.numSlots)) {
+      if (!Number.isInteger(s) || !(s >= 0 && s < spec.numSlots)) {
         dataflowIssues.push(`step ${i}: slot ${s} out of range 0..${spec.numSlots - 1}`);
         blocked = true;
       }
     }
     for (const s of inSlots) {
-      if (s >= 0 && s < spec.numSlots && !writtenSlots.has(s)) {
+      if (Number.isInteger(s) && s >= 0 && s < spec.numSlots && !writtenSlots.has(s)) {
         dataflowIssues.push(`step ${i}: slot ${s} read before written (no port, no earlier step output)`);
         blocked = true;
       }
@@ -109,11 +110,20 @@ export function checkSpec(spec) {
     // unknown (no rule, unknown input shape, or a rule mismatch — the
     // mismatch itself already fails the check, it must not also cascade
     // into false read-before-written issues downstream).
-    if (outSlot >= 0 && outSlot < spec.numSlots) writtenSlots.add(outSlot);
+    if (Number.isInteger(outSlot) && outSlot >= 0 && outSlot < spec.numSlots) writtenSlots.add(outSlot);
     if (!rule) {
+      // Port v2.5 (REG-01): same stale-shape delete as the other two
+      // unchecked branches — a rule-less step produces no known shape,
+      // so an earlier writer's shape for this slot must not survive.
+      slotShapes.delete(outSlot);
       warnings.push(`step ${i}: no reliable shape rule for '${ctor}' — output shape unchecked`);
       rec.rule = 'unchecked';
     } else if (inShapes.some((s) => s === undefined)) {
+      // Port v2.5 (REG-01): a step with unknown inputs must NOT keep a
+      // stale output shape from an earlier writer of the same slot. The
+      // old code left slotShapes[outSlot] untouched, so a later reader
+      // saw a shape this step never produced.
+      slotShapes.delete(outSlot);
       warnings.push(`step ${i}: input shape unknown — output shape unchecked`);
       rec.rule = 'unchecked';
     } else {
@@ -127,6 +137,9 @@ export function checkSpec(spec) {
         // errors are mismatches; anything else (e.g. a rule tripping
         // over missing args) is reported as a mismatch too, never a
         // crash — the engine remains the final judge at run time.
+        // Port v2.5 (REG-01): a rule error must delete the stale shape
+        // for outSlot, same as the unknown-input branch above.
+        slotShapes.delete(outSlot);
         mismatches.push({ step: i, layer: ctor, message: e instanceof Error ? e.message : String(e), in_shapes: rec.in_shapes });
         rec.rule = 'mismatch';
       }

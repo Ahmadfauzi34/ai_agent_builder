@@ -18,6 +18,11 @@ function resolvePkgDir() {
   if (process.env.BURN_WASM_PKG_DIR) return path.resolve(process.env.BURN_WASM_PKG_DIR);
   const packed = path.join(HERE, '..', '..');
   if (fs.existsSync(path.join(packed, 'burn_research_bg.wasm'))) return packed;
+  // Built-pack layout: this file lives at <pack>/helper/lib/, the engine
+  // at <pack>/engine-audit/. Same engine.mjs serves both layouts so the
+  // repo stays the single source of truth for the pack it builds.
+  const packEngine = path.join(packed, 'engine-audit');
+  if (fs.existsSync(path.join(packEngine, 'burn_research_bg.wasm'))) return packEngine;
   return path.join(HERE, '..', '..', 'pkg');
 }
 const PKG_DIR = resolvePkgDir();
@@ -42,6 +47,14 @@ export function catalogPath() {
   const packed = path.join(PKG_DIR, 'docs', 'agent-layer-catalog.v1.json');
   if (fs.existsSync(packed)) return packed;
   return path.join(HERE, '..', '..', 'docs', 'contracts', 'agent-layer-catalog.v1.json');
+}
+
+// Same fallback pattern as catalogPath(), for the layout contracts doc
+// (used by validate's layout-compatibility warnings and bin/layout.mjs).
+export function layoutContractsPath() {
+  const packed = path.join(PKG_DIR, 'docs', 'agent-layout-contracts.v1.json');
+  if (fs.existsSync(packed)) return packed;
+  return path.join(HERE, '..', '..', 'docs', 'contracts', 'agent-layout-contracts.v1.json');
 }
 
 export async function loadWasm() {
