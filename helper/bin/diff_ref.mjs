@@ -16,7 +16,7 @@
 // cases within tol, 2 otherwise.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { runReference, SUPPORTED } from '../lib/ref.mjs';
 import fs from 'node:fs';
 
@@ -36,8 +36,7 @@ for (let i = 1; i < rawArgs.length; i++) {
 const [casesFile, tolArg] = positionals;
 const tol = tolArg !== undefined ? Number(tolArg) : 1e-5;
 if (!(tol > 0)) {
-  printJson({ ok: false, error: 'tol must be a positive number' });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: 'tol must be a positive number' }, 2);
 }
 
 function engineRun(rt, built, ports, inputs) {
@@ -90,7 +89,7 @@ try {
   });
   if (built.g.free) built.g.free();
 
-  printJson({
+  printJsonAndExit({
     ok: true,
     mode: extRef ? 'external-ref' : 'js-f64-reference',
     reference_ops: extRef ? null : SUPPORTED,
@@ -102,9 +101,7 @@ try {
     verdict: allPass
       ? 'PASS: engine agrees with reference within tolerance'
       : 'SIGNAL: engine/reference discrepancy beyond f32 rounding — investigate which side is wrong',
-  });
-  process.exit(allPass ? 0 : 2);
+  }, allPass ? 0 : 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

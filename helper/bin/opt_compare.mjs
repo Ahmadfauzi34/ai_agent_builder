@@ -16,7 +16,7 @@ import { loadEngineWithOracle, profileSpec } from '../lib/opt.mjs';
 import { buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
-import { printJson } from '../lib/json.mjs';
+import { printJsonAndExit } from '../lib/runner.mjs';
 
 const [baseFile, candFile, casesFile, iterArg] = process.argv.slice(2);
 if (!baseFile || !candFile) {
@@ -38,7 +38,7 @@ try {
   for (const [label, s] of [['baseline', baseSpec], ['candidate', candSpec]]) {
     const chk = checkSpec(s);
     if (!chk.ok) {
-      printJson({
+      printJsonAndExit({
         ok: false,
         error: `${label} spec failed static shape/dataflow check`,
         error_envelope: {
@@ -48,8 +48,7 @@ try {
           dataflow_issues: chk.dataflow.issues,
           remediation_hint: 'fix the listed steps, then re-run; shapecheck.mjs shows the same report standalone',
         },
-      });
-      process.exit(2);
+    }, 2);
     }
   }
 
@@ -80,7 +79,7 @@ try {
       ? `ACCEPT: equivalent, ${speedup.toFixed(2)}x faster, pages Δ ${candProfile.steady.pages_delta_total >= 0 ? '+' : ''}${candProfile.steady.pages_delta_total}`
       : `EQUIVALENT but slower (${speedup !== null ? speedup.toFixed(2) : 'n/a'}x) — reject unless it buys something else`;
 
-  printJson({
+  printJsonAndExit({
     ok: true,
     equivalent: ver.equivalent,
     max_abs_error: ver.max_abs_error,
@@ -100,9 +99,7 @@ try {
     },
     speedup: speedup !== null ? +speedup.toFixed(3) : null,
     verdict,
-  });
-  process.exit(ver.equivalent ? 0 : 2);
+  }, ver.equivalent ? 0 : 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

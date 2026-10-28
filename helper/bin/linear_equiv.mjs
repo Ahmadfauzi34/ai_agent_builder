@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import { loadSpec } from '../lib/spec.mjs';
 import { equivLinear, effectiveAffine } from '../lib/linear_equiv.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [aFile, bFile] = process.argv.slice(2);
 if (!aFile || !bFile) {
@@ -38,5 +38,4 @@ if (r.verdict === 'ACCEPT') {
 } else if (r.firstDiff) {
   detail.firstDiff = r.firstDiff;
 }
-printJson({ ok: r.verdict === 'ACCEPT', verdict: r.verdict, reason: r.reason, ...detail });
-process.exit(r.verdict === 'ACCEPT' ? 0 : 2);
+printJsonAndExit({ ok: r.verdict === 'ACCEPT', verdict: r.verdict, reason: r.reason, ...detail }, r.verdict === 'ACCEPT' ? 0 : 2);

@@ -11,7 +11,7 @@
 // verdict. Prints {ok, rewrite, shapecheck, verify?, spec?|out_file}.
 // Exit 0 iff applied (+ shapecheck clean, + verify equivalent when asked).
 import { loadSpec } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { listRewrites, applyRewrite, RewriteError } from '../lib/rewrites.mjs';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -37,15 +37,14 @@ function runCli(script, args) {
 try {
   if (cmd === 'list') {
     const catalog = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'references', 'rewrites.v1.json'), 'utf8'));
-    printJson({
+    printJsonAndExit({
       ok: true,
       engine_build: catalog.engine_build,
       proof_date: catalog.proof_date,
       rewrites: catalog.rewrites.map((r) => ({
         name: r.name, description: r.description, preconditions: r.preconditions, proof: r.proof,
       })),
-    });
-    process.exit(0);
+    }, 0);
   }
 
   if (cmd === 'apply') {
@@ -59,7 +58,7 @@ try {
     try {
       next = applyRewrite(name, spec);
     } catch (e) {
-      if (e instanceof RewriteError) { printJson({ ok: false, error: e.message }); process.exit(2); }
+      if (e instanceof RewriteError) { printJsonAndExit({ ok: false, error: e.message }, 2); }
       throw e;
     }
 
@@ -80,20 +79,21 @@ try {
 
     const okAll = shapeOk && verifyOk;
     if (outFile) fs.writeFileSync(outFile, JSON.stringify(next, null, 1));
-    printJson({
+    // Cleanup BEFORE the drain-safe print: the old order (print, then
+    // cleanup, then exit) truncated large outputs the same way the
+    // verify batch did. Cleanup first is strictly better (no tmp leak
+    // if printing itself fails).
+    try { fs.rmSync(tmp, { recursive: true }); } catch { /* best effort */ }
+    printJsonAndExit({
       ok: okAll,
       rewrite: name,
       shapecheck: { ok: shapeOk, mismatches: sc.json?.mismatches ?? null, warnings: sc.json?.warnings ?? null },
       verify: verify ? verifyRes : null,
       ...(outFile ? { out_file: outFile } : { spec: next }),
-    });
-    try { fs.rmSync(tmp, { recursive: true }); } catch { /* best effort */ }
-    process.exit(okAll ? 0 : 2);
+    }, okAll ? 0 : 2);
   }
 
-  printJson({ ok: false, error: `unknown command '${cmd}' (use: list | apply)` });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: `unknown command '${cmd}' (use: list | apply)` }, 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

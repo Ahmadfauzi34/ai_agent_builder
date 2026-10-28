@@ -16,7 +16,7 @@
 // NOTE: for continuous-valued inputs. Discrete index ports (e.g. embedding
 // ids) should be excluded with --only-slots.
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { generateStream } from '../lib/prng.mjs';
 import fs from 'node:fs';
 
@@ -97,14 +97,15 @@ try {
     cases: cases.length,
     includes_golden: !!(spec.inputs && Object.keys(spec.inputs).length > 0),
   };
+  // Both branches exit drain-safely; the trailing exit(0) was dead code
+  // once both prints exit, so it is gone (it also used to truncate the
+  // large cases_data output past ~64KB).
   if (opts.out) {
     fs.writeFileSync(opts.out, JSON.stringify(cases));
-    printJson({ ...envelope, out_file: opts.out });
+    printJsonAndExit({ ...envelope, out_file: opts.out }, 0);
   } else {
-    printJson({ ...envelope, cases_data: cases });
+    printJsonAndExit({ ...envelope, cases_data: cases }, 0);
   }
-  process.exit(0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

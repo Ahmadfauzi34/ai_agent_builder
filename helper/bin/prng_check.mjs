@@ -14,7 +14,7 @@
 // Generate prints {ok, algorithm, seed, count, sha256, preview} and exits 0.
 // `verify` re-generates from the manifest and compares hashes; exits 0 iff
 // the recorded hash matches, 2 otherwise.
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { generateStream, PRNGS } from '../lib/prng.mjs';
 import fs from 'node:fs';
 
@@ -28,7 +28,7 @@ try {
       throw new Error('manifest must contain {algorithm, seed, count, sha256}');
     const { sha256 } = generateStream(m.algorithm, m.seed, m.count);
     const verified = sha256 === m.sha256;
-    printJson({
+    printJsonAndExit({
       ok: verified,
       verified,
       algorithm: m.algorithm,
@@ -36,8 +36,7 @@ try {
       count: m.count,
       expected_sha256: m.sha256,
       actual_sha256: sha256,
-    });
-    process.exit(verified ? 0 : 2);
+    }, verified ? 0 : 2);
   }
 
   const algo = cmd ?? 'mulberry32';
@@ -47,7 +46,7 @@ try {
   if (!Number.isInteger(seed) || !Number.isInteger(count) || count <= 0)
     throw new Error('seed and count must be positive integers');
   const { values, sha256 } = generateStream(algo, seed, count);
-  printJson({
+  printJsonAndExit({
     ok: true,
     algorithm: algo,
     seed,
@@ -55,9 +54,7 @@ try {
     sha256,
     preview: values.slice(0, 5),
     note: 'save this manifest; `prng_check.mjs verify <manifest.json>` reproduces the stream exactly',
-  });
-  process.exit(0);
+  }, 0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

@@ -11,7 +11,7 @@
 // Prints the verdict JSON; exit 0 when accepted, 2 when rejected/error.
 import fs from 'node:fs';
 import { loadEngineWithOracle, guardCheck } from '../lib/opt.mjs';
-import { printJson } from '../lib/json.mjs';
+import { printJsonAndExit } from '../lib/runner.mjs';
 
 const argv = process.argv.slice(2);
 if (argv.length === 0) {
@@ -42,9 +42,7 @@ if (argv[0] === '--bytes') {
 try {
   const { rt } = await loadEngineWithOracle();
   const verdict = guardCheck(rt, bytes);
-  printJson({ ok: true, input: label, ...verdict });
-  process.exit(verdict.accepted ? 0 : 2);
+  printJsonAndExit({ ok: true, input: label, ...verdict }, verdict.accepted ? 0 : 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }

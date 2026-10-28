@@ -2,6 +2,7 @@
 // JSON-lines op protocol. The runner script and engine package are located
 // via lib/engine.mjs (packed <pkg>/ layout or repo source layout).
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import { pkgDir, runnerPath } from './engine.mjs';
 
 export const PKG_DIR = pkgDir();
@@ -67,8 +68,43 @@ export function printJson(obj) {
   process.stdout.write(JSON.stringify(obj, null, 2) + '\n');
 }
 
-export function failCli(message, envelope = null, code = 1) {
-  if (envelope) printJson({ ok: false, error: message, error_envelope: envelope });
-  else printJson({ ok: false, error: message });
+// Drain-safe stdout (ported from the agent pack, F6): a plain async write
+// followed by process.exit() truncates large outputs (a single writeSync
+// to a pipe accepted only ~146KB of a 323KB batch; a deferred drain-exit
+// lets execution fall through to later code). This loops synchronously
+// until every byte is accepted, so the JSON is never truncated and no
+// later code runs after the print. EAGAIN waits briefly; any other error
+// (e.g. EPIPE, reader gone) ends the loop and we exit anyway.
+export function printJsonAndExit(obj, code) {
+  const buf = Buffer.from(JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  const wait = new Int32Array(new SharedArrayBuffer(4));
+  let off = 0;
+  while (off < buf.length) {
+    try {
+      const n = fs.writeSync(process.stdout.fd, buf, off, buf.length - off);
+      if (n === 0) Atomics.wait(wait, 0, 0, 10);
+      else off += n;
+    } catch (e) {
+      // EAGAIN: pipe buffer full, reader has not drained yet — wait and retry.
+      // Anything else (EPIPE: reader gone) means the JSON cannot be
+      // delivered; exit with the intended code instead of crashing.
+      if (e && e.code === 'EAGAIN') { Atomics.wait(wait, 0, 0, 10); continue; }
+      break;
+    }
+  }
+  try { process.stdout.on('error', () => {}); } catch { /* ignore */ }
   process.exit(code);
+}
+
+// Drain-safe exit after output was already written with printJson: only
+// exit immediately when nothing is still buffered, otherwise wait for drain.
+export function exitAfterFlush(code) {
+  if (process.stdout.writableLength === 0) process.exit(code);
+  else process.stdout.once('drain', () => process.exit(code));
+}
+
+export function failCli(message, envelope = null, code = 1) {
+  const text = message instanceof Error ? message.message : String(message);
+  if (envelope) printJsonAndExit({ ok: false, error: text, error_envelope: envelope }, code);
+  else printJsonAndExit({ ok: false, error: text }, code);
 }

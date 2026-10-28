@@ -11,8 +11,8 @@
 // attention_head softmax-axis lesson). The finite-difference oracle
 // (bin/gradcheck.mjs) stays the permanent regression guard.
 //
-// Coverage v1: 15 constructors (the differentiable core behind MLP and
-// attention blocks). Everything else is an explicit, classified gap in
+// Coverage v2: 21 constructors (the differentiable core behind MLP and
+// attention blocks, plus the four shift ops). Everything else is an explicit, classified gap in
 // GAPS — a missing rule is an honest error, never a silent wrong answer.
 //
 // Conventions (engine-faithful, audited):
@@ -24,7 +24,7 @@
 //   A[b0,b1,i,k]*B[b0,b1,k,j]; engine validates b0/b1 match and a_k==b_k.
 // - All elementwise ops require exact shape match (engine-validated).
 
-export const MAP_VERSION = 'autodiff-map.v1';
+export const MAP_VERSION = 'autodiff-map.v2';
 
 // ---------- tensor helpers ----------
 export const numel = (s) => s.reduce((a, b) => a * b, 1);
@@ -71,6 +71,46 @@ function broadcastOf(keepdim, shape) {
 }
 
 const zip3 = (a, b, c, f) => a.map((x, i) => f(x, b[i], c[i]));
+
+// Shift forward, engine-faithful: slice + zero-pad, never wrap.
+// dir in {shiftUp, shiftDown, shiftLeft, shiftRight}, s = shift_size (u32).
+// out[c] = in[c+s] (Up), in[c-s] (Down); out[d] = in[d+s] (Left), in[d-s] (Right);
+// out-of-range reads are 0. s >= dim => all zeros.
+function applyShift(values, shape, dir, s) {
+  const [d0, d1, d2, d3] = shape;
+  const out = new Array(values.length).fill(0);
+  for (let a = 0; a < d0; a++) for (let b = 0; b < d1; b++)
+    for (let c = 0; c < d2; c++) for (let d = 0; d < d3; d++) {
+      let sc = c, sd = d;
+      if (dir === 'shiftUp') sc = c + s;
+      else if (dir === 'shiftDown') sc = c - s;
+      else if (dir === 'shiftLeft') sd = d + s;
+      else sd = d - s; // shiftRight
+      if (sc >= 0 && sc < d2 && sd >= 0 && sd < d3)
+        out[((a * d1 + b) * d2 + c) * d3 + d] = values[((a * d1 + b) * d2 + sc) * d3 + sd];
+    }
+  return out;
+}
+
+// VJP of a shift is the inverse shift: the Jacobian is 0/1 (a partial
+// permutation from the zero-padding), so its transpose is the inverse shift.
+// shiftUp<->shiftDown, shiftLeft<->shiftRight. No saved values needed.
+const SHIFT_INVERSE = {
+  shiftUp: 'shiftDown', shiftDown: 'shiftUp',
+  shiftLeft: 'shiftRight', shiftRight: 'shiftLeft',
+};
+function shiftRule(dir) {
+  const inv = SHIFT_INVERSE[dir];
+  return {
+    saved: [],
+    doc: `dX=${inv}(dL/dY, s): shift Jacobian is 0/1 (zero-pad, never wrap); transpose = inverse shift. s>=dim => dX=0, matching the all-zero forward.`,
+    vjp({ inputs, upstream: up, args }) {
+      const s = args[1];
+      if (!Number.isInteger(s) || s < 0) throw new Error(`${dir} vjp: bad shift_size ${JSON.stringify(s)}`);
+      return { inputGrads: [applyShift(up.values, inputs[0].shape, inv, s)], paramGrads: null };
+    },
+  };
+}
 
 // Standard normal PDF and CDF (A&S 7.1.26, ~1e-7; the engine's gelu is
 // the exact erf form — probed 2026-10-22: |engine-exact| ~ 2e-8).
@@ -194,6 +234,10 @@ export const RULES = {
       };
     },
   },
+  shiftUp: shiftRule('shiftUp'),
+  shiftDown: shiftRule('shiftDown'),
+  shiftLeft: shiftRule('shiftLeft'),
+  shiftRight: shiftRule('shiftRight'),
   sigmoid: {
     saved: ['output'],
     doc: 'dX=G*s*(1-s), s=saved output (avoids recomputing the exp).',
@@ -278,6 +322,68 @@ export const RULES = {
       return { inputGrads: grads, paramGrads: null };
     },
   },
+  avgPool2d: {
+    saved: ['input'],
+    doc: 'dX[i] = sum of G[window]/(kh*kw) over all windows covering i. '
+      + 'Divisor is ALWAYS the full kernel area: the engine divides by '
+      + 'kh*kw even for windows that hang over the padding (probed '
+      + '2026-10-28: 3x3 input, k2 s1 p1 -> corner window value 1/4, '
+      + 'not 1/1). Padded cells contribute no gradient (they are not '
+      + 'input positions); input positions covered by no window '
+      + '(stride > kernel gaps, floor-discarded edges) get 0.',
+    vjp({ inputs, upstream: up, args }) {
+      const x = inputs[0], sh = x.shape; // [N,C,H,W]
+      const [, kh, kw, sh0, sw0, ph0, pw0] = args;
+      const sH = sh0 ?? kh, sW = sw0 ?? kw, pH = ph0 ?? 0, pW = pw0 ?? 0;
+      const [n, c, h, w] = sh;
+      const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
+      const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
+      const div = kh * kw;
+      const dx = new Array(x.values.length).fill(0);
+      const G = up.values;
+      for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+        for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+          const g = G[(((b * c + cc) * oH + oh) * oW + ow)] / div;
+          const h0 = oh * sH - pH, w0 = ow * sW - pW;
+          for (let i = 0; i < kh; i++) for (let j = 0; j < kw; j++) {
+            const hh = h0 + i, ww = w0 + j;
+            if (hh < 0 || hh >= h || ww < 0 || ww >= w) continue;
+            dx[(((b * c + cc) * h + hh) * w + ww)] += g;
+          }
+        }
+      return { inputGrads: [dx], paramGrads: null };
+    },
+  },
+  avgPool1d: {
+    saved: ['input'],
+    doc: 'dX[i] = sum of G[window]/k over all windows covering i. '
+      + 'Divisor is ALWAYS the full kernel: the engine divides by k even '
+      + 'for windows that hang over the padding (probed 2026-10-28: '
+      + '[1,2,3,4,5], k2 s1 p1 -> edge windows 0.5 and 2.5, not 1 and 5). '
+      + 'Padded cells contribute no gradient; input positions covered by '
+      + 'no window (stride > kernel gaps, floor-discarded tail) get 0.',
+    vjp({ inputs, upstream: up, args }) {
+      const x = inputs[0], sh = x.shape; // [N,C,L,W]
+      const [, k, s0, p0] = args;
+      const s = s0 ?? k, p = p0 ?? 0;
+      const [n, c, l, w] = sh;
+      const ol = Math.floor((l + 2 * p - k) / s) + 1;
+      const dx = new Array(x.values.length).fill(0);
+      const G = up.values;
+      for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+        for (let ww = 0; ww < w; ww++)
+          for (let o = 0; o < ol; o++) {
+            const g = G[(((b * c + cc) * ol + o) * w + ww)] / k;
+            const l0 = o * s - p;
+            for (let i = 0; i < k; i++) {
+              const ll = l0 + i;
+              if (ll < 0 || ll >= l) continue;
+              dx[(((b * c + cc) * l + ll) * w + ww)] += g;
+            }
+          }
+      return { inputGrads: [dx], paramGrads: null };
+    },
+  },
 };
 
 // ---------- classified gaps (honest, not silent) ----------
@@ -296,8 +402,6 @@ export const GAPS = {
   instanceNorm: 'deferred: VJP not yet proven',
   rmsNorm: 'deferred: VJP not yet proven',
   featureNorm: 'deferred: VJP not yet proven',
-  avgPool1d: 'deferred: VJP not yet proven',
-  avgPool2d: 'deferred: VJP not yet proven',
   adaptiveAvgPool2d: 'deferred: VJP not yet proven',
   ghost: 'deferred: VJP not yet proven',
   seBlock: 'deferred: VJP not yet proven',
@@ -307,16 +411,14 @@ export const GAPS = {
   hardSigmoid: 'deferred: VJP not yet proven',
   mish: 'deferred: VJP not yet proven',
   prelu: 'deferred: VJP not yet proven',
-  shiftUp: 'deferred: VJP is inverse shift; not yet proven',
-  shiftDown: 'deferred: VJP is inverse shift; not yet proven',
-  shiftLeft: 'deferred: VJP is inverse shift; not yet proven',
-  shiftRight: 'deferred: VJP is inverse shift; not yet proven',
 };
 
 export function ruleFor(constructor) {
-  const r = RULES[constructor];
+  // hasOwn: without it, RULES['toString'] returns the inherited
+  // Object.prototype function and a bogus constructor looks ruled.
+  const r = (typeof constructor === 'string' && Object.hasOwn(RULES, constructor)) ? RULES[constructor] : undefined;
   if (!r) {
-    const gap = GAPS[constructor];
+    const gap = (typeof constructor === 'string' && Object.hasOwn(GAPS, constructor)) ? GAPS[constructor] : undefined;
     throw new Error(`no backward rule for '${constructor}'` + (gap ? `: ${gap}` : ' (unknown constructor)'));
   }
   return r;
@@ -326,9 +428,11 @@ export function ruleNames() { return Object.keys(RULES); }
 export function gapNames() { return Object.keys(GAPS); }
 
 // ---------- shape inference (engine-faithful; supplements lib/shapes.mjs) ----------
-// lib/shapes.mjs lacks matmul/transpose and its linear rule does not enforce
-// the engine's [B,F,1,1] requirement (probed 2026-10-22). These rules mirror
-// the engine validators exactly.
+// NOTE (port v2.5): lib/shapes.mjs now HAS matmul/transpose rules and its
+// linear rule enforces the engine's [B,F,1,1] requirement (probed
+// 2026-10-22), so the extras below duplicate it. They are kept because
+// their error messages are the ones autodiff callers already match on;
+// do not let the two copies drift — the semantics must stay identical.
 function shapeTranspose(inShapes, args) {
   const [, d0, d1] = args;
   if (!(d0 >= 0 && d0 <= 3 && d1 >= 0 && d1 <= 3)) throw new Error(`transpose dims out of range`);

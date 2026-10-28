@@ -218,6 +218,92 @@ const PROOFS = [
     },
     hand: { inGrads: [[[1, 1]], [[1]]] },
   },
+  {
+    // y[c]=x[c+1] (rows move up, bottom zero-padded): L=y0+y2+y4=x2+x4.
+    name: 'shiftUp', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'shiftUp', args: [0, 1] },
+        [{ shape: [1, 1, 3, 2], layout: ANY, values: [1, 2, 3, 4, 5, 6] }]);
+      return { spec, outSlot, inSlots, dout: [1, 0, 1, 0, 1, 0] };
+    },
+    hand: { inGrads: [[[0, 0, 1, 0, 1, 0]]] },
+  },
+  {
+    // y=[0,0,x0,x1,x2,x3]: L=y2+y5=x0+x3.
+    name: 'shiftDown', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'shiftDown', args: [0, 1] },
+        [{ shape: [1, 1, 3, 2], layout: ANY, values: [1, 2, 3, 4, 5, 6] }]);
+      return { spec, outSlot, inSlots, dout: [0, 0, 1, 0, 0, 1] };
+    },
+    hand: { inGrads: [[[1, 0, 0, 1, 0, 0]]] },
+  },
+  {
+    // y=[x1,x2,0,x4,x5,0]: L=y0+y4=x1+x5.
+    name: 'shiftLeft', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'shiftLeft', args: [0, 1] },
+        [{ shape: [1, 1, 2, 3], layout: ANY, values: [1, 2, 3, 4, 5, 6] }]);
+      return { spec, outSlot, inSlots, dout: [1, 0, 0, 0, 1, 0] };
+    },
+    hand: { inGrads: [[[0, 1, 0, 0, 0, 1]]] },
+  },
+  {
+    // y=[0,x0,x1, 0,x3,x4]: L=y1+y3=x0+0 (y3 is zero-pad, not x3).
+    name: 'shiftRight', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'shiftRight', args: [0, 1] },
+        [{ shape: [1, 1, 2, 3], layout: ANY, values: [1, 2, 3, 4, 5, 6] }]);
+      return { spec, outSlot, inSlots, dout: [0, 1, 0, 1, 0, 0] };
+    },
+    hand: { inGrads: [[[1, 0, 0, 0, 0, 0]]] },
+  },
+  {
+    // Edge: s >= dim => forward is all zeros => gradient is all zeros.
+    name: 'shiftUp-saturated', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'shiftUp', args: [0, 9] },
+        [{ shape: [1, 1, 3, 2], layout: ANY, values: [1, 2, 3, 4, 5, 6] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1, 1, 1, 1, 1] };
+    },
+    hand: { inGrads: [[[0, 0, 0, 0, 0, 0]]] },
+  },
+  {
+    // Added 2026-10-28: prove-rules previously reported 20/20 while
+    // covering NEITHER pooling rule (PROOFS and RULES were never linked).
+    // These two entries close that gap for real.
+    name: 'avgPool2d', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        // args are [id, kh, kw, sh, sw, ph, pw]: a 2x2 kernel, stride 1.
+        // (An earlier draft wrote [0,2,1,...] = a 2x1 kernel, whose
+        // output has 2 elements — the 1-element dout then produced NaN
+        // grads that JSON printed as nulls. The dout-length guard below
+        // now catches that class of typo loudly.)
+        { name: 'avgPool2d', args: [0, 2, 2, 1, 1, 0, 0] },
+        [{ shape: [1, 1, 2, 2], layout: ANY, values: [1, 2, 3, 4] }]);
+      // dout 1 (not 8): central FD noise scales as dout*f32_eps/(2*eps),
+      // so dout 8 pushed maxErr to ~1.1e-3, just over the 1e-3 tol, while
+      // the rule itself was right. dout 1 proves the same 1/4 divisor.
+      return { spec, outSlot, inSlots, dout: [1] };
+    },
+    hand: { inGrads: [[[0.25, 0.25, 0.25, 0.25]]] },
+  },
+  {
+    name: 'avgPool1d', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'avgPool1d', args: [0, 2, 1] },
+        [{ shape: [1, 1, 5, 1], layout: ANY, values: [1, 2, 3, 4, 5] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1, 1, 1] };
+    },
+    hand: { inGrads: [[[0.5, 1, 1, 1, 0.5]]] },
+  },
 ];
 
 export async function proveAll(runForward) {
@@ -225,6 +311,22 @@ export async function proveAll(runForward) {
   for (const p of PROOFS) {
     const built = p.build();
     const { spec, outSlot, dout, inSlots } = built;
+    // Guard the proof itself: a dout whose length mismatches the output
+    // numel silently breeds NaN grads (seen 2026-10-28 as [4,null,4,null]
+    // after JSON turned NaN into null). Fail loudly instead.
+    try {
+      const _shapes = inferShapes(spec);
+      const _n = numel(_shapes.get(outSlot));
+      if (dout.length !== _n) {
+        results.push({ name: p.name, hand: false, finiteDiff: false, pass: false,
+          detail: `PROOF BUG: dout length ${dout.length} != output numel ${_n}` });
+        continue;
+      }
+    } catch (e) {
+      results.push({ name: p.name, hand: false, finiteDiff: false, pass: false,
+        detail: 'PROOF BUG: inferShapes threw: ' + String(e).slice(0, 120) });
+      continue;
+    }
     const backward = (sp, seed) => {
       const shapes = inferShapes(sp);
       const saved = new Map();

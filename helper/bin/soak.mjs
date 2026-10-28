@@ -7,7 +7,7 @@
 // Exit 0 iff all runs identical, 2 otherwise.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
@@ -18,8 +18,7 @@ if (!specFile) {
 }
 const N = nArg !== undefined ? Number(nArg) : 100;
 if (!Number.isInteger(N) || N < 2) {
-  printJson({ ok: false, error: 'N must be an integer >= 2' });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: 'N must be an integer >= 2' }, 2);
 }
 
 try {
@@ -49,7 +48,7 @@ try {
   if (g.free) g.free();
 
   const identical = firstMismatch === -1;
-  printJson({
+  printJsonAndExit({
     ok: true,
     runs: N,
     identical,
@@ -58,9 +57,7 @@ try {
     first_mismatch_index: identical ? null : firstMismatch,
     total_ms: +totalMs.toFixed(1),
     ms_per_run: +(totalMs / N).toFixed(3),
-  });
-  process.exit(identical ? 0 : 2);
+  }, identical ? 0 : 2);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
-  process.exit(2);
+  printJsonAndExit({ ok: false, error: e.message }, 2);
 }
