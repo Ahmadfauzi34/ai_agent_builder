@@ -413,6 +413,72 @@ jobs:
           name: burn-wasm-output
           path: pkg/
 
+  agent-pack:
+    name: Agent pack gate (builder + regression + MANIFEST)
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Download packaged bundle zip
+        uses: actions/download-artifact@v4
+        with:
+          name: burn-research-pkg-zip
+
+      - name: Unpack packaged bundle
+        run: |
+          set -euxo pipefail
+          unzip -q burn-research-pkg-*.zip
+          ls pkg/burn_research_bg.wasm pkg/interactive_multi_input_ingress.mjs
+
+      # The builder regenerates helper/MANIFEST.json from the engine
+      # bundle. On a clean checkout it must come out byte-identical:
+      # any diff means the committed pins are stale (the engine changed
+      # without regenerating). Remedy: run the builder locally and
+      # commit the regenerated helper/MANIFEST.json.
+      # This check is meaningful because CI wasm builds are
+      # byte-reproducible for identical Rust source (verified
+      # 2026-10-28: the PR #395 bundle hashes exactly the committed
+      # pins). A Rust toolchain move that changes bytes will also trip
+      # it — that is the gate working, not a false alarm: regenerate
+      # and commit.
+      - name: Build agent pack from the CI bundle
+        run: |
+          set -euxo pipefail
+          node scripts/build_agent_pack.mjs --out "${{ runner.temp }}/agent-pack" --engine pkg
+
+      - name: Check helper/MANIFEST.json is in sync with the built engine
+        run: |
+          set -euxo pipefail
+          git diff --exit-code -- helper/MANIFEST.json
+
+      - name: Run agent-pack regression gate
+        env:
+          BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
+        run: node helper/bin/regression.mjs
+
+      # Standalone-pack self-test: runs WITHOUT BURN_WASM_PKG_DIR, so
+      # engine/catalog resolution inside the pack must work on its own
+      # (a missing engine-audit candidate once crashed every
+      # shape-dependent tool here — see lib/engine.mjs).
+      - name: Run built-pack regression (standalone, no env override)
+        run: node "${{ runner.temp }}/agent-pack/bin/regression.mjs"
+
+      - name: Run engine hardening gate
+        env:
+          BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
+        run: node helper/bin/engine_hardening_test.mjs
+
+      - name: Run autodiff proof gate
+        env:
+          BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
+        run: node helper/bin/autodiff.mjs prove-rules
+
   node18-smoke:
     name: Node 18 distribution smoke test
     runs-on: ubuntu-latest

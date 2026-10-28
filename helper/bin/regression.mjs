@@ -56,6 +56,11 @@ test('builder: 48/169/48 + wasm sha', () => {
   // The repo builder (scripts/build_agent_pack.mjs) assembles the pack
   // from this directory; the regression gate proves the builder's output
   // counts and engine sha, not just the tools in place.
+  // In a built pack there is no repo builder to test (the pack IS its
+  // output, and pin enforcement is still covered by every verify /
+  // checkpoint case via wasm_direct), so the case passes vacuously
+  // there instead of failing on a missing repo script.
+  if (!fs.existsSync(path.join(ROOT, '..', 'scripts', 'build_agent_pack.mjs'))) return;
   const r = runTool(['../scripts/build_agent_pack.mjs', '--out', path.join(TMP, 'built-pack')]);
   assert(r.code === 0, `builder exit ${r.code}: ${r.out.slice(0, 200)} ${r.err.slice(0, 200)}`);
   assert(r.json.ok === true && r.json.catalog_entries === 48 && r.json.surface_entries === 169 && r.json.layout_entries === 48, `counts: ${r.out.slice(0, 300)}`);
