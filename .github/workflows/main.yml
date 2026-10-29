@@ -417,6 +417,12 @@ jobs:
     name: Agent pack gate (builder + regression + MANIFEST)
     runs-on: ubuntu-latest
     needs: build-and-test
+    # Release creation (gh release create/upload) needs contents:write.
+    # The repo default for GITHUB_TOKEN is read-only, so without this
+    # block the publish step fails with HTTP 403 (seen on 54a7f12).
+    # Scoped to this job only; other jobs keep the repo default.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -524,12 +530,17 @@ jobs:
           set -euxo pipefail
           cd "${{ runner.temp }}"
           # Create the rolling release once; on later runs the view
-          # succeeds. The trailing `|| true` covers two main pushes
-          # racing the first creation (upload below stays strict).
+          # succeeds. The trailing `|| true` only tolerates two main
+          # pushes racing the first creation: the existence check
+          # below distinguishes that case (release exists -> proceed)
+          # from a real create failure (e.g. HTTP 403 from a missing
+          # contents:write permission), which previously surfaced
+          # confusingly as "release not found" on upload (54a7f12).
           gh release view agent-pack-latest >/dev/null 2>&1 || \
             gh release create agent-pack-latest \
               --title "Burn-math agent pack (latest)" \
               --notes "Rolling build of the burn-math agent pack from main, published after the agent-pack gate passes. Each asset is the full standalone pack (tools + engine bundle + contracts index); MANIFEST.json inside pins the source commit and the engine bytes." || true
+          gh release view agent-pack-latest >/dev/null 2>&1 || { echo "ERROR: agent-pack-latest release does not exist after create attempt; check that the job token has contents:write"; exit 1; }
           gh release upload agent-pack-latest burn-math-agent-pack.zip --clobber
           gh release edit agent-pack-latest \
             --notes "Rolling build of the burn-math agent pack from main, published after the agent-pack gate passes. Latest source commit: ${{ github.sha }}. Each asset is the full standalone pack (tools + engine bundle + contracts index); MANIFEST.json inside pins the source commit and the engine bytes."
