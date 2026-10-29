@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 // burn-math verify: baseline-vs-candidate GRAPH verification (WASM-direct).
 // Usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol]
+//        node verify.mjs <baseline.json> <candidate.json> --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H] [absTol] [relTol]
 //        node verify.mjs --batch <pairs.json>
+// --fuzz generates its cases in-process via lib/fuzz.mjs (the same
+// generator as fuzz_cases.mjs): golden + 6 boundary + N seeded-random
+// cases, with discrete (embedding-id) ports clamped to [0, vocab).
+// --fuzz conflicts with a cases file. --batch pairs do not take --fuzz.
 import { loadWasm, buildGraph, makeBundle } from '../lib/wasm_direct.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
+import { generateCases } from '../lib/fuzz.mjs';
 import { printJsonAndExit } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
@@ -91,7 +97,7 @@ function verifyOne(rt, pair) {
 
 const argv = process.argv.slice(2);
 if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
-  console.error('usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol] | node verify.mjs --batch <pairs.json>');
+  console.error('usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol] | node verify.mjs <baseline.json> <candidate.json> --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H] [absTol] [relTol] | node verify.mjs --batch <pairs.json>');
   process.exit(2);
 }
 
@@ -123,10 +129,50 @@ if (argv[0] === '--batch') {
   printJsonAndExit(results, allOk ? 0 : 2);
 }
 
-const [baseFile, candFile, casesFile, absTolArg, relTolArg] = argv;
+const [baseFile, candFile, ...rest] = argv;
 if (!baseFile || !candFile) {
   console.error('usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol]');
   process.exit(2);
+}
+
+// Single-mode flags after the two specs. A bare integer after --fuzz is
+// its count (default 8). Positional order with --fuzz: a positional
+// BEFORE the first --fuzz flag is the cases file (conflict, exit 2);
+// positionals AFTER it are [absTol, relTol], so `--fuzz 1e-6` means
+// count=default, absTol=1e-6. Without --fuzz the order stays
+// [casesFile, absTol, relTol].
+let fuzz = null;
+const prePositionals = [];
+const postPositionals = [];
+for (let i = 0; i < rest.length; i++) {
+  const a = rest[i];
+  const needFuzz = () => (fuzz ??= { count: 8, seed: 42, lo: -2, hi: 2 });
+  if (a === '--fuzz') {
+    needFuzz();
+    const nxt = rest[i + 1];
+    if (nxt !== undefined && /^\d+$/.test(nxt)) { fuzz.count = Number(nxt); i++; }
+  }
+  else if (a === '--fuzz-seed') needFuzz().seed = Number(rest[++i]);
+  else if (a === '--fuzz-lo') needFuzz().lo = Number(rest[++i]);
+  else if (a === '--fuzz-hi') needFuzz().hi = Number(rest[++i]);
+  else (fuzz ? postPositionals : prePositionals).push(a);
+}
+const [casesFile, absTolArg, relTolArg] = fuzz
+  ? [undefined, ...postPositionals]
+  : prePositionals;
+if (fuzz && prePositionals.length > 0) {
+  printJsonAndExit({ ok: false, error: 'cannot combine --fuzz with a cases file' }, 2);
+}
+if (fuzz && postPositionals.length > 0 && !Number.isFinite(Number(postPositionals[0]))) {
+  // With --fuzz, the only non-numeric positional in verify's grammar is
+  // the cases file — a tolerance must be a finite number.
+  printJsonAndExit({ ok: false, error: 'cannot combine --fuzz with a cases file' }, 2);
+}
+if (fuzz) {
+  if (!Number.isInteger(fuzz.seed) || !Number.isInteger(fuzz.count) || fuzz.count < 0)
+    printJsonAndExit({ ok: false, error: '--fuzz-seed and --fuzz count must be integers, count >= 0' }, 2);
+  if (!Number.isFinite(fuzz.lo) || !Number.isFinite(fuzz.hi))
+    printJsonAndExit({ ok: false, error: '--fuzz-lo and --fuzz-hi must be finite numbers' }, 2);
 }
 
 let absTol, relTol;
@@ -141,7 +187,15 @@ let base = null, cand = null, vc = null;
 try {
   const baseSpec = loadOrTag(baseFile);
   const candSpec = loadOrTag(candFile);
-  const cases = loadCasesOrTag(casesFile, baseSpec);
+  let cases;
+  let fuzzOut = null;
+  if (fuzz) {
+    const gen = generateCases(baseSpec, fuzz);
+    cases = gen.cases;
+    fuzzOut = { seed: gen.meta.seed, count: fuzz.count, cases: cases.length, discrete_ports: gen.meta.discrete_ports };
+  } else {
+    cases = loadCasesOrTag(casesFile, baseSpec);
+  }
 
   const rt = await loadWasm();
   base = buildGraph(rt, baseSpec);
@@ -154,7 +208,7 @@ try {
     vc.addCase(makeBundle(rt, base.plan, c, basePorts), makeBundle(rt, cand.plan, c, candPorts));
   }
   const result = JSON.parse(vc.verify(base.reg, base.g, cand.reg, cand.g, absTol, relTol));
-  printJsonAndExit({ ok: true, ...result, cases: cases.length, absTol, relTol, case_details: result.cases, verdict: result.equivalent ? 'ACCEPT' : 'REJECT' }, result.equivalent ? 0 : 2);
+  printJsonAndExit({ ok: true, ...result, cases: cases.length, absTol, relTol, case_details: result.cases, verdict: result.equivalent ? 'ACCEPT' : 'REJECT', ...(fuzzOut ? { fuzz: fuzzOut } : {}) }, result.equivalent ? 0 : 2);
 } catch (e) {
   const out = { ok: false, error: e instanceof Error ? e.message : String(e) };
   if (e?.code) { out.code = e.code; out.phase = e.phase ?? null; }
