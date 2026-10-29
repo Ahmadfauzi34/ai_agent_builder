@@ -38,6 +38,9 @@ optimization profiling to full math verification with provenance.
 - `node bin/verify.mjs <baseline.json> <candidate.json> [cases.json]`
   Baseline-vs-candidate graph verification: numerical equivalence with
   tolerances, the verdict behind `opt_compare`.
+  `... --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]` generates
+  cases in-process (same generator as `fuzz_cases.mjs`); conflicts with
+  a cases file; `--batch` pairs do not take it.
 - `node bin/checkpoint.mjs export <spec.json> | verify <bundle> <sha>`
   Export a program bundle with integrity proof (sha256), or verify a bundle's
   integrity session-free.
@@ -75,7 +78,8 @@ optimization profiling to full math verification with provenance.
 - `node bin/shapecheck.mjs <spec.json>` — static shape + dataflow check, no
   engine needed. Fast pre-pass before heavier tools.
 - `node bin/fuzz_cases.mjs` — deterministic test-case generation for
-  verify/diff_ref.
+  verify/diff_ref. Discrete ports (embedding ids) get integer ids in
+  [0, vocab), resolved from the consuming embedding layer.
 - `node bin/prng_check.mjs` — certify and re-verify deterministic PRNG streams.
 
 ### Graph rewrites (proof-backed)
