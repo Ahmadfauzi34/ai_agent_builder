@@ -80,12 +80,42 @@ async function quickStartSession(ask, signBind) {
   check(verify.ok, `verify failed: ${JSON.stringify(verify).slice(0, 300)}`);
 }
 
+// Regression gate for the Node 18 ingress-loader crypto trap (2026-10-30):
+// quickStartSession's create uses a weight-free `add` layer only, so it
+// never touches thread_rng and never caught the missing crypto polyfill in
+// the Node loader (hosts/node/node.mjs). A weighted create does: layer
+// creation generates random ParamIds via thread_rng -> getrandom ->
+// globalThis.crypto.getRandomValues, which is undefined in Node 18 ESM.
+// Without the polyfill this create fails with the misleading borrow panic
+// ("attempted to take ownership of Rust value while it was borrowed",
+// phase create). One weighted create here makes the smoke test cover it.
+async function weightedCreateCheck(ask) {
+  const created = await ask({
+    op: 'create', numSlots: 4,
+    layers: [
+      {constructor: 'linear', args: [0, 2, 2, false]},
+      {constructor: 'add', args: [1]},
+    ],
+    steps: [
+      {kind: 'unary', layer: 0, slots: [0, 2]},
+      {kind: 'binary', layer: 1, slots: [2, 1, 3]},
+    ],
+    outputSlot: 3,
+    ports: [
+      {slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton'},
+      {slot: 1, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton'},
+    ],
+  });
+  check(created.ok, `weighted create failed: ${JSON.stringify(created).slice(0, 300)}`);
+}
+
 const results = [];
 // Mode 1: caller-declared, no packageDir argument (usage guide quick start).
 {
   const {child, ask} = spawnRunner([]);
   try {
     await quickStartSession(ask, null);
+    await weightedCreateCheck(ask);
     results.push({mode: 'caller_declared', ok: true});
   } finally {
     child.kill();
