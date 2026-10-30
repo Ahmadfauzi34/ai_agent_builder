@@ -89,7 +89,10 @@ precision: div stays within 1 ulp of f32(true division) for normal
 values (measured 2026-10-31; pinned by the regression div probe).
 `matmul` takes `;`-separated rows (a bare comma list is one row),
 single-batch `[1,1,M,K] @ [1,1,K,N]`, output flat row-major with
-`shape: [M,N]`; int ops are not in v1. `engine.wasm_sha256_short`
+`shape: [M,N]`; int ops are not in v1. `--batch ops.json` runs N ops
+(add/sub/mul/div/matmul) in one engine load from a `{"ops":[...]}`
+file; a failing op is recorded with its index and the rest still run;
+exit 0 iff every op succeeds. `engine.wasm_sha256_short`
 identifies the build that computed the result.
 
 ## How to find things (read this, it is the whole trick)

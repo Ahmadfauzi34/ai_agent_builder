@@ -490,6 +490,55 @@ test('arith: elementwise ops through the engine, clean errors', () => {
     const r = run(args);
     assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
   }
+  // Batch JSON (2026-10-31, CP4 Opsi A): one engine load for N ops,
+  // per-op continue with error index, provenance once at top level.
+  const batch = (obj) => run(['--batch', writeSpec('batch.json', obj)]);
+  const b1 = batch({ ops: [
+    { op: 'add', a: [3, 4], b: [5, 6] },
+    { op: 'matmul', a: [[1, 2, 3], [4, 5, 6]], b: [[7, 8], [9, 10], [11, 12]] },
+    { op: 'div', a: [12, 20], b: [4, 5] },
+    { op: 'mul', a: [2], b: [3, 4] },
+  ] });
+  assert(b1.code === 0 && b1.json && b1.json.ok === true, `batch happy: ${b1.out.slice(0, 200)}`);
+  assert(b1.json.results.length === 4, 'batch result count');
+  assert(JSON.stringify(b1.json.results[0].values) === '[8,10]' && b1.json.results[0].index === 0, 'batch add');
+  assert(JSON.stringify(b1.json.results[1].values) === '[58,64,139,154]' && JSON.stringify(b1.json.results[1].shape) === '[2,2]', 'batch matmul');
+  assert(JSON.stringify(b1.json.results[2].values) === '[3,4]', 'batch div');
+  assert(JSON.stringify(b1.json.results[3].values) === '[6,8]' && b1.json.results[3].broadcast === 'a', 'batch broadcast');
+  assert(typeof b1.json.engine?.wasm_sha256_short === 'string' && !('engine' in b1.json.results[0]), 'batch provenance once at top level');
+  // Equivalence: batch op == single-op result (values, echoes, broadcast).
+  const single = full(['add', '3,4', '5,6']);
+  assert(JSON.stringify(b1.json.results[0].values) === JSON.stringify(single.values) && JSON.stringify(b1.json.results[0].a) === JSON.stringify(single.a) && JSON.stringify(b1.json.results[0].b) === JSON.stringify(single.b) && b1.json.results[0].broadcast === single.broadcast, 'batch == single-op');
+  // Per-op continue: bad ops are recorded with their index, good ops
+  // after them still run; exit 2 because not all ops succeeded.
+  const b2 = batch({ ops: [
+    { op: 'add', a: [1, 2], b: [3, 4] },
+    { op: 'add', a: [1, 2], b: [3, 4, 5] },
+    { op: 'div', a: [1, 2], b: [1, 0] },
+    { op: 'mul', a: [3, 4], b: [5, 6] },
+    { op: 'nope', a: [1], b: [2] },
+  ] });
+  assert(b2.code === 2 && b2.json && b2.json.ok === false, `batch mixed exit: ${b2.out.slice(0, 200)}`);
+  assert(b2.json.results.length === 5 && b2.json.results.every((r, i) => r.index === i), 'batch indices in order');
+  assert(b2.json.results[0].ok === true && JSON.stringify(b2.json.results[0].values) === '[4,6]', 'batch continue: op before failure');
+  assert(b2.json.results[1].ok === false && b2.json.results[1].error.includes('length mismatch'), 'batch per-op length mismatch');
+  assert(b2.json.results[2].ok === false && b2.json.results[2].error.includes('division by zero'), 'batch per-op div by zero');
+  assert(b2.json.results[3].ok === true && JSON.stringify(b2.json.results[3].values) === '[15,24]', 'batch continue: op after failure');
+  assert(b2.json.results[4].ok === false && b2.json.results[4].error.includes('unknown op'), 'batch per-op unknown op');
+  // Batch-level failures: no results key, exit 2 (mirrors single-op errors).
+  const b3 = run(['--batch', path.join(TMP, 'does-not-exist.json')]);
+  assert(b3.code === 2 && b3.json && b3.json.ok === false && b3.json.error.includes('cannot read batch file') && !('results' in b3.json), 'batch missing file');
+  fs.writeFileSync(path.join(TMP, 'bad.json'), '{bad json');
+  const b4 = run(['--batch', path.join(TMP, 'bad.json')]);
+  assert(b4.code === 2 && b4.json && b4.json.ok === false && b4.json.error.includes('invalid batch JSON') && !('results' in b4.json), 'batch bad JSON');
+  const b5 = batch({ ops: 'bukan-array' });
+  assert(b5.code === 2 && b5.json && b5.json.ok === false && b5.json.error.includes('batch.ops must be an array'), 'batch ops not array');
+  const b6 = batch({ ops: [] });
+  assert(b6.code === 0 && b6.json && b6.json.ok === true && JSON.stringify(b6.json.results) === '[]', 'batch empty ops');
+  const b7 = run(['--batch']);
+  assert(b7.code === 2 && b7.json && b7.json.ok === false && b7.json.error.includes('usage:'), 'batch usage: missing file');
+  const b8 = run(['--batch', writeSpec('batch.json', { ops: [] }), 'extra']);
+  assert(b8.code === 2 && b8.json && b8.json.ok === false && b8.json.error.includes('usage:'), 'batch usage: extra arg');
 });
 test('catalog surface: find-op --list 48, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);

@@ -13,6 +13,9 @@ This page is a map, not a manual: find your question, follow the link.
   (elementwise vectors, length-1 broadcasts; `div` is mul by reciprocal,
   division by zero is an error; `matmul` takes `;`-separated rows,
   single-batch; int ops are not in v1).
+  Batch N ops in one engine load -> `node bin/arith.mjs --batch ops.json`
+  (`{"ops":[{"op":...,"a":[...],"b":[...]}]}`; failing ops are recorded
+  with their index and the rest still run).
 - Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->
