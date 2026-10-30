@@ -465,6 +465,20 @@ test('arith: elementwise ops through the engine, clean errors', () => {
     const r = run(args);
     assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
   }
+  // Div precision contract (2026-10-31 audit prediction #3, measured
+  // first: 200 random pairs, max rel err 5.96e-8 < 1 ulp f32): div by
+  // reciprocal must stay within 1 ulp of f32(true division) for
+  // normal positive values. Reference is Math.fround(a/b); ulp via
+  // f32 bit steps. Pairs chosen to stress reciprocal rounding.
+  const f32bits = (x) => { const dv = new DataView(new ArrayBuffer(4)); dv.setFloat32(0, x); return dv.getUint32(0); };
+  const f32fromBits = (b) => { const dv = new DataView(new ArrayBuffer(4)); dv.setUint32(0, b); return dv.getFloat32(0); };
+  const ulp = (x) => Math.abs(f32fromBits(f32bits(x) + 1) - x); // x > 0, normal
+  const divPairs = [[1, 3], [10, 3], [1, 7], [100, 7], [0.1, 0.3], [12345, 6789], [1e10, 3], [5, 8], [355, 113], [2, 3], [1, 6], [7, 9], [1000, 333], [1.5, 0.7], [123.456, 7.89]];
+  const divVals = vals(['div', divPairs.map((p) => p[0]).join(','), divPairs.map((p) => p[1]).join(',')]);
+  divPairs.forEach(([a, b], i) => {
+    const ref = Math.fround(a / b);
+    assert(Math.abs(divVals[i] - ref) <= ulp(ref), `div precision ${a}/${b}: got ${divVals[i]}, f32(true) ${ref}, ulp ${ulp(ref)}`);
+  });
   const errs = [
     [['div', '1,2', '1,0'], 'division by zero at index 1'],
     [['add', '1,2', '3,4,5'], 'length mismatch'],
