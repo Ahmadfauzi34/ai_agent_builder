@@ -26,15 +26,37 @@
 // - No `div` constructor exists in the engine, so `div` is mul by
 //   the host-computed reciprocal. Division by zero is a clean error
 //   (exit 2), never Infinity: the reciprocal is checked finite
-//   before the spec is built.
-// - Vectors must have equal lengths (the engine requires exactly
-//   matching shapes for binary ops); a mismatch is a clean error.
+//   before the spec is built. A subnormal divisor whose reciprocal
+//   overflows is NOT "division by zero": it errors as divisor
+//   underflow (in f32 such a divisor is zero anyway, so erroring
+//   is correct for this f32 tool — only the label used to be wrong).
+// - Vectors must have equal lengths, except a length-1 vector
+//   broadcasts to the other's length (reported in `broadcast`).
 // - Output is the flat value vector; shapes are [1, n, 1, 1]
 //   (feature_axis1_singleton), the same vector convention the
-//   specs use. Exit 0 on success, 2 on usage/computation errors.
+//   specs use. `a`/`b` echo the effective (post-broadcast,
+//   pre-reciprocal) inputs; `engine` carries the wasm pin short
+//   + mode so results are attributable to a build. Exit 0 on
+//   success, 2 on usage/computation errors.
 import { printJsonAndExit } from '../lib/runner.mjs';
 import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
 import { portBySlot } from '../lib/spec.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+// Provenance without re-hashing: loadWasm() already proves the loaded
+// engine matches the MANIFEST pin (it throws otherwise), so reporting
+// the pin identifies the engine that computed the result.
+function engineProvenance() {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
+    const full = m?.sha256?.['burn_research_bg.wasm'] ?? m?.engine?.wasm_sha256 ?? null;
+    return { wasm_sha256_short: full ? full.slice(0, 16) : null, mode: 'direct' };
+  } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
+}
 
 const OPS = { add: 'add', sub: 'sub', mul: 'mul', div: 'mul' };
 
@@ -56,19 +78,26 @@ async function main() {
   }
   const a = parseVector(aText, 'a');
   const b = parseVector(bText, 'b');
+  // Length-1 broadcasts; anything else must match exactly (the engine
+  // requires exactly matching shapes for binary ops).
+  let aEff = a, bEff = b, broadcast = null;
   if (a.length !== b.length) {
-    throw new Error(`length mismatch: a has ${a.length} values, b has ${b.length} (binary ops require exactly matching shapes)`);
+    if (a.length === 1) { aEff = new Array(b.length).fill(a[0]); broadcast = 'a'; }
+    else if (b.length === 1) { bEff = new Array(a.length).fill(b[0]); broadcast = 'b'; }
+    else throw new Error(`length mismatch: a has ${a.length} values, b has ${b.length} (binary ops require exactly matching shapes)`);
   }
-  let bEff = b;
+  // bUser: post-broadcast, pre-reciprocal — what the output echoes, so
+  // values[i] = a[i] op b[i] always holds for the reader.
+  let bUser = bEff;
   if (op === 'div') {
-    bEff = b.map((v, i) => {
+    bEff = bEff.map((v, i) => {
       if (v === 0) throw new Error(`division by zero at index ${i} (b[${i}] is 0)`);
       const r = 1 / v;
-      if (!Number.isFinite(r)) throw new Error(`division by zero at index ${i} (1/${v} is not finite)`);
+      if (!Number.isFinite(r)) throw new Error(`divisor underflow at index ${i} (b[${i}] is ${v}: its reciprocal is not finite; in f32 it is zero)`);
       return r;
     });
   }
-  const n = a.length;
+  const n = aEff.length;
   const spec = {
     layers: [{ constructor: OPS[op], args: [0] }],
     steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }],
@@ -77,7 +106,7 @@ async function main() {
       { slot: 0, role: 'observation', shape: [1, n, 1, 1], layout: 'feature_axis1_singleton' },
       { slot: 1, role: 'observation', shape: [1, n, 1, 1], layout: 'feature_axis1_singleton' },
     ],
-    weights: {}, inputs: { 0: a, 1: bEff },
+    weights: {}, inputs: { 0: aEff, 1: bEff },
   };
   const rt = await loadWasm();
   const values = await withGraphScope(rt, spec, async ({ g, reg, bundle }) => {
@@ -87,7 +116,9 @@ async function main() {
     out.free();
     return v;
   });
-  printJsonAndExit({ ok: true, op, a, b, values }, 0);
+  // Echo the EFFECTIVE inputs (post-broadcast, pre-reciprocal for div)
+  // so values[i] = a[i] op b[i] always holds for the reader.
+  printJsonAndExit({ ok: true, op, a: aEff, b: bUser, broadcast, engine: engineProvenance(), values }, 0);
 }
 
 main().catch((e) => {
