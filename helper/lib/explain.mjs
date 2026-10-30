@@ -40,6 +40,77 @@ export function propagateLayouts(spec, layoutCtors) {
 
 const numelOf = (shape) => (Array.isArray(shape) ? shape.reduce((a, b) => a * b, 1) : null);
 
+// Liveness analysis (pure, static — no session, no engine run).
+// live_before(k), k = 0..n, is the set of slots that must be in memory
+// before step k runs: def < k AND last_use >= k. def is -1 for ports
+// (the buffer exists from the start, even if a later step rewrites the
+// slot) and the producing step index otherwise. last_use is the last
+// reading step, n (past the last step) for the output slot, and def
+// itself for a slot never read — so a dead slot (written, never read,
+// not the output) is live at no step boundary and contributes 0 to the
+// peak: this models a runtime that frees dead outputs right after the
+// producing step. Bytes come from the slot map (numel * 4, f32); a slot
+// with unknown bytes that is ever live makes the peak a lower bound.
+export function analyzeLiveness(spec, slots) {
+  const bytesBySlot = new Map(slots.map((s) => [s.slot, s.bytes]));
+  const steps = spec.steps ?? [];
+  const n = steps.length;
+  const def = new Map();
+  const lastUse = new Map();
+  for (const p of (spec.ports ?? [])) {
+    if (!p || typeof p !== 'object' || !Number.isInteger(p.slot)) continue;
+    def.set(p.slot, -1);
+    lastUse.set(p.slot, -1);
+  }
+  steps.forEach((st, si) => {
+    if (!st || !Array.isArray(st.slots)) return;
+    const inSlots = st.kind === 'binary' ? st.slots.slice(0, 2) : st.slots.slice(0, 1);
+    for (const s of inSlots) {
+      if (!def.has(s)) def.set(s, -1);
+      lastUse.set(s, Math.max(lastUse.get(s) ?? -1, si));
+    }
+    const outSlot = st.slots[st.slots.length - 1];
+    if (!def.has(outSlot)) def.set(outSlot, si);
+    if (!lastUse.has(outSlot)) lastUse.set(outSlot, si);
+  });
+  if (Number.isInteger(spec.outputSlot)) lastUse.set(spec.outputSlot, n);
+
+  const slotRows = [...bytesBySlot.keys()].sort((a, b) => a - b).map((slot) => ({
+    slot,
+    def_step: def.has(slot) ? def.get(slot) : null,
+    last_use_step: lastUse.has(slot) ? lastUse.get(slot) : null,
+    bytes: bytesBySlot.get(slot),
+  }));
+  const liveBefore = [];
+  let everLiveUnknown = false;
+  for (let k = 0; k <= n; k++) {
+    const live = slotRows.filter((r) => r.def_step !== null && r.def_step < k && r.last_use_step !== null && r.last_use_step >= k);
+    const unknown = live.filter((r) => r.bytes === null);
+    if (unknown.length) everLiveUnknown = true;
+    liveBefore.push({
+      step: k,
+      bytes: unknown.length ? null : live.reduce((a, r) => a + (r.bytes ?? 0), 0),
+      slots: live.map((r) => r.slot),
+    });
+  }
+  const unknownBytesSlots = slotRows.filter((r) => r.bytes === null && liveBefore.some((lb) => lb.slots.includes(r.slot))).map((r) => r.slot);
+  let peakStep = 0;
+  let peakBytes = liveBefore.length ? (liveBefore[0].bytes ?? 0) : 0;
+  for (let k = 1; k < liveBefore.length; k++) {
+    const b = liveBefore[k].bytes ?? 0;
+    if (b > peakBytes) { peakBytes = b; peakStep = k; }
+  }
+  return {
+    peak_bytes: peakBytes,
+    peak_step: peakStep,
+    peak_slots: liveBefore[peakStep]?.slots ?? [],
+    peak_is_lower_bound: everLiveUnknown,
+    unknown_bytes_slots: unknownBytesSlots,
+    live_before: liveBefore,
+    slots: slotRows,
+  };
+}
+
 export function explainSpec(spec, checked, layoutCtors) {
   const layouts = propagateLayouts(spec, layoutCtors);
   const steps = checked?.steps ?? [];
@@ -124,12 +195,14 @@ export function explainSpec(spec, checked, layoutCtors) {
       slots: slots.length,
       tensor_bytes: slots.reduce((a, s) => a + (s.bytes ?? 0), 0),
     },
+    liveness: analyzeLiveness(spec, slots),
     output_slot: spec.outputSlot,
     unmapped_slots,
     notes: [
       'bytes assume f32 tensors (4 bytes/element), the plan element type',
-      'tensor_bytes is the static footprint (sum over slots), not peak live memory; liveness analysis is a separate follow-up',
+      'tensor_bytes is the static footprint (sum over slots); liveness.peak_bytes is the peak live set across step boundaries, usually smaller — a runtime that frees dead outputs promptly needs peak_bytes, not the footprint',
       'shape null means no static shape rule for that step (the slot is still written)',
+      'peak_bytes is a lower bound (liveness.peak_is_lower_bound) when a slot with unknown bytes is ever live',
     ],
   };
 }
