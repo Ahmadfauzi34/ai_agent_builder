@@ -284,6 +284,47 @@ test('F4: expectedWeightCount table (unit)', () => {
     assert(got === want, `expectedWeightCount(${decl.constructor}, ${JSON.stringify(decl.args)}) = ${got}, want ${want}`);
   }
 });
+test('F4: conv bias is unconditional in the engine (probe 2026-10-30)', () => {
+  // The plan_0 follow-up asked whether expectedWeightCount's unconditional
+  // "+outCh" for conv is right for a bias-less conv. The engine's conv
+  // constructors take NO bias flag at all, so the probe question became:
+  // does the engine always add a per-output-channel bias, appended after
+  // the kernel weights? Minimal convs (1 in, 1 out, kernel 1) answer it
+  // with arithmetic, not docs: w=2, x=3, b=10 -> 16 iff the bias is real.
+  const convSpec = (ctor, args, input, zeroShape, weights) => ({
+    layers: [{ args, constructor: ctor }, { args: [1], constructor: 'add' }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+    ],
+    outputSlot: 3, numSlots: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, 1, 1], layout: ctor === 'conv1d' ? 'channel_first_singleton_width' : 'channel_first' },
+      { slot: 1, role: 'observation', shape: zeroShape, layout: ctor === 'conv1d' ? 'channel_first_singleton_width' : 'channel_first' },
+    ],
+    inputs: { 0: input, 1: new Array(zeroShape[1]).fill(0) },
+    weights: { 0: weights },
+  });
+  const runOut = (name, s) => {
+    const r = runTool(['bin/run.mjs', writeSpec(name, s)]);
+    assert(r.json && r.json.ok !== false, `${name}: ${r.out.slice(0, 200)}`);
+    return r.json.outputs.values;
+  };
+  assert(JSON.stringify(runOut('cvb-c1d.json', convSpec('conv1d', [0, 1, 1, 1], [3], [1, 1, 1, 1], [2, 10]))) === '[16]', 'conv1d bias');
+  assert(JSON.stringify(runOut('cvb-c2d.json', convSpec('conv2d', [0, 1, 1, 1, 1], [3], [1, 1, 1, 1], [2, 10]))) === '[16]', 'conv2d bias');
+  assert(JSON.stringify(runOut('cvb-ct2d.json', convSpec('convTranspose2d', [0, 1, 1, 1, 1], [3], [1, 1, 1, 1], [2, 10]))) === '[16]', 'convTranspose2d bias');
+  // Kernel-first-then-bias, per output channel: [w0,w1,b0,b1] on x=5
+  // gives [2*5+10, 3*5+20], not the interleaved [2*5+3, 10*5+20].
+  assert(JSON.stringify(runOut('cvb-c1d2.json', convSpec('conv1d', [0, 1, 2, 1], [5], [1, 2, 1, 1], [2, 3, 10, 20]))) === '[20,35]', 'conv1d 2ch layout');
+  // Bias-less weight vector is rejected by the engine at bind, and
+  // validate's warning names the same expected count.
+  const short = convSpec('conv1d', [0, 1, 1, 1], [3], [1, 1, 1, 1], [2]);
+  const rr = runTool(['bin/run.mjs', writeSpec('cvb-short.json', short)]);
+  assert(rr.json && rr.json.ok === false, `short weights must fail: ${rr.out.slice(0, 200)}`);
+  const rv = runTool(['bin/validate.mjs', writeSpec('cvb-short-v.json', short)]);
+  assert(rv.code === 0 && rv.json.valid === true, `short validate: ${rv.out.slice(0, 200)}`);
+  assert((rv.json.static_warnings ?? []).some((x) => x.includes('expected 2 floats, got 1')), `short warning: ${JSON.stringify(rv.json.static_warnings)}`);
+});
 test('F4: validate warns on weight/input length mismatch', () => {
   const s1 = clone(JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu-bias.json'), 'utf8')));
   s1.weights['0'] = [1, 2, 3];

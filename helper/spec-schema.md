@@ -116,6 +116,13 @@ this table; `validate` calls it, and the regression suite
 | `convTranspose2d(in_ch, out_ch, kh, kw, ...)` | `in_ch*out_ch*kh*kw + out_ch` |
 | `embedding(vocab_size, d_model)` | `vocab_size*d_model` |
 
+Conv bias is unconditional: the engine's conv constructors take no bias
+flag, and the trailing `out_ch` values are always a per-output-channel
+bias appended after the kernel weights (probed 2026-10-30: `conv1d`
+`[w=2, b=10]` on `x=3` gives `16`, and a bias-less vector is rejected
+at bind; the 2-channel case `[2, 3, 10, 20]` on `x=5` gives `[20, 35]`,
+i.e. kernel-first-then-bias, not interleaved).
+
 `validate` also warns when an `inputs` array length differs from the
 product of its port shape, and when a `weights`/`inputs` key has no
 matching layer/port. These are cross-checks against typos and truncated
