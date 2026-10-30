@@ -54,7 +54,10 @@ optimization profiling to full math verification with provenance.
   tolerances, the verdict behind `opt_compare`.
   `... --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]` generates
   cases in-process (same generator as `fuzz_cases.mjs`); conflicts with
-  a cases file; `--batch` pairs do not take it.
+  a cases file. Batch takes the same flags after the pairs file:
+  `... --batch <pairs.json> --fuzz ...` generates each pair's cases
+  from its own baseline spec; a pair with explicit cases records a
+  per-pair conflict instead of aborting the batch.
 - `node bin/checkpoint.mjs export <spec.json> | verify <bundle> <sha>`
   Export a program bundle with integrity proof (sha256), or verify a bundle's
   integrity session-free.
