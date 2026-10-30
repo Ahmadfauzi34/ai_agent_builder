@@ -15,10 +15,16 @@
 // What it does:
 //   1. Validates the engine bundle (all files the pack's tools read).
 //   2. Copies helper/{bin,lib,AGENT.md,INDEX.md,spec-schema.md,reference,
-//      examples} to <out>/ and the engine bundle to <out>/engine-audit/.
+//      references,examples} to <out>/ and the engine bundle to
+//      <out>/engine-audit/. (references/ is REQUIRED: the packed
+//      bin/ tools read ../references/ — a pack without it fails
+//      rewrite.mjs list with ENOENT and silently starts weight_lab
+//      certify from an empty repertoire. Regression: 2026-10-30.)
 //   3. Generates <out>/contracts-index/*.jsonl from the engine docs.
 //   4. Counts catalog/surface/layout entries via the packed tools.
-//   5. Smoke-runs the packed run tool on examples/linear-relu.json.
+//   5. Smoke-runs the packed run tool on examples/linear-relu.json
+//      and the packed rewrite tool's list (the guard for step 2:
+//      a pack missing references/ fails this smoke).
 //   6. Writes <out>/MANIFEST.json and refreshes helper/MANIFEST.json
 //      (same sha256 pins; helper/MANIFEST.json is what lib/wasm_direct.mjs
 //      integrity-checks, so it must be committed whenever the engine
@@ -97,7 +103,7 @@ if (!version) {
 // 2. Copy helper/ + engine bundle.
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-for (const sub of ['bin', 'lib', 'reference', 'examples']) {
+for (const sub of ['bin', 'lib', 'reference', 'references', 'examples']) {
   fs.cpSync(path.join(HELPER, sub), path.join(outDir, sub), { recursive: true });
 }
 for (const f of ['AGENT.md', 'INDEX.md', 'spec-schema.md']) {
@@ -146,6 +152,21 @@ let smokeJson = null;
 try { smokeJson = JSON.parse(smoke.stdout); } catch { /* reported below */ }
 if (smoke.status !== 0 || !smokeJson || JSON.stringify(smokeJson.outputs?.values) !== JSON.stringify([4.5, 10.5])) {
   fail(`packed smoke run failed (exit ${smoke.status}): ${smoke.stdout.slice(0, 300)} ${smoke.stderr.slice(0, 300)}`);
+}
+
+// 5b. Smoke-run the PACKED rewrite list: it reads
+// <out>/references/rewrites.v1.json, so this is the guard that the
+// references/ copy in step 2 actually happened (2026-10-30: a pack
+// built without it failed here with ENOENT, and weight_lab certify
+// silently started from an empty repertoire instead of erroring).
+const rewriteSmoke = runNode(
+  [path.join(outDir, 'bin', 'rewrite.mjs'), 'list'],
+  { BURN_WASM_PKG_DIR: path.join(outDir, 'engine-audit') },
+);
+let rewriteJson = null;
+try { rewriteJson = JSON.parse(rewriteSmoke.stdout); } catch { /* reported below */ }
+if (rewriteSmoke.status !== 0 || !rewriteJson || rewriteJson.ok !== true || !Array.isArray(rewriteJson.rewrites) || rewriteJson.rewrites.length === 0) {
+  fail(`packed rewrite list smoke failed (exit ${rewriteSmoke.status}): ${rewriteSmoke.stdout.slice(0, 300)} ${rewriteSmoke.stderr.slice(0, 300)}`);
 }
 
 // 6. MANIFESTs (same pins in both).
