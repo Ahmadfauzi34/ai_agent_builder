@@ -89,11 +89,23 @@ precision: div stays within 1 ulp of f32(true division) for normal
 values (measured 2026-10-31; pinned by the regression div probe).
 `matmul` takes `;`-separated rows (a bare comma list is one row),
 single-batch `[1,1,M,K] @ [1,1,K,N]`, output flat row-major with
-`shape: [M,N]`; int ops are not in v1. `--batch ops.json` runs N ops
+`shape: [M,N]`; `--batch ops.json` runs N ops
 (add/sub/mul/div/matmul) in one engine load from a `{"ops":[...]}`
 file; a failing op is recorded with its index and the rest still run;
 exit 0 iff every op succeeds. `engine.wasm_sha256_short`
 identifies the build that computed the result.
+
+Exact integers are a separate tool, not an arith flag:
+`node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...>` (or `matmul`
+with `;`-separated rows, single-batch). Int runs through the registry
+(`LayerRegistry.forwardIntBinary`), never the f32 graph — graph slots
+are f32 and addBinary rejects int specs by design (CP5 correction
+2026-10-31). Inputs are integer strings (full i64 range); outputs are
+decimal strings (BigInt is not JSON-serializable and Number() would
+round beyond 2^53). Overflow of the arithmetic itself wraps
+two's-complement silently in release builds (Rust native `+`/`*`);
+"never wraps" is the caller's invariant. No div (no intDiv
+constructor), no casts, no batch in v1.
 
 ## How to find things (read this, it is the whole trick)
 
