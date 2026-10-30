@@ -124,8 +124,8 @@ async function runOne(send, specFile) {
 // Direct run of one spec: same stages and record shapes as runOne,
 // but in-process. Never throws: failures become {ok:false} records so
 // the batch can continue. The scope frees reg/plan/g/bundle even when
-// the run throws; only buildGraph-mid-construction leaks (documented
-// limit of withGraphScope, shared with verify.mjs).
+// the run throws. buildGraph itself is exception-safe since 2026-10-30,
+// so a failed construction leaks nothing either.
 async function runDirectOne(rt, specFile) {
   let spec;
   try {

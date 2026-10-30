@@ -325,6 +325,43 @@ test('F4: conv bias is unconditional in the engine (probe 2026-10-30)', () => {
   assert(rv.code === 0 && rv.json.valid === true, `short validate: ${rv.out.slice(0, 200)}`);
   assert((rv.json.static_warnings ?? []).some((x) => x.includes('expected 2 floats, got 1')), `short warning: ${JSON.stringify(rv.json.static_warnings)}`);
 });
+test('buildGraph exception-safe: failure errors unchanged, later builds healthy', () => {
+  // 2026-10-30: a mid-construction throw used to leak the registry,
+  // specs, builder, and plan (+4.3MB over 200 failing builds, WASM
+  // linear memory). The fix frees the partial construction in
+  // buildGraph's catch. These cases pin the observable behavior: the
+  // three failure modes that reach buildGraph (past the runner's own
+  // host checks) must report byte-identical errors before/after, and
+  // a valid build right after the failures must still run correctly
+  // (no corrupted state). The memory proof itself lives in the
+  // build-safe battery (WASM-memory delta 0 over 200 failing builds),
+  // not here: this harness is synchronous and cannot hold initSync's
+  // memory handle.
+  const ports = [
+    { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+  ];
+  const mk = (layers, steps, outputSlot, weights) => {
+    const s = { layers, steps, outputSlot, numSlots: 5, ports, inputs: { 0: [1, 2], 1: [0, 0] } };
+    if (weights) s.weights = weights;
+    return s;
+  };
+  const direct = (name, s) => runTool(['bin/run.mjs', '--direct', writeSpec(name, s)]);
+  const lin = { constructor: 'linear', args: [0, 2, 2, true] };
+  const add = { constructor: 'add', args: [2] };
+  const r1 = direct('bs-unknown.json', mk([lin, { constructor: 'noSuch', args: [1] }, add],
+    [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'binary', layer: 2, slots: [2, 1, 3] }], 3));
+  assert(r1.json && r1.json.ok === false && r1.json.error_envelope?.code === 'unknown_layer_constructor', `unknown ctor: ${r1.out.slice(0, 200)}`);
+  const r2 = direct('bs-badstep.json', mk([lin, { constructor: 'relu', args: [1] }, add],
+    [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'unary', layer: 1, slots: [2, 3, 9] }, { kind: 'binary', layer: 2, slots: [3, 1, 4] }], 4));
+  assert(r2.json && r2.json.ok === false && r2.json.error_envelope?.code === 'invalid_argument' && r2.json.error.includes('bad step'), `bad step: ${r2.out.slice(0, 200)}`);
+  const r3 = direct('bs-weights.json', mk([lin, { constructor: 'relu', args: [1] }, add],
+    [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'binary', layer: 2, slots: [3, 1, 4] }], 4, { 1: [1] }));
+  assert(r3.json && r3.json.ok === false && r3.json.error === 'weights for layer index 1: not a weighted layer', `weights: ${r3.out.slice(0, 200)}`);
+  const ok1 = runTool(['bin/run.mjs', '--direct', 'examples/linear-relu.json']);
+  const ok2 = runTool(['bin/run.mjs', '--direct', 'examples/linear-relu.json']);
+  assert(ok1.json && ok1.json.ok === true && JSON.stringify(ok1.json.outputs) === JSON.stringify(ok2.json.outputs), `post-failure build: ${ok1.out.slice(0, 200)}`);
+});
 test('F4: validate warns on weight/input length mismatch', () => {
   const s1 = clone(JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu-bias.json'), 'utf8')));
   s1.weights['0'] = [1, 2, 3];

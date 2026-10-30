@@ -11,6 +11,12 @@ sistem cerdas & adaptif tanpa neural network.
 - `lib/weights.mjs` — builder & cek sifat (f64, host-side):
   `affineSpec(W,b,v)` (satu `linear(n,n)`+`add(n)`; W selalu row-major di
   sini, layout column-major engine hanya diterapkan di batas spec),
+  `toColumnMajor(W)` — SATU-SATUNYA tempat notasi row-major diubah ke
+  layout column-major engine (flat array untuk `weights` di spec).
+  Jangan pernah menulis layout engine dengan tangan: tulis W row-major,
+  konversi dengan fungsi ini. Batas jujur: W harus persegi (square);
+  bobot linear non-persegi belum punya konverter — susun flat
+  column-major manual dengan hati-hati dan kunci dengan `validate`.
   `spectralRadius` (power iteration), `orthonormalityError`,
   `det2`, `blendWeights`/`blendBias` (adaptasi via interpolasi),
   `weightFingerprint` (sha256 atas byte f32 W+b: "bobot mana yang live?"),

@@ -152,6 +152,11 @@ Weights (optional, column-major) are supported for `linear`, all `*Norm`
 (`batchNorm`, `groupNorm`, `instanceNorm`, `layerNorm`, `rmsNorm`), all conv
 (`conv1d`, `conv2d`, `convTranspose2d`), and `embedding` — the same set the
 engine's `setWeightsFlat` accepts. Keys are layer indices into `layers`.
+Authoring weights by hand? Write row-major math notation and convert
+with `toColumnMajor` (`lib/weights.mjs` — square matrices only; it is
+the single place row-major becomes engine layout, never hand-write
+engine layout). `affineSpec(W, b, v)` builds a complete `linear`+`add`
+spec from row-major `W`. See `references/weights.md`.
 
 ## Engine location
 

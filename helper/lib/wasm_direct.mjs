@@ -92,40 +92,62 @@ export function buildGraph(rt, spec) {
   const reg = new rt.LayerRegistry();
   const specs = [];
   const weighted = new Map();
-  for (const [li, decl] of spec.layers.entries()) {
-    if (typeof decl.constructor !== 'string' || !Object.hasOwn(rt.AgentLayerSpec, decl.constructor) || typeof rt.AgentLayerSpec[decl.constructor] !== 'function') {
-      throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
+  let b;
+  let plan;
+  // Exception-safe (2026-10-30): every WASM object created below is
+  // freed, in reverse construction order, if any step throws — before
+  // this fix a mid-construction throw leaked the registry, the layer
+  // specs, the builder, and the plan (measured: +4.3MB over 200
+  // failing builds). Teardown never masks the original error, and
+  // the success path is untouched: on success the caller owns
+  // reg/plan/g via withGraphScope as before.
+  const freeQuiet = (obj) => {
+    if (obj && typeof obj.free === 'function') {
+      try { obj.free(); } catch { /* already freed: teardown never fails */ }
     }
-    const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
-    if (typeof s !== 'object' || s === null) {
-      throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
+  };
+  try {
+    for (const [li, decl] of spec.layers.entries()) {
+      if (typeof decl.constructor !== 'string' || !Object.hasOwn(rt.AgentLayerSpec, decl.constructor) || typeof rt.AgentLayerSpec[decl.constructor] !== 'function') {
+        throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
+      }
+      const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
+      if (typeof s !== 'object' || s === null) {
+        throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
+      }
+      reg.initAgentLayer(s);
+      specs.push(s);
+      const wt = Object.hasOwn(WEIGHTED_CONSTRUCTORS, decl.constructor) ? WEIGHTED_CONSTRUCTORS[decl.constructor] : null;
+      if (wt) weighted.set(li, { registryId: decl.args[0], type: LAYER_TYPE[wt] });
     }
-    reg.initAgentLayer(s);
-    specs.push(s);
-    const wt = Object.hasOwn(WEIGHTED_CONSTRUCTORS, decl.constructor) ? WEIGHTED_CONSTRUCTORS[decl.constructor] : null;
-    if (wt) weighted.set(li, { registryId: decl.args[0], type: LAYER_TYPE[wt] });
+    b = new rt.AgentGraphBuilder(spec.numSlots);
+    for (const step of spec.steps) {
+      const s = specs[step.layer];
+      if (!s) throw codedError('invalid_argument', 'buildGraph', `step references missing layer index ${step.layer}`);
+      const slots = step.slots;
+      if (step.kind === 'unary' && slots.length === 2) b.addUnary(s, slots[0], slots[1]);
+      else if (step.kind === 'binary' && slots.length === 3) b.addBinary(s, slots[0], slots[1], slots[2]);
+      else throw codedError('invalid_argument', 'buildGraph', `bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
+    }
+    b.setOutput(spec.outputSlot);
+    plan = new rt.MultiInputGraphPlan(b);
+    for (const p of spec.ports) {
+      plan.addInputPort(p.slot, p.role, ...p.shape, p.layout, false, 0n);
+    }
+    for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
+      const w = weighted.get(Number(indexStr));
+      if (!w) throw codedError('invalid_argument', 'buildGraph', `weights for layer index ${indexStr}: not a weighted layer`);
+      reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
+    }
+    const g = reg.compileMultiInputGraph(plan);
+    return { reg, plan, g };
+  } catch (e) {
+    freeQuiet(plan);
+    freeQuiet(b);
+    for (let i = specs.length - 1; i >= 0; i--) freeQuiet(specs[i]);
+    freeQuiet(reg);
+    throw e;
   }
-  const b = new rt.AgentGraphBuilder(spec.numSlots);
-  for (const step of spec.steps) {
-    const s = specs[step.layer];
-    if (!s) throw codedError('invalid_argument', 'buildGraph', `step references missing layer index ${step.layer}`);
-    const slots = step.slots;
-    if (step.kind === 'unary' && slots.length === 2) b.addUnary(s, slots[0], slots[1]);
-    else if (step.kind === 'binary' && slots.length === 3) b.addBinary(s, slots[0], slots[1], slots[2]);
-    else throw codedError('invalid_argument', 'buildGraph', `bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
-  }
-  b.setOutput(spec.outputSlot);
-  const plan = new rt.MultiInputGraphPlan(b);
-  for (const p of spec.ports) {
-    plan.addInputPort(p.slot, p.role, ...p.shape, p.layout, false, 0n);
-  }
-  for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
-    const w = weighted.get(Number(indexStr));
-    if (!w) throw codedError('invalid_argument', 'buildGraph', `weights for layer index ${indexStr}: not a weighted layer`);
-    reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
-  }
-  const g = reg.compileMultiInputGraph(plan);
-  return { reg, plan, g };
 }
 
 export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
@@ -168,11 +190,9 @@ export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
 //     return values;
 //   }); // reg, plan, g, b are freed here, even on throw
 //
-// Known limit (pre-existing, shared with verify.mjs): if buildGraph
-// itself throws mid-construction (e.g. an unknown constructor after
-// some layers were initialized), the partially built registry has no
-// handle to free. Making buildGraph exception-safe is a separate
-// follow-up; this scope covers everything buildGraph returns.
+// buildGraph itself is exception-safe (2026-10-30): a mid-construction
+// throw frees the partial registry, specs, builder, and plan inside
+// buildGraph, so this scope only ever covers what buildGraph returns.
 export async function withGraphScope(rt, spec, fn) {
   const owned = [];
   const track = (obj) => {
