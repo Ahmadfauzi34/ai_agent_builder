@@ -33,6 +33,9 @@ optimization profiling to full math verification with provenance.
 - `node bin/validate.mjs <spec.json>` — session-free plan check: validates the
   spec structure (ports, steps, dataflow) without creating a session. Exit 0
   when valid, 2 with structured remediation hints when not.
+  `node bin/validate.mjs --explain <spec.json>` prints the slot-by-slot map
+  (shapes, layouts, params per layer, tensor bytes) for a valid spec; an
+  invalid spec fails with the same JSON as plain validate.
 - `node bin/run.mjs <spec.json>` — validate → create → setWeights → bind → run,
   one shot. Prints outputs + execution gate + host provenance.
 - `node bin/verify.mjs <baseline.json> <candidate.json> [cases.json]`
