@@ -34,8 +34,12 @@ optimization profiling to full math verification with provenance.
   spec structure (ports, steps, dataflow) without creating a session. Exit 0
   when valid, 2 with structured remediation hints when not.
   `node bin/validate.mjs --explain <spec.json>` prints the slot-by-slot map
-  (shapes, layouts, params per layer, tensor bytes) for a valid spec; an
-  invalid spec fails with the same JSON as plain validate.
+  (shapes, layouts, params per layer, tensor bytes) for a valid spec, plus
+  a `liveness` block: live-before-step sets and peak live bytes (usually
+  smaller than the static footprint; a runtime that frees dead outputs
+  promptly needs the peak, not the footprint), with a lower-bound flag
+  when a slot with unknown bytes is ever live. An invalid spec fails
+  with the same JSON as plain validate.
 - `node bin/run.mjs <spec.json>` — validate → create → setWeights → bind → run,
   one shot. Prints outputs + execution gate + host provenance.
   `node bin/run.mjs --direct <spec.json>` — same engine, same values,
