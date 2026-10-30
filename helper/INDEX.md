@@ -8,6 +8,10 @@ This page is a map, not a manual: find your question, follow the link.
 
 - Run a computation -> `node bin/run.mjs <spec.json>`
   (spec format: `spec-schema.md`; first try `examples/linear-relu.json`).
+- Do arithmetic without writing a spec ->
+  `node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
+  (elementwise vectors; `div` is mul by reciprocal, division by zero
+  is an error; matmul and int ops are not in v1).
 - Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->

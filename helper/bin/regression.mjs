@@ -416,6 +416,32 @@ test('REG-01: all 14 formerly rule-less constructors now have shape rules', () =
     assert(typeof ruleFor(c) === 'function', `${c} has no shape rule`);
   }
 });
+test('arith: elementwise ops through the engine, clean errors', () => {
+  // Increment 1 of arithmetic ease (2026-10-30): the tool must print
+  // ENGINE output, not host arithmetic — so the test asserts the
+  // values the engine computed, plus the four clean-error shapes.
+  const run = (args) => runTool(['bin/arith.mjs', ...args]);
+  const vals = (args) => {
+    const r = run(args);
+    assert(r.code === 0 && r.json && r.json.ok === true, `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    return r.json.values;
+  };
+  assert(JSON.stringify(vals(['add', '3,4', '5,6'])) === '[8,10]', 'add');
+  assert(JSON.stringify(vals(['sub', '10,3', '4,9'])) === '[6,-6]', 'sub');
+  assert(JSON.stringify(vals(['mul', '3,4', '5,6'])) === '[15,24]', 'mul');
+  assert(JSON.stringify(vals(['div', '12,20', '4,5'])) === '[3,4]', 'div via reciprocal');
+  assert(JSON.stringify(vals(['add', '1', '2'])) === '[3]', 'scalar');
+  const errs = [
+    [['div', '1,2', '1,0'], 'division by zero at index 1'],
+    [['add', '1,2', '3'], 'length mismatch'],
+    [['pow', '2', '3'], 'usage:'],
+    [['add', 'a,b', '1,2'], 'not a finite number'],
+  ];
+  for (const [args, want] of errs) {
+    const r = run(args);
+    assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+  }
+});
 test('catalog surface: find-op --list 48, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
   assert(f.code === 0 && f.out.trim().split('\n').length === 48, `find-op list: ${f.out.trim().split('\n').length} lines`);
