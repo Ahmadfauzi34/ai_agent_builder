@@ -1,23 +1,30 @@
 #!/usr/bin/env node
 // burn-math validate: static + engine plan check. No session is created.
 // Usage: node validate.mjs <spec.json>
+//        node validate.mjs --explain <spec.json>
 // Exit 0 + valid:true when layers 1 and 2 pass; exit 2 otherwise, with
 // the failing layer's structured detail printed as JSON.
+// --explain prints the slot-by-slot map (shapes, layouts, params per
+// layer, tensor bytes) instead of the plan result — but only for a spec
+// that passes validation; an invalid spec fails with the same JSON as
+// plain validate, never with a half-meaningful map.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { printJsonAndExit, failCli } from '../lib/runner.mjs';
 import { loadSpec, checkArgValues, analyzePlanPorts, expectedWeightCount } from '../lib/spec.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
+import { propagateLayouts, explainSpec } from '../lib/explain.mjs';
 import { verifyEngineIntegritySync } from '../lib/wasm_direct.mjs';
 import { catalogPath, layoutContractsPath } from '../lib/engine.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const args = process.argv.slice(2);
-const [specFile] = args;
-if (!specFile || args.includes('--help') || args.includes('-h')) {
-  console.error('usage: node validate.mjs <spec.json>');
+const explain = args[0] === '--explain';
+const [specFile] = explain ? args.slice(1) : args;
+if (!specFile || (explain && args.length !== 2) || args.includes('--help') || args.includes('-h')) {
+  console.error('usage: node validate.mjs <spec.json> | node validate.mjs --explain <spec.json>');
   process.exit(2);
 }
 
@@ -88,11 +95,15 @@ function isRoleValid(role) {
 
 const staticWarnings = [...checked.warnings];
 const portMap = new Map();
-const slotLayouts = new Map();
+// Single layout producer (lib/explain.mjs): the final map is also the
+// map at every step, because propagation is forward-only and inputs
+// are ports or earlier outputs (dataflow already passed above).
+const layoutCtors = layoutDoc?.constructors ?? {};
+const layoutCompat = layoutDoc?.compatibility ?? {};
+const slotLayouts = propagateLayouts(spec, layoutCtors);
 for (const p of spec.ports) {
   if (!p || typeof p !== 'object') continue;
   portMap.set(p.slot, p);
-  slotLayouts.set(p.slot, p.layout);
   if (!isRoleValid(p.role)) {
     staticWarnings.push(`port slot ${p.slot}: unknown or invalid role '${p.role}' (invalid_enum at create)`);
   }
@@ -104,8 +115,6 @@ for (const p of spec.ports) {
 }
 
 // Check int* constructors and layout propagation compatibility
-const layoutCtors = layoutDoc?.constructors ?? {};
-const layoutCompat = layoutDoc?.compatibility ?? {};
 spec.steps.forEach((st, si) => {
   const decl = spec.layers[st.layer];
   if (!decl) return;
@@ -116,7 +125,6 @@ spec.steps.forEach((st, si) => {
   const lc = Object.hasOwn(layoutCtors, ctor) ? layoutCtors[ctor] : null;
   if (!lc) return;
   const inSlots = st.kind === 'binary' ? st.slots.slice(0, 2) : st.slots.slice(0, 1);
-  const outSlot = st.slots[st.slots.length - 1];
   for (const s of inSlots) {
     const srcLayout = slotLayouts.get(s);
     if (srcLayout && Object.hasOwn(layoutCompat, srcLayout) && lc.input !== 'any_rank4' && lc.input !== 'dynamic') {
@@ -127,11 +135,8 @@ spec.steps.forEach((st, si) => {
       }
     }
   }
-  if (lc.output === 'preserve_input') {
-    slotLayouts.set(outSlot, slotLayouts.get(inSlots[0]) ?? 'unknown');
-  } else {
-    slotLayouts.set(outSlot, lc.output);
-  }
+  // Output layouts already in slotLayouts (propagateLayouts above);
+  // this loop only emits compatibility warnings, never mutates.
 });
 
 for (const [layerIdxStr, values] of Object.entries(spec.weights ?? {})) {
@@ -174,5 +179,8 @@ if (!result.valid) {
     consumed_ports: result.consumed_ports, unused_ports: result.unused_ports,
     remediation_hint: 'declare at least 2 external ports and make every declared port consumed by a step',
   }, 2);
+}
+if (explain) {
+  printJsonAndExit(explainSpec(spec, checked, layoutCtors), 0);
 }
 printJsonAndExit({ ok: true, ...result, ...(staticWarnings.length ? { static_warnings: staticWarnings } : {}) }, 0);
