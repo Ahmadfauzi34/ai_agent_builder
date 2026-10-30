@@ -150,3 +150,63 @@ export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
   }
   return bundle;
 }
+
+// Scope arena for a whole graph (mirror of withTensorScope in engine.mjs,
+// one level up: registry + plan + compiled graph + bundles).
+//
+// buildGraph's products live on the WASM heap; forgetting .free() leaks
+// memory that no JS GC will reclaim. withGraphScope builds the graph,
+// runs fn({reg, plan, g, bundle, track, release}), then .free()s every
+// tracked object in LIFO order when fn settles — including when fn
+// throws. Teardown never masks fn's error.
+//
+//   const values = await withGraphScope(rt, spec, async ({ g, reg, bundle }) => {
+//     const b = bundle(spec.inputs, portBySlot(spec));
+//     const out = g.run(reg, b);
+//     const values = Array.from(out.to_array());
+//     out.free();
+//     return values;
+//   }); // reg, plan, g, b are freed here, even on throw
+//
+// Known limit (pre-existing, shared with verify.mjs): if buildGraph
+// itself throws mid-construction (e.g. an unknown constructor after
+// some layers were initialized), the partially built registry has no
+// handle to free. Making buildGraph exception-safe is a separate
+// follow-up; this scope covers everything buildGraph returns.
+export async function withGraphScope(rt, spec, fn) {
+  const owned = [];
+  const track = (obj) => {
+    if (obj && typeof obj.free === 'function') owned.push(obj);
+    return obj;
+  };
+  const release = (obj) => {
+    const i = owned.lastIndexOf(obj);
+    if (i >= 0) owned.splice(i, 1);
+    return obj;
+  };
+  const { reg, plan, g } = buildGraph(rt, spec);
+  track(reg);
+  track(plan);
+  track(g);
+  try {
+    return await fn({
+      reg,
+      plan,
+      g,
+      bundle: (inputs, ports) => track(makeBundle(rt, plan, inputs, ports)),
+      track,
+      release,
+      get size() {
+        return owned.length;
+      },
+    });
+  } finally {
+    for (let i = owned.length - 1; i >= 0; i--) {
+      try {
+        owned[i].free();
+      } catch {
+        // Already freed manually, or never fully constructed: never fail teardown.
+      }
+    }
+  }
+}

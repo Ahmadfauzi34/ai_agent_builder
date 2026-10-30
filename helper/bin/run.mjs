@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // burn-math run: validate -> create -> setWeights -> bind -> run, one shot.
-// Usage: node run.mjs <spec.json> [<spec2.json> ...]
+// Usage: node run.mjs [--direct] <spec.json> [<spec2.json> ...]
 //   One spec  -> prints the single result object (legacy shape, unchanged).
 //   N specs   -> ONE runner process handles all N (batch mode, #6 option B):
 //                prints [{spec, ...result}, ...]. A failing spec records
@@ -16,15 +16,33 @@
 // fresh layers/proofs/handoffs). The runner process holds no other mutable
 // global state, so batch item N cannot observe item N-1. Proven by the
 // batch-isolation check: batch [A, B] outputs == standalone A, B outputs.
+//
+// --direct: same engine, same values, in-process — no child process, no
+// IPC round-trips, no ingress session. loadWasm once, then one fresh
+// buildGraph per spec inside its own withGraphScope arena (freed even
+// on throw), so batch isolation holds in-process too. Measured
+// (linear-relu, this machine): single ~3-4x faster than the runner path,
+// batch of 10 ~8x; steady-state per-spec ~1ms once wasm is warm.
+// TRADE-OFF (explicit, not hidden): --direct produces NO execution_gate
+// or host_provenance — those are ingress-session artifacts (proofs,
+// ledger, receipts). Its records keep the same keys with null plus
+// mode:'direct', so consumers never receive a fake gate.
 import { startRunner, unwrap, printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
-import { loadSpec, planFragment, portBySlot, checkArgValues } from '../lib/spec.mjs';
+import { loadSpec, planFragment, portBySlot, checkArgValues, analyzePlanPorts } from '../lib/spec.mjs';
+import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
 
-const specFiles = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
 // REG-08: --help/-h in ANY position is usage, never a run (a spec file
 // literally named --help does not exist; the old code tried to load it
 // and exited 1, which looked like a tool failure, not usage).
-if (!specFiles.length || specFiles.includes('--help') || specFiles.includes('-h')) {
-  console.error('usage: node run.mjs <spec.json> [<spec2.json> ...]');
+if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node run.mjs [--direct] <spec.json> [<spec2.json> ...]');
+  process.exit(2);
+}
+const direct = rawArgs.includes('--direct');
+const specFiles = rawArgs.filter((a) => a !== '--direct');
+if (!specFiles.length) {
+  console.error('usage: node run.mjs [--direct] <spec.json> [<spec2.json> ...]');
   process.exit(2);
 }
 
@@ -103,16 +121,82 @@ async function runOne(send, specFile) {
   }
 }
 
-const { send, stop } = startRunner();
-async function shutdown() { try { await stop(); } catch { /* ignore */ } }
-
-const results = [];
-try {
-  for (const f of specFiles) {
-    results.push(await runOne(send, f));
+// Direct run of one spec: same stages and record shapes as runOne,
+// but in-process. Never throws: failures become {ok:false} records so
+// the batch can continue. The scope frees reg/plan/g/bundle even when
+// the run throws; only buildGraph-mid-construction leaks (documented
+// limit of withGraphScope, shared with verify.mjs).
+async function runDirectOne(rt, specFile) {
+  let spec;
+  try {
+    spec = loadSpec(specFile);
+  } catch (e) {
+    return { ok: false, stage: 'loadSpec', error: e.message, error_envelope: null };
   }
-} finally {
-  await shutdown();
+  const argIssues = checkArgValues(spec);
+  if (argIssues.length) {
+    return { ok: false, stage: 'argValues', code: 'invalid_argument', issues: argIssues, error_envelope: null };
+  }
+  const plan = analyzePlanPorts(spec);
+  if (!plan.valid) {
+    return { ok: false, stage: 'validatePlan', ...plan, error_envelope: null };
+  }
+  // Phase is tracked by hand: bundle creation (bind) vs graph run.
+  // Raw wasm throws carry neither code nor phase; the runner wraps
+  // those as internal_error, so direct does the same — the phase is
+  // the step we were actually in, never invented detail.
+  let phase = 'bind';
+  try {
+    const outputs = await withGraphScope(rt, spec, async ({ g, reg, bundle }) => {
+      const b = bundle(spec.inputs, portBySlot(spec));
+      phase = 'run';
+      const out = g.run(reg, b);
+      const values = Array.from(out.to_array());
+      const shape = Array.from(out.shape());
+      out.free();
+      return { shape, values };
+    });
+    return {
+      ok: true,
+      outputs,
+      mode: 'direct',
+      execution_gate: null,
+      ready: null,
+      host_provenance: null,
+    };
+  } catch (e) {
+    const envelope = {
+      code: e.code ?? 'internal_error',
+      phase: e.phase ?? phase,
+      message: e.message,
+    };
+    return { ok: false, stage: 'run', error: e.message, error_envelope: envelope };
+  }
+}
+
+let results;
+if (direct) {
+  let rt;
+  try {
+    rt = await loadWasm();
+  } catch (e) {
+    failCli(e instanceof Error ? e.message : String(e));
+  }
+  results = [];
+  for (const f of specFiles) {
+    results.push(await runDirectOne(rt, f));
+  }
+} else {
+  const { send, stop } = startRunner();
+  async function shutdown() { try { await stop(); } catch { /* ignore */ } }
+  results = [];
+  try {
+    for (const f of specFiles) {
+      results.push(await runOne(send, f));
+    }
+  } finally {
+    await shutdown();
+  }
 }
 
 // Drain-safe prints use the shared looped-sync printJsonAndExit from
