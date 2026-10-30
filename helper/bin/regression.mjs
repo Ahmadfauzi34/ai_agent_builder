@@ -431,11 +431,29 @@ test('arith: elementwise ops through the engine, clean errors', () => {
   assert(JSON.stringify(vals(['mul', '3,4', '5,6'])) === '[15,24]', 'mul');
   assert(JSON.stringify(vals(['div', '12,20', '4,5'])) === '[3,4]', 'div via reciprocal');
   assert(JSON.stringify(vals(['add', '1', '2'])) === '[3]', 'scalar');
+  // Increment 2 fixes (2026-10-31 audit): length-1 broadcast, accurate
+  // subnormal message, engine provenance in output.
+  const full = (args) => {
+    const r = run(args);
+    assert(r.code === 0 && r.json && r.json.ok === true, `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    return r.json;
+  };
+  const bc1 = full(['add', '1,2,3', '10']);
+  assert(JSON.stringify(bc1.values) === '[11,12,13]' && bc1.broadcast === 'b', 'broadcast b');
+  assert(JSON.stringify(bc1.b) === '[10,10,10]', 'broadcast echoes effective b');
+  const bc2 = full(['mul', '2', '3,4']);
+  assert(JSON.stringify(bc2.values) === '[6,8]' && bc2.broadcast === 'a', 'broadcast a');
+  const bc3 = full(['div', '10,20', '2']);
+  assert(JSON.stringify(bc3.values) === '[5,10]' && bc3.broadcast === 'b' && JSON.stringify(bc3.b) === '[2,2]', 'broadcast + div echoes pre-reciprocal b');
+  const bc0 = full(['add', '3,4', '5,6']);
+  assert(bc0.broadcast === null, 'no broadcast when lengths match');
+  assert(typeof bc0.engine?.wasm_sha256_short === 'string' && bc0.engine.wasm_sha256_short.length === 16 && bc0.engine.mode === 'direct', 'provenance fields');
   const errs = [
     [['div', '1,2', '1,0'], 'division by zero at index 1'],
-    [['add', '1,2', '3'], 'length mismatch'],
+    [['add', '1,2', '3,4,5'], 'length mismatch'],
     [['pow', '2', '3'], 'usage:'],
     [['add', 'a,b', '1,2'], 'not a finite number'],
+    [['div', '1e-320', '1e-320'], 'divisor underflow at index 0'],
   ];
   for (const [args, want] of errs) {
     const r = run(args);

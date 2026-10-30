@@ -77,6 +77,17 @@ not work around a failed selftest by adjusting the spec.
    runs the bundle's program, not the spec's graph — the spec supplies only
    inputs/ports. Bundles must be canonical base64 (same rule as verify).
 
+## Arithmetic without a spec
+
+For one-off arithmetic, do not hand-write a spec JSON:
+`node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
+prints engine output (`{ok, op, a, b, broadcast, engine, values}`).
+A length-1 vector broadcasts to the other's length; anything else must
+match exactly. `div` is mul by the host-computed reciprocal (division
+by zero and subnormal-divisor underflow are clean errors, exit 2);
+`matmul` and int ops are not in v1. `engine.wasm_sha256_short`
+identifies the build that computed the result.
+
 ## How to find things (read this, it is the whole trick)
 
 Do NOT open anything under `engine-audit/`. That directory is the
