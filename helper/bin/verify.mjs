@@ -2,11 +2,15 @@
 // burn-math verify: baseline-vs-candidate GRAPH verification (WASM-direct).
 // Usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol]
 //        node verify.mjs <baseline.json> <candidate.json> --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H] [absTol] [relTol]
-//        node verify.mjs --batch <pairs.json>
+//        node verify.mjs --batch <pairs.json> [--fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]]
 // --fuzz generates its cases in-process via lib/fuzz.mjs (the same
 // generator as fuzz_cases.mjs): golden + 6 boundary + N seeded-random
 // cases, with discrete (embedding-id) ports clamped to [0, vocab).
-// --fuzz conflicts with a cases file. --batch pairs do not take --fuzz.
+// --fuzz conflicts with a cases file. In batch mode the conflict is a
+// per-pair {ok:false} record (the batch continues); a pair without
+// explicit cases gets its cases generated from its own baseline spec,
+// with the same global fuzz options, and its result gains the same
+// `fuzz` key as single mode. Tolerances stay per-pair.
 import { loadWasm, buildGraph, makeBundle } from '../lib/wasm_direct.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { generateCases } from '../lib/fuzz.mjs';
@@ -52,7 +56,7 @@ function toTolerance(value, name) {
   return n;
 }
 
-function verifyOne(rt, pair) {
+function verifyOne(rt, pair, fuzz = null) {
   const { baseline: baseFile, candidate: candFile } = pair;
   let base = null, cand = null, vc = null;
   try {
@@ -60,7 +64,22 @@ function verifyOne(rt, pair) {
     const relTol = toTolerance(pair.relTol, 'relTol');
     const baseSpec = loadOrTag(baseFile);
     const candSpec = loadOrTag(candFile);
-    const cases = loadCasesOrTag(pair.cases, baseSpec);
+    // Batch --fuzz: a pair with explicit cases conflicts (per-pair
+    // record, batch continues); otherwise cases come from this pair's
+    // own baseline spec. Generation happens before any engine object
+    // is built, so a generation failure is a clean pair record.
+    let cases;
+    let fuzzOut = null;
+    if (fuzz) {
+      if (pair.cases !== undefined && pair.cases !== null && pair.cases !== '') {
+        throw new Error('cannot combine --fuzz with cases');
+      }
+      const gen = generateCases(baseSpec, fuzz);
+      cases = gen.cases;
+      fuzzOut = { seed: gen.meta.seed, count: fuzz.count, cases: cases.length, discrete_ports: gen.meta.discrete_ports };
+    } else {
+      cases = loadCasesOrTag(pair.cases, baseSpec);
+    }
 
     base = buildGraph(rt, baseSpec);
     cand = buildGraph(rt, candSpec);
@@ -82,6 +101,7 @@ function verifyOne(rt, pair) {
       relTol,
       case_details: result.cases,
       verdict: result.equivalent ? 'ACCEPT' : 'REJECT',
+      ...(fuzzOut ? { fuzz: fuzzOut } : {}),
     };
   } catch (e) {
     const out = { ok: false, error: e instanceof Error ? e.message : String(e) };
@@ -97,15 +117,42 @@ function verifyOne(rt, pair) {
 
 const argv = process.argv.slice(2);
 if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
-  console.error('usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol] | node verify.mjs <baseline.json> <candidate.json> --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H] [absTol] [relTol] | node verify.mjs --batch <pairs.json>');
+  console.error('usage: node verify.mjs <baseline.json> <candidate.json> [cases.json] [absTol] [relTol] | node verify.mjs <baseline.json> <candidate.json> --fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H] [absTol] [relTol] | node verify.mjs --batch <pairs.json> [--fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]]');
   process.exit(2);
 }
 
 if (argv[0] === '--batch') {
   const pairsFile = argv[1];
-  if (!pairsFile) {
-    console.error('usage: node verify.mjs --batch <pairs.json>');
+  if (!pairsFile || pairsFile.startsWith('--')) {
+    console.error('usage: node verify.mjs --batch <pairs.json> [--fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]]');
     process.exit(2);
+  }
+  // Batch fuzz flags come ONLY after the pairs file (same grammar as
+  // single mode: bare integer after --fuzz is its count). Anything
+  // else after the pairs file is usage, never silently ignored.
+  let fuzz = null;
+  const rest = argv.slice(2);
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    const needFuzz = () => (fuzz ??= { count: 8, seed: 42, lo: -2, hi: 2 });
+    if (a === '--fuzz') {
+      needFuzz();
+      const nxt = rest[i + 1];
+      if (nxt !== undefined && /^\d+$/.test(nxt)) { fuzz.count = Number(nxt); i++; }
+    }
+    else if (a === '--fuzz-seed') needFuzz().seed = Number(rest[++i]);
+    else if (a === '--fuzz-lo') needFuzz().lo = Number(rest[++i]);
+    else if (a === '--fuzz-hi') needFuzz().hi = Number(rest[++i]);
+    else {
+      console.error('usage: node verify.mjs --batch <pairs.json> [--fuzz [N] [--fuzz-seed S] [--fuzz-lo L] [--fuzz-hi H]]');
+      process.exit(2);
+    }
+  }
+  if (fuzz) {
+    if (!Number.isInteger(fuzz.seed) || !Number.isInteger(fuzz.count) || fuzz.count < 0)
+      printJsonAndExit({ ok: false, error: '--fuzz-seed and --fuzz count must be integers, count >= 0' }, 2);
+    if (!Number.isFinite(fuzz.lo) || !Number.isFinite(fuzz.hi))
+      printJsonAndExit({ ok: false, error: '--fuzz-lo and --fuzz-hi must be finite numbers' }, 2);
   }
   let pairs;
   try {
@@ -123,7 +170,7 @@ if (argv[0] === '--batch') {
   }
   const results = pairs.map((p) => ({
     pair: { baseline: p?.baseline, candidate: p?.candidate },
-    ...verifyOne(rt, p ?? {}),
+    ...verifyOne(rt, p ?? {}, fuzz),
   }));
   const allOk = results.every((r) => r.ok && r.equivalent);
   printJsonAndExit(results, allOk ? 0 : 2);
