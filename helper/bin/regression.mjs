@@ -448,6 +448,23 @@ test('arith: elementwise ops through the engine, clean errors', () => {
   const bc0 = full(['add', '3,4', '5,6']);
   assert(bc0.broadcast === null, 'no broadcast when lengths match');
   assert(typeof bc0.engine?.wasm_sha256_short === 'string' && bc0.engine.wasm_sha256_short.length === 16 && bc0.engine.mode === 'direct', 'provenance fields');
+  // Matmul (2026-10-31, probe CP1 VERDICT-A): single-batch row-major.
+  const mm = (a, b) => full(['matmul', a, b]);
+  const mm1 = mm('1,2,3;4,5,6', '7,8;9,10;11,12');
+  assert(JSON.stringify(mm1.values) === '[58,64,139,154]' && JSON.stringify(mm1.shape) === '[2,2]' && mm1.broadcast === null, 'matmul 2x3@3x2');
+  assert(JSON.stringify(mm1.a) === '[[1,2,3],[4,5,6]]', 'matmul echoes row arrays');
+  const mm2 = mm('1,2,3', '4;5;6');
+  assert(JSON.stringify(mm2.values) === '[32]' && JSON.stringify(mm2.shape) === '[1,1]', 'matmul bare lists 1x3@3x1');
+  const mm3 = mm('1;2;3', '4,5,6');
+  assert(JSON.stringify(mm3.values) === '[4,5,6,8,10,12,12,15,18]' && JSON.stringify(mm3.shape) === '[3,3]', 'matmul outer 3x1@1x3');
+  for (const [args, want] of [
+    [['matmul', '1,2,3;4,5,6', '7,8;9,10'], 'matmul shape mismatch'],
+    [['matmul', '1,2;3', '4,5;6,7'], 'non-rectangular'],
+    [['matmul', '1,x', '2'], 'not a finite number'],
+  ]) {
+    const r = run(args);
+    assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+  }
   const errs = [
     [['div', '1,2', '1,0'], 'division by zero at index 1'],
     [['add', '1,2', '3,4,5'], 'length mismatch'],

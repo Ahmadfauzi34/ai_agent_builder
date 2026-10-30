@@ -84,8 +84,10 @@ For one-off arithmetic, do not hand-write a spec JSON:
 prints engine output (`{ok, op, a, b, broadcast, engine, values}`).
 A length-1 vector broadcasts to the other's length; anything else must
 match exactly. `div` is mul by the host-computed reciprocal (division
-by zero and subnormal-divisor underflow are clean errors, exit 2);
-`matmul` and int ops are not in v1. `engine.wasm_sha256_short`
+by zero and subnormal-divisor underflow are clean errors, exit 2).
+`matmul` takes `;`-separated rows (a bare comma list is one row),
+single-batch `[1,1,M,K] @ [1,1,K,N]`, output flat row-major with
+`shape: [M,N]`; int ops are not in v1. `engine.wasm_sha256_short`
 identifies the build that computed the result.
 
 ## How to find things (read this, it is the whole trick)

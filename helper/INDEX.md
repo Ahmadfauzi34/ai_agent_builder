@@ -11,7 +11,8 @@ This page is a map, not a manual: find your question, follow the link.
 - Do arithmetic without writing a spec ->
   `node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
   (elementwise vectors, length-1 broadcasts; `div` is mul by reciprocal,
-  division by zero is an error; matmul and int ops are not in v1).
+  division by zero is an error; `matmul` takes `;`-separated rows,
+  single-batch; int ops are not in v1).
 - Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->
