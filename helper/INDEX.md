@@ -51,10 +51,11 @@ This page is a map, not a manual: find your question, follow the link.
   yourself opening a file there, stop and use `find-op` or `surface`
   instead. Exception (see `AGENT.md`): a contract file under
   `engine-audit/docs/` that a `reference/` page names explicitly.
-- `lib/` — implementation of the tools (only the modules the tools
-  actually import: runner, spec, wasm_direct, shapecore, shapes).
+- `lib/` — implementation of the tools (21 modules).
   You run the tools; you do not need to read their code to use
   the pack.
-- `builder/` — the script that regenerates `contracts-index/` and
-  `MANIFEST.json` from `engine-audit/`. Relevant only if you rebuild
-  the pack for a new engine build.
+- Pack generation — the pack is built by the repo's
+  `scripts/build_agent_pack.mjs` (not part of the pack itself).
+  It regenerates `contracts-index/` and `MANIFEST.json` from
+  `engine-audit/`. Relevant only if you rebuild the pack for a
+  new engine build.
