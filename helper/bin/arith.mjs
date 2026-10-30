@@ -5,6 +5,8 @@
 //   node bin/arith.mjs sub 10,3 4,9        -> {"ok":true,"op":"sub","values":[6,-6]}
 //   node bin/arith.mjs mul 3,4 5,6         -> {"ok":true,"op":"mul","values":[15,24]}
 //   node bin/arith.mjs div 12,20 4,5       -> {"ok":true,"op":"div","values":[3,4]}
+//   node bin/arith.mjs matmul "1,2,3;4,5,6" "7,8;9,10;11,12"
+//        -> {"ok":true,"op":"matmul","shape":[2,2],"values":[58,64,139,154]}
 //
 // Why this tool exists: the engine already does arithmetic (add, sub,
 // mul are layer constructors), but using them meant hand-writing a
@@ -15,11 +17,13 @@
 // not host-side JavaScript arithmetic.
 //
 // Honest limits (v1, deliberate):
-// - Elementwise vectors only. `matmul` is NOT included: its layout
-//   contract is dynamic ("last-two-axis batched matmul") and its
-//   port-shape semantics are unprobed — including it unverified
-//   would break the measured-not-claimed rule. It is increment 2,
-//   after a contract probe.
+// - Elementwise vectors only, except `matmul`: matrices are rows
+//   separated by `;` (a bare comma list is one row), single-batch
+//   `[1,1,M,K] @ [1,1,K,N] -> [1,1,M,N]` row-major with `any_rank4`
+//   ports (contract probe 2026-10-31, VERDICT-A). No batch axes in
+//   v1: the engine rejects mismatched batches, it never broadcasts
+//   them. Output `values` are flat row-major MxN with `shape: [M,N]`;
+//   `a`/`b` echo as row arrays.
 // - No integer ops: intAdd/intSub/intMul live in the i64 graph
 //   family and are rejected by the f32 run path ("spec is not
 //   binary"). This tool is f32.
@@ -34,7 +38,9 @@
 //   broadcasts to the other's length (reported in `broadcast`).
 // - Output is the flat value vector; shapes are [1, n, 1, 1]
 //   (feature_axis1_singleton), the same vector convention the
-//   specs use. `a`/`b` echo the effective (post-broadcast,
+//   specs use — except matmul, whose values are flat row-major MxN
+//   with `shape: [M,N]` and `a`/`b` echoed as row arrays.
+//   `a`/`b` echo the effective (post-broadcast,
 //   pre-reciprocal) inputs; `engine` carries the wasm pin short
 //   + mode so results are attributable to a build. Exit 0 on
 //   success, 2 on usage/computation errors.
@@ -59,9 +65,10 @@ function engineProvenance() {
 }
 
 const OPS = { add: 'add', sub: 'sub', mul: 'mul', div: 'mul' };
+const USAGE = 'usage: node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...> OR matmul <a11,a12;...a21,...> <b11,b12;...b21,...>';
 
 function parseVector(text, name) {
-  if (text === undefined || text === '') throw new Error(`usage: node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`);
+  if (text === undefined || text === '') throw new Error(USAGE);
   const values = text.split(',').map((t) => {
     const v = Number(t.trim());
     if (t.trim() === '' || !Number.isFinite(v)) throw new Error(`${name}: not a finite number: ${JSON.stringify(t)}`);
@@ -71,10 +78,60 @@ function parseVector(text, name) {
   return values;
 }
 
+async function runMatmul(aText, bText) {
+  // Single-batch v1 (probe CP1): [1,1,M,K] @ [1,1,K,N], row-major,
+  // any_rank4 ports. No batch broadcast: the engine rejects mismatched
+  // batches instead of broadcasting them, and v1 never builds one.
+  const A = parseMatrix(aText, 'a');
+  const B = parseMatrix(bText, 'b');
+  const M = A.length, K = A[0].length, K2 = B.length, N = B[0].length;
+  if (K !== K2) throw new Error(`matmul shape mismatch: a is ${M}x${K}, b is ${K2}x${N} (inner dimensions must match)`);
+  const spec = {
+    layers: [{ constructor: 'matmul', args: [0] }],
+    steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }],
+    outputSlot: 2, numSlots: 3,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, M, K], layout: 'any_rank4' },
+      { slot: 1, role: 'observation', shape: [1, 1, K, N], layout: 'any_rank4' },
+    ],
+    weights: {}, inputs: { 0: A.flat(), 1: B.flat() },
+  };
+  const rt = await loadWasm();
+  const values = await withGraphScope(rt, spec, async ({ g, reg, bundle }) => {
+    const bnd = bundle(spec.inputs, portBySlot(spec));
+    const out = g.run(reg, bnd);
+    const v = Array.from(out.to_array());
+    out.free();
+    return v;
+  });
+  printJsonAndExit({ ok: true, op: 'matmul', a: A, b: B, shape: [M, N], broadcast: null, engine: engineProvenance(), values }, 0);
+}
+
+function parseMatrix(text, name) {
+  if (text === undefined || text === '') throw new Error(USAGE);
+  const rows = text.split(';').map((row, ri) => {
+    const vals = row.split(',').map((t) => {
+      const v = Number(t.trim());
+      if (t.trim() === '' || !Number.isFinite(v)) throw new Error(`${name} row ${ri}: not a finite number: ${JSON.stringify(t)}`);
+      return v;
+    });
+    if (vals.length === 0) throw new Error(`${name} row ${ri}: empty row`);
+    return vals;
+  });
+  if (rows.length === 0) throw new Error(`${name}: empty matrix`);
+  const width = rows[0].length;
+  if (!rows.every((r) => r.length === width)) throw new Error(`${name}: non-rectangular rows (row lengths ${rows.map((r) => r.length).join(',')})`);
+  return rows;
+}
+
 async function main() {
   const [op, aText, bText, extra] = process.argv.slice(2);
+  if (op === 'matmul') {
+    if (aText === undefined || bText === undefined || extra !== undefined) throw new Error(USAGE);
+    return runMatmul(aText, bText);
+  }
   if (!Object.hasOwn(OPS, op) || aText === undefined || bText === undefined || extra !== undefined) {
-    throw new Error(`usage: node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`);
+    throw new Error(USAGE);
   }
   const a = parseVector(aText, 'a');
   const b = parseVector(bText, 'b');
