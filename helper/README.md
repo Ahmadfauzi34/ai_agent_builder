@@ -38,6 +38,13 @@ optimization profiling to full math verification with provenance.
   invalid spec fails with the same JSON as plain validate.
 - `node bin/run.mjs <spec.json>` — validate → create → setWeights → bind → run,
   one shot. Prints outputs + execution gate + host provenance.
+  `node bin/run.mjs --direct <spec.json>` — same engine, same values,
+  in-process (no child process, no IPC): one fresh buildGraph per spec
+  inside a `withGraphScope` arena (registry/plan/graph/bundle freed even
+  on throw). Faster (single ~3-4x, batch of 10 ~8x on this machine) but
+  produces NO execution_gate/host_provenance — those are ingress-session
+  artifacts; direct records keep the same keys with null plus
+  `mode: 'direct'`, never a fake gate.
 - `node bin/verify.mjs <baseline.json> <candidate.json> [cases.json]`
   Baseline-vs-candidate graph verification: numerical equivalence with
   tolerances, the verdict behind `opt_compare`.
