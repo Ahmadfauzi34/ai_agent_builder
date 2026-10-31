@@ -298,6 +298,104 @@ mod tests {
     }
 
     #[test]
+    fn lane_e_batch4_new_trig_and_rounding_kernels() {
+        let kernel = WasmNumericKernel::new();
+        let pi = std::f32::consts::PI;
+        let input = WasmTensor::new(&[0.0, pi / 2.0, pi / 4.0], &[1, 3, 1, 1]);
+        assert_close(&kernel.sin(&input).unwrap().to_array(), &[0.0, 1.0, 0.70710677], 1e-6);
+        assert_close(&kernel.cos(&input).unwrap().to_array(), &[1.0, 0.0, 0.70710677], 1e-6);
+        // tan: 0 -> 0, pi/4 -> 1; the pi/2 element is large-but-finite
+        // here (f32 pi/2 is not the exact pole), asserted separately.
+        let tan_out = kernel.tan(&input).unwrap().to_array();
+        assert!((tan_out[0]).abs() <= 1e-6);
+        assert!((tan_out[2] - 1.0).abs() <= 1e-5);
+        assert!(tan_out[1].abs() > 1e6);
+
+        let round_input = WasmTensor::new(&[2.5, 3.5, -2.5, 2.4, -2.6], &[1, 5, 1, 1]);
+        // Burn round is half-to-EVEN: 2.5 -> 2, 3.5 -> 4, -2.5 -> -2.
+        assert_eq!(
+            kernel.round(&round_input).unwrap().to_array(),
+            vec![2.0, 4.0, -2.0, 2.0, -3.0]
+        );
+        let frac = WasmTensor::new(&[1.2, -1.2, 1.8, -1.8], &[1, 4, 1, 1]);
+        assert_eq!(
+            kernel.floor(&frac).unwrap().to_array(),
+            vec![1.0, -2.0, 1.0, -2.0]
+        );
+        assert_eq!(
+            kernel.ceil(&frac).unwrap().to_array(),
+            vec![2.0, -1.0, 2.0, -1.0]
+        );
+    }
+
+    #[test]
+    fn lane_e_batch4_new_binary_and_ternary_kernels() {
+        let kernel = WasmNumericKernel::new();
+        let pi = std::f32::consts::PI;
+
+        let y = WasmTensor::new(&[0.0, 1.0, 1.0], &[1, 3, 1, 1]);
+        let x = WasmTensor::new(&[1.0, 0.0, 1.0], &[1, 3, 1, 1]);
+        assert_close(
+            &kernel.atan2(&y, &x).unwrap().to_array(),
+            &[0.0, pi / 2.0, pi / 4.0],
+            1e-6,
+        );
+
+        let base = WasmTensor::new(&[2.0, 2.0, 9.0], &[1, 3, 1, 1]);
+        let exp = WasmTensor::new(&[10.0, -1.0, 0.5], &[1, 3, 1, 1]);
+        assert_close(
+            &kernel.powf(&base, &exp).unwrap().to_array(),
+            &[1024.0, 0.5, 3.0],
+            1e-6,
+        );
+        // Domain failures surface as controlled errors, not NaN/inf.
+        let neg_base = WasmTensor::new(&[-8.0], &[1, 1, 1, 1]);
+        let third = WasmTensor::new(&[1.0 / 3.0], &[1, 1, 1, 1]);
+        assert!(kernel.powf(&neg_base, &third).is_err());
+        let zero = WasmTensor::new(&[0.0], &[1, 1, 1, 1]);
+        let neg_one = WasmTensor::new(&[-1.0], &[1, 1, 1, 1]);
+        assert!(kernel.powf(&zero, &neg_one).is_err());
+        let big = WasmTensor::new(&[1e38], &[1, 1, 1, 1]);
+        let two = WasmTensor::new(&[2.0], &[1, 1, 1, 1]);
+        assert!(kernel.powf(&big, &two).is_err());
+
+        // hypot: exact small case + overflow-safe large case (the naive
+        // x^2+y^2 formula would overflow to inf here).
+        let hx = WasmTensor::new(&[3.0, 1e38, 0.0], &[1, 3, 1, 1]);
+        let hy = WasmTensor::new(&[4.0, 1e38, 0.0], &[1, 3, 1, 1]);
+        assert_close(
+            &kernel.hypot(&hx, &hy).unwrap().to_array(),
+            &[5.0, 1.4142135e38, 0.0],
+            3e31,
+        );
+
+        // fma: exact small values + bit-equality with host f32::mul_add
+        // over a battery (the contract is mul_add semantics, not fused).
+        let fa = WasmTensor::new(&[2.0, 1.5], &[1, 2, 1, 1]);
+        let fb = WasmTensor::new(&[3.0, 2.0], &[1, 2, 1, 1]);
+        let fc = WasmTensor::new(&[4.0, 0.5], &[1, 2, 1, 1]);
+        assert_eq!(
+            kernel.fma(&fa, &fb, &fc).unwrap().to_array(),
+            vec![10.0, 3.5]
+        );
+        let battery_a = [0.1f32, 1e10, 1e-10, 12345.678, -0.33333334];
+        let battery_b = [3.0f32, 1e-10, 1e10, 0.98765, 7.5];
+        let battery_c = [0.5f32, -2.25, 100.0, -123.0, 0.125];
+        let ta = WasmTensor::new(&battery_a, &[1, 5, 1, 1]);
+        let tb = WasmTensor::new(&battery_b, &[1, 5, 1, 1]);
+        let tc = WasmTensor::new(&battery_c, &[1, 5, 1, 1]);
+        let got = kernel.fma(&ta, &tb, &tc).unwrap().to_array();
+        for (i, &v) in got.iter().enumerate() {
+            let expected = battery_a[i].mul_add(battery_b[i], battery_c[i]);
+            assert_eq!(
+                v.to_bits(),
+                expected.to_bits(),
+                "fma battery[{i}] not bit-equal to host mul_add"
+            );
+        }
+    }
+
+    #[test]
     fn capabilities_are_machine_discoverable() {
         let caps = numeric_kernel_capabilities();
         assert!(caps.contains("burn-research.numeric-kernel.v1"));
