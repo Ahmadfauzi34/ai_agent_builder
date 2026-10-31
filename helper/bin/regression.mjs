@@ -52,7 +52,7 @@ const oneLayerSpec = (layer, step, ports = basePorts(), outputSlot = 1) => ({
 const cases = [];
 const test = (name, fn) => cases.push({ name, fn });
 
-test('builder: 48/169/48 + wasm sha', () => {
+test('builder: 50/169/50 + wasm sha', () => {
   // The repo builder (scripts/build_agent_pack.mjs) assembles the pack
   // from this directory; the regression gate proves the builder's output
   // counts and engine sha, not just the tools in place.
@@ -63,7 +63,7 @@ test('builder: 48/169/48 + wasm sha', () => {
   if (!fs.existsSync(path.join(ROOT, '..', 'scripts', 'build_agent_pack.mjs'))) return;
   const r = runTool(['../scripts/build_agent_pack.mjs', '--out', path.join(TMP, 'built-pack')]);
   assert(r.code === 0, `builder exit ${r.code}: ${r.out.slice(0, 200)} ${r.err.slice(0, 200)}`);
-  assert(r.json.ok === true && r.json.catalog_entries === 48 && r.json.surface_entries === 169 && r.json.layout_entries === 48, `counts: ${r.out.slice(0, 300)}`);
+  assert(r.json.ok === true && r.json.catalog_entries === 50 && r.json.surface_entries === 169 && r.json.layout_entries === 50, `counts: ${r.out.slice(0, 300)}`);
   assert(r.json.wasm_sha256 === WASM_SHA, `wasm sha: ${r.json.wasm_sha256}`);
 });
 test('run: linear-relu [4.5, 10.5]', () => {
@@ -660,9 +660,9 @@ test('CLI completeness: all interactive bin/*.mjs tools handle --help without EN
   }
 });
 
-test('catalog surface: find-op --list 48, surface --list 169', () => {
+test('catalog surface: find-op --list 50, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
-  assert(f.code === 0 && f.out.trim().split('\n').length === 48, `find-op list: ${f.out.trim().split('\n').length} lines`);
+  assert(f.code === 0 && f.out.trim().split('\n').length === 50, `find-op list: ${f.out.trim().split('\n').length} lines`);
   const s = runTool(['bin/surface.mjs', '--list']);
   assert(s.code === 0 && s.out.trim().split('\n').length === 169, `surface list: ${s.out.trim().split('\n').length} lines`);
 });
