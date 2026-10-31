@@ -1103,6 +1103,36 @@
       "layout_contract_key": "intMatmul",
       "dtype": "int64"
     },
+    "intDiv": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intDiv(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intDiv",
+      "dtype": "int64"
+    },
+    "intRem": {
+      "family": "int_binary",
+      "arity": 2,
+      "signature": "intRem(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "intRem",
+      "dtype": "int64"
+    },
     "intToFloat": {
       "family": "int_cast",
       "arity": 1,

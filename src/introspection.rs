@@ -39,7 +39,7 @@ mod tests {
             .cloned()
             .collect::<BTreeSet<_>>();
 
-        assert_eq!(catalog_keys.len(), 48);
+        assert_eq!(catalog_keys.len(), 50);
         assert_eq!(catalog_keys, advertised);
         assert_eq!(catalog_keys, layout_keys);
     }

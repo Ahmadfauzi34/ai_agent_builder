@@ -85,7 +85,7 @@ Notes:
 
 ## Integer constructors (int*)
 
-`intAdd`, `intSub`, `intMul`, `intMatmul`, `intToFloat`, `intFromFloat`
+`intAdd`, `intSub`, `intMul`, `intMatmul`, `intDiv`, `intRem`, `intToFloat`, `intFromFloat`
 operate on `WasmIntTensor` (i64) via `forwardIntBinary`/`forwardIntCast`.
 They CANNOT execute inside a `MultiInputGraphPlan` f32 graph: a spec
 that uses them validates with a `static_warnings` entry per step (not an

@@ -22,9 +22,10 @@ use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
-    CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_MATMUL, INT_BINARY_MUL,
-    INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
-    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK,
+    CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_DIV, INT_BINARY_MATMUL,
+    INT_BINARY_MUL, INT_BINARY_REM, INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
+    LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST,
+    LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK,
     LAYER_TRANSPOSE, NORM_BATCH,
     NORM_GROUP, NORM_INSTANCE, NORM_LAYER, NORM_RMS, POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D,
     POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D, SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP,
@@ -75,6 +76,13 @@ impl AgentGraphBuilder {
         if spec.layer_type == LAYER_BINARY {
             return Err("AgentGraphBuilder.addUnary: binary spec requires addBinary".into());
         }
+        // Lane E Batch 1 (T1): int specs are registry-only, never graph
+        // layers. Rejecting here (instead of a confusing run-time
+        // failure) keeps the honest-container contract: the builder
+        // accepts exactly what it can execute.
+        if spec.layer_type == LAYER_INT_BINARY || spec.layer_type == LAYER_INT_CAST {
+            return Err("AgentGraphBuilder.addUnary: int spec (0x16/0x17) is not a graph layer; use LayerRegistry.forwardIntBinary for int binary layers, forwardIntCastToFloat / forwardIntCastFromFloat for int casts".into());
+        }
         self.validate_slot(input_slot, "AgentGraphBuilder.addUnary")?;
         self.validate_slot(output_slot, "AgentGraphBuilder.addUnary")?;
         self.steps.push(AgentGraphStep {
@@ -96,6 +104,9 @@ impl AgentGraphBuilder {
         right_slot: u8,
         output_slot: u8,
     ) -> Result<(), String> {
+        if spec.layer_type == LAYER_INT_BINARY || spec.layer_type == LAYER_INT_CAST {
+            return Err("AgentGraphBuilder.addBinary: int spec (0x16/0x17) is not a graph layer; use LayerRegistry.forwardIntBinary for int binary layers, forwardIntCastToFloat / forwardIntCastFromFloat for int casts".into());
+        }
         if spec.layer_type != LAYER_BINARY {
             return Err("AgentGraphBuilder.addBinary: spec is not binary".into());
         }
@@ -807,6 +818,16 @@ impl AgentLayerSpec {
         Self::int_binary_spec(layer_id, INT_BINARY_MATMUL)
     }
 
+    #[wasm_bindgen(js_name = intDiv)]
+    pub fn int_div(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_DIV)
+    }
+
+    #[wasm_bindgen(js_name = intRem)]
+    pub fn int_rem(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_REM)
+    }
+
     #[wasm_bindgen(js_name = intToFloat)]
     pub fn int_to_float(layer_id: u32) -> AgentLayerSpec {
         Self::int_cast_spec(layer_id, INT_CAST_TO_FLOAT)
@@ -829,5 +850,50 @@ impl AgentLayerSpec {
 
     pub fn variant(&self) -> u8 {
         self.variant
+    }
+}
+
+// Lane E Batch 1 (T1): builder gates for int specs. The builder is pure
+// data (no device), so these run as plain unit tests.
+#[cfg(test)]
+mod lane_e_batch1_tests {
+    use super::*;
+
+    #[test]
+    fn add_unary_rejects_int_specs_with_registry_pointer() {
+        let mut b = AgentGraphBuilder::new(2).unwrap();
+        let err = b
+            .add_unary(&AgentLayerSpec::int_add(1), 0, 1)
+            .unwrap_err();
+        assert!(
+            err.contains("forwardIntBinary"),
+            "int_add addUnary err: {err}"
+        );
+        let mut b = AgentGraphBuilder::new(2).unwrap();
+        let err = b
+            .add_unary(&AgentLayerSpec::int_to_float(1), 0, 1)
+            .unwrap_err();
+        assert!(
+            err.contains("forwardIntCastToFloat"),
+            "int_to_float addUnary err: {err}"
+        );
+    }
+
+    #[test]
+    fn add_binary_rejects_int_specs_with_registry_pointer() {
+        let mut b = AgentGraphBuilder::new(3).unwrap();
+        let err = b
+            .add_binary(&AgentLayerSpec::int_mul(1), 0, 1, 2)
+            .unwrap_err();
+        assert!(
+            err.contains("forwardIntBinary"),
+            "int_mul addBinary err: {err}"
+        );
+    }
+
+    #[test]
+    fn add_unary_still_accepts_non_int_unary_specs() {
+        let mut b = AgentGraphBuilder::new(2).unwrap();
+        b.add_unary(&AgentLayerSpec::relu(1), 0, 1).unwrap();
     }
 }

@@ -19,7 +19,6 @@ import { ruleFor } from '../lib/shapes.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'burn-regression-'));
-const WASM_SHA = '2fb8cc9034bca2f9947bc7ab416025c2b823ceebef35fac8b918c2fbbd899f33';
 const CKPT_SHA = '8c209c9fabf256bcf6dda2fc66d1ca347b6d5ad04eaf1331a08b6ee46059b454';
 
 function runTool(args, { cwd = ROOT } = {}) {
@@ -52,7 +51,7 @@ const oneLayerSpec = (layer, step, ports = basePorts(), outputSlot = 1) => ({
 const cases = [];
 const test = (name, fn) => cases.push({ name, fn });
 
-test('builder: 48/169/48 + wasm sha', () => {
+test('builder: 50/169/50 + wasm sha', () => {
   // The repo builder (scripts/build_agent_pack.mjs) assembles the pack
   // from this directory; the regression gate proves the builder's output
   // counts and engine sha, not just the tools in place.
@@ -61,10 +60,17 @@ test('builder: 48/169/48 + wasm sha', () => {
   // checkpoint case via wasm_direct), so the case passes vacuously
   // there instead of failing on a missing repo script.
   if (!fs.existsSync(path.join(ROOT, '..', 'scripts', 'build_agent_pack.mjs'))) return;
+  // Expected engine sha comes from the committed MANIFEST (single source
+  // of truth), never from a hardcoded literal here: a literal went stale
+  // twice in lane E (2fb8cc90 survived the engine change and failed this
+  // case on CI while every pack-edition run passed vacuously).
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'MANIFEST.json'), 'utf8'));
+  const wasmSha = manifest?.sha256?.['burn_research_bg.wasm'] ?? manifest?.engine?.wasm_sha256;
+  assert(typeof wasmSha === 'string' && wasmSha.length === 64, 'MANIFEST has no wasm sha');
   const r = runTool(['../scripts/build_agent_pack.mjs', '--out', path.join(TMP, 'built-pack')]);
   assert(r.code === 0, `builder exit ${r.code}: ${r.out.slice(0, 200)} ${r.err.slice(0, 200)}`);
-  assert(r.json.ok === true && r.json.catalog_entries === 48 && r.json.surface_entries === 169 && r.json.layout_entries === 48, `counts: ${r.out.slice(0, 300)}`);
-  assert(r.json.wasm_sha256 === WASM_SHA, `wasm sha: ${r.json.wasm_sha256}`);
+  assert(r.json.ok === true && r.json.catalog_entries === 50 && r.json.surface_entries === 169 && r.json.layout_entries === 50, `counts: ${r.out.slice(0, 300)}`);
+  assert(r.json.wasm_sha256 === wasmSha, `wasm sha: ${r.json.wasm_sha256} (MANIFEST: ${wasmSha})`);
 });
 test('run: linear-relu [4.5, 10.5]', () => {
   const r = runTool(['bin/run.mjs', 'examples/linear-relu.json']);
@@ -557,6 +563,8 @@ test('int: exact i64 ops through the registry, clean errors', () => {
   assert(typeof c1.engine?.wasm_sha256_short === 'string' && c1.engine.mode === 'direct', 'provenance fields');
   assert(JSON.stringify(full(['sub', '10,-5', '3,7']).values) === '["7","-12"]', 'sub');
   assert(JSON.stringify(full(['mul', '6,-4', '7,8']).values) === '["42","-32"]', 'mul');
+  assert(JSON.stringify(full(['div', '10,-10', '3,3']).values) === '["3","-3"]', 'div truncates');
+  assert(JSON.stringify(full(['rem', '10,-10', '3,3']).values) === '["1","-1"]', 'rem follows dividend');
   const bc = full(['add', '5', '1,2,3']);
   assert(JSON.stringify(bc.values) === '["6","7","8"]' && bc.broadcast === 'a', 'broadcast a');
   const mm = full(['matmul', '1,2;3,4', '5,6;7,8']);
@@ -570,7 +578,6 @@ test('int: exact i64 ops through the registry, clean errors', () => {
     [['add', '-9223372036854775809', '1'], 'out of i64 range'],
     [['matmul', '1,2,3;4,5,6', '7,8;9,10'], 'matmul shape mismatch'],
     [['matmul', '1,2;3', '4,5;6,7'], 'non-rectangular'],
-    [['div', '4', '2'], 'usage:'],
   ]) {
     const r = run(args);
     assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
@@ -623,6 +630,22 @@ test('int-eng: fail-closed i64 overflow guard, --wrap opt-in, to-f32/from-f32 ca
   assert(rWrap.code === 0 && JSON.stringify(rWrap.json.values) === '["-9223372036854775808"]', 'i64 --wrap allowed');
   const rMatOver = run(['matmul', '3037000500,3037000500', '3037000500;3037000500']);
   assert(rMatOver.code === 2 && rMatOver.json?.error?.includes('i64 overflow'), 'i64 matmul overflow rejected');
+  const rMatWrap = run(['matmul', '3037000500', '3037000500', '--wrap']);
+  assert(rMatWrap.code === 0 && JSON.stringify(rMatWrap.json.values) === '["-9223372036709301616"]', 'i64 matmul --wrap reproduces per-op wraparound');
+  const rDiv = run(['div', '10,-10,7', '3,3,2']);
+  assert(rDiv.code === 0 && JSON.stringify(rDiv.json.values) === '["3","-3","3"]', 'int div truncates toward zero');
+  const rRem = run(['rem', '10,-10,7', '3,3,2']);
+  assert(rRem.code === 0 && JSON.stringify(rRem.json.values) === '["1","-1","1"]', 'int rem follows dividend sign');
+  const rDivZero = run(['div', '5', '0']);
+  assert(rDivZero.code === 2 && rDivZero.json?.error?.includes('division by zero'), 'int div by zero rejected');
+  const rDivZeroWrap = run(['div', '5', '0', '--wrap']);
+  assert(rDivZeroWrap.code === 2 && rDivZeroWrap.json?.error?.includes('division by zero'), 'int div by zero rejected even with --wrap');
+  const rDivMinNeg1 = run(['div', '-9223372036854775808', '-1']);
+  assert(rDivMinNeg1.code === 2 && rDivMinNeg1.json?.error?.includes('i64 overflow'), 'int MIN/-1 rejected');
+  const rDivMinNeg1Wrap = run(['div', '-9223372036854775808', '-1', '--wrap']);
+  assert(rDivMinNeg1Wrap.code === 0 && JSON.stringify(rDivMinNeg1Wrap.json.values) === '["-9223372036854775808"]', 'int MIN/-1 --wrap gives MIN');
+  const rRemMinNeg1Wrap = run(['rem', '-9223372036854775808', '-1', '--wrap']);
+  assert(rRemMinNeg1Wrap.code === 0 && JSON.stringify(rRemMinNeg1Wrap.json.values) === '["0"]', 'int MIN%-1 --wrap gives 0');
   const cTo = run(['to-f32', '42,-100']);
   assert(cTo.code === 0 && JSON.stringify(cTo.json.values) === '[42,-100]', 'to-f32 exact');
   const cInexact = run(['to-f32', '16777217']);
@@ -643,9 +666,9 @@ test('CLI completeness: all interactive bin/*.mjs tools handle --help without EN
   }
 });
 
-test('catalog surface: find-op --list 48, surface --list 169', () => {
+test('catalog surface: find-op --list 50, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
-  assert(f.code === 0 && f.out.trim().split('\n').length === 48, `find-op list: ${f.out.trim().split('\n').length} lines`);
+  assert(f.code === 0 && f.out.trim().split('\n').length === 50, `find-op list: ${f.out.trim().split('\n').length} lines`);
   const s = runTool(['bin/surface.mjs', '--list']);
   assert(s.code === 0 && s.out.trim().split('\n').length === 169, `surface list: ${s.out.trim().split('\n').length} lines`);
 });

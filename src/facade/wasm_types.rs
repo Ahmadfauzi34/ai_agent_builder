@@ -15,7 +15,7 @@
 
 use crate::layers::activation::{
     activation_forward_fail, validate_activation_state_structure, validate_glu_shape,
-    validate_rank4_axis, Activation, ActivationConfig, ActivationRecord,
+    validate_prelu_shape, validate_rank4_axis, Activation, ActivationConfig, ActivationRecord,
 };
 use crate::layers::binary::{Binary, BinaryOp};
 use crate::layers::conv::{
@@ -71,6 +71,7 @@ use crate::math::probability::{
 };
 use crate::math::statistics::{
     checked_output as statistics_checked_output, validate_feature_layout, validate_feature_tensor,
+    variance_rows_f64,
 };
 use crate::math::tensor::{
     checked_element_count, parse_permutation, parse_rank4_shape, parse_slice_ranges,
@@ -744,6 +745,9 @@ impl WasmActivation {
             Activation::Softmax(m) => validate_rank4_axis(m.dim, "Softmax forward")?,
             Activation::LogSoftmax(m) => validate_rank4_axis(m.dim, "LogSoftmax forward")?,
             Activation::Glu(m) => validate_glu_shape(shape, m.dim)?,
+            Activation::PRelu(m) => {
+                validate_prelu_shape(shape, m.alpha.val().dims()[0])?
+            }
             _ => {}
         }
 
@@ -2162,6 +2166,258 @@ impl WasmNumericKernel {
             input.inner.clone().clamp(min, max),
             "NumericKernel.clamp output",
         )
+    }
+
+    pub fn sin(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.sin input")?;
+        self.sin_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn sin_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().sin(), "NumericKernel.sin output")
+    }
+
+    pub fn cos(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.cos input")?;
+        self.cos_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn cos_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().cos(), "NumericKernel.cos output")
+    }
+
+    pub fn tan(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.tan input")?;
+        self.tan_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// Poles (tan near pi/2 + k*pi) overflow to inf and fail output
+    /// validation honestly instead of returning a huge finite value.
+    pub(crate) fn tan_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().tan(), "NumericKernel.tan output")
+    }
+
+    pub fn floor(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.floor input")?;
+        self.floor_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn floor_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().floor(), "NumericKernel.floor output")
+    }
+
+    pub fn ceil(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.ceil input")?;
+        self.ceil_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn ceil_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().ceil(), "NumericKernel.ceil output")
+    }
+
+    pub fn round(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_validate_finite(input, "NumericKernel.round input")?;
+        self.round_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// Burn's round is round-half-to-EVEN (2.5 -> 2, 3.5 -> 4) — NOT
+    /// Rust f32::round (half away from zero) and NOT JS Math.round
+    /// (half up). Callers that need another tie rule must implement it.
+    pub(crate) fn round_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        numeric_checked_output(input.inner.clone().round(), "NumericKernel.round output")
+    }
+
+    pub fn atan2(&self, y: &WasmTensor, x: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(y, x, "atan2")?;
+        numeric_validate_finite(y, "NumericKernel.atan2 y")?;
+        numeric_validate_finite(x, "NumericKernel.atan2 x")?;
+        self.atan2_unchecked(y, x)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn atan2_unchecked(
+        &self,
+        y: &WasmTensor,
+        x: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        validate_same_shape(y, x, "atan2")?;
+        numeric_checked_output(
+            y.inner.clone().atan2(x.inner.clone()),
+            "NumericKernel.atan2 output",
+        )
+    }
+
+    pub fn powf(&self, base: &WasmTensor, exp: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(base, exp, "powf")?;
+        numeric_validate_finite(base, "NumericKernel.powf base")?;
+        numeric_validate_finite(exp, "NumericKernel.powf exp")?;
+        self.powf_unchecked(base, exp)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// Domain failures (negative base with fractional exponent -> NaN,
+    /// 0 to a negative power -> inf, overflow -> inf) fail output
+    /// validation; no separate domain check is needed.
+    pub(crate) fn powf_unchecked(
+        &self,
+        base: &WasmTensor,
+        exp: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        validate_same_shape(base, exp, "powf")?;
+        numeric_checked_output(
+            base.inner.clone().powf(exp.inner.clone()),
+            "NumericKernel.powf output",
+        )
+    }
+
+    pub fn hypot(&self, x: &WasmTensor, y: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_same_shape(x, y, "hypot")?;
+        numeric_validate_finite(x, "NumericKernel.hypot x")?;
+        numeric_validate_finite(y, "NumericKernel.hypot y")?;
+        self.hypot_unchecked(x, y)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// Scaled formula m*sqrt(1+(n/m)^2) with m=max(|x|,|y|): the naive
+    /// x^2+y^2 overflows for |x|~1e19 and beyond, while the scaled form
+    /// stays finite up to the f32 ceiling. A true result above f32::MAX
+    /// (e.g. hypot(3e38, 3e38)) is unrepresentable and fails output
+    /// validation honestly.
+    pub(crate) fn hypot_unchecked(
+        &self,
+        x: &WasmTensor,
+        y: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        validate_same_shape(x, y, "hypot")?;
+        let out = Self::map_binary_f32(x, y, |a, b| {
+            let ax = a.abs();
+            let ay = b.abs();
+            let m = ax.max(ay);
+            let n = ax.min(ay);
+            if m == 0.0 {
+                0.0
+            } else {
+                m * (1.0 + (n / m) * (n / m)).sqrt()
+            }
+        });
+        numeric_checked_output(out, "NumericKernel.hypot output")
+    }
+
+    pub fn fma(
+        &self,
+        a: &WasmTensor,
+        b: &WasmTensor,
+        c: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "fma")?;
+        validate_same_shape(a, c, "fma")?;
+        numeric_validate_finite(a, "NumericKernel.fma a")?;
+        numeric_validate_finite(b, "NumericKernel.fma b")?;
+        numeric_validate_finite(c, "NumericKernel.fma c")?;
+        self.fma_unchecked(a, b, c)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// inputs are finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// One f32::mul_add per element: bit-equal to host f32::mul_add.
+    /// On wasm32 without a scalar fma instruction this lowers to mul+add
+    /// (two roundings) — fused execution is NOT claimed.
+    pub(crate) fn fma_unchecked(
+        &self,
+        a: &WasmTensor,
+        b: &WasmTensor,
+        c: &WasmTensor,
+    ) -> Result<WasmTensor, String> {
+        validate_same_shape(a, b, "fma")?;
+        validate_same_shape(a, c, "fma")?;
+        let out = Self::map_ternary_f32(a, b, c, |x, y, z| x.mul_add(y, z));
+        numeric_checked_output(out, "NumericKernel.fma output")
+    }
+
+    /// Elementwise f32 maps for ops Burn has no tensor method for
+    /// (hypot, fma). Inputs must already share one shape (checked by
+    /// callers); values are f32 by the kernel invariant.
+    fn map_binary_f32<F: Fn(f32, f32) -> f32>(
+        a: &WasmTensor,
+        b: &WasmTensor,
+        f: F,
+    ) -> Tensor<WasmBackend, 4> {
+        let device = a.inner.device();
+        let dims = a.inner.dims();
+        let data_a = a.inner.to_data();
+        let data_b = b.inner.to_data();
+        let va = data_a
+            .as_slice::<f32>()
+            .expect("NumericKernel map: tensor is not f32");
+        let vb = data_b
+            .as_slice::<f32>()
+            .expect("NumericKernel map: tensor is not f32");
+        let out: Vec<f32> = va.iter().zip(vb.iter()).map(|(&x, &y)| f(x, y)).collect();
+        Tensor::from_data(TensorData::new(out, dims), &device)
+    }
+
+    fn map_ternary_f32<F: Fn(f32, f32, f32) -> f32>(
+        a: &WasmTensor,
+        b: &WasmTensor,
+        c: &WasmTensor,
+        f: F,
+    ) -> Tensor<WasmBackend, 4> {
+        let device = a.inner.device();
+        let dims = a.inner.dims();
+        let data_a = a.inner.to_data();
+        let data_b = b.inner.to_data();
+        let data_c = c.inner.to_data();
+        let va = data_a
+            .as_slice::<f32>()
+            .expect("NumericKernel map: tensor is not f32");
+        let vb = data_b
+            .as_slice::<f32>()
+            .expect("NumericKernel map: tensor is not f32");
+        let vc = data_c
+            .as_slice::<f32>()
+            .expect("NumericKernel map: tensor is not f32");
+        let out: Vec<f32> = va
+            .iter()
+            .zip(vb.iter())
+            .zip(vc.iter())
+            .map(|((&x, &y), &z)| f(x, y, z))
+            .collect();
+        Tensor::from_data(TensorData::new(out, dims), &device)
     }
 
     #[wasm_bindgen(js_name = allFinite)]
@@ -3912,10 +4168,21 @@ impl WasmStatistics {
     /// `input` is finite (validated once at program entry, or produced by a
     /// step whose output was validated / is finite by construction).
     /// Output validation and stronger domain checks are retained.
+    /// Lane E Batch 4 (T5): Burn f32 var_bias replaced by manual f64
+    /// accumulation (mean -> deviations -> sum of squares -> divide), so
+    /// wide-spread values that overflowed f32 accumulation now produce
+    /// their true variance (e.g. [1e19,-1e19,1e19,-1e19] -> [1e38]
+    /// instead of a non-finite error). Normal values may shift by at
+    /// most 1 ulp vs the old f32 accumulation; shifts are measured by
+    /// the lane's ulp probe, not assumed.
     pub(crate) fn variance_population_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_layout(input, "Statistics.variancePopulation")?;
+        let device = input.inner.device();
+        let (batch, vars) =
+            variance_rows_f64(input, 0, "Statistics.variancePopulation")?;
+        let out: Vec<f32> = vars.into_iter().map(|v| v as f32).collect();
         statistics_checked_output(
-            input.inner.clone().var_bias(1),
+            Tensor::from_data(TensorData::new(out, [batch, 1, 1, 1]), &device),
             "Statistics.variancePopulation output",
         )
     }
@@ -3930,11 +4197,61 @@ impl WasmStatistics {
     /// `input` is finite (validated once at program entry, or produced by a
     /// step whose output was validated / is finite by construction).
     /// Output validation and stronger domain checks are retained.
+    /// Lane E Batch 4 (T5): sqrt in f64 before the f32 cast, matching
+    /// the variance change above.
     pub(crate) fn std_population_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
         validate_feature_layout(input, "Statistics.stdPopulation")?;
+        let device = input.inner.device();
+        let (batch, vars) =
+            variance_rows_f64(input, 0, "Statistics.stdPopulation")?;
+        let out: Vec<f32> = vars.into_iter().map(|v| (v.sqrt()) as f32).collect();
         statistics_checked_output(
-            input.inner.clone().var_bias(1).sqrt(),
+            Tensor::from_data(TensorData::new(out, [batch, 1, 1, 1]), &device),
             "Statistics.stdPopulation output",
+        )
+    }
+
+    #[wasm_bindgen(js_name = varianceSample)]
+    pub fn variance_sample(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_tensor(input, "Statistics.varianceSample")?;
+        self.variance_sample_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    /// Sample variance (Bessel correction, ddof=1): divide by n-1.
+    /// A single feature is undefined and fails with a controlled error.
+    pub(crate) fn variance_sample_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.varianceSample")?;
+        let device = input.inner.device();
+        let (batch, vars) = variance_rows_f64(input, 1, "Statistics.varianceSample")?;
+        let out: Vec<f32> = vars.into_iter().map(|v| v as f32).collect();
+        statistics_checked_output(
+            Tensor::from_data(TensorData::new(out, [batch, 1, 1, 1]), &device),
+            "Statistics.varianceSample output",
+        )
+    }
+
+    #[wasm_bindgen(js_name = stdSample)]
+    pub fn std_sample(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_tensor(input, "Statistics.stdSample")?;
+        self.std_sample_unchecked(input)
+    }
+
+    /// Fase 2: skips the input finiteness scan. SAFETY: caller must guarantee
+    /// `input` is finite (validated once at program entry, or produced by a
+    /// step whose output was validated / is finite by construction).
+    /// Output validation and stronger domain checks are retained.
+    pub(crate) fn std_sample_unchecked(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        validate_feature_layout(input, "Statistics.stdSample")?;
+        let device = input.inner.device();
+        let (batch, vars) = variance_rows_f64(input, 1, "Statistics.stdSample")?;
+        let out: Vec<f32> = vars.into_iter().map(|v| (v.sqrt()) as f32).collect();
+        statistics_checked_output(
+            Tensor::from_data(TensorData::new(out, [batch, 1, 1, 1]), &device),
+            "Statistics.stdSample output",
         )
     }
 
@@ -4115,6 +4432,16 @@ impl WasmIntBinary {
     pub fn new_matmul() -> WasmIntBinary {
         WasmIntBinary {
             inner: IntBinary::new(IntBinaryOp::Matmul),
+        }
+    }
+    pub fn new_div() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Div),
+        }
+    }
+    pub fn new_rem() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Rem),
         }
     }
 

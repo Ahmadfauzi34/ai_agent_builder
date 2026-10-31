@@ -67,6 +67,46 @@ pub(crate) fn checked_output(
     Ok(output)
 }
 
+/// f64 per-batch variances for one feature tensor [B,F,1,1].
+/// Two-pass algorithm, exactly as specified: f64 mean, then f64 squared
+/// deviations, then divide. `ddof` 0 = population, 1 = sample (Bessel
+/// correction; requires at least 2 features per batch, else a controlled
+/// error). Assumes layout [B,F,1,1] and finite inputs (checked by callers);
+/// returns (batch, variances in f64) — the caller casts to f32 and runs
+/// output validation, so a true variance above f32::MAX still fails
+/// honestly instead of silently becoming inf.
+pub(crate) fn variance_rows_f64(
+    input: &WasmTensor,
+    ddof: usize,
+    context: &str,
+) -> Result<(usize, Vec<f64>), String> {
+    let [batch, features, _, _] = input.inner.dims();
+    let data = input.inner.to_data();
+    let values = data
+        .as_slice::<f32>()
+        .map_err(|_| format!("{context}: expected f32 tensor"))?;
+    if ddof > 0 && features < 2 {
+        return Err(format!(
+            "{context}: sample variance requires at least 2 features, got {features}"
+        ));
+    }
+    let mut out = Vec::with_capacity(batch);
+    for b in 0..batch {
+        let row = &values[b * features..(b + 1) * features];
+        let n = features as f64;
+        let mean: f64 = row.iter().map(|&v| v as f64).sum::<f64>() / n;
+        let sq: f64 = row
+            .iter()
+            .map(|&v| {
+                let d = v as f64 - mean;
+                d * d
+            })
+            .sum();
+        out.push(sq / (n - ddof as f64));
+    }
+    Ok((batch, out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{statistics_capabilities, WasmStatistics};
@@ -131,6 +171,51 @@ mod tests {
         assert!(stats.sum(&nonfinite).is_err());
         assert!(stats.variance_population(&nonfinite).is_err());
         assert!(stats.max(&nonfinite).is_err());
+    }
+
+    #[test]
+    fn lane_e_batch4_sample_variance_and_wide_spread_population() {
+        let stats = WasmStatistics::new();
+        // The T5 case: f32 accumulation overflows, f64 does not.
+        let wide = WasmTensor::new(&[1e19, -1e19, 1e19, -1e19], &[1, 4, 1, 1]);
+        assert_close(
+            &stats.variance_population(&wide).unwrap().to_array(),
+            &[1e38],
+            1e31,
+        );
+        assert_close(
+            &stats.std_population(&wide).unwrap().to_array(),
+            &[1e19],
+            1e12,
+        );
+
+        // Sample variants (ddof=1) on [1,2,3,4]: var = 5/3, std = sqrt(5/3).
+        let input = WasmTensor::new(&[1.0, 2.0, 3.0, 4.0], &[1, 4, 1, 1]);
+        assert_close(
+            &stats.variance_sample(&input).unwrap().to_array(),
+            &[5.0 / 3.0],
+            1e-6,
+        );
+        assert_close(
+            &stats.std_sample(&input).unwrap().to_array(),
+            &[(5.0f32 / 3.0).sqrt()],
+            1e-6,
+        );
+        // Population values on the same input are unchanged in kind.
+        assert_close(
+            &stats.variance_population(&input).unwrap().to_array(),
+            &[1.25],
+            1e-6,
+        );
+
+        // A single feature has no defined sample variance.
+        let singleton = WasmTensor::new(&[3.0], &[1, 1, 1, 1]);
+        assert!(stats.variance_sample(&singleton).is_err());
+        assert!(stats.std_sample(&singleton).is_err());
+        assert_eq!(
+            stats.variance_population(&singleton).unwrap().to_array(),
+            vec![0.0]
+        );
     }
 
     #[test]
