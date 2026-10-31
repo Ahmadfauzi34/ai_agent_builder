@@ -43,7 +43,7 @@ Hand-check (column-major): `linear([1,-2]) = [1.5,-3.5]` (weights
 
 Notes:
 
-- **Constructors**: only the 48 in the catalog. Check with
+- **Constructors**: only the 50 in the catalog. Check with
   `node bin/find-op.mjs --list`; check one with
   `node bin/find-op.mjs <name>`. Examples in this pack: `linear`,
   `relu`, `add`, `layerNorm` (camelCase — `layer_norm` does not exist),

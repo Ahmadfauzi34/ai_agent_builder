@@ -184,10 +184,10 @@ pack is BUILT from it — never edited as a side copy. The contract agents
 read is `AGENT.md` (start there); `INDEX.md` maps questions to tools;
 `spec-schema.md` documents the spec format.
 
-- `node bin/find-op.mjs <name>` / `--list` — one layer constructor (48).
+- `node bin/find-op.mjs <name>` / `--list` — one layer constructor (50).
 - `node bin/surface.mjs <name>` / `--list` — one wasm surface entry (169).
-- `node bin/layout.mjs <name>` / `--list` — one constructor's layout contract (48).
-- `node bin/regression.mjs` — the permanent 26-case regression gate
+- `node bin/layout.mjs <name>` / `--list` — one constructor's layout contract (50).
+- `node bin/regression.mjs` — the permanent 34-case regression gate
   (cases: `reference/regression.md`).
 - `node ../scripts/build_agent_pack.mjs --out <dir>` — assemble the
   distributable pack from this directory + the engine bundle, verify it
