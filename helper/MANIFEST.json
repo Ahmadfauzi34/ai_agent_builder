@@ -1,10 +1,10 @@
 {
   "sha256": {
-    "burn_research_bg.wasm": "9cccf2545154e2c5e6d153235a75fad614044b5f7aa56efde2610ecd95ea4106",
+    "burn_research_bg.wasm": "2bdb6ebdb781452f41272abc8ba10d78b340b581796af39b49abfb081cb2e9bd",
     "burn_research.js": "911333a99556e9494ab498225a2067765553533e5d2dc732b0e45bbb19b88e7a"
   },
   "engine": {
-    "wasm_sha256": "9cccf2545154e2c5e6d153235a75fad614044b5f7aa56efde2610ecd95ea4106",
+    "wasm_sha256": "2bdb6ebdb781452f41272abc8ba10d78b340b581796af39b49abfb081cb2e9bd",
     "js_sha256": "911333a99556e9494ab498225a2067765553533e5d2dc732b0e45bbb19b88e7a"
   },
   "generated_by": "scripts/build_agent_pack.mjs",
