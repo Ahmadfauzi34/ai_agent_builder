@@ -34,9 +34,11 @@
       "hardSwish",
       "instanceNorm",
       "intAdd",
+      "intDiv",
       "intFromFloat",
       "intMatmul",
       "intMul",
+      "intRem",
       "intSub",
       "intToFloat",
       "layerId",
@@ -67,30 +69,6 @@
       "transpose",
       "variant"
     ],
-    "InputPortConsumerSpec": [
-      "acceptedRoles",
-      "allowExtensionRoles",
-      "consumerId",
-      "constructor",
-      "describe",
-      "minimumRevision",
-      "requireFingerprint"
-    ],
-    "SemanticIngressManifest": [
-      "addDeferredPort",
-      "addRuntimeBackedPort",
-      "constructor",
-      "manifestFingerprint",
-      "portCount",
-      "toJSON"
-    ],
-    "SemanticTransitionSpec": [
-      "constructor",
-      "describe",
-      "inputRoles",
-      "outputRole",
-      "transitionId"
-    ],
     "AgentWorkspace": [
       "constructor",
       "forgetLayer",
@@ -108,6 +86,25 @@
       "syncLayer",
       "tableNames"
     ],
+    "CheckpointBranchSet": [
+      "baselineBundle",
+      "baselineStateDigest",
+      "branchCount",
+      "candidateBundle",
+      "commitBranchByReceipt",
+      "constructor",
+      "fork",
+      "insertStep",
+      "promotedBranch",
+      "reconnectStep",
+      "removeStep",
+      "replaceStep",
+      "setOutput",
+      "setWeightsFlat",
+      "stageBranch",
+      "stateDiff",
+      "verifyBranch"
+    ],
     "CompiledGraph": [
       "constructor",
       "numSlots",
@@ -116,6 +113,19 @@
       "programIdentity",
       "programPlan",
       "run",
+      "validateRegistryBinding",
+      "verifyFlat"
+    ],
+    "CompiledMultiInputGraph": [
+      "constructor",
+      "explainPlan",
+      "inputPlanV1",
+      "preflight",
+      "programIdentity",
+      "programPlan",
+      "requiredInputSlots",
+      "run",
+      "runWithTrace",
       "validateRegistryBinding",
       "verifyFlat"
     ],
@@ -133,6 +143,30 @@
       "strict",
       "tell",
       "withRng"
+    ],
+    "GraphMutationTransaction": [
+      "baselineBundle",
+      "baselineStateDigest",
+      "candidateBundle",
+      "commitByReceipt",
+      "constructor",
+      "insertStep",
+      "reconnectStep",
+      "removeStep",
+      "replaceStep",
+      "setOutput",
+      "setWeightsFlat",
+      "stageCandidate",
+      "verifyCases"
+    ],
+    "InputPortConsumerSpec": [
+      "acceptedRoles",
+      "allowExtensionRoles",
+      "constructor",
+      "consumerId",
+      "describe",
+      "minimumRevision",
+      "requireFingerprint"
     ],
     "LayerRegistry": [
       "compileGraph",
@@ -158,6 +192,30 @@
       "totalParams",
       "weightLayout"
     ],
+    "MultiInputGraphPlan": [
+      "addInputPort",
+      "constructor",
+      "fromBytes",
+      "inputSlots",
+      "planFingerprint",
+      "portCount",
+      "programPlan",
+      "toBytes",
+      "toJSON"
+    ],
+    "MultiInputInputBundle": [
+      "bindInput",
+      "boundPortCount",
+      "clearInput",
+      "constructor",
+      "planFingerprint"
+    ],
+    "MultiInputVerificationCases": [
+      "addCase",
+      "caseCount",
+      "constructor",
+      "verify"
+    ],
     "PacketHeader": [
       "constructor",
       "flags",
@@ -169,6 +227,34 @@
       "to_bytes",
       "variant"
     ],
+    "SemanticIngressManifest": [
+      "addDeferredPort",
+      "addRuntimeBackedPort",
+      "constructor",
+      "manifestFingerprint",
+      "portCount",
+      "toJSON"
+    ],
+    "SemanticIngressManifestV2": [
+      "addDeferredPort",
+      "addRuntimePort",
+      "constructor",
+      "consumerCompatibility",
+      "inputPortStatus",
+      "manifestFingerprint",
+      "run",
+      "runWithTrace",
+      "status",
+      "toJSON",
+      "verifyFlat"
+    ],
+    "SemanticTransitionSpec": [
+      "constructor",
+      "describe",
+      "inputRoles",
+      "outputRole",
+      "transitionId"
+    ],
     "TensorView": [
       "constructor",
       "len",
@@ -176,6 +262,11 @@
       "setShape",
       "shape",
       "write"
+    ],
+    "TracedMultiInputRun": [
+      "constructor",
+      "output",
+      "report"
     ],
     "WasmActivation": [
       "constructor",
@@ -258,6 +349,13 @@
     "WasmIndexSource": [
       "constructor",
       "indicesLike"
+    ],
+    "WasmIntTensor": [
+      "byte_length",
+      "constructor",
+      "fromNumbers",
+      "shape",
+      "to_array"
     ],
     "WasmLinear": [
       "constructor",
@@ -539,14 +637,24 @@
       "abs",
       "add",
       "allFinite",
+      "atan2",
+      "ceil",
       "clamp",
       "constructor",
+      "cos",
       "div",
       "exp",
+      "floor",
+      "fma",
+      "hypot",
       "log",
       "mul",
+      "powf",
+      "round",
+      "sin",
       "sqrt",
-      "sub"
+      "sub",
+      "tan"
     ],
     "WasmPool": [
       "constructor",
@@ -596,8 +704,10 @@
       "mean",
       "min",
       "stdPopulation",
+      "stdSample",
       "sum",
-      "variancePopulation"
+      "variancePopulation",
+      "varianceSample"
     ],
     "WasmTensor": [
       "byte_length",
@@ -607,13 +717,6 @@
       "toTensorView",
       "to_array"
     ],
-    "WasmIntTensor": [
-      "byte_length",
-      "constructor",
-      "fromNumbers",
-      "shape",
-      "to_array"
-    ],
     "WasmTensorTransform": [
       "constructor",
       "permute",
@@ -621,95 +724,6 @@
       "selectAxis",
       "slice",
       "transpose"
-    ],
-    "CompiledMultiInputGraph": [
-      "constructor",
-      "explainPlan",
-      "inputPlanV1",
-      "preflight",
-      "programIdentity",
-      "programPlan",
-      "requiredInputSlots",
-      "run",
-      "runWithTrace",
-      "validateRegistryBinding",
-      "verifyFlat"
-    ],
-    "MultiInputGraphPlan": [
-      "addInputPort",
-      "constructor",
-      "fromBytes",
-      "inputSlots",
-      "planFingerprint",
-      "portCount",
-      "programPlan",
-      "toBytes",
-      "toJSON"
-    ],
-    "MultiInputInputBundle": [
-      "bindInput",
-      "boundPortCount",
-      "clearInput",
-      "constructor",
-      "planFingerprint"
-    ],
-    "MultiInputVerificationCases": [
-      "addCase",
-      "caseCount",
-      "constructor",
-      "verify"
-    ],
-    "GraphMutationTransaction": [
-      "baselineBundle",
-      "baselineStateDigest",
-      "candidateBundle",
-      "commitByReceipt",
-      "constructor",
-      "insertStep",
-      "reconnectStep",
-      "removeStep",
-      "replaceStep",
-      "setOutput",
-      "setWeightsFlat",
-      "stageCandidate",
-      "verifyCases"
-    ],
-    "CheckpointBranchSet": [
-      "baselineBundle",
-      "baselineStateDigest",
-      "branchCount",
-      "candidateBundle",
-      "commitBranchByReceipt",
-      "constructor",
-      "fork",
-      "insertStep",
-      "promotedBranch",
-      "reconnectStep",
-      "removeStep",
-      "replaceStep",
-      "setOutput",
-      "setWeightsFlat",
-      "stageBranch",
-      "stateDiff",
-      "verifyBranch"
-    ],
-    "SemanticIngressManifestV2": [
-      "addDeferredPort",
-      "addRuntimePort",
-      "consumerCompatibility",
-      "constructor",
-      "inputPortStatus",
-      "manifestFingerprint",
-      "run",
-      "runWithTrace",
-      "status",
-      "toJSON",
-      "verifyFlat"
-    ],
-    "TracedMultiInputRun": [
-      "constructor",
-      "output",
-      "report"
     ]
   },
   "default_init": "__wbg_init",
