@@ -239,8 +239,15 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or_else(|| "Transpose not found".to_string())?
                 .forward(input),
-            LAYER_INT_BINARY | LAYER_INT_CAST => Err(
-                "Int layers operate on WasmIntTensor (i64); use forwardIntBinary / forwardIntCast"
+            // Lane E Batch 1 (T1): name the exact exported methods.
+            // "forwardIntCast" was not a real export; the casts are
+            // forwardIntCastToFloat / forwardIntCastFromFloat.
+            LAYER_INT_BINARY => Err(
+                "Int binary layers operate on WasmIntTensor (i64); use LayerRegistry.forwardIntBinary"
+                    .to_string(),
+            ),
+            LAYER_INT_CAST => Err(
+                "Int cast layers operate on WasmIntTensor (i64); use LayerRegistry.forwardIntCastToFloat / forwardIntCastFromFloat"
                     .to_string(),
             ),
             _ => Err(format!(
@@ -509,6 +516,16 @@ impl LayerRegistry {
             }
             ACT_GLU => {
                 let dim = c.read_dim("glu dim")?;
+                // Lane E Batch 1 (T3a): rank is always 4, so dim >= 4
+                // can never execute. Fail at init (shape-independent)
+                // instead of at run; the run-time check in
+                // WasmActivation::try_forward stays as the second gate
+                // (odd axis size needs the shape, known only at run).
+                if dim >= 4 {
+                    return Err(format!(
+                        "GLU init: dim must be in 0..4, got {dim} (tensors are always rank 4)"
+                    ));
+                }
                 WasmActivation::new_glu(dim)
             }
             _ => {
@@ -993,5 +1010,51 @@ impl LayerRegistry {
     pub fn init_agent_layer(&mut self, spec: &AgentLayerSpec) -> Result<(), String> {
         let header = spec.header();
         self.init_layer(&header, &spec.payload)
+    }
+}
+
+// Lane E Batch 1 (T1 message names, T3a init-time GLU gate).
+// LayerRegistry::new is pure (empty maps, no device); WasmTensor::new
+// builds from slices, so these run as plain unit tests.
+#[cfg(test)]
+mod lane_e_batch1_tests {
+    use super::*;
+    use crate::WasmTensor;
+
+    #[test]
+    fn glu_dim_4_rejected_at_init() {
+        let mut reg = LayerRegistry::new();
+        let err = reg
+            .init_agent_layer(&AgentLayerSpec::glu(1, 4))
+            .unwrap_err();
+        assert!(err.contains("0..4"), "glu dim=4 init err: {err}");
+    }
+
+    #[test]
+    fn glu_valid_dim_init_ok() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::glu(1, 1)).unwrap();
+    }
+
+    #[test]
+    fn forward_layer_int_errors_name_exact_exports() {
+        let reg = LayerRegistry::new();
+        let t = WasmTensor::new(&[1.0], &[1, 1, 1, 1]);
+        let err = reg
+            .forward_layer(1, LAYER_INT_BINARY, &t)
+            .err()
+            .expect("forward_layer int binary must err");
+        assert!(
+            err.contains("forwardIntBinary"),
+            "binary err: {err}"
+        );
+        let err = reg
+            .forward_layer(1, LAYER_INT_CAST, &t)
+            .err()
+            .expect("forward_layer int cast must err");
+        assert!(
+            err.contains("forwardIntCastToFloat") && err.contains("forwardIntCastFromFloat"),
+            "cast err: {err}"
+        );
     }
 }
