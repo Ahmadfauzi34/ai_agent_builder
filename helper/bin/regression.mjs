@@ -540,6 +540,42 @@ test('arith: elementwise ops through the engine, clean errors', () => {
   const b8 = run(['--batch', writeSpec('batch.json', { ops: [] }), 'extra']);
   assert(b8.code === 2 && b8.json && b8.json.ok === false && b8.json.error.includes('usage:'), 'batch usage: extra arg');
 });
+test('int: exact i64 ops through the registry, clean errors', () => {
+  // CP5 correction (2026-10-31): int runs via the registry, not the
+  // graph — addBinary rejects int specs by design (0x16 != LAYER_BINARY).
+  // This case pins the registry path: exact values incl. beyond 2^53,
+  // string outputs, broadcast, and the clean-error shapes.
+  const run = (args) => runTool(['bin/int.mjs', ...args]);
+  const full = (args) => {
+    const r = run(args);
+    assert(r.code === 0 && r.json && r.json.ok === true, `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    return r.json;
+  };
+  const c1 = full(['add', '16777217,100', '1,-30']);
+  assert(JSON.stringify(c1.values) === '["16777218","70"]', 'cashier exact (f32 would round)');
+  assert(JSON.stringify(c1.a) === '["16777217","100"]' && c1.broadcast === null, 'echo strings, no broadcast');
+  assert(typeof c1.engine?.wasm_sha256_short === 'string' && c1.engine.mode === 'direct', 'provenance fields');
+  assert(JSON.stringify(full(['sub', '10,-5', '3,7']).values) === '["7","-12"]', 'sub');
+  assert(JSON.stringify(full(['mul', '6,-4', '7,8']).values) === '["42","-32"]', 'mul');
+  const bc = full(['add', '5', '1,2,3']);
+  assert(JSON.stringify(bc.values) === '["6","7","8"]' && bc.broadcast === 'a', 'broadcast a');
+  const mm = full(['matmul', '1,2;3,4', '5,6;7,8']);
+  assert(JSON.stringify(mm.values) === '["19","22","43","50"]' && JSON.stringify(mm.shape) === '[2,2]', 'matmul 2x2');
+  const big = full(['add', '9007199254740993', '1']);
+  assert(JSON.stringify(big.values) === '["9007199254740994"]', 'beyond 2^53 exact');
+  for (const [args, want] of [
+    [['add', '1.5', '2'], 'not an integer'],
+    [['add', '1,2', '3,4,5'], 'length mismatch'],
+    [['add', '9223372036854775808', '1'], 'out of i64 range'],
+    [['add', '-9223372036854775809', '1'], 'out of i64 range'],
+    [['matmul', '1,2,3;4,5,6', '7,8;9,10'], 'matmul shape mismatch'],
+    [['matmul', '1,2;3', '4,5;6,7'], 'non-rectangular'],
+    [['div', '4', '2'], 'usage:'],
+  ]) {
+    const r = run(args);
+    assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+  }
+});
 test('catalog surface: find-op --list 48, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
   assert(f.code === 0 && f.out.trim().split('\n').length === 48, `find-op list: ${f.out.trim().split('\n').length} lines`);

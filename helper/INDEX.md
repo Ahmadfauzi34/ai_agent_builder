@@ -12,10 +12,15 @@ This page is a map, not a manual: find your question, follow the link.
   `node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
   (elementwise vectors, length-1 broadcasts; `div` is mul by reciprocal,
   division by zero is an error; `matmul` takes `;`-separated rows,
-  single-batch; int ops are not in v1).
+  single-batch).
   Batch N ops in one engine load -> `node bin/arith.mjs --batch ops.json`
   (`{"ops":[{"op":...,"a":[...],"b":[...]}]}`; failing ops are recorded
   with their index and the rest still run).
+- Do EXACT integer arithmetic (i64, no f32 rounding) ->
+  `node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...>`
+  (inputs integer strings, outputs decimal strings; `matmul` takes
+  `;`-separated rows, single-batch; arithmetic overflow wraps in
+  release builds — see `AGENT.md`).
 - Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->

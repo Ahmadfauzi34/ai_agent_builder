@@ -32,9 +32,11 @@
 //   v1: the engine rejects mismatched batches, it never broadcasts
 //   them. Output `values` are flat row-major MxN with `shape: [M,N]`;
 //   `a`/`b` echo as row arrays.
-// - No integer ops: intAdd/intSub/intMul live in the i64 graph
-//   family and are rejected by the f32 run path ("spec is not
-//   binary"). This tool is f32.
+// - No integer ops in THIS tool: intAdd/intSub/intMul/intMatmul live
+//   in the i64 registry world (LayerRegistry.forwardIntBinary), not
+//   the f32 graph path — see bin/int.mjs (CP5 correction 2026-10-31:
+//   addBinary rejects int specs by design, it is not a missing
+//   feature). This tool is f32.
 // - No `div` constructor exists in the engine, so `div` is mul by
 //   the host-computed reciprocal. Division by zero is a clean error
 //   (exit 2), never Infinity: the reciprocal is checked finite
