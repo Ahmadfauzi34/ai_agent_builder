@@ -24,7 +24,7 @@ import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
 const specFile = rawArgs[0];
-if (!specFile) {
+if (!specFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
   console.error('usage: node fuzz_cases.mjs <spec.json> [out.json] [--seed 42] [--count 8] [--only-slots 0,1] [--lo -2] [--hi 2]');
   process.exit(2);
 }

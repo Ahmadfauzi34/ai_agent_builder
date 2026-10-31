@@ -25,6 +25,13 @@ output), never just "the tool ran".
 - **v2.5 fixes**: `expectedWeightCount` table + validate warnings
   (F4), verify tolerance validation (F5), drain-safe stdout over the
   64KB pipe buffer via a 100-pair `--batch` (F6).
+- **v2.5-eng arithmetic & CLI completeness**: native WASM kernel routing
+  and fail-closed f32 overflow protection in `bin/arith.mjs` (`arith`,
+  `arith-eng`), fail-closed i64 overflow detection, `--wrap`, `to-f32` /
+  `from-f32` casts, and `--batch` in `bin/int.mjs` (`int`, `int-eng`),
+  catalog/surface listing checks, and universal `--help` / `-h` safety across
+  all CLI scripts in `bin/` (34 total cases, the 34th pinning
+  `precision_warnings` on f32 quantization loss).
 
 ## Honest gaps (what this suite does NOT claim)
 

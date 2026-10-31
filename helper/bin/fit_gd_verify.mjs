@@ -41,7 +41,7 @@ import { scalarize, verifyGdSteps } from '../lib/fit.mjs';
 import fs from 'node:fs';
 
 const [specFile, trajFile, tolArg] = process.argv.slice(2);
-if (!specFile || !trajFile) {
+if (!specFile || !trajFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node fit_gd_verify.mjs <spec.json> <trajectory.json> [tol=1e-3]');
   process.exit(2);
 }

@@ -24,7 +24,7 @@ import { printJsonAndExit } from '../lib/runner.mjs';
 import { rankJacobian } from '../lib/fit.mjs';
 
 const [specFile, topKArg, thresholdArg] = process.argv.slice(2);
-if (!specFile) {
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node fit_sensitivity.mjs <spec.json> [topK=10] [threshold=0]');
   process.exit(2);
 }

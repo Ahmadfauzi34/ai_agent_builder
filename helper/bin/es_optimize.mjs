@@ -24,7 +24,7 @@ import { printJson, failCli } from '../lib/runner.mjs';
 
 const [specFile, targetsFile, gensArg, popArg, sigmaArg, lrArg, seedArg, strategyArg] =
   process.argv.slice(2);
-if (!specFile || !targetsFile) {
+if (!specFile || !targetsFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node es_optimize.mjs <spec.json> <targets.json> [gens] [pop] [sigma] [lr] [seed] [strategy]');
   process.exit(2);
 }

@@ -23,6 +23,10 @@ import { mulberry32 } from '../lib/prng.mjs';
 import { printJson } from '../lib/runner.mjs';
 
 const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  console.error('usage: node bin/quant_equiv.mjs --in 4 --out 8 [--bias] [--scheme q8-per-block] [--tol auto|<number>] [--cases 5] [--seed 7]');
+  process.exit(2);
+}
 function opt(name, def) {
   const i = args.indexOf(name);
   return i >= 0 && i + 1 < args.length ? args[i + 1] : def;

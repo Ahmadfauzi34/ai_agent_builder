@@ -29,7 +29,7 @@ import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [specFile, capArg] = process.argv.slice(2);
-if (!specFile) { console.error('usage: node shard_spec.mjs <spec.json> [maxWeights]'); process.exit(2); }
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) { console.error('usage: node shard_spec.mjs <spec.json> [maxWeights]'); process.exit(2); }
 const cap = capArg !== undefined ? Number(capArg) : 65535;
 if (!(cap >= 1)) failCli('maxWeights must be positive');
 

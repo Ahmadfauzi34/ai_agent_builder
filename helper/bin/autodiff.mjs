@@ -22,7 +22,12 @@ import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 import { RULES, GAPS, ruleFor, ruleNames, inferShapes, makeMap, numel, backwardWithSaved } from '../lib/autodiff.mjs';
 import fs from 'node:fs';
 
-const [cmd, aFile, bFile] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const [cmd, aFile, bFile] = rawArgs;
+if (!cmd || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node autodiff.mjs map | grad <spec.json> [dout.json] | prove-rules | verify-fd <spec.json> [eps] [tol] [dout.json]');
+  process.exit(2);
+}
 
 if (cmd === 'map') {
   printJsonAndExit({ ok: true, ...makeMap() }, 0);

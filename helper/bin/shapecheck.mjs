@@ -17,7 +17,7 @@ import { printJsonAndExit } from '../lib/runner.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 
 const [specFile] = process.argv.slice(2);
-if (!specFile) {
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node shapecheck.mjs <spec.json>');
   process.exit(2);
 }

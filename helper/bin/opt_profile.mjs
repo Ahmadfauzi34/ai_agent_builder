@@ -27,6 +27,10 @@ import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 // the shared looped-sync version from lib/runner.mjs (same call sites,
 // same semantics, one implementation).
 const argv = process.argv.slice(2);
+if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
+  console.error('usage: node opt_profile.mjs <spec.json> [iterations] [--trace]');
+  process.exit(2);
+}
 let iterationsFlag;
 let trace = false;
 const positional = [];

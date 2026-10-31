@@ -18,7 +18,7 @@ import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
 const specFile = rawArgs[0];
-if (!specFile) {
+if (!specFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
   console.error('usage: node quant_verify.mjs <baseline.json> [--int8|--fp16] [cases.json] [absTol=1e-2] [relTol=1e-2]');
   process.exit(2);
 }

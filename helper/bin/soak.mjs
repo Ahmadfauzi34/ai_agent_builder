@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
 const [specFile, nArg] = process.argv.slice(2);
-if (!specFile) {
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node soak.mjs <spec.json> [N=100]');
   process.exit(2);
 }

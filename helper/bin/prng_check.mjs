@@ -18,7 +18,12 @@ import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { generateStream, PRNGS } from '../lib/prng.mjs';
 import fs from 'node:fs';
 
-const [cmd, a2, a3, a4] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node prng_check.mjs [algo=mulberry32] [seed=1] [count=1000] | node prng_check.mjs verify <manifest.json>');
+  process.exit(2);
+}
+const [cmd, a2, a3, a4] = rawArgs;
 
 try {
   if (cmd === 'verify') {

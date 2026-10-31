@@ -14,7 +14,7 @@ import { loadEngineWithOracle, guardCheck } from '../lib/opt.mjs';
 import { printJsonAndExit } from '../lib/runner.mjs';
 
 const argv = process.argv.slice(2);
-if (argv.length === 0) {
+if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
   console.error('usage: node opt_guard.mjs <file> | --bytes N');
   process.exit(2);
 }

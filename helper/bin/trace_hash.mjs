@@ -22,7 +22,7 @@ import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { printJson, failCli } from '../lib/runner.mjs';
 
 const [specFile, otherFile, budgetArg] = process.argv.slice(2);
-if (!specFile) { console.error('usage: node trace_hash.mjs <spec.json> [otherSpec.json] [maxTensorBytes]'); process.exit(2); }
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) { console.error('usage: node trace_hash.mjs <spec.json> [otherSpec.json] [maxTensorBytes]'); process.exit(2); }
 const budget = budgetArg !== undefined ? Number(budgetArg)
   : (otherFile !== undefined && !otherFile.endsWith('.json') ? Number(otherFile) : 1024 * 1024);
 const otherSpecFile = otherFile !== undefined && otherFile.endsWith('.json') ? otherFile : null;

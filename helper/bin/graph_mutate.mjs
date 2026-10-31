@@ -49,7 +49,7 @@ import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 const LAYER_TYPE = { linear: 1, layerNorm: 2, batchNorm: 2, groupNorm: 2, instanceNorm: 2, rmsNorm: 2, conv: 3, conv1d: 3, conv2d: 3, convTranspose2d: 3, embedding: 5 };
 
 const [specFile, mutFile, casesFile, absTolArg, relTolArg] = process.argv.slice(2);
-if (!specFile || !mutFile) {
+if (!specFile || !mutFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node graph_mutate.mjs <spec.json> <mutation.json> [cases.json] [absTol] [relTol]');
   process.exit(2);
 }

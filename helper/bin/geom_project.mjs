@@ -207,7 +207,7 @@ if (rawArgs.includes('--selftest')) {
 }
 
 const modelFile = rawArgs[0];
-if (!modelFile) { console.error('usage: node geom_project.mjs <model.json> [out.json] [--selftest]'); process.exit(2); }
+if (!modelFile || rawArgs.includes('--help') || rawArgs.includes('-h')) { console.error('usage: node geom_project.mjs <model.json> [out.json] [--selftest]'); process.exit(2); }
 const outFile = rawArgs.find((a) => a !== modelFile && a.endsWith('.json') && !a.startsWith('--'));
 try {
   const model = JSON.parse(fs.readFileSync(modelFile, 'utf8'));

@@ -22,7 +22,7 @@ import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
 const specFile = rawArgs[0];
-if (!specFile) {
+if (!specFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
   console.error('usage: node diff_ref.mjs <spec.json> [cases.json] [tol=1e-5]');
   console.error('       node diff_ref.mjs <spec.json> --ref <ref.json> [cases.json] [tol=1e-5]');
   process.exit(2);

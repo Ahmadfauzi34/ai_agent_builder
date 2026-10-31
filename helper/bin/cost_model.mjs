@@ -28,7 +28,7 @@ import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
 const specFile = rawArgs[0];
-if (!specFile) {
+if (!specFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
   console.error('usage: node cost_model.mjs <spec.json> [iterations=11] [--table out.json]');
   process.exit(2);
 }
