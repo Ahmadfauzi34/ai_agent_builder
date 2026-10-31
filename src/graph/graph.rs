@@ -21,6 +21,7 @@
 
 use crate::coprocessor::verify_vectors_report;
 use crate::graph_plan::{decode_graph_plan, decode_graph_plan_header, GraphPlanStep};
+use crate::math::numeric::checked_output;
 use crate::multi_input_graph::{
     multi_input_graph_capabilities as multi_input_graph_capabilities_json, MultiInputGraphPlan,
     MultiInputInputBundle,
@@ -300,6 +301,7 @@ impl CompiledGraph {
         slots[self.out_slot as usize]
             .take()
             .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
+            .and_then(|output| checked_output(output.inner.clone(), "graph run output"))
     }
 }
 
@@ -478,5 +480,46 @@ mod tests {
         assert!(capabilities.contains("validateRegistryBinding"));
         assert!(capabilities.contains("\"execution_binding\":\"required\""));
         assert!(capabilities.contains("\"mutable_state_in_identity\":false"));
+    }
+
+    fn compiled_softplus(registry: &mut LayerRegistry) -> CompiledGraph {
+        let spec = AgentLayerSpec::softplus(11, 1.0).unwrap();
+        registry.init_agent_layer(&spec).unwrap();
+        let mut builder = AgentGraphBuilder::new(2).unwrap();
+        builder.add_unary(&spec, 0, 1).unwrap();
+        builder.set_output(1).unwrap();
+        builder.compile(registry).unwrap()
+    }
+
+    #[test]
+    fn lane_e_batch3_graph_run_rejects_nonfinite_output() {
+        let mut registry = LayerRegistry::new();
+        let graph = compiled_softplus(&mut registry);
+        // softplus(1e38) overflows exp to +inf: the run must fail closed
+        // instead of returning a tensor that serializes as [null].
+        let overflowing = WasmTensor::new(&[1e38], &[1, 1, 1, 1]);
+        let error = graph.run(&registry, &overflowing).err().expect("run must fail");
+        assert!(
+            error.contains("non-finite"),
+            "unexpected error (must name non-finiteness): {error}"
+        );
+        // Finite inputs keep working through the same path.
+        let finite = WasmTensor::new(&[1.0, -1.0], &[1, 2, 1, 1]);
+        assert!(graph.run(&registry, &finite).is_ok());
+    }
+
+    #[test]
+    fn lane_e_batch3_internal_runner_rejects_nonfinite_output() {
+        let mut registry = LayerRegistry::new();
+        let graph = compiled_softplus(&mut registry);
+        let overflowing = WasmTensor::new(&[1e38], &[1, 1, 1, 1]);
+        let error = graph
+            .run_with_external_inputs_internal(&registry, &[(0, overflowing)])
+            .err()
+            .expect("internal run must fail");
+        assert!(
+            error.contains("non-finite"),
+            "unexpected error (must name non-finiteness): {error}"
+        );
     }
 }

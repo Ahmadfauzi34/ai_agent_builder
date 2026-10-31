@@ -48,6 +48,7 @@ use crate::graph_plan::decode_graph_plan;
 use crate::ingress::input_port::{
     role_valid, MAX_FINGERPRINT_BYTES, MAX_ROLE_BYTES, MAX_SOURCE_BYTES,
 };
+use crate::math::numeric::checked_output;
 use crate::program_bundle::{export_multi_input_program_bundle, import_multi_input_program_bundle};
 use crate::protocol::{LAYER_CONV, LAYER_GHOST, LAYER_POOL, LAYER_SEBLOCK};
 use crate::registry::LayerRegistry;
@@ -290,6 +291,7 @@ impl CompiledGraph {
         slots[self.out_slot as usize]
             .take()
             .ok_or_else(|| format!("run: empty output slot {}", self.out_slot))
+            .and_then(|output| checked_output(output.inner.clone(), "CompiledGraph.run output"))
     }
 
     #[wasm_bindgen(js_name = verifyFlat)]
