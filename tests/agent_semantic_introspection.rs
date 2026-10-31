@@ -24,7 +24,7 @@ fn public_layer_catalog_is_complete_and_machine_readable() {
     let catalog: serde_json::Value = serde_json::from_str(&agent_layer_catalog()).unwrap();
     let constructors = catalog["constructors"].as_object().unwrap();
 
-    assert_eq!(constructors.len(), 48);
+    assert_eq!(constructors.len(), 50);
     for required in [
         "relu",
         "prelu",
@@ -44,6 +44,8 @@ fn public_layer_catalog_is_complete_and_machine_readable() {
         "intSub",
         "intMul",
         "intMatmul",
+        "intDiv",
+        "intRem",
         "intToFloat",
         "intFromFloat",
     ] {
