@@ -158,7 +158,20 @@ jobs:
           wasm-opt --version
 
       - name: Build WASM
-        run: wasm-pack build --target web --out-dir pkg
+        run: |
+          set -euxo pipefail
+          # Byte-identical wasm across build machines: rustc embeds
+          # absolute $CARGO_HOME/registry and workspace paths as
+          # dependency panic locations in the wasm data section (CI
+          # /home/runner/.cargo vs local /root/.cargo gave +704 bytes
+          # for identical source, PR #418). Remap both to stable
+          # prefixes so CI and local builds emit the same bytes.
+          # NOTE: a set RUSTFLAGS env var overrides the
+          # [target.wasm32-unknown-unknown] rustflags in
+          # .cargo/config.toml, so those flags are repeated verbatim
+          # here; if config.toml changes, update this line too.
+          export RUSTFLAGS="--remap-path-prefix ${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix $GITHUB_WORKSPACE=/work --cfg getrandom_backend=\"wasm_js\" -C target-feature=+simd128,-relaxed-simd"
+          wasm-pack build --target web --out-dir pkg
 
       - name: Audit packaged WASM surface
         run: python3 scripts/check_wasm_surface.py
