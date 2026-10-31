@@ -85,7 +85,7 @@ const EXTERNAL_LAYOUTS = new Set([
   'token_ids_axis1_singleton', 'sequence_feature_axis2_singleton_width',
 ]);
 const ENGINE_REJECTED_EXTERNAL_LAYOUTS = new Set(['dynamic', 'preserve_input']);
-const INT_CONSTRUCTORS = new Set(['intAdd', 'intSub', 'intMul', 'intMatmul', 'intToFloat', 'intFromFloat']);
+const INT_CONSTRUCTORS = new Set(['intAdd', 'intSub', 'intMul', 'intMatmul', 'intDiv', 'intRem', 'intToFloat', 'intFromFloat']);
 
 function isRoleValid(role) {
   if (typeof role !== 'string' || role.length === 0 || Buffer.byteLength(role) > 64) return false;

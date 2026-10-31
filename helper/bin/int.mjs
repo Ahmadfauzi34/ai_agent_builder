@@ -2,9 +2,15 @@
 // burn-math int: exact i64 arithmetic & casts through the engine's integer world,
 // with fail-closed i64 overflow detection (or explicit --wrap for two's-complement).
 //
+// The engine itself never wraps: overflow, division by zero, and MIN / -1
+// are always engine errors (unconditionally checked). --wrap is computed
+// here in exact BigInt and never calls the engine for the wrapped op.
+//
 //   node bin/int.mjs add 16777217,100 1,-30   -> {"ok":true,"op":"add","values":["16777218","70"]}
 //   node bin/int.mjs sub 10,-5 3,7            -> {"ok":true,"op":"sub","values":["7","-12"]}
 //   node bin/int.mjs mul 6,-4 7,8             -> {"ok":true,"op":"mul","values":["42","-32"]}
+//   node bin/int.mjs div 10,-10 3,3           -> {"ok":true,"op":"div","values":["3","-3"]}
+//   node bin/int.mjs rem 10,-10 3,3           -> {"ok":true,"op":"rem","values":["1","-1"]}
 //   node bin/int.mjs matmul "1,2;3,4" "5,6;7,8"
 //        -> {"ok":true,"op":"matmul","shape":[2,2],"values":["19","22","43","50"]}
 //   node bin/int.mjs to-f32 100,-200          -> {"ok":true,"op":"to-f32","values":[100,-200]}
@@ -27,9 +33,9 @@ function engineProvenance() {
   } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
 }
 
-const OPS = { add: 'intAdd', sub: 'intSub', mul: 'intMul' };
+const OPS = { add: 'intAdd', sub: 'intSub', mul: 'intMul', div: 'intDiv', rem: 'intRem' };
 const USAGE =
-  'usage: node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...> [--wrap] ' +
+  'usage: node bin/int.mjs <add|sub|mul|div|rem> <a1,a2,...> <b1,b2,...> [--wrap] ' +
   'OR matmul <a11,a12;...a21,...> <b11,b12;...b21,...> [--wrap] ' +
   'OR to-f32 <a1,a2,...> [--allow-inexact] ' +
   'OR from-f32 <f1,f2,...> ' +
@@ -117,6 +123,15 @@ function verifyBinaryNoOverflow(op, aEff, bEff, allowWrap) {
   if (allowWrap) return;
   for (let i = 0; i < aEff.length; i++) {
     const x = aEff[i], y = bEff[i];
+    if (op === 'div' || op === 'rem') {
+      if (y === 0n) {
+        throw new Error(`${op} division by zero at index ${i} (--wrap does not cover a zero divisor)`);
+      }
+      if (x === I64_MIN && y === -1n) {
+        throw new Error(`i64 overflow at index ${i}: exact ${op} of ${x} and ${y} is out of i64 range`);
+      }
+      continue;
+    }
     const exact = op === 'add' ? x + y : op === 'sub' ? x - y : x * y;
     if (exact < I64_MIN || exact > I64_MAX) {
       throw new Error(`i64 overflow at index ${i}: exact ${op} result ${exact} is out of i64 range (pass --wrap for two's-complement wraparound)`);
@@ -143,7 +158,49 @@ function verifyMatmulNoOverflow(A, B, M, K, N, allowWrap) {
   }
 }
 
+const TWO64 = 2n ** 64n;
+function wrapI64(x) {
+  let r = ((x % TWO64) + TWO64) % TWO64;
+  return r > I64_MAX ? r - TWO64 : r;
+}
+
+function wrapBinary(op, aEff, bEff) {
+  // Two's-complement emulation of the OLD engine behavior (per-op wrap).
+  // No engine call: the engine is unconditionally checked and would Err
+  // on these inputs. Division by zero still errors: Rust wrapping_div
+  // panics on a zero divisor, so there is no wrapped value for it.
+  // BigInt / and % already truncate toward zero like Rust, so div/rem
+  // need no extra rounding.
+  return aEff.map((x, i) => {
+    const y = bEff[i];
+    if (op === 'div' || op === 'rem') {
+      if (y === 0n) throw new Error(`${op} division by zero at index ${i} (--wrap does not cover a zero divisor)`);
+      if (x === I64_MIN && y === -1n) return op === 'div' ? I64_MIN : 0n;
+      return op === 'div' ? x / y : x % y;
+    }
+    const exact = op === 'add' ? x + y : op === 'sub' ? x - y : x * y;
+    return wrapI64(exact);
+  }).map(String);
+}
+
+function wrapMatmul(A, B, M, K, N) {
+  // Per-product wrap, then per-accumulation wrap — exactly the
+  // operation sequence the old wrapping engine performed.
+  const out = [];
+  for (let r = 0; r < M; r++) {
+    for (let c = 0; c < N; c++) {
+      let acc = 0n;
+      for (let k = 0; k < K; k++) {
+        acc = wrapI64(acc + wrapI64(A[r][k] * B[k][c]));
+      }
+      out.push(acc);
+    }
+  }
+  return out.map(String);
+}
+
 function runIntBinary(rt, op, aEff, bEff, allowWrap = false) {
+  if (allowWrap) return wrapBinary(op, aEff, bEff);
   verifyBinaryNoOverflow(op, aEff, bEff, allowWrap);
   const ctor = OPS[op];
   const n = aEff.length;
@@ -164,6 +221,7 @@ function runIntBinary(rt, op, aEff, bEff, allowWrap = false) {
 }
 
 function runIntMatmul(rt, A, B, M, K, N, allowWrap = false) {
+  if (allowWrap) return wrapMatmul(A, B, M, K, N);
   verifyMatmulNoOverflow(A, B, M, K, N, allowWrap);
   const reg = new rt.LayerRegistry();
   let a = null, b = null, out = null;

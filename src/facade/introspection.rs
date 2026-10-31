@@ -20,6 +20,7 @@ use crate::protocol::{
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
     SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
     INT_BINARY_ADD, INT_BINARY_SUB, INT_BINARY_MUL, INT_BINARY_MATMUL,
+    INT_BINARY_DIV, INT_BINARY_REM,
     INT_CAST_TO_FLOAT, INT_CAST_FROM_FLOAT,
 };
 use crate::registry::LayerRegistry;
@@ -185,6 +186,8 @@ fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str>
             INT_BINARY_SUB => Some("intSub"),
             INT_BINARY_MUL => Some("intMul"),
             INT_BINARY_MATMUL => Some("intMatmul"),
+            INT_BINARY_DIV => Some("intDiv"),
+            INT_BINARY_REM => Some("intRem"),
             _ => None,
         },
         LAYER_INT_CAST => match variant? {

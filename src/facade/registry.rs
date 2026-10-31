@@ -634,6 +634,8 @@ impl LayerRegistry {
             INT_BINARY_SUB => WasmIntBinary::new_sub(),
             INT_BINARY_MUL => WasmIntBinary::new_mul(),
             INT_BINARY_MATMUL => WasmIntBinary::new_matmul(),
+            INT_BINARY_DIV => WasmIntBinary::new_div(),
+            INT_BINARY_REM => WasmIntBinary::new_rem(),
             v => {
                 return Err(format!("Unknown int_binary variant: 0x{v:02X}"));
             }
@@ -1056,5 +1058,66 @@ mod lane_e_batch1_tests {
             err.contains("forwardIntCastToFloat") && err.contains("forwardIntCastFromFloat"),
             "cast err: {err}"
         );
+    }
+}
+
+// Lane E Batch 2 (T2 checked int + div/rem).
+// WasmIntTensor::new builds from slices (registry.rs tests pattern);
+// forward_int_binary is the Rust name of the JS export forwardIntBinary.
+#[cfg(test)]
+mod lane_e_batch2_tests {
+    use super::*;
+    use crate::WasmIntTensor;
+
+    #[test]
+    fn div_rem_init_and_forward_truncate() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_div(1)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::int_rem(2)).unwrap();
+        let a = WasmIntTensor::new(&[10, -10, 7, -7], &[1, 4, 1, 1]);
+        let b = WasmIntTensor::new(&[3, 3, 2, 2], &[1, 4, 1, 1]);
+        let d = reg.forward_int_binary(1, &a, &b).unwrap();
+        assert_eq!(d.to_array(), vec![3, -3, 3, -3]);
+        let r = reg.forward_int_binary(2, &a, &b).unwrap();
+        assert_eq!(r.to_array(), vec![1, -1, 1, -1]);
+    }
+
+    #[test]
+    fn div_rem_reject_zero_and_min_neg_one() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_div(1)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::int_rem(2)).unwrap();
+        let five = WasmIntTensor::new(&[5], &[1, 1, 1, 1]);
+        let zero = WasmIntTensor::new(&[0], &[1, 1, 1, 1]);
+        let err = reg
+            .forward_int_binary(1, &five, &zero)
+            .err()
+            .expect("div by zero must err");
+        assert!(err.contains("division by zero"), "div zero err: {err}");
+        let min = WasmIntTensor::new(&[i64::MIN], &[1, 1, 1, 1]);
+        let neg1 = WasmIntTensor::new(&[-1], &[1, 1, 1, 1]);
+        let err = reg
+            .forward_int_binary(1, &min, &neg1)
+            .err()
+            .expect("MIN/-1 must err");
+        assert!(err.contains("i64 overflow"), "div MIN/-1 err: {err}");
+        let err = reg
+            .forward_int_binary(2, &min, &neg1)
+            .err()
+            .expect("MIN%-1 must err");
+        assert!(err.contains("i64 overflow"), "rem MIN/-1 err: {err}");
+    }
+
+    #[test]
+    fn checked_add_overflow_via_registry_is_err() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::int_add(1)).unwrap();
+        let a = WasmIntTensor::new(&[i64::MAX], &[1, 1, 1, 1]);
+        let b = WasmIntTensor::new(&[1], &[1, 1, 1, 1]);
+        let err = reg
+            .forward_int_binary(1, &a, &b)
+            .err()
+            .expect("registry add overflow must err");
+        assert!(err.contains("i64 overflow"), "registry add err: {err}");
     }
 }

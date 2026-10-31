@@ -28,6 +28,20 @@ pub(crate) fn validate_glu_shape(shape: [usize; 4], dim: usize) -> Result<(), St
     Ok(())
 }
 
+pub(crate) fn validate_prelu_shape(shape: [usize; 4], num_parameters: usize) -> Result<(), String> {
+    // Rank-4 tensors: channels live on axis 1. Burn's prelu accepts
+    // alpha of length 1 (shared) or C (per-channel); anything else
+    // traps inside Burn (unreachable), so reject it here with a
+    // clean Err — same pattern as validate_glu_shape.
+    let c = shape[1];
+    if num_parameters != 1 && num_parameters != c {
+        return Err(format!(
+            "PRelu forward: num_parameters must be 1 or C (channels), got {num_parameters} for input shape {shape:?} (C={c})"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn activation_forward_fail<T>(message: String) -> T {
     #[cfg(target_arch = "wasm32")]
     {
@@ -224,7 +238,9 @@ pub(crate) fn validate_activation_state_structure(
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_glu_shape, validate_rank4_axis};
+    use super::WasmActivation;
+    use super::{validate_glu_shape, validate_prelu_shape, validate_rank4_axis};
+    use crate::WasmTensor;
 
     #[test]
     fn rank4_axis_accepts_valid_dimensions() {
@@ -253,5 +269,41 @@ mod tests {
     #[test]
     fn glu_rejects_out_of_range_axis() {
         assert!(validate_glu_shape([2, 8, 3, 1], 4).is_err());
+    }
+
+    #[test]
+    fn prelu_accepts_one_or_channel_count() {
+        assert!(validate_prelu_shape([2, 4, 3, 1], 1).is_ok());
+        assert!(validate_prelu_shape([2, 4, 3, 1], 4).is_ok());
+    }
+
+    #[test]
+    fn prelu_rejects_other_parameter_counts() {
+        let err = validate_prelu_shape([2, 4, 3, 1], 2).unwrap_err();
+        assert!(err.contains("num_parameters"), "prelu err: {err}");
+    }
+
+    #[test]
+    fn prelu_try_forward_rejects_mismatch_without_trap() {
+        // Previously trapped (unreachable) inside Burn; the
+        // try_forward arm must turn it into a clean Err.
+        let act = WasmActivation::new_prelu(Some(2), Some(0.25));
+        let input = WasmTensor::new(&[1.0, -0.5, 3.0, -1.0], &[1, 4, 1, 1]);
+        let err = act
+            .try_forward(&input)
+            .err()
+            .expect("prelu(2)/C=4 must err, not trap");
+        assert!(err.contains("num_parameters"), "prelu err: {err}");
+    }
+
+    #[test]
+    fn prelu_try_forward_accepts_one_and_channel_count() {
+        for n in [1, 4] {
+            let act = WasmActivation::new_prelu(Some(n), Some(0.25));
+            let input = WasmTensor::new(&[1.0, -0.5, 3.0, -1.0], &[1, 4, 1, 1]);
+            let out = act.try_forward(&input).unwrap();
+            // Positive passthrough, negative * alpha (0.25).
+            assert_eq!(out.to_array(), vec![1.0, -0.125, 3.0, -0.25]);
+        }
     }
 }

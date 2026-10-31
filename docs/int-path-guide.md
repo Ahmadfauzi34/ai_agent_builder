@@ -143,15 +143,24 @@ numbers, get a loud error if any is not a safe integer.
 
 ## 5. Overflow policy
 
-Burn's integer ops use the primitive integer operators:
+Integer ops are **unconditionally checked**: add/sub/mul/matmul/div/rem
+run on plain i64 data through Rust `checked_*` semantics, so overflow,
+division by zero, and `MIN / -1` are all clean `Err` values — in debug
+AND release builds alike. The engine has no wrapping mode and no flag
+to enable one. (Burn's own NdArray int ops wrap in release builds, which
+is why this layer never calls them for arithmetic.)
 
-- **debug builds:** overflow **panics** (loud).
-- **release builds:** overflow **wraps** two's-complement (silent).
+Two's-complement wraparound exists only as an explicit caller-side
+emulation: `int.mjs --wrap` computes the wrapped result in exact BigInt
+(per-op wrap for matmul) and never calls the engine for the wrapped op.
+Division by zero still errors under `--wrap` — Rust `wrapping_div`
+panics on a zero divisor, so there is no wrapped value for it; `MIN /
+-1` under `--wrap` gives `MIN` (div) or `0` (rem).
 
-This is Rust's native `+`/`*` behavior, not a precision quirk — but it
-means "never wraps" is *your* invariant to enforce if you need it.
-Range-check inputs before `intAdd`/`intMul` when values can approach
-±2^63. The engine will not do it for you.
+Range-checking inputs before `intAdd`/`intMul` is no longer required
+for correctness — the engine rejects overflow itself — but the JS tools
+still pre-verify and report the exact overflowing result first, so the
+error names the offending index and value.
 
 ## 6. Quick reference
 

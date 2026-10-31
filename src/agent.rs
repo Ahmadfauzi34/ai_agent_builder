@@ -32,6 +32,7 @@ use crate::protocol::{
     POOL_ADAPTIVEAVGPOOL2D, POOL_AVGPOOL1D, POOL_AVGPOOL2D, POOL_MAXPOOL1D, POOL_MAXPOOL2D,
     SHIFT_DOWN, SHIFT_LEFT, SHIFT_RIGHT, SHIFT_UP, TRANSPOSE_SWAP,
     INT_BINARY_ADD, INT_BINARY_SUB, INT_BINARY_MUL, INT_BINARY_MATMUL,
+    INT_BINARY_DIV, INT_BINARY_REM,
     INT_CAST_TO_FLOAT, INT_CAST_FROM_FLOAT,
 };
 
@@ -620,7 +621,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"multi_input_compile\":\"LayerRegistry.compileMultiInputGraph\",\"multi_input_run\":\"CompiledMultiInputGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
-            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\",\"transpose\",\"intAdd\",\"intSub\",\"intMul\",\"intMatmul\",\"intToFloat\",\"intFromFloat\"],",
+            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\",\"transpose\",\"intAdd\",\"intSub\",\"intMul\",\"intMatmul\",\"intDiv\",\"intRem\",\"intToFloat\",\"intFromFloat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
             "\"batchNorm\":\"batchNorm(id,num_features,epsilon?)\",",
@@ -637,7 +638,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"intAdd\":\"intAdd(id)\",",
             "\"intSub\":\"intSub(id)\",",
             "\"intMul\":\"intMul(id)\",",
-            "\"intMatmul\":\"intMatmul(id)\",",
+            "\"intMatmul\":\"intMatmul(id)\",\"intDiv\":\"intDiv(id)\",\"intRem\":\"intRem(id)\",",
             "\"intToFloat\":\"intToFloat(id)\",",
             "\"intFromFloat\":\"intFromFloat(id)\"}},",
             "\"graph_builder\":\"AgentGraphBuilder\",\"graph_methods\":[\"addUnary\",\"addBinary\",\"setOutput\",\"compile\",\"compileWithOutput\",\"multiInputPlanV1\"]}},",
@@ -656,7 +657,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"seblock\":{{\"code\":{},\"arity\":1}},",
             "\"binary\":{{\"code\":{},\"arity\":2,\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"concat\":{}}}}},",
             "\"transpose\":{{\"code\":{},\"arity\":1,\"variants\":{{\"swap\":{}}}}},",
-            "\"int_binary\":{{\"code\":{},\"arity\":2,\"dtype\":\"int64\",\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{}}}}},",
+            "\"int_binary\":{{\"code\":{},\"arity\":2,\"dtype\":\"int64\",\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"div\":{},\"rem\":{}}}}},",
             "\"int_cast\":{{\"code\":{},\"arity\":1,\"variants\":{{\"to_float\":{},\"from_float\":{}}}}}",
             "}}}}"
         ),
@@ -714,6 +715,8 @@ pub(crate) fn capability_manifest() -> String {
         INT_BINARY_SUB,
         INT_BINARY_MUL,
         INT_BINARY_MATMUL,
+        INT_BINARY_DIV,
+        INT_BINARY_REM,
         LAYER_INT_CAST,
         INT_CAST_TO_FLOAT,
         INT_CAST_FROM_FLOAT,

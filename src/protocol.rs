@@ -116,6 +116,8 @@ pub const INT_BINARY_ADD: u8 = 0x00;
 pub const INT_BINARY_SUB: u8 = 0x01;
 pub const INT_BINARY_MUL: u8 = 0x02;
 pub const INT_BINARY_MATMUL: u8 = 0x03;
+pub const INT_BINARY_DIV: u8 = 0x04;
+pub const INT_BINARY_REM: u8 = 0x05;
 
 // IntCast variants (Boundary #5 — int <-> float bridge)
 pub const INT_CAST_TO_FLOAT: u8 = 0x00;

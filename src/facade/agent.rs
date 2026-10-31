@@ -22,8 +22,8 @@ use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
     ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
     BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
-    CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_MATMUL, INT_BINARY_MUL,
-    INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
+    CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_DIV, INT_BINARY_MATMUL,
+    INT_BINARY_MUL, INT_BINARY_REM, INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
     LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST,
     LAYER_LINEAR, LAYER_POOL, LAYER_SEBLOCK,
     LAYER_TRANSPOSE, NORM_BATCH,
@@ -816,6 +816,16 @@ impl AgentLayerSpec {
     #[wasm_bindgen(js_name = intMatmul)]
     pub fn int_matmul(layer_id: u32) -> AgentLayerSpec {
         Self::int_binary_spec(layer_id, INT_BINARY_MATMUL)
+    }
+
+    #[wasm_bindgen(js_name = intDiv)]
+    pub fn int_div(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_DIV)
+    }
+
+    #[wasm_bindgen(js_name = intRem)]
+    pub fn int_rem(layer_id: u32) -> AgentLayerSpec {
+        Self::int_binary_spec(layer_id, INT_BINARY_REM)
     }
 
     #[wasm_bindgen(js_name = intToFloat)]

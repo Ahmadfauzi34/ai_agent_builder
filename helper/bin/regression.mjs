@@ -557,6 +557,8 @@ test('int: exact i64 ops through the registry, clean errors', () => {
   assert(typeof c1.engine?.wasm_sha256_short === 'string' && c1.engine.mode === 'direct', 'provenance fields');
   assert(JSON.stringify(full(['sub', '10,-5', '3,7']).values) === '["7","-12"]', 'sub');
   assert(JSON.stringify(full(['mul', '6,-4', '7,8']).values) === '["42","-32"]', 'mul');
+  assert(JSON.stringify(full(['div', '10,-10', '3,3']).values) === '["3","-3"]', 'div truncates');
+  assert(JSON.stringify(full(['rem', '10,-10', '3,3']).values) === '["1","-1"]', 'rem follows dividend');
   const bc = full(['add', '5', '1,2,3']);
   assert(JSON.stringify(bc.values) === '["6","7","8"]' && bc.broadcast === 'a', 'broadcast a');
   const mm = full(['matmul', '1,2;3,4', '5,6;7,8']);
@@ -570,7 +572,6 @@ test('int: exact i64 ops through the registry, clean errors', () => {
     [['add', '-9223372036854775809', '1'], 'out of i64 range'],
     [['matmul', '1,2,3;4,5,6', '7,8;9,10'], 'matmul shape mismatch'],
     [['matmul', '1,2;3', '4,5;6,7'], 'non-rectangular'],
-    [['div', '4', '2'], 'usage:'],
   ]) {
     const r = run(args);
     assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
@@ -623,6 +624,22 @@ test('int-eng: fail-closed i64 overflow guard, --wrap opt-in, to-f32/from-f32 ca
   assert(rWrap.code === 0 && JSON.stringify(rWrap.json.values) === '["-9223372036854775808"]', 'i64 --wrap allowed');
   const rMatOver = run(['matmul', '3037000500,3037000500', '3037000500;3037000500']);
   assert(rMatOver.code === 2 && rMatOver.json?.error?.includes('i64 overflow'), 'i64 matmul overflow rejected');
+  const rMatWrap = run(['matmul', '3037000500', '3037000500', '--wrap']);
+  assert(rMatWrap.code === 0 && JSON.stringify(rMatWrap.json.values) === '["-9223372036709301616"]', 'i64 matmul --wrap reproduces per-op wraparound');
+  const rDiv = run(['div', '10,-10,7', '3,3,2']);
+  assert(rDiv.code === 0 && JSON.stringify(rDiv.json.values) === '["3","-3","3"]', 'int div truncates toward zero');
+  const rRem = run(['rem', '10,-10,7', '3,3,2']);
+  assert(rRem.code === 0 && JSON.stringify(rRem.json.values) === '["1","-1","1"]', 'int rem follows dividend sign');
+  const rDivZero = run(['div', '5', '0']);
+  assert(rDivZero.code === 2 && rDivZero.json?.error?.includes('division by zero'), 'int div by zero rejected');
+  const rDivZeroWrap = run(['div', '5', '0', '--wrap']);
+  assert(rDivZeroWrap.code === 2 && rDivZeroWrap.json?.error?.includes('division by zero'), 'int div by zero rejected even with --wrap');
+  const rDivMinNeg1 = run(['div', '-9223372036854775808', '-1']);
+  assert(rDivMinNeg1.code === 2 && rDivMinNeg1.json?.error?.includes('i64 overflow'), 'int MIN/-1 rejected');
+  const rDivMinNeg1Wrap = run(['div', '-9223372036854775808', '-1', '--wrap']);
+  assert(rDivMinNeg1Wrap.code === 0 && JSON.stringify(rDivMinNeg1Wrap.json.values) === '["-9223372036854775808"]', 'int MIN/-1 --wrap gives MIN');
+  const rRemMinNeg1Wrap = run(['rem', '-9223372036854775808', '-1', '--wrap']);
+  assert(rRemMinNeg1Wrap.code === 0 && JSON.stringify(rRemMinNeg1Wrap.json.values) === '["0"]', 'int MIN%-1 --wrap gives 0');
   const cTo = run(['to-f32', '42,-100']);
   assert(cTo.code === 0 && JSON.stringify(cTo.json.values) === '[42,-100]', 'to-f32 exact');
   const cInexact = run(['to-f32', '16777217']);

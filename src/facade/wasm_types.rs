@@ -15,7 +15,7 @@
 
 use crate::layers::activation::{
     activation_forward_fail, validate_activation_state_structure, validate_glu_shape,
-    validate_rank4_axis, Activation, ActivationConfig, ActivationRecord,
+    validate_prelu_shape, validate_rank4_axis, Activation, ActivationConfig, ActivationRecord,
 };
 use crate::layers::binary::{Binary, BinaryOp};
 use crate::layers::conv::{
@@ -744,6 +744,9 @@ impl WasmActivation {
             Activation::Softmax(m) => validate_rank4_axis(m.dim, "Softmax forward")?,
             Activation::LogSoftmax(m) => validate_rank4_axis(m.dim, "LogSoftmax forward")?,
             Activation::Glu(m) => validate_glu_shape(shape, m.dim)?,
+            Activation::PRelu(m) => {
+                validate_prelu_shape(shape, m.alpha.val().dims()[0])?
+            }
             _ => {}
         }
 
@@ -4115,6 +4118,16 @@ impl WasmIntBinary {
     pub fn new_matmul() -> WasmIntBinary {
         WasmIntBinary {
             inner: IntBinary::new(IntBinaryOp::Matmul),
+        }
+    }
+    pub fn new_div() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Div),
+        }
+    }
+    pub fn new_rem() -> WasmIntBinary {
+        WasmIntBinary {
+            inner: IntBinary::new(IntBinaryOp::Rem),
         }
     }
 
