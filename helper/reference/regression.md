@@ -8,7 +8,7 @@ output), never just "the tool ran".
 
 ## Where the cases come from
 
-- **Basics**: builder counts (48/169/48 + wasm sha), run/validate/verify/
+- **Basics**: builder counts (50/169/50 + wasm sha), run/validate/verify/
   checkpoint round-trip on the shipped examples, including the known
   checkpoint sha for `linear-relu` (`8c209c9f…`) and restore values
   `[4.5, 10.5]`.

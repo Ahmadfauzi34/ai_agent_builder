@@ -88,7 +88,7 @@ For one-off arithmetic and engineering math, do not hand-write a spec JSON:
 All ops execute directly through the native WASM kernels (`WasmNumericKernel`, `WasmLinearAlgebra`, `WasmStatistics`, `WasmReduction`, `WasmProbability`). A length-1 vector broadcasts to the other's length on elementwise ops (`add`, `sub`, `mul`, `div`); `div` runs natively via `WasmNumericKernel.div` (0 ULP drift across normal and subnormal ranges; division by zero and divisor underflow are clean errors, exit 2). Both input f32 overflow and output non-finite values (`Infinity`/`NaN`) are rejected fail-closed with exit 2 (`non-finite value at index ...`). Every arith output also carries `precision_warnings` (always present, possibly empty), naming inputs that lost mantissa precision on entry to f32 (e.g. 16777217 → 16777216); the `a`/`b` echo keeps the given values.
 
 Exact integers are a separate tool, not an arith flag:
-`node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...> [--wrap]` (or `matmul` with `;`-separated rows, `to-f32 <a1,a2,...> [--allow-inexact]`, `from-f32 <f1,f2,...>`, or `--batch <ops.json>`). Int runs through the registry (`LayerRegistry.forwardIntBinary`, `forwardIntCastToFloat`, `forwardIntCastFromFloat`), never the f32 graph. Inputs for i64 ops are integer strings (full i64 range); outputs are decimal strings. By default, arithmetic overflow beyond `[-2^63, 2^63 - 1]` (including intermediate `matmul` products/accumulations) is rejected fail-closed with exit 2 (`i64 overflow ...`); pass `--wrap` (or `"wrap": true` in batch) only when two's-complement wrapping is explicitly desired. `to-f32` enforces the exact integer-in-f32 boundary (`|x| <= 16777216`, `2^24`) unless `--allow-inexact` is passed.
+`node bin/int.mjs <add|sub|mul|div|rem> <a1,a2,...> <b1,b2,...> [--wrap]` (or `matmul` with `;`-separated rows, `to-f32 <a1,a2,...> [--allow-inexact]`, `from-f32 <f1,f2,...>`, or `--batch <ops.json>`). Int runs through the registry (`LayerRegistry.forwardIntBinary`, `forwardIntCastToFloat`, `forwardIntCastFromFloat`), never the f32 graph. Inputs for i64 ops are integer strings (full i64 range); outputs are decimal strings. By default, arithmetic overflow beyond `[-2^63, 2^63 - 1]` (including intermediate `matmul` products/accumulations) is rejected fail-closed with exit 2 (`i64 overflow ...`); pass `--wrap` (or `"wrap": true` in batch) only when two's-complement wrapping is explicitly desired. `to-f32` enforces the exact integer-in-f32 boundary (`|x| <= 16777216`, `2^24`) unless `--allow-inexact` is passed. `div` truncates toward zero; division by zero (and `MIN/-1`) is an error for `div`/`rem`.
 
 ## How to find things (read this, it is the whole trick)
 
@@ -106,7 +106,7 @@ programmatically and print exactly one entry:
 
 - `node bin/find-op.mjs <constructor>` — one layer constructor,
   complete (signature, parameters, family). `--list` prints one line
-  per constructor (48 total).
+  per constructor (50 total).
 - `node bin/surface.mjs <name>` — one wasm function, class, or
   method. For a method, the answer pairs each signature with its
   class — parameter order differs between classes, so never assume
@@ -117,12 +117,12 @@ programmatically and print exactly one entry:
   writing a spec that uses a norm/conv/embedding layer: e.g.
   `layerNorm` requires `feature_last`, not the common
   `feature_axis1_singleton`. `--list` prints one line per constructor
-  (48 total).
+  (50 total).
 
 For a quick scan without any tool, read `contracts-index/`:
-`catalog-index.jsonl` is one constructor per line (48 lines),
+`catalog-index.jsonl` is one constructor per line (50 lines),
 `surface-index.jsonl` is one surface entry per line (169 lines),
-`layout-index.jsonl` is one layout contract per line (48 lines).
+`layout-index.jsonl` is one layout contract per line (50 lines).
 One entry is one line, so grep on these files is safe. Grep on the
 raw files under `engine-audit/` is not.
 
