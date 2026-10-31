@@ -576,6 +576,73 @@ test('int: exact i64 ops through the registry, clean errors', () => {
     assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
   }
 });
+test('arith-eng: native WasmNumericKernel/LinearAlgebra/Statistics/Reduction + f32 overflow guard', () => {
+  const run = (args) => runTool(['bin/arith.mjs', ...args]);
+  const full = (args) => {
+    const r = run(args);
+    assert(r.code === 0 && r.json && r.json.ok === true, `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    return r.json;
+  };
+  assert(JSON.stringify(full(['div', '2e-39', '2e-39']).values) === '[1]', 'subnormal div 2e-39/2e-39 === 1');
+  assert(JSON.stringify(full(['div', '2e38', '2e38']).values) === '[1]', 'large div 2e38/2e38 === 1 (0 ULP drift)');
+  assert(JSON.stringify(full(['sqrt', '4,9,16']).values) === '[2,3,4]', 'sqrt');
+  assert(JSON.stringify(full(['abs', '-3,4,-5']).values) === '[3,4,5]', 'abs');
+  assert(JSON.stringify(full(['clamp', '-5,0,5', '-2,3']).values) === '[-2,0,3]', 'clamp');
+  assert(JSON.stringify(full(['dot', '1,2,3', '4,5,6']).values) === '[32]', 'dot');
+  assert(JSON.stringify(full(['norm', '3,4']).values) === '[5]', 'norm');
+  assert(JSON.stringify(full(['dist', '0,0', '3,4']).values) === '[5]', 'dist');
+  assert(JSON.stringify(full(['sum', '1,2,3,4']).values) === '[10]', 'sum');
+  assert(JSON.stringify(full(['mean', '2,4,6,8']).values) === '[5]', 'mean');
+  assert(JSON.stringify(full(['sum_axis', '1,2,3;4,5,6', '0']).values) === '[5,7,9]', 'sum_axis 0');
+  for (const [args, want] of [
+    [['mul', '1e20', '1e20'], 'non-finite'],
+    [['add', '2e38', '2e38'], 'non-finite'],
+    [['add', '1e39', '1'], 'not a finite number'],
+    [['div', '1', '1e-46'], 'divisor underflow at index 0'],
+    [['sqrt', '-1'], 'negative value'],
+  ]) {
+    const r = run(args);
+    assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+  }
+});
+test('arith-eng: precision_warnings name f32 quantization loss on entry', () => {
+  const run = (args) => runTool(['bin/arith.mjs', ...args]);
+  const j = run(['add', '16777217', '0']).json;
+  assert(j.ok === true && JSON.stringify(j.values) === '[16777216]', 'values still f32');
+  assert(JSON.stringify(j.precision_warnings) === '[{"arg":"a","index":0,"given":16777217,"as_f32":16777216}]', 'warning names the loss');
+  const clean = run(['add', '3,4', '5,6']).json;
+  assert(clean.ok === true && Array.isArray(clean.precision_warnings) && clean.precision_warnings.length === 0, 'no warning without loss');
+  const m = run(['matmul', '16777217,2', '1;1']).json;
+  assert(m.ok === true && m.precision_warnings.length === 1 && m.precision_warnings[0].row === 0 && m.precision_warnings[0].col === 0, 'matrix warning carries row/col');
+});
+test('int-eng: fail-closed i64 overflow guard, --wrap opt-in, to-f32/from-f32 casts, and --batch', () => {
+  const run = (args) => runTool(['bin/int.mjs', ...args]);
+  const rOver1 = run(['add', '9223372036854775807', '1']);
+  assert(rOver1.code === 2 && rOver1.json?.error?.includes('i64 overflow'), 'i64 add overflow rejected by default');
+  const rWrap = run(['add', '9223372036854775807', '1', '--wrap']);
+  assert(rWrap.code === 0 && JSON.stringify(rWrap.json.values) === '["-9223372036854775808"]', 'i64 --wrap allowed');
+  const rMatOver = run(['matmul', '3037000500,3037000500', '3037000500;3037000500']);
+  assert(rMatOver.code === 2 && rMatOver.json?.error?.includes('i64 overflow'), 'i64 matmul overflow rejected');
+  const cTo = run(['to-f32', '42,-100']);
+  assert(cTo.code === 0 && JSON.stringify(cTo.json.values) === '[42,-100]', 'to-f32 exact');
+  const cInexact = run(['to-f32', '16777217']);
+  assert(cInexact.code === 2 && cInexact.json?.error?.includes('precision loss'), 'to-f32 inexact rejected by default');
+  const cFrom = run(['from-f32', '3.9,-4.7,0']);
+  assert(cFrom.code === 0 && JSON.stringify(cFrom.json.values) === '["3","-4","0"]', 'from-f32 truncates toward zero');
+});
+test('CLI completeness: all interactive bin/*.mjs tools handle --help without ENOENT', () => {
+  const skip = new Set(['autodiff_prove.mjs', 'engine_hardening_test.mjs', 'regression.mjs']);
+  const files = fs.readdirSync( path.join(ROOT, 'bin') ).filter((f) => f.endsWith('.mjs') && !skip.has(f));
+  assert(files.length === 38, `expected 38 interactive CLIs, got ${files.length}`);
+  for (const f of files) {
+    const r = runTool([path.join('bin', f), 'examples/linear-relu.json', '--help']);
+    assert(r.code === 2, `${f} --help: expected exit 2, got ${r.code}`);
+    const combined = (r.raw || '') + (r.err || '');
+    assert(!combined.includes('ENOENT'), `${f} --help tried to open '--help' as a file: ${combined}`);
+    assert(combined.toLowerCase().includes('usage:'), `${f} --help missing usage output: ${combined}`);
+  }
+});
+
 test('catalog surface: find-op --list 48, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
   assert(f.code === 0 && f.out.trim().split('\n').length === 48, `find-op list: ${f.out.trim().split('\n').length} lines`);

@@ -19,7 +19,7 @@ import { checkSpec } from '../lib/shapecore.mjs';
 import { printJsonAndExit } from '../lib/runner.mjs';
 
 const [baseFile, candFile, casesFile, iterArg] = process.argv.slice(2);
-if (!baseFile || !candFile) {
+if (!baseFile || !candFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations]');
   process.exit(2);
 }

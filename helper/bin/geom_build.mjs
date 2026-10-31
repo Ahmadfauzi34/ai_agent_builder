@@ -77,7 +77,7 @@ if (rawArgs.includes('--selftest')) {
 }
 
 const chainFile = rawArgs[0];
-if (!chainFile) {
+if (!chainFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
   console.error('usage: node geom_build.mjs <chain.json> [out.json] [--compose] [--selftest]');
   process.exit(2);
 }

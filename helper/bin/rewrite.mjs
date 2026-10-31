@@ -20,7 +20,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const [cmd, ...rest] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node rewrite.mjs list | node rewrite.mjs apply <name> <spec.json> [out.json] [--verify]');
+  process.exit(2);
+}
+const [cmd, ...rest] = rawArgs;
 
 function runCli(script, args) {
   try {

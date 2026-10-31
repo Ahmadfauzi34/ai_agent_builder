@@ -24,7 +24,7 @@ import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 const [specFile, analyticFile, epsArg, tolArg] = process.argv.slice(2);
-if (!specFile) {
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node gradcheck.mjs <spec.json> [analytic.json] [eps=1e-3] [tol=1e-3]');
   process.exit(2);
 }

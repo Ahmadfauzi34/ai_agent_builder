@@ -26,7 +26,7 @@ import { printJson, printJsonAndExit } from '../lib/runner.mjs';
 import { hessianDiagSecondOrder, hessianTrust } from '../lib/fit.mjs';
 
 const [specFile, slotArg, hArg, tolAbsArg, tolRelArg] = process.argv.slice(2);
-if (!specFile) {
+if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node fit_hessian_diag.mjs <spec.json> [slot=0] [h=1e-2] [tolAbs=0.05] [tolRel=0.1]');
   process.exit(2);
 }

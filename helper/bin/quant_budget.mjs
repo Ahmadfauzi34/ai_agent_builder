@@ -37,6 +37,10 @@ import {
 import fs from 'node:fs';
 
 const args = process.argv.slice(2);
+if (args.includes('--help') || args.includes('-h')) {
+  console.error('usage: node bin/quant_budget.mjs <spec.json> <cases.json> --tol <num> [--scheme q8-per-block] [--mode bound|measured]');
+  process.exit(2);
+}
 function opt(name, def) {
   const i = args.indexOf(name);
   return i >= 0 && i + 1 < args.length ? args[i + 1] : def;

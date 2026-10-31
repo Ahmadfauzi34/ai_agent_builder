@@ -78,6 +78,10 @@ async function engineProbe(W, b, inputs) {
 }
 
 const rawArgs = process.argv.slice(2);
+if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node weight_lab.mjs (run|gate|certify|compose) ... | --selftest');
+  process.exit(2);
+}
 const cmd = rawArgs[0];
 
 if (cmd === '--selftest' || rawArgs.includes('--selftest')) {

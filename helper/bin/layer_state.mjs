@@ -28,7 +28,7 @@ import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [sub, specFile, arg3, arg4] = process.argv.slice(2);
-if (!sub || !specFile || !['inspect', 'get', 'set'].includes(sub)) {
+if (!sub || !specFile || !['inspect', 'get', 'set'].includes(sub) || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node layer_state.mjs inspect <spec.json> | get <spec.json> <layer_index> | set <spec.json> <layer_index> <state.b64>');
   process.exit(2);
 }

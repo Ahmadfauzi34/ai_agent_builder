@@ -19,7 +19,7 @@ import { expandMacro, macroNames } from '../lib/macros.mjs';
 import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [cmd, aFile, bFile] = process.argv.slice(2);
-if (!cmd || !aFile || !['expand', 'prove'].includes(cmd)) {
+if (!cmd || !aFile || !['expand', 'prove'].includes(cmd) || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node macro_expand.mjs expand <macro.json> | prove <macro.json> <reference.json>');
   console.error(`known macros: ${macroNames().join(', ')}`);
   process.exit(2);

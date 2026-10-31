@@ -79,33 +79,16 @@ not work around a failed selftest by adjusting the spec.
 
 ## Arithmetic without a spec
 
-For one-off arithmetic, do not hand-write a spec JSON:
-`node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
-prints engine output (`{ok, op, a, b, broadcast, engine, values}`).
-A length-1 vector broadcasts to the other's length; anything else must
-match exactly. `div` is mul by the host-computed reciprocal (division
-by zero and subnormal-divisor underflow are clean errors, exit 2);
-precision: div stays within 1 ulp of f32(true division) for normal
-values (measured 2026-10-31; pinned by the regression div probe).
-`matmul` takes `;`-separated rows (a bare comma list is one row),
-single-batch `[1,1,M,K] @ [1,1,K,N]`, output flat row-major with
-`shape: [M,N]`; `--batch ops.json` runs N ops
-(add/sub/mul/div/matmul) in one engine load from a `{"ops":[...]}`
-file; a failing op is recorded with its index and the rest still run;
-exit 0 iff every op succeeds. `engine.wasm_sha256_short`
-identifies the build that computed the result.
+For one-off arithmetic and engineering math, do not hand-write a spec JSON:
+- Binary vector ops: `node bin/arith.mjs <add|sub|mul|div|dot|dist|cos|xent|kl> <a1,a2,...> <b1,b2,...>`
+- Unary & statistical ops: `node bin/arith.mjs <sqrt|exp|log|abs|norm|normalize|entropy|sum|mean|min|max|var|std> <a1,a2,...>`
+- Clamp: `node bin/arith.mjs clamp <a1,a2,...> <min>,<max>`
+- Matrix ops: `node bin/arith.mjs matmul <a11,a12;...> <b11,b12;...>` or `node bin/arith.mjs <sum_axis|mean_axis|min_axis|max_axis> <a11,a12;...> <0|1>`
+- Batch mode: `node bin/arith.mjs --batch <ops.json>`
+All ops execute directly through the native WASM kernels (`WasmNumericKernel`, `WasmLinearAlgebra`, `WasmStatistics`, `WasmReduction`, `WasmProbability`). A length-1 vector broadcasts to the other's length on elementwise ops (`add`, `sub`, `mul`, `div`); `div` runs natively via `WasmNumericKernel.div` (0 ULP drift across normal and subnormal ranges; division by zero and divisor underflow are clean errors, exit 2). Both input f32 overflow and output non-finite values (`Infinity`/`NaN`) are rejected fail-closed with exit 2 (`non-finite value at index ...`). Every arith output also carries `precision_warnings` (always present, possibly empty), naming inputs that lost mantissa precision on entry to f32 (e.g. 16777217 → 16777216); the `a`/`b` echo keeps the given values.
 
 Exact integers are a separate tool, not an arith flag:
-`node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...>` (or `matmul`
-with `;`-separated rows, single-batch). Int runs through the registry
-(`LayerRegistry.forwardIntBinary`), never the f32 graph — graph slots
-are f32 and addBinary rejects int specs by design (CP5 correction
-2026-10-31). Inputs are integer strings (full i64 range); outputs are
-decimal strings (BigInt is not JSON-serializable and Number() would
-round beyond 2^53). Overflow of the arithmetic itself wraps
-two's-complement silently in release builds (Rust native `+`/`*`);
-"never wraps" is the caller's invariant. No div (no intDiv
-constructor), no casts, no batch in v1.
+`node bin/int.mjs <add|sub|mul> <a1,a2,...> <b1,b2,...> [--wrap]` (or `matmul` with `;`-separated rows, `to-f32 <a1,a2,...> [--allow-inexact]`, `from-f32 <f1,f2,...>`, or `--batch <ops.json>`). Int runs through the registry (`LayerRegistry.forwardIntBinary`, `forwardIntCastToFloat`, `forwardIntCastFromFloat`), never the f32 graph. Inputs for i64 ops are integer strings (full i64 range); outputs are decimal strings. By default, arithmetic overflow beyond `[-2^63, 2^63 - 1]` (including intermediate `matmul` products/accumulations) is rejected fail-closed with exit 2 (`i64 overflow ...`); pass `--wrap` (or `"wrap": true` in batch) only when two's-complement wrapping is explicitly desired. `to-f32` enforces the exact integer-in-f32 boundary (`|x| <= 16777216`, `2^24`) unless `--allow-inexact` is passed.
 
 ## How to find things (read this, it is the whole trick)
 

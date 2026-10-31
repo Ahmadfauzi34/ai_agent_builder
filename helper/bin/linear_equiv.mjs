@@ -15,7 +15,7 @@ import { equivLinear, effectiveAffine } from '../lib/linear_equiv.mjs';
 import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [aFile, bFile] = process.argv.slice(2);
-if (!aFile || !bFile) {
+if (!aFile || !bFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
   console.error('usage: node linear_equiv.mjs <specA.json> <specB.json>');
   process.exit(2);
 }

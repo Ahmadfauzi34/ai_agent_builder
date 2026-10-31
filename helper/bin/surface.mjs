@@ -26,8 +26,9 @@ import { printJsonAndExit, exitAfterFlush } from '../lib/runner.mjs';
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 import { pkgDir } from '../lib/engine.mjs';
 const ENGINE = pkgDir();
-const [arg] = process.argv.slice(2);
-if (!arg || arg === '--help' || arg === '-h') { console.error('usage: node helper/bin/surface.mjs <name> | --list'); process.exit(2); }
+const args = process.argv.slice(2);
+const [arg] = args;
+if (!arg || args.includes('--help') || args.includes('-h')) { console.error('usage: node helper/bin/surface.mjs <name> | --list'); process.exit(2); }
 let surface, bindings, dts;
 try {
   surface = JSON.parse(fs.readFileSync(path.join(ENGINE, 'docs', 'wasm-surface.v1.json'), 'utf8'));
