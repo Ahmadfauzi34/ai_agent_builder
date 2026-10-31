@@ -19,7 +19,6 @@ import { ruleFor } from '../lib/shapes.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'burn-regression-'));
-const WASM_SHA = '2fb8cc9034bca2f9947bc7ab416025c2b823ceebef35fac8b918c2fbbd899f33';
 const CKPT_SHA = '8c209c9fabf256bcf6dda2fc66d1ca347b6d5ad04eaf1331a08b6ee46059b454';
 
 function runTool(args, { cwd = ROOT } = {}) {
@@ -61,10 +60,17 @@ test('builder: 50/169/50 + wasm sha', () => {
   // checkpoint case via wasm_direct), so the case passes vacuously
   // there instead of failing on a missing repo script.
   if (!fs.existsSync(path.join(ROOT, '..', 'scripts', 'build_agent_pack.mjs'))) return;
+  // Expected engine sha comes from the committed MANIFEST (single source
+  // of truth), never from a hardcoded literal here: a literal went stale
+  // twice in lane E (2fb8cc90 survived the engine change and failed this
+  // case on CI while every pack-edition run passed vacuously).
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'MANIFEST.json'), 'utf8'));
+  const wasmSha = manifest?.sha256?.['burn_research_bg.wasm'] ?? manifest?.engine?.wasm_sha256;
+  assert(typeof wasmSha === 'string' && wasmSha.length === 64, 'MANIFEST has no wasm sha');
   const r = runTool(['../scripts/build_agent_pack.mjs', '--out', path.join(TMP, 'built-pack')]);
   assert(r.code === 0, `builder exit ${r.code}: ${r.out.slice(0, 200)} ${r.err.slice(0, 200)}`);
   assert(r.json.ok === true && r.json.catalog_entries === 50 && r.json.surface_entries === 169 && r.json.layout_entries === 50, `counts: ${r.out.slice(0, 300)}`);
-  assert(r.json.wasm_sha256 === WASM_SHA, `wasm sha: ${r.json.wasm_sha256}`);
+  assert(r.json.wasm_sha256 === wasmSha, `wasm sha: ${r.json.wasm_sha256} (MANIFEST: ${wasmSha})`);
 });
 test('run: linear-relu [4.5, 10.5]', () => {
   const r = runTool(['bin/run.mjs', 'examples/linear-relu.json']);
