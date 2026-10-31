@@ -17,6 +17,10 @@ This page is a map, not a manual: find your question, follow the link.
 - Do EXACT integer arithmetic (i64, fail-closed overflow guard) ->
   `node bin/int.mjs <add|sub|mul|div|rem> <a1,a2,...> <b1,b2,...> [--wrap]`
   (plus `matmul`, `to-f32 [--allow-inexact]`, `from-f32`, and `--batch <ops.json>` — see `AGENT.md`).
+- Apply the Lane E elementwise kernels (trig, rounding, atan2, powf, hypot, fma) ->
+  `node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...>`,
+  `<atan2|powf|hypot> <a1,a2,...> <b1,b2,...>`, or `fma <a1,a2,...> <b1,b2,...> <c1,c2,...>`
+  (see `AGENT.md` for the traps: kernel cos is not arith cos, round is half-to-even, atan2 takes y first, no broadcast).
 - Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->

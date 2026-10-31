@@ -653,10 +653,68 @@ test('int-eng: fail-closed i64 overflow guard, --wrap opt-in, to-f32/from-f32 ca
   const cFrom = run(['from-f32', '3.9,-4.7,0']);
   assert(cFrom.code === 0 && JSON.stringify(cFrom.json.values) === '["3","-4","0"]', 'from-f32 truncates toward zero');
 });
+test('kernel: Lane E elementwise kernels through the engine, traps pinned', () => {
+  // Blind-test gap 3 (2026-10-31): the Lane E kernels were engine-only.
+  // kernel.mjs exposes all 10 through WasmNumericKernel with the
+  // engine's own argument orders and honest domain errors.
+  const run = (args) => runTool(['bin/kernel.mjs', ...args]);
+  const vals = (args) => {
+    const r = run(args);
+    assert(r.code === 0 && r.json && r.json.ok === true, `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    return r.json;
+  };
+  // Exact integer-valued results.
+  assert(JSON.stringify(vals(['floor', '1.9,-1.1']).values) === '[1,-2]', 'floor');
+  assert(JSON.stringify(vals(['ceil', '1.1,-1.9']).values) === '[2,-1]', 'ceil');
+  assert(JSON.stringify(vals(['powf', '2,9', '10,0.5']).values) === '[1024,3]', 'powf');
+  assert(JSON.stringify(vals(['hypot', '3', '4']).values) === '[5]', 'hypot 3-4-5');
+  assert(JSON.stringify(vals(['fma', '2,3', '4,5', '6,7']).values) === '[14,22]', 'fma a*b+c');
+  // round is half-to-EVEN: JS Math.round would give [3,4,-2,-3].
+  assert(JSON.stringify(vals(['round', '2.5,3.5,-2.5,-3.5']).values) === '[2,4,-2,-4]', 'round half-even');
+  // atan2 takes y first: atan2(1,0)=pi/2, atan2(0,1)=0. Swapped args
+  // would give [0, pi/2] — the order is the case, not just the docs.
+  const at = vals(['atan2', '1,0', '0,1']);
+  assert(Math.abs(at.values[0] - Math.fround(Math.PI / 2)) <= 1e-6 && at.values[1] === 0, `atan2 order: ${JSON.stringify(at.values)}`);
+  // Trig: exact at 0, tolerance elsewhere (libm implementations may
+  // differ by ulps between Burn's f32 trig and JS Math).
+  assert(JSON.stringify(vals(['sin', '0']).values) === '[0]', 'sin 0');
+  assert(JSON.stringify(vals(['cos', '0']).values) === '[1]', 'cos 0');
+  assert(JSON.stringify(vals(['tan', '0']).values) === '[0]', 'tan 0');
+  const s = vals(['sin', '1.5707963267948966']);
+  assert(Math.abs(s.values[0] - 1) <= 1e-6, `sin pi/2: ${s.values[0]}`);
+  const c = vals(['cos', '3.141592653589793']);
+  assert(Math.abs(c.values[0] + 1) <= 1e-6, `cos pi: ${c.values[0]}`);
+  // hypot scaled form: 3e19/4e19 stays finite where naive x^2+y^2
+  // overflows f32; result within 0.1% of 5e19.
+  const h = vals(['hypot', '3e19', '4e19']);
+  assert(Number.isFinite(h.values[0]) && Math.abs(h.values[0] - 5e19) / 5e19 < 1e-3, `hypot scaled: ${h.values[0]}`);
+  // Provenance + shape contract on every output.
+  const full = vals(['sin', '0,1']);
+  assert(typeof full.engine?.wasm_sha256_short === 'string' && full.engine.wasm_sha256_short.length === 16 && full.engine.mode === 'direct', 'provenance fields');
+  assert(full.broadcast === null && Array.isArray(full.precision_warnings), 'no broadcast, warnings present');
+  // cos trap: kernel cos is elementwise, arith cos is similarity.
+  const kc = vals(['cos', '0']);
+  assert(JSON.stringify(kc.values) === '[1]', 'kernel cos elementwise');
+  const ac = runTool(['bin/arith.mjs', 'cos', '1,0', '0,1']);
+  assert(ac.code === 0 && JSON.stringify(ac.json.values) === '[0]', `arith cos similarity: ${ac.out.slice(0, 200)}`);
+  // Clean errors, exit 2.
+  for (const [args, want] of [
+    [['atan2', '1,2', '3'], 'length mismatch'],
+    [['fma', '1,2', '3,4', '5'], 'length mismatch'],
+    [['powf', '-2', '0.5'], 'NumericKernel.powf output: non-finite value at index 0: NaN'],
+    [['powf', '0', '-1'], 'NumericKernel.powf output: non-finite value at index 0: inf'],
+    [['nope', '1'], 'usage:'],
+    [['sin', 'a'], 'not a finite number'],
+    [['sin', '1e39'], 'not a finite number'],
+  ]) {
+    const r = run(args);
+    assert(r.code === 2 && r.json && r.json.ok === false && r.json.error.includes(want), `${args.join(' ')}: ${r.out.slice(0, 200)}`);
+  }
+});
 test('CLI completeness: all interactive bin/*.mjs tools handle --help without ENOENT', () => {
   const skip = new Set(['autodiff_prove.mjs', 'engine_hardening_test.mjs', 'regression.mjs']);
   const files = fs.readdirSync( path.join(ROOT, 'bin') ).filter((f) => f.endsWith('.mjs') && !skip.has(f));
-  assert(files.length === 38, `expected 38 interactive CLIs, got ${files.length}`);
+  assert(files.length === 39, `expected 39 interactive CLIs, got ${files.length}`);
   for (const f of files) {
     const r = runTool([path.join('bin', f), 'examples/linear-relu.json', '--help']);
     assert(r.code === 2, `${f} --help: expected exit 2, got ${r.code}`);

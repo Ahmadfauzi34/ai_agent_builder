@@ -17,19 +17,17 @@
 import { printJsonAndExit } from '../lib/runner.mjs';
 import { loadWasm } from '../lib/wasm_direct.mjs';
 import { isFiniteF32 } from '../lib/spec.mjs';
+import {
+  assertAllFiniteOutput,
+  engineProvenance,
+  matrixQuantizationWarnings,
+  parseMatrix,
+  parseMatrixValues,
+  parseVector,
+  parseVectorValues,
+  quantizationWarnings,
+} from '../lib/cli.mjs';
 import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-
-function engineProvenance() {
-  try {
-    const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
-    const full = m?.sha256?.['burn_research_bg.wasm'] ?? m?.engine?.wasm_sha256 ?? null;
-    return { wasm_sha256_short: full ? full.slice(0, 16) : null, mode: 'direct' };
-  } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
-}
 
 const BINARY_OPS = new Set(['add', 'sub', 'mul', 'div', 'dot', 'dist', 'cos', 'xent', 'kl']);
 const UNARY_OPS = new Set([
@@ -46,106 +44,6 @@ const USAGE =
   'OR matmul <a11,a12;...> <b11,b12;...> ' +
   'OR <sum_axis|mean_axis|min_axis|max_axis> <a11,a12;...> <0|1> ' +
   'OR --batch <ops.json>';
-
-// Quantization-loss warnings (audit finding #5, closed 2026-10-31):
-// the a/b echo keeps the given values (what the user typed), while the
-// engine computes in f32. When a given v differs from Math.fround(v),
-// mantissa precision was lost on entry — name it instead of hiding it.
-// Always present (possibly empty) so the output shape is stable.
-function quantizationWarnings(values, name) {
-  const out = [];
-  values.forEach((v, i) => {
-    if (v !== Math.fround(v)) out.push({ arg: name, index: i, given: v, as_f32: Math.fround(v) });
-  });
-  return out;
-}
-function matrixQuantizationWarnings(rows, name) {
-  const out = [];
-  rows.forEach((row, ri) => row.forEach((v, ci) => {
-    if (v !== Math.fround(v)) out.push({ arg: name, row: ri, col: ci, given: v, as_f32: Math.fround(v) });
-  }));
-  return out;
-}
-
-function parseVector(text, name, allowSubnormalZeroCheck = false) {
-  if (text === undefined || text === '') throw new Error(USAGE);
-  const values = text.split(',').map((t, i) => {
-    const trimmed = t.trim();
-    const v = Number(trimmed);
-    if (trimmed === '' || !Number.isFinite(v)) {
-      throw new Error(`${name}: not a finite number: ${JSON.stringify(t)}`);
-    }
-    if (allowSubnormalZeroCheck && v !== 0 && Math.fround(v) === 0) {
-      throw new Error(`divisor underflow at index ${i} (${name}[${i}] is ${v}: its reciprocal is not finite; in f32 it is zero)`);
-    }
-    if (!isFiniteF32(v)) {
-      throw new Error(`${name}: not a finite number in f32 range (overflows f32): ${JSON.stringify(t)}`);
-    }
-    return v;
-  });
-  if (values.length === 0) throw new Error(`${name}: empty vector`);
-  return values;
-}
-
-function parseVectorValues(arr, name, allowSubnormalZeroCheck = false) {
-  if (!Array.isArray(arr)) throw new Error(`${name}: expected an array of finite numbers`);
-  if (arr.length === 0) throw new Error(`${name}: empty vector`);
-  for (let i = 0; i < arr.length; i++) {
-    const v = arr[i];
-    if (typeof v !== 'number' || !Number.isFinite(v)) {
-      throw new Error(`${name}: not a finite number: ${JSON.stringify(v)}`);
-    }
-    if (allowSubnormalZeroCheck && v !== 0 && Math.fround(v) === 0) {
-      throw new Error(`divisor underflow at index ${i} (${name}[${i}] is ${v}: its reciprocal is not finite; in f32 it is zero)`);
-    }
-    if (!isFiniteF32(v)) {
-      throw new Error(`${name}: not a finite number in f32 range (overflows f32): ${JSON.stringify(v)}`);
-    }
-  }
-  return arr.slice();
-}
-
-function parseMatrix(text, name) {
-  if (text === undefined || text === '') throw new Error(USAGE);
-  const rows = text.split(';').map((row, ri) => {
-    const vals = row.split(',').map((t) => {
-      const trimmed = t.trim();
-      const v = Number(trimmed);
-      if (trimmed === '' || !Number.isFinite(v) || !isFiniteF32(v)) {
-        throw new Error(`${name} row ${ri}: not a finite number: ${JSON.stringify(t)}`);
-      }
-      return v;
-    });
-    if (vals.length === 0) throw new Error(`${name} row ${ri}: empty row`);
-    return vals;
-  });
-  if (rows.length === 0) throw new Error(`${name}: empty matrix`);
-  const width = rows[0].length;
-  if (!rows.every((r) => r.length === width)) {
-    throw new Error(`${name}: non-rectangular rows (row lengths ${rows.map((r) => r.length).join(',')})`);
-  }
-  return rows;
-}
-
-function parseMatrixValues(arr, name) {
-  if (!Array.isArray(arr)) throw new Error(`${name}: expected an array of rows`);
-  if (arr.length === 0) throw new Error(`${name}: empty matrix`);
-  const rows = arr.map((row, ri) => {
-    if (!Array.isArray(row)) throw new Error(`${name} row ${ri}: expected an array of finite numbers`);
-    if (row.length === 0) throw new Error(`${name} row ${ri}: empty row`);
-    for (const v of row) {
-      if (typeof v !== 'number' || !Number.isFinite(v) || !isFiniteF32(v)) {
-        throw new Error(`${name} row ${ri}: not a finite number: ${JSON.stringify(v)}`);
-      }
-    }
-    return row.slice();
-  });
-  const width = rows[0].length;
-  if (!rows.every((r) => r.length === width)) {
-    throw new Error(`${name}: non-rectangular rows (row lengths ${rows.map((r) => r.length).join(',')})`);
-  }
-  return rows;
-}
 
 function prepareBinary(op, a, b) {
   let aEff = a, bEff = b, broadcast = null;
@@ -164,15 +62,6 @@ function prepareBinary(op, a, b) {
     }
   }
   return { aEff, bEff, broadcast };
-}
-
-function assertAllFiniteOutput(op, values) {
-  for (let i = 0; i < values.length; i++) {
-    if (!Number.isFinite(values[i])) {
-      throw new Error(`${op} output overflow/NaN at index ${i}: result is not finite in f32`);
-    }
-  }
-  return values;
 }
 
 function execBinaryKernel(rt, op, aEff, bEff) {
@@ -382,8 +271,8 @@ async function main() {
   }
   if (op === 'matmul') {
     if (aText === undefined || bText === undefined || extra !== undefined) throw new Error(USAGE);
-    const A = parseMatrix(aText, 'a');
-    const B = parseMatrix(bText, 'b');
+    const A = parseMatrix(aText, 'a', USAGE);
+    const B = parseMatrix(bText, 'b', USAGE);
     const { M, K, N } = prepareMatmul(A, B);
     const rt = await loadWasm();
     const values = execMatmulKernel(rt, A, B, M, K, N);
@@ -392,7 +281,7 @@ async function main() {
   }
   if (AXIS_OPS.has(op)) {
     if (aText === undefined || bText === undefined || extra !== undefined) throw new Error(USAGE);
-    const A = parseMatrix(aText, 'a');
+    const A = parseMatrix(aText, 'a', USAGE);
     const axis = Number(bText);
     const rt = await loadWasm();
     const { values, shape } = execAxisKernel(rt, op, A, axis);
@@ -401,8 +290,8 @@ async function main() {
   }
   if (op === 'clamp') {
     if (aText === undefined || bText === undefined) throw new Error(USAGE);
-    const a = parseVector(aText, 'a');
-    const bounds = extra !== undefined ? [Number(bText), Number(extra)] : parseVector(bText, 'bounds');
+    const a = parseVector(aText, 'a', USAGE);
+    const bounds = extra !== undefined ? [Number(bText), Number(extra)] : parseVector(bText, 'bounds', USAGE);
     if (bounds.length !== 2) throw new Error('clamp bounds must provide min,max');
     const rt = await loadWasm();
     const values = execUnaryKernel(rt, 'clamp', a, { min: bounds[0], max: bounds[1] });
@@ -411,7 +300,7 @@ async function main() {
   }
   if (UNARY_OPS.has(op)) {
     if (aText === undefined || bText !== undefined || extra !== undefined) throw new Error(USAGE);
-    const a = parseVector(aText, 'a');
+    const a = parseVector(aText, 'a', USAGE);
     const rt = await loadWasm();
     const values = execUnaryKernel(rt, op, a);
     printJsonAndExit({ ok: true, op, a, engine: engineProvenance(), values, precision_warnings: quantizationWarnings(a, 'a') }, 0);
@@ -419,8 +308,8 @@ async function main() {
   }
   if (BINARY_OPS.has(op)) {
     if (aText === undefined || bText === undefined || extra !== undefined) throw new Error(USAGE);
-    const a = parseVector(aText, 'a');
-    const b = parseVector(bText, 'b', op === 'div');
+    const a = parseVector(aText, 'a', USAGE);
+    const b = parseVector(bText, 'b', USAGE, op === 'div');
     const { aEff, bEff, broadcast } = prepareBinary(op, a, b);
     const rt = await loadWasm();
     const values = execBinaryKernel(rt, op, aEff, bEff);
