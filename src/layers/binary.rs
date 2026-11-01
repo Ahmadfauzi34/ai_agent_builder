@@ -10,6 +10,7 @@ pub enum BinaryOp {
     Sub,
     Mul,
     Matmul,
+    Div,
     Concat,
 }
 
@@ -67,6 +68,60 @@ impl Binary {
                     "binary matmul output",
                 )?;
                 Ok(a.matmul(b))
+            }
+            BinaryOp::Div => {
+                if da != db {
+                    return Err(format!("binary div: shape mismatch {:?} vs {:?}", da, db));
+                }
+                // Checked div, kernel parity (WasmNumericKernel::div):
+                // finiteness first, then nonzero divisor, then checked
+                // finite output. The validators in src/math/numeric.rs
+                // are WasmTensor-typed and cannot run on these generic
+                // Burn tensors, so the same scans run here inline with
+                // the same messages and precedence. One materialization
+                // per tensor; -0.0 counts as zero (== 0.0 in Rust).
+                let a_data = a.to_data();
+                let a_vals = a_data
+                    .as_slice::<f32>()
+                    .map_err(|_| "binary div lhs: expected f32 tensor".to_string())?;
+                for (index, &value) in a_vals.iter().enumerate() {
+                    if !value.is_finite() {
+                        return Err(format!(
+                            "binary div lhs: non-finite value at index {index}: {value}"
+                        ));
+                    }
+                }
+                let b_data = b.to_data();
+                let b_vals = b_data
+                    .as_slice::<f32>()
+                    .map_err(|_| "binary div rhs: expected f32 tensor".to_string())?;
+                for (index, &value) in b_vals.iter().enumerate() {
+                    if !value.is_finite() {
+                        return Err(format!(
+                            "binary div rhs: non-finite value at index {index}: {value}"
+                        ));
+                    }
+                }
+                for (index, &value) in b_vals.iter().enumerate() {
+                    if value == 0.0 {
+                        return Err(format!(
+                            "binary div rhs: zero denominator at index {index}"
+                        ));
+                    }
+                }
+                let out = a.div(b);
+                let out_data = out.to_data();
+                let out_vals = out_data
+                    .as_slice::<f32>()
+                    .map_err(|_| "binary div output: expected f32 tensor".to_string())?;
+                for (index, &value) in out_vals.iter().enumerate() {
+                    if !value.is_finite() {
+                        return Err(format!(
+                            "binary div output: non-finite value at index {index}: {value}"
+                        ));
+                    }
+                }
+                Ok(out)
             }
             BinaryOp::Concat => {
                 let d = self.dim;

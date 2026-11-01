@@ -93,6 +93,14 @@ impl StrictMish {
     }
 }
 
+#[derive(Module, Debug, Clone)]
+pub struct StrictSqrt;
+impl StrictSqrt {
+    pub fn forward<B: Backend>(&self, input: Tensor<B, 4>) -> Tensor<B, 4> {
+        input.sqrt()
+    }
+}
+
 // --- CONFIGURATION ENUM ---
 #[derive(Config, Debug)]
 pub enum ActivationConfig {
@@ -110,6 +118,7 @@ pub enum ActivationConfig {
     Softmax { dim: usize },
     LogSoftmax { dim: usize },
     Glu { dim: usize },
+    Sqrt,
 }
 
 impl ActivationConfig {
@@ -131,6 +140,7 @@ impl ActivationConfig {
                 Activation::LogSoftmax(StrictLogSoftmax { dim: *dim })
             }
             ActivationConfig::Glu { dim } => Activation::Glu(StrictGlu { dim: *dim }),
+            ActivationConfig::Sqrt => Activation::Sqrt(StrictSqrt),
         }
     }
 }
@@ -152,6 +162,7 @@ pub enum Activation<B: Backend> {
     Softmax(StrictSoftmax),
     LogSoftmax(StrictLogSoftmax),
     Glu(StrictGlu),
+    Sqrt(StrictSqrt),
 }
 
 impl<B: Backend> Activation<B> {
@@ -171,6 +182,7 @@ impl<B: Backend> Activation<B> {
             Activation::Softmax(m) => m.forward(input),
             Activation::LogSoftmax(m) => m.forward(input),
             Activation::Glu(m) => m.forward(input),
+            Activation::Sqrt(m) => m.forward(input),
         }
     }
 }

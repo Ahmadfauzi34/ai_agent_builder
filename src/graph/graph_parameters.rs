@@ -2,7 +2,7 @@ use crate::graph::CompiledGraph;
 use crate::graph_plan::decode_graph_plan;
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
-    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SQRT, ACT_SWIGLU, ACT_TANH,
     LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST,
     LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM, LAYER_POOL, LAYER_SEBLOCK,
     LAYER_SHIFT, LAYER_TRANSPOSE,
@@ -103,7 +103,7 @@ fn classify_owner(layer_type: u8, fingerprint: &str) -> Result<ParameterClass, S
             match variant {
                 ACT_GELU | ACT_RELU | ACT_SIGMOID | ACT_TANH | ACT_HARDSWISH
                 | ACT_LEAKYRELU | ACT_HARDSIGMOID | ACT_SOFTPLUS | ACT_MISH
-                | ACT_SOFTMAX | ACT_LOGSOFTMAX | ACT_GLU => Ok(ParameterClass::Stateless),
+                | ACT_SOFTMAX | ACT_LOGSOFTMAX | ACT_GLU | ACT_SQRT => Ok(ParameterClass::Stateless),
                 ACT_PRELU | ACT_SWIGLU => Err(format!(
                     "graph parameter binding: parameterized activation variant 0x{variant:02X} has no flat-weight bridge"
                 )),
@@ -394,9 +394,9 @@ impl GraphParameterBinding {
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_total_len, GraphParameterBinding, BINDING_SCHEMA, LAYOUT_SCHEMA};
+    use super::{checked_total_len, classify_owner, GraphParameterBinding, ParameterClass, BINDING_SCHEMA, LAYOUT_SCHEMA};
     use crate::agent::{AgentGraphBuilder, AgentLayerSpec};
-    use crate::protocol::LAYER_LINEAR;
+    use crate::protocol::{LAYER_ACTIVATION, LAYER_LINEAR};
     use crate::registry::LayerRegistry;
     use crate::WasmTensor;
 
@@ -420,6 +420,15 @@ mod tests {
         builder.set_output(3).unwrap();
         let graph = builder.compile(&registry).unwrap();
         (registry, graph)
+    }
+
+    #[test]
+    fn sqrt_classifies_as_stateless_not_unknown_variant() {
+        // The activation variant list in classify_owner is explicit with
+        // an Err fallback: a missing ACT_SQRT arm would refuse every
+        // sqrt graph at parameter-binding time, not at compile time.
+        let class = classify_owner(LAYER_ACTIVATION, "variant=0e").unwrap();
+        assert!(matches!(class, ParameterClass::Stateless));
     }
 
     #[test]

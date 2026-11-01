@@ -271,6 +271,20 @@
       "fallible": false,
       "layout_contract_key": "glu"
     },
+    "sqrt": {
+      "family": "activation",
+      "arity": 1,
+      "signature": "sqrt(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "sqrt"
+    },
     "linear": {
       "family": "linear",
       "arity": 1,
@@ -999,6 +1013,20 @@
       ],
       "fallible": false,
       "layout_contract_key": "matmul"
+    },
+    "div": {
+      "family": "binary",
+      "arity": 2,
+      "signature": "div(id)",
+      "parameters": [
+        {
+          "name": "id",
+          "type": "u32",
+          "optional": false
+        }
+      ],
+      "fallible": false,
+      "layout_contract_key": "div"
     },
     "concat": {
       "family": "binary",

@@ -508,10 +508,26 @@ impl LayerRegistry {
             ACT_MISH => WasmActivation::new_mish(),
             ACT_SOFTMAX => {
                 let dim = c.read_dim("softmax dim")?;
+                // Softmax gate (mirrors the glu gate below): rank is
+                // always 4, so dim >= 4 can never execute. Fail at init
+                // (shape-independent) instead of at run; the run-time
+                // check in WasmActivation::try_forward stays as the
+                // second gate for layers built outside registry init.
+                if dim >= 4 {
+                    return Err(format!(
+                        "Softmax init: dim must be in 0..4, got {dim} (tensors are always rank 4)"
+                    ));
+                }
                 WasmActivation::new_softmax(dim)
             }
             ACT_LOGSOFTMAX => {
                 let dim = c.read_dim("log_softmax dim")?;
+                // Same gate as softmax above.
+                if dim >= 4 {
+                    return Err(format!(
+                        "LogSoftmax init: dim must be in 0..4, got {dim} (tensors are always rank 4)"
+                    ));
+                }
                 WasmActivation::new_log_softmax(dim)
             }
             ACT_GLU => {
@@ -528,6 +544,7 @@ impl LayerRegistry {
                 }
                 WasmActivation::new_glu(dim)
             }
+            ACT_SQRT => WasmActivation::new_sqrt(),
             _ => {
                 return Err(format!(
                     "Unknown activation variant: 0x{:02X}",
@@ -887,6 +904,7 @@ impl LayerRegistry {
             BINARY_SUB => WasmBinary::new_sub(),
             BINARY_MUL => WasmBinary::new_mul(),
             BINARY_MATMUL => WasmBinary::new_matmul(),
+            BINARY_DIV => WasmBinary::new_div(),
             BINARY_CONCAT => {
                 crate::protocol::check_dim(dim, "binary concat dim")?;
                 WasmBinary::new_concat(dim)
@@ -1039,6 +1057,52 @@ mod lane_e_batch1_tests {
     }
 
     #[test]
+    fn softmax_valid_dims_init_ok() {
+        let mut reg = LayerRegistry::new();
+        for dim in [1, 2, 3] {
+            reg.init_agent_layer(&AgentLayerSpec::softmax(1, dim))
+                .unwrap_or_else(|e| panic!("softmax dim={dim} init must succeed: {e}"));
+        }
+    }
+
+    #[test]
+    fn log_softmax_valid_dims_init_ok() {
+        let mut reg = LayerRegistry::new();
+        for dim in [1, 2, 3] {
+            reg.init_agent_layer(&AgentLayerSpec::log_softmax(1, dim))
+                .unwrap_or_else(|e| panic!("logSoftmax dim={dim} init must succeed: {e}"));
+        }
+    }
+
+    #[test]
+    fn softmax_dim_4_and_huge_rejected_at_init() {
+        let mut reg = LayerRegistry::new();
+        for dim in [4, 1 << 20] {
+            let err = reg
+                .init_agent_layer(&AgentLayerSpec::softmax(1, dim))
+                .unwrap_err();
+            assert!(
+                err.contains("Softmax init") && err.contains("0..4"),
+                "softmax dim={dim} init err: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn log_softmax_dim_4_and_huge_rejected_at_init() {
+        let mut reg = LayerRegistry::new();
+        for dim in [4, 1 << 20] {
+            let err = reg
+                .init_agent_layer(&AgentLayerSpec::log_softmax(1, dim))
+                .unwrap_err();
+            assert!(
+                err.contains("LogSoftmax init") && err.contains("0..4"),
+                "logSoftmax dim={dim} init err: {err}"
+            );
+        }
+    }
+
+    #[test]
     fn forward_layer_int_errors_name_exact_exports() {
         let reg = LayerRegistry::new();
         let t = WasmTensor::new(&[1.0], &[1, 1, 1, 1]);
@@ -1119,5 +1183,240 @@ mod lane_e_batch2_tests {
             .err()
             .expect("registry add overflow must err");
         assert!(err.contains("i64 overflow"), "registry add err: {err}");
+    }
+}
+
+#[cfg(test)]
+mod t4b_tests {
+    use super::*;
+    use crate::agent::AgentGraphBuilder;
+    use crate::facade::wasm_types::WasmNumericKernel;
+
+    fn bits(t: &WasmTensor) -> Vec<u32> {
+        t.to_array().iter().map(|v| v.to_bits()).collect()
+    }
+
+    fn tensor(values: &[f32], shape: &[usize; 4]) -> WasmTensor {
+        WasmTensor::new(values, shape)
+    }
+
+    #[test]
+    fn div_and_sqrt_payload_bytes_are_the_wire_contract() {
+        let d = AgentLayerSpec::div(7);
+        assert_eq!(d.layer_type, LAYER_BINARY);
+        assert_eq!(d.variant, BINARY_DIV);
+        assert_eq!(d.payload, vec![7, 0, 0, 0, 0, 0, 0, 0]);
+        let s = AgentLayerSpec::sqrt(7);
+        assert_eq!(s.layer_type, LAYER_ACTIVATION);
+        assert_eq!(s.variant, ACT_SQRT);
+        assert_eq!(s.payload, vec![7, 0, 0, 0]);
+    }
+
+    #[test]
+    fn div_and_sqrt_init_ok() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::div(1)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::sqrt(2)).unwrap();
+    }
+
+    #[test]
+    fn div_forward_is_bit_identical_to_kernel_div() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::div(1)).unwrap();
+        let a = tensor(
+            &[1e30, -2.5, 1e-38, 0.0, 3.0, 1e-40],
+            &[1, 6, 1, 1],
+        );
+        let b = tensor(&[2.0, 0.5, 1e-38, 5.0, -1.5, 1e-38], &[1, 6, 1, 1]);
+        let layer = reg.forward_binary_layer(1, &a, &b).unwrap();
+        let kernel = WasmNumericKernel::new().div(&a, &b).unwrap();
+        assert_eq!(bits(&layer), bits(&kernel));
+    }
+
+    #[test]
+    fn div_forward_negative_controls_name_the_fault() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::div(1)).unwrap();
+        let shape = &[1, 3, 1, 1];
+        // Shape mismatch.
+        let err = reg
+            .forward_binary_layer(
+                1,
+                &tensor(&[1.0, 2.0, 3.0], shape),
+                &tensor(&[1.0, 2.0], &[1, 2, 1, 1]),
+            )
+            .err().expect("t4b: expected Err");
+        assert!(err.contains("binary div: shape mismatch"), "err: {err}");
+        // Zero divisor at index 0, middle, last.
+        for (i, b) in [
+            vec![0.0, 1.0, 1.0],
+            vec![1.0, 0.0, 1.0],
+            vec![1.0, 1.0, 0.0],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let err = reg
+                .forward_binary_layer(1, &tensor(&[1.0, 2.0, 3.0], shape), &tensor(&b, shape))
+                .err().expect("t4b: expected Err");
+            assert_eq!(
+                err,
+                format!("binary div rhs: zero denominator at index {i}"),
+                "zero at {i}"
+            );
+        }
+        // -0.0 counts as zero.
+        let err = reg
+            .forward_binary_layer(
+                1,
+                &tensor(&[1.0, 2.0, 3.0], shape),
+                &tensor(&[1.0, -0.0, 1.0], shape),
+            )
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("binary div rhs: zero denominator at index 1"),
+            "err: {err}"
+        );
+        // NaN in either input names the non-finite element.
+        let err = reg
+            .forward_binary_layer(
+                1,
+                &tensor(&[1.0, f32::NAN, 3.0], shape),
+                &tensor(&[1.0, 2.0, 3.0], shape),
+            )
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("binary div lhs: non-finite value at index 1"),
+            "err: {err}"
+        );
+        let err = reg
+            .forward_binary_layer(
+                1,
+                &tensor(&[1.0, 2.0, 3.0], shape),
+                &tensor(&[1.0, f32::NAN, 3.0], shape),
+            )
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("binary div rhs: non-finite value at index 1"),
+            "err: {err}"
+        );
+        // Precedence: finiteness beats zero in both orders.
+        for b in [vec![f32::NAN, 0.0, 1.0], vec![0.0, f32::NAN, 1.0]] {
+            let err = reg
+                .forward_binary_layer(1, &tensor(&[1.0, 2.0, 3.0], shape), &tensor(&b, shape))
+                .err().expect("t4b: expected Err");
+            assert!(err.contains("non-finite value"), "precedence err: {err}");
+            assert!(!err.contains("zero denominator"), "precedence err: {err}");
+        }
+        // Quotient overflow is an output error, not a silent inf.
+        let err = reg
+            .forward_binary_layer(
+                1,
+                &tensor(&[1.0], &[1, 1, 1, 1]),
+                &tensor(&[1e-45], &[1, 1, 1, 1]),
+            )
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("binary div output: non-finite value at index 0"),
+            "err: {err}"
+        );
+    }
+
+    #[test]
+    fn sqrt_forward_is_bit_identical_to_kernel_sqrt() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::sqrt(1)).unwrap();
+        let x = tensor(
+            &[0.0, -0.0, 1.0, 4.0, 2.0, f32::MAX, 1e-42],
+            &[1, 7, 1, 1],
+        );
+        let layer = reg.forward_layer(1, LAYER_ACTIVATION, &x).unwrap();
+        let kernel = WasmNumericKernel::new().sqrt(&x).unwrap();
+        assert_eq!(bits(&layer), bits(&kernel));
+        // -0.0 survives as -0.0 (bit-level, not just ==).
+        assert_eq!(bits(&layer)[1], (-0.0f32).to_bits());
+    }
+
+    #[test]
+    fn sqrt_forward_negative_controls_name_the_fault() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::sqrt(1)).unwrap();
+        let shape = &[1, 3, 1, 1];
+        for (i, x) in [
+            vec![-1.0, 1.0, 1.0],
+            vec![1.0, -2.0, 1.0],
+            vec![1.0, 1.0, -3.0],
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let err = reg
+                .forward_layer(1, LAYER_ACTIVATION, &tensor(&x, shape))
+                .err().expect("t4b: expected Err");
+            assert_eq!(
+                err,
+                format!("Sqrt forward: negative value at index {i}: {}", x[i]),
+                "negative at {i}"
+            );
+        }
+        let err = reg
+            .forward_layer(1, LAYER_ACTIVATION, &tensor(&[1.0, f32::NAN, 1.0], shape))
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("Sqrt forward: non-finite value at index 1"),
+            "err: {err}"
+        );
+        // Precedence: finiteness beats negativity in both orders.
+        for x in [vec![f32::NAN, -1.0, 1.0], vec![-1.0, f32::NAN, 1.0]] {
+            let err = reg
+                .forward_layer(1, LAYER_ACTIVATION, &tensor(&x, shape))
+                .err().expect("t4b: expected Err");
+            assert!(err.contains("non-finite value"), "precedence err: {err}");
+            assert!(!err.contains("negative value"), "precedence err: {err}");
+        }
+    }
+
+    #[test]
+    fn repair_path_graph_fails_at_the_offending_div_step() {
+        // Single-input graph: zeros come from sub(x, x), so the div by
+        // zero is the first div step; a later div(x, div-out) step
+        // would repair inf -> 0 if per-step checks were absent. The
+        // run must fail at the div step, never reach the repair step.
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::sub(30)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::div(31)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::div(32)).unwrap();
+        let mut b = AgentGraphBuilder::new(4).unwrap();
+        b.add_binary(&AgentLayerSpec::sub(30), 0, 0, 1).unwrap();
+        b.add_binary(&AgentLayerSpec::div(31), 0, 1, 2).unwrap();
+        b.add_binary(&AgentLayerSpec::div(32), 0, 2, 3).unwrap();
+        b.set_output(3).unwrap();
+        let graph = b.compile(&reg).unwrap();
+        let err = graph
+            .run(&reg, &tensor(&[4.0, 9.0], &[1, 2, 1, 1]))
+            .err().expect("t4b: expected Err");
+        assert!(
+            err.contains("binary div rhs: zero denominator at index 0"),
+            "repair-path err: {err}"
+        );
+    }
+
+    #[test]
+    fn graph_composition_sqrt_then_div_runs_and_verifies_flat() {
+        let mut reg = LayerRegistry::new();
+        reg.init_agent_layer(&AgentLayerSpec::sqrt(10)).unwrap();
+        reg.init_agent_layer(&AgentLayerSpec::div(20)).unwrap();
+        let mut b = AgentGraphBuilder::new(3).unwrap();
+        b.add_unary(&AgentLayerSpec::sqrt(10), 0, 1).unwrap();
+        b.add_binary(&AgentLayerSpec::div(20), 1, 0, 2).unwrap();
+        b.set_output(2).unwrap();
+        let graph = b.compile(&reg).unwrap();
+        let input = tensor(&[16.0, 9.0], &[1, 2, 1, 1]);
+        let expected = vec![4.0f32 / 16.0f32, 3.0f32 / 9.0f32];
+        let out = graph.run(&reg, &input).unwrap();
+        assert_eq!(bits(&out), expected.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+        graph
+            .verify_flat(&reg, &input, &expected, 1e-6, 1e-6)
+            .expect("verifyFlat must pass");
     }
 }

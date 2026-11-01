@@ -29,8 +29,10 @@ function preserve(inShapes) {
 }
 
 // WASM initAgentLayer rejects dim=0 ("dimension must be positive") and
-// forward rejects dim>=4 for softmax/logSoftmax/glu/concat — valid axis
-// range is 1..3 (axis 0 is the batch dim). Ported from pack v2.5.
+// init rejects dim>=4 for softmax/logSoftmax/glu (forward keeps the
+// second gate for layers built outside registry init); concat still
+// rejects dim>=4 at forward — valid axis range is 1..3 (axis 0 is the
+// batch dim). Ported from pack v2.5.
 function softmaxRule(name) {
   return (inShapes, args) => {
     const dim = args[1];
@@ -57,6 +59,7 @@ const RULES = {
   // ---- activations (shape-preserving) ----
   relu: preserve, gelu: preserve, sigmoid: preserve, tanh: preserve,
   hardSwish: preserve, hardSigmoid: preserve, mish: preserve,
+  sqrt: preserve,
   // leakyRelu/softplus/prelu below: engine-validated bounds (port v2.5).
   // The engine rejects negative slope, non-positive beta, and a
   // num_parameters that is neither 1 nor the channel dim at create time.
@@ -191,6 +194,7 @@ const RULES = {
       throw new ShapeError(`mul shape mismatch ${shapeStr(inShapes[0])} vs ${shapeStr(inShapes[1])}`);
     return [...inShapes[0]];
   },
+  div: binaryElementwise('div'),
   intAdd: binaryElementwise('intAdd'),
   intSub: binaryElementwise('intSub'),
   intMul: binaryElementwise('intMul'),

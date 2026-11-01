@@ -23,8 +23,8 @@ use wasm_bindgen::prelude::*;
 
 use crate::protocol::{
     PacketHeader, ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX,
-    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH,
-    BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
+    ACT_MISH, ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SQRT, ACT_SWIGLU, ACT_TANH,
+    BINARY_ADD, BINARY_CONCAT, BINARY_DIV, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
     LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM,
     LAYER_POOL, LAYER_SEBLOCK,
@@ -621,7 +621,7 @@ pub(crate) fn capability_manifest() -> String {
             "\"graph\":{{\"registry\":\"LayerRegistry\",\"compile\":\"LayerRegistry.compileGraph\",\"run\":\"CompiledGraph.run\",\"multi_input_compile\":\"LayerRegistry.compileMultiInputGraph\",\"multi_input_run\":\"CompiledMultiInputGraph.run\",\"max_slots\":64}},",
             "\"agent_facade\":{{\"layer_spec\":\"AgentLayerSpec\",\"registry_init\":\"LayerRegistry.initAgentLayer\",",
             "\"constructor_catalog\":\"agentLayerCatalog\",\"constructor_catalog_schema\":\"burn-research.agent-layer-catalog.v1\",",
-            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"concat\",\"transpose\",\"intAdd\",\"intSub\",\"intMul\",\"intMatmul\",\"intDiv\",\"intRem\",\"intToFloat\",\"intFromFloat\"],",
+            "\"constructors\":[\"relu\",\"gelu\",\"sigmoid\",\"tanh\",\"hardSwish\",\"leakyRelu\",\"prelu\",\"swiGlu\",\"hardSigmoid\",\"softplus\",\"mish\",\"softmax\",\"logSoftmax\",\"glu\",\"sqrt\",\"linear\",\"batchNorm\",\"groupNorm\",\"instanceNorm\",\"layerNorm\",\"rmsNorm\",\"conv1d\",\"conv2d\",\"convTranspose2d\",\"embedding\",\"maxPool1d\",\"maxPool2d\",\"avgPool1d\",\"avgPool2d\",\"adaptiveAvgPool2d\",\"featureNorm\",\"shiftUp\",\"shiftDown\",\"shiftLeft\",\"shiftRight\",\"ghost\",\"seBlock\",\"add\",\"sub\",\"mul\",\"matmul\",\"div\",\"concat\",\"transpose\",\"intAdd\",\"intSub\",\"intMul\",\"intMatmul\",\"intDiv\",\"intRem\",\"intToFloat\",\"intFromFloat\"],",
             "\"constructor_signatures\":{{",
             "\"linear\":\"linear(id,in_dim,out_dim,bias)\",",
             "\"batchNorm\":\"batchNorm(id,num_features,epsilon?)\",",
@@ -648,14 +648,14 @@ pub(crate) fn capability_manifest() -> String {
             "\"linear\":{{\"code\":{},\"arity\":1}},",
             "\"norm\":{{\"code\":{},\"arity\":1,\"variants\":{{\"batch\":{},\"group\":{},\"instance\":{},\"layer\":{},\"rms\":{}}}}},",
             "\"conv\":{{\"code\":{},\"arity\":1,\"variants\":{{\"conv1d\":{},\"conv2d\":{},\"conv_transpose2d\":{}}}}},",
-            "\"activation\":{{\"code\":{},\"arity\":1,\"variants\":{{\"gelu\":{},\"relu\":{},\"sigmoid\":{},\"tanh\":{},\"hard_swish\":{},\"leaky_relu\":{},\"prelu\":{},\"swiglu\":{},\"hard_sigmoid\":{},\"softplus\":{},\"mish\":{},\"softmax\":{},\"log_softmax\":{},\"glu\":{}}}}},",
+            "\"activation\":{{\"code\":{},\"arity\":1,\"variants\":{{\"gelu\":{},\"relu\":{},\"sigmoid\":{},\"tanh\":{},\"hard_swish\":{},\"leaky_relu\":{},\"prelu\":{},\"swiglu\":{},\"hard_sigmoid\":{},\"softplus\":{},\"mish\":{},\"softmax\":{},\"log_softmax\":{},\"glu\":{},\"sqrt\":{}}}}},",
             "\"embedding\":{{\"code\":{},\"arity\":1}},",
             "\"pool\":{{\"code\":{},\"arity\":1,\"variants\":{{\"max_pool1d\":{},\"max_pool2d\":{},\"avg_pool1d\":{},\"avg_pool2d\":{},\"adaptive_avg_pool2d\":{}}}}},",
             "\"feature_norm\":{{\"code\":{},\"arity\":1}},",
             "\"shift\":{{\"code\":{},\"arity\":1,\"variants\":{{\"up\":{},\"down\":{},\"left\":{},\"right\":{}}}}},",
             "\"ghost\":{{\"code\":{},\"arity\":1}},",
             "\"seblock\":{{\"code\":{},\"arity\":1}},",
-            "\"binary\":{{\"code\":{},\"arity\":2,\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"concat\":{}}}}},",
+            "\"binary\":{{\"code\":{},\"arity\":2,\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"div\":{},\"concat\":{}}}}},",
             "\"transpose\":{{\"code\":{},\"arity\":1,\"variants\":{{\"swap\":{}}}}},",
             "\"int_binary\":{{\"code\":{},\"arity\":2,\"dtype\":\"int64\",\"variants\":{{\"add\":{},\"sub\":{},\"mul\":{},\"matmul\":{},\"div\":{},\"rem\":{}}}}},",
             "\"int_cast\":{{\"code\":{},\"arity\":1,\"variants\":{{\"to_float\":{},\"from_float\":{}}}}}",
@@ -687,6 +687,7 @@ pub(crate) fn capability_manifest() -> String {
         ACT_SOFTMAX,
         ACT_LOGSOFTMAX,
         ACT_GLU,
+        ACT_SQRT,
         LAYER_EMBEDDING,
         LAYER_POOL,
         POOL_MAXPOOL1D,
@@ -707,6 +708,7 @@ pub(crate) fn capability_manifest() -> String {
         BINARY_SUB,
         BINARY_MUL,
         BINARY_MATMUL,
+        BINARY_DIV,
         BINARY_CONCAT,
         LAYER_TRANSPOSE,
         TRANSPOSE_SWAP,
@@ -762,6 +764,20 @@ mod tests {
         assert!(manifest.contains("\"lifecycle\":\"ask->tell\""));
         assert!(manifest.contains("compileWithOutput"));
         assert!(manifest.contains("multiInputPlanV1"));
+    }
+
+    #[test]
+    fn manifest_lists_div_and_sqrt_with_their_variant_codes() {
+        let manifest = capability_manifest();
+        // Constructors list: sqrt after glu, div between matmul and concat.
+        assert!(manifest.contains("\"glu\",\"sqrt\",\"linear\""));
+        assert!(manifest.contains("\"matmul\",\"div\",\"concat\""));
+        // Variants maps pin the codes as well as the names: LAYER_BINARY
+        // is 19, BINARY_DIV is 5, BINARY_CONCAT is 4; LAYER_ACTIVATION
+        // is 4, ACT_GLU is 13, ACT_SQRT is 14. A misordered format! arg
+        // would silently mislabel a variant, so the order is asserted.
+        assert!(manifest.contains("\"div\":5,\"concat\":4}}"));
+        assert!(manifest.contains("\"glu\":13,\"sqrt\":14}}"));
     }
 
     #[test]

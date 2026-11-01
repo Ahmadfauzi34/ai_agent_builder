@@ -1,11 +1,11 @@
 {
   "sha256": {
-    "burn_research_bg.wasm": "1736ef235b8f8166a4e3a7ca47e2b4998076d39a3301b9e4416b19eb1d720bb2",
-    "burn_research.js": "911333a99556e9494ab498225a2067765553533e5d2dc732b0e45bbb19b88e7a"
+    "burn_research_bg.wasm": "da605e236afc0095540d28c19762870797aa57c7ad784b60376c57cad36952a3",
+    "burn_research.js": "7628e4de12182375b73aa5ee8e1e33ffbf639d46022d92163c6d84c114d8ce78"
   },
   "engine": {
-    "wasm_sha256": "1736ef235b8f8166a4e3a7ca47e2b4998076d39a3301b9e4416b19eb1d720bb2",
-    "js_sha256": "911333a99556e9494ab498225a2067765553533e5d2dc732b0e45bbb19b88e7a"
+    "wasm_sha256": "da605e236afc0095540d28c19762870797aa57c7ad784b60376c57cad36952a3",
+    "js_sha256": "7628e4de12182375b73aa5ee8e1e33ffbf639d46022d92163c6d84c114d8ce78"
   },
   "generated_by": "scripts/build_agent_pack.mjs",
   "note": "Generated — do not hand-edit. Re-run the builder after any engine change."
