@@ -10,6 +10,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { printJson, printJsonAndExit, exitAfterFlush, failCli } from '../lib/runner.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
+import { specUsesInt } from '../lib/mixed.mjs';
 import { loadWasm, buildGraph, makeBundle, verifyEngineIntegritySync } from '../lib/wasm_direct.mjs';
 
 const args = process.argv.slice(2);
@@ -94,6 +95,16 @@ if (sub === 'restore') {
   let spec;
   try { spec = loadSpec(specFile); }
   catch (e) { failCli(e instanceof Error ? e.message : String(e)); }
+  // v1 scope (Q3 decision): mixed specs are NON-CHECKPOINTABLE — there
+  // is no single mixed bundle to restore, so refusing beats a confusing
+  // engine error from the f32-only bundle path below.
+  if (specUsesInt(spec)) {
+    printJsonAndExit({
+      ok: false, verdict: 'REJECT', restored: false,
+      code: 'mixed_checkpoint_unsupported',
+      error: 'mixed-dtype spec: checkpoint export/restore is not supported in v1 (no single mixed bundle format exists); run the spec with run.mjs instead',
+    }, 2);
+  }
   let b64;
   try { b64 = fs.readFileSync(file, 'utf8').trim(); }
   catch (e) { failCli(`cannot read bundle file: ${e instanceof Error ? e.message : String(e)}`); }
@@ -157,6 +168,16 @@ if (sub === 'restore') {
 let spec;
 try { spec = loadSpec(file); }
 catch (e) { failCli(e instanceof Error ? e.message : String(e)); }
+// v1 scope (Q3 decision): mixed specs are NON-CHECKPOINTABLE. Refuse
+// with a named error — never silently export the f32 segments only,
+// which would be a lying checkpoint.
+if (specUsesInt(spec)) {
+  printJsonAndExit({
+    ok: false,
+    code: 'mixed_checkpoint_unsupported',
+    error: 'mixed-dtype spec: checkpoint export is not supported in v1 (no single mixed bundle format exists); run the spec with run.mjs instead',
+  }, 2);
+}
 let built = null;
 try {
   const rt = await loadWasm();

@@ -392,7 +392,13 @@ test('REG-15/F1: intAdd warns specifically (i64 vs f32 graph)', () => {
   const s = oneLayerSpec({ args: [0], constructor: 'intAdd' }, { kind: 'binary', layer: 0, slots: [0, 1, 2] }, basePorts(), 2);
   const r = runTool(['bin/validate.mjs', writeSpec('intadd.json', s)]);
   assert(r.code === 0 && r.json.valid === true, `intAdd: ${r.out.slice(0, 200)}`);
-  assert((r.json.static_warnings ?? []).some((x) => x.includes('WasmIntTensor')), `int warning: ${JSON.stringify(r.json.static_warnings)}`);
+  // Mixed-dtype v1: the per-step "cannot execute" text is replaced by a
+  // segment-plan warning that names the failing build (step/ctor/slot/
+  // expected/actual/missing cast) and predicts the run failure at build.
+  const w = r.json.static_warnings ?? [];
+  assert(w.some((x) => x.includes('mixed-dtype build error') && x.includes('step 0 (intAdd)')
+    && x.includes('slot 0 holds f32') && x.includes('expects i64') && x.includes('intFromFloat')),
+    `int warning: ${JSON.stringify(w)}`);
 });
 test('F4: expectedWeightCount table (unit)', () => {
   const t = [

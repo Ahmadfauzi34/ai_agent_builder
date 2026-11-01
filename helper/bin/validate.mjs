@@ -16,6 +16,7 @@ import { loadSpec, checkArgValues, analyzePlanPorts, expectedWeightCount } from 
 import { checkSpec } from '../lib/shapecore.mjs';
 import { propagateLayouts, explainSpec } from '../lib/explain.mjs';
 import { verifyEngineIntegritySync } from '../lib/wasm_direct.mjs';
+import { specUsesInt, splitSpec, segmentPlanWarning } from '../lib/mixed.mjs';
 import { catalogPath, layoutContractsPath } from '../lib/engine.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -85,7 +86,6 @@ const EXTERNAL_LAYOUTS = new Set([
   'token_ids_axis1_singleton', 'sequence_feature_axis2_singleton_width',
 ]);
 const ENGINE_REJECTED_EXTERNAL_LAYOUTS = new Set(['dynamic', 'preserve_input']);
-const INT_CONSTRUCTORS = new Set(['intAdd', 'intSub', 'intMul', 'intMatmul', 'intDiv', 'intRem', 'intToFloat', 'intFromFloat']);
 
 function isRoleValid(role) {
   if (typeof role !== 'string' || role.length === 0 || Buffer.byteLength(role) > 64) return false;
@@ -114,14 +114,26 @@ for (const p of spec.ports) {
   }
 }
 
-// Check int* constructors and layout propagation compatibility
+// Check int* constructors and layout propagation compatibility.
+// Under Option B the old "cannot execute inside f32 graphs" warning is
+// FALSE for specs B can run, so it is REPLACED (not kept alongside)
+// by the segment-plan warning (§6.3): one summary per spec. When
+// propagation itself fails, the warning names the build error —
+// validate's contract is plan-shape (code stays "ok"); a warning that
+// deterministically predicts a run failure is the gap-5 model, not a
+// contradiction.
+if (specUsesInt(spec)) {
+  try {
+    const { segments } = splitSpec(spec);
+    staticWarnings.push(segmentPlanWarning(spec, segments));
+  } catch (e) {
+    staticWarnings.push(`mixed-dtype build error (run will fail at build): ${e.message}`);
+  }
+}
 spec.steps.forEach((st, si) => {
   const decl = spec.layers[st.layer];
   if (!decl) return;
   const ctor = decl.constructor;
-  if (INT_CONSTRUCTORS.has(ctor)) {
-    staticWarnings.push(`step ${si} (${ctor}): int_binary/int_cast layers operate on WasmIntTensor (i64) via forwardIntBinary/forwardIntCast and cannot execute inside MultiInputGraphPlan f32 graphs`);
-  }
   const lc = Object.hasOwn(layoutCtors, ctor) ? layoutCtors[ctor] : null;
   if (!lc) return;
   const inSlots = st.kind === 'binary' ? st.slots.slice(0, 2) : st.slots.slice(0, 1);
