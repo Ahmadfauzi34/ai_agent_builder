@@ -55,11 +55,51 @@ not work around a failed selftest by adjusting the spec.
    at create (bad enum, weight count) or at run (runtime shape
    contract). It only guarantees the plan is not already
    known-bad before execution starts.
+   `valid: true` + `code: "ok"` is a verdict about the static plan
+   only, not a promise that `run` will succeed and not a verdict
+   that the plan is executable. Read `static_warnings` as part of
+   the verdict, not as decoration: a warning that names an
+   execution rejection deterministically predicts a failed run,
+   even though `code` stays `"ok"`. The concrete case is an int*
+   step, which validates with a `WasmIntTensor` warning (see the
+   WasmIntTensor paragraph below) and then fails at create phase
+   in `run` — the warning was the whole execution story, and the
+   correct response is to treat it as a planning error and route
+   the work through `bin/int.mjs`, not to re-run the same spec.
+   `run` is the arbiter: only a run result proves executability.
+   `code` stays `"ok"` here on purpose: it reports the static
+   check, not executability, and warned-but-valid is still `ok`
+   under that contract.
 2. **run** — execute a validated spec:
    `node bin/run.mjs <spec.json>`
    Output: `{ok, outputs: {shape, values}, execution_gate,
    host_provenance}`. A spec is a JSON graph (see `spec-schema.md`):
    layers, steps, ports, optional weights and inputs.
+   Reading the run output fields: `execution_gate` is a gate
+   descriptor, not a pass/fail stamp — its `field` is `"ready"`,
+   and its embedded `meaning` text is the definition to trust:
+   `host_provenance.ready === true` is necessary and sufficient
+   for the host to permit execution in signed modes.
+   `host_provenance` is the ingress authority record. In the
+   default (ingress) run its `mode` and `authority_mode` are
+   `"caller_declared"`: inputs carry no signatures, so `ready` is
+   `null`, `enforcement_effect` is `"none"` (the host checks
+   structural readiness only), and the gate is deferred to the
+   ingress `status.ready` field instead — which is why top-level
+   `ready` is also `null`. `claim_verification` and
+   `denial_reason` are `null`, and `host_authority_attested` is
+   `false`, for the same reason: nothing was attested.
+   `execution_gate` also notes it supersedes
+   `execution_authorized`, which was removed because it was
+   hardcoded false and never represented a gate decision. With
+   `--direct` there is no ingress session at all, so
+   `execution_gate`, `host_provenance`, and top-level `ready` are
+   all `null` — and `mode` is `"direct"`. Those nulls are the
+   honest record of "no ingress artifacts exist", not a fake
+   gate: a direct run proves nothing about ingress authority
+   because it never touches it. When in doubt, read the `meaning`
+   text embedded in the output itself; it states the gate rule
+   in full.
 3. **verify** — compare a candidate graph against a baseline graph:
    `node bin/verify.mjs <baseline.json> <candidate.json>`
    Exit 0 iff equivalent, 2 if not equivalent or the specs are
