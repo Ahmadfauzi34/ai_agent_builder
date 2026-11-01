@@ -88,6 +88,7 @@ pub const ACT_MISH: u8 = 0x0A;
 pub const ACT_SOFTMAX: u8 = 0x0B;
 pub const ACT_LOGSOFTMAX: u8 = 0x0C;
 pub const ACT_GLU: u8 = 0x0D;
+pub const ACT_SQRT: u8 = 0x0E;
 
 // Pool variants
 pub const POOL_MAXPOOL1D: u8 = 0x00;
@@ -107,6 +108,7 @@ pub const BINARY_SUB: u8 = 0x01;
 pub const BINARY_MUL: u8 = 0x02;
 pub const BINARY_MATMUL: u8 = 0x03;
 pub const BINARY_CONCAT: u8 = 0x04;
+pub const BINARY_DIV: u8 = 0x05;
 
 // Transpose variants
 pub const TRANSPOSE_SWAP: u8 = 0x00;

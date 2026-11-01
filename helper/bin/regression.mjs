@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { printJsonAndExit } from '../lib/runner.mjs';
 import { expectedWeightCount } from '../lib/spec.mjs';
 import { ruleFor } from '../lib/shapes.mjs';
+import { expandMacro } from '../lib/macros.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'burn-regression-'));
@@ -51,7 +52,7 @@ const oneLayerSpec = (layer, step, ports = basePorts(), outputSlot = 1) => ({
 const cases = [];
 const test = (name, fn) => cases.push({ name, fn });
 
-test('builder: 50/169/50 + wasm sha', () => {
+test('builder: 52/169/52 + wasm sha', () => {
   // The repo builder (scripts/build_agent_pack.mjs) assembles the pack
   // from this directory; the regression gate proves the builder's output
   // counts and engine sha, not just the tools in place.
@@ -69,7 +70,7 @@ test('builder: 50/169/50 + wasm sha', () => {
   assert(typeof wasmSha === 'string' && wasmSha.length === 64, 'MANIFEST has no wasm sha');
   const r = runTool(['../scripts/build_agent_pack.mjs', '--out', path.join(TMP, 'built-pack')]);
   assert(r.code === 0, `builder exit ${r.code}: ${r.out.slice(0, 200)} ${r.err.slice(0, 200)}`);
-  assert(r.json.ok === true && r.json.catalog_entries === 50 && r.json.surface_entries === 169 && r.json.layout_entries === 50, `counts: ${r.out.slice(0, 300)}`);
+  assert(r.json.ok === true && r.json.catalog_entries === 52 && r.json.surface_entries === 169 && r.json.layout_entries === 52, `counts: ${r.out.slice(0, 300)}`);
   assert(r.json.wasm_sha256 === wasmSha, `wasm sha: ${r.json.wasm_sha256} (MANIFEST: ${wasmSha})`);
 });
 test('run: linear-relu [4.5, 10.5]', () => {
@@ -189,6 +190,130 @@ test('REG-13: softmax dim 0 rejected by validate and by engine', () => {
   assertValidFalse(v, 'static_check_failed');
   const r = runTool(['bin/run.mjs', f]);
   assert(r.code === 1 && r.json.ok === false, `run softmax dim 0: exit ${r.code} ${r.out.slice(0, 200)}`);
+});
+test('softmax/logSoftmax dims 1-3 pass validate and run', () => {
+  // Chained unary steps, one per dim, plus an add drain so port 1 is
+  // consumed (same two-port trick as REG-13).
+  const layers = [];
+  const steps = [];
+  let slot = 0;
+  const dims = [[ 'softmax', 1 ], [ 'softmax', 2 ], [ 'softmax', 3 ], [ 'logSoftmax', 1 ], [ 'logSoftmax', 2 ], [ 'logSoftmax', 3 ]];
+  dims.forEach(([ctor, dim], i) => {
+    layers.push({ args: [i, dim], constructor: ctor });
+    const out = slot === 0 ? 2 : slot + 1;
+    steps.push({ kind: 'unary', layer: i, slots: [slot, out] });
+    slot = out;
+  });
+  layers.push({ args: [6], constructor: 'add' });
+  steps.push({ kind: 'binary', layer: 6, slots: [slot, 1, slot + 1] });
+  const s = { layers, steps, outputSlot: slot + 1, numSlots: slot + 2, ports: basePorts(), inputs: { '0': [0.5, -1.5], '1': [2, 3] } };
+  const f = writeSpec('softmax123.json', s);
+  const v = runTool(['bin/validate.mjs', f]);
+  assert(v.code === 0 && v.json.valid === true, `softmax dims 1-3 validate: ${v.out.slice(0, 200)}`);
+  const r = runTool(['bin/run.mjs', f]);
+  assert(r.code === 0 && r.json.ok === true, `softmax dims 1-3 run: ${r.out.slice(0, 200)}`);
+});
+test('softmax/logSoftmax dim 4 rejected by validate and by engine init', () => {
+  // Mirrors REG-13 (dim 0) for the upper bound: the pack rule rejects
+  // at validate, and the engine init gate rejects with the named
+  // message. Dim 0 coverage stays in REG-13; it is not duplicated here.
+  for (const [ctor, want] of [['softmax', 'Softmax init'], ['logSoftmax', 'LogSoftmax init']]) {
+    const s = {
+      layers: [{ args: [0, 4], constructor: ctor }, { args: [1], constructor: 'add' }],
+      steps: [
+        { kind: 'unary', layer: 0, slots: [0, 2] },
+        { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      ],
+      outputSlot: 3, numSlots: 5, ports: basePorts(),
+      inputs: { '0': [0.5, -1.5], '1': [2, 3] },
+    };
+    const f = writeSpec(`${ctor}4.json`, s);
+    const v = runTool(['bin/validate.mjs', f]);
+    assertValidFalse(v, 'static_check_failed');
+    const r = runTool(['bin/run.mjs', f]);
+    assert(r.code === 1 && r.json.ok === false, `run ${ctor} dim 4: exit ${r.code} ${r.out.slice(0, 200)}`);
+    assert(String(r.json.error).includes(want), `${ctor} dim 4 engine error must name the init gate: ${r.out.slice(0, 300)}`);
+  }
+});
+// Independent f64 softmax over one axis of a 4-D tensor (max-subtracted,
+// same math as ref.mjs softmaxAxis, written inline because ref.mjs has
+// no transpose/matmul and cannot run a macro expansion).
+function softmax4d(values, shape, dim) {
+  const strides = [shape[1] * shape[2] * shape[3], shape[2] * shape[3], shape[3], 1];
+  const out = new Array(values.length);
+  const idx = [0, 0, 0, 0];
+  const off = () => idx[0] * strides[0] + idx[1] * strides[1] + idx[2] * strides[2] + idx[3];
+  const walk = (d, fn) => {
+    if (d === 4) { fn(); return; }
+    if (d === dim) { walk(d + 1, fn); return; }
+    for (let k = 0; k < shape[d]; k++) { idx[d] = k; walk(d + 1, fn); }
+  };
+  walk(0, () => {
+    let m = -Infinity;
+    for (let k = 0; k < shape[dim]; k++) { idx[dim] = k; const v = values[off()]; if (v > m) m = v; }
+    let s = 0;
+    for (let k = 0; k < shape[dim]; k++) { idx[dim] = k; s += Math.exp(values[off()] - m); }
+    for (let k = 0; k < shape[dim]; k++) { idx[dim] = k; const o = off(); out[o] = Math.exp(values[o] - m) / s; }
+  });
+  return out;
+}
+const maxdiff = (a, b) => Math.max(...a.map((x, i) => Math.abs(x - b[i])));
+test('incident 2026-10-22: attention_head softmax is over keys (dim 3), dim-2 control fails', () => {
+  // Fixture with a wide dim-2-vs-dim-3 margin: Q=[1,4], K=[1,0.25]
+  // gives scores [[1,0.25],[4,1]]; V=[10,20]. Correct (dim 3) output
+  // is ~[13.21,10.47]; the dim-2 control lands ~[6.89,23.11].
+  const ports = [0, 1, 2].map((slot) => ({ slot, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' }));
+  const inputs = { '0': [1, 4], '1': [1, 0.25], '2': [10, 20] };
+  const spec = expandMacro({
+    macro: 'attention_head',
+    params: { d_model: 1, q_slot: 0, k_slot: 1, v_slot: 2, out_slot: 3 },
+    ports, inputs,
+  });
+  const w = softmax4d([1, 0.25, 4, 1], [1, 1, 2, 2], 3);
+  const ref = [w[0] * 10 + w[1] * 20, w[2] * 10 + w[3] * 20];
+  const f = writeSpec('attn.json', spec);
+  const v = runTool(['bin/validate.mjs', f]);
+  assert(v.code === 0 && v.json.valid === true, `attention validate: ${v.out.slice(0, 200)}`);
+  const r = runTool(['bin/run.mjs', f]);
+  assert(r.code === 0 && r.json.ok === true, `attention run: ${r.out.slice(0, 200)}`);
+  const out = r.json.outputs.values;
+  assert(maxdiff(out, ref) <= 1e-6, `attention semantic maxdiff ${maxdiff(out, ref)} exceeds 1e-6`);
+  // Discrimination control (mandatory): the same expansion with a
+  // hand-built dim-2 softmax MUST fail the semantic assertion widely.
+  // Without a failing control this test could not have caught the incident.
+  const bad = clone(spec);
+  bad.layers.find((l) => l.constructor === 'softmax').args[1] = 2;
+  const rb = runTool(['bin/run.mjs', writeSpec('attn-dim2.json', bad)]);
+  assert(rb.code === 0 && rb.json.ok === true, `dim-2 control run: ${rb.out.slice(0, 200)}`);
+  assert(maxdiff(rb.json.outputs.values, ref) > 0.05, `dim-2 control must fail by >0.05, got ${maxdiff(rb.json.outputs.values, ref)}`);
+  // Degenerate-axis note: the output is not all ones, and attention
+  // actually mixed V (a dim-1 weights bug would return V unchanged).
+  assert(!out.every((x) => x === 1), 'macro output must not be all ones');
+  assert(maxdiff(out, inputs['2']) > 0, 'macro output must differ from V');
+});
+test('logSoftmax: exp(logSoftmax(x, dim)) == softmax(x, dim) for dims 1-3', () => {
+  // No exp layer exists, so exp() is applied to the engine output in
+  // JS; tolerance 1e-4 absorbs f32 exp underflow on very negative
+  // log-probs without approaching any incident-scale margin.
+  const shape = [1, 2, 2, 2];
+  const values = [1, 2, 3, 4, 5, 6, 7, 8];
+  for (const dim of [1, 2, 3]) {
+    const ports = [0, 1].map((slot) => ({ slot, role: 'observation', shape, layout: 'channel_first' }));
+    const s = {
+      layers: [{ args: [0, dim], constructor: 'logSoftmax' }, { args: [1], constructor: 'add' }],
+      steps: [
+        { kind: 'unary', layer: 0, slots: [0, 2] },
+        { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      ],
+      outputSlot: 3, numSlots: 5, ports,
+      inputs: { '0': values, '1': [0, 0, 0, 0, 0, 0, 0, 0] },
+    };
+    const r = runTool(['bin/run.mjs', writeSpec(`logsm${dim}.json`, s)]);
+    assert(r.code === 0 && r.json.ok === true, `logSoftmax dim ${dim} run: ${r.out.slice(0, 200)}`);
+    const got = r.json.outputs.values.map((x) => Math.exp(x));
+    const want = softmax4d(values, shape, dim);
+    assert(maxdiff(got, want) <= 1e-4, `logSoftmax dim ${dim}: exp() maxdiff ${maxdiff(got, want)} exceeds 1e-4`);
+  }
 });
 test('REG-13/14: leakyRelu slope, prelu count, softplus beta rejected', () => {
   const leaky = oneLayerSpec({ args: [0, -0.1], constructor: 'leakyRelu' }, { kind: 'unary', layer: 0, slots: [0, 1] });
@@ -724,9 +849,34 @@ test('CLI completeness: all interactive bin/*.mjs tools handle --help without EN
   }
 });
 
-test('catalog surface: find-op --list 50, surface --list 169', () => {
+test('T4b: div+sqrt consecutive graph steps run; find-op discovers both', () => {
+  // Two-port spec, so this exercises the multi-input plan path: div
+  // over both ports, then sqrt over the div output.
+  const s = {
+    layers: [{ args: [0], constructor: 'div' }, { args: [1], constructor: 'sqrt' }],
+    steps: [
+      { kind: 'binary', layer: 0, slots: [0, 1, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+    ],
+    outputSlot: 3, numSlots: 4,
+    ports: basePorts(),
+    inputs: { '0': [16, 9], '1': [4, 3] },
+  };
+  const f = writeSpec('divsqrt.json', s);
+  const v = runTool(['bin/validate.mjs', f]);
+  assert(v.code === 0 && v.json.valid === true, `div+sqrt validate: ${v.out.slice(0, 200)}`);
+  const r = runTool(['bin/run.mjs', f]);
+  assert(r.code === 0 && r.json.ok === true, `div+sqrt run: ${r.out.slice(0, 200)}`);
+  assert(maxdiff(r.json.outputs.values, [2, Math.sqrt(3)]) <= 1e-6, `div+sqrt values: ${r.out.slice(0, 200)}`);
+  for (const [name, sig] of [['div', 'div(id)'], ['sqrt', 'sqrt(id)']]) {
+    const fo = runTool(['bin/find-op.mjs', name]);
+    assert(fo.code === 0 && fo.json && fo.json.signature === sig, `find-op ${name}: ${fo.out.slice(0, 200)}`);
+  }
+});
+
+test('catalog surface: find-op --list 52, surface --list 169', () => {
   const f = runTool(['bin/find-op.mjs', '--list']);
-  assert(f.code === 0 && f.out.trim().split('\n').length === 50, `find-op list: ${f.out.trim().split('\n').length} lines`);
+  assert(f.code === 0 && f.out.trim().split('\n').length === 52, `find-op list: ${f.out.trim().split('\n').length} lines`);
   const s = runTool(['bin/surface.mjs', '--list']);
   assert(s.code === 0 && s.out.trim().split('\n').length === 169, `surface list: ${s.out.trim().split('\n').length} lines`);
 });

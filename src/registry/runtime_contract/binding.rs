@@ -2,8 +2,8 @@ pub use crate::facade::registry::layer_registry_operation_binding_capabilities;
 
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
-    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
-    BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SQRT, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
+    BINARY_CONCAT, BINARY_DIV, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, INT_BINARY_ADD, INT_BINARY_DIV, INT_BINARY_MATMUL, INT_BINARY_MUL,
     INT_BINARY_REM, INT_BINARY_SUB,
     INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV,
@@ -76,6 +76,7 @@ fn infer_operation_id(layer_type: u8, variant: u8) -> Result<&'static str, Strin
             ACT_SOFTMAX => "softmax",
             ACT_LOGSOFTMAX => "logSoftmax",
             ACT_GLU => "glu",
+            ACT_SQRT => "sqrt",
             _ => {
                 return Err(format!(
                     "operationBindingSnapshot: unknown activation variant 0x{variant:02X}"
@@ -111,6 +112,7 @@ fn infer_operation_id(layer_type: u8, variant: u8) -> Result<&'static str, Strin
             BINARY_MUL => "mul",
             BINARY_CONCAT => "concat",
             BINARY_MATMUL => "matmul",
+            BINARY_DIV => "div",
             _ => {
                 return Err(format!(
                     "operationBindingSnapshot: unknown binary variant 0x{variant:02X}"

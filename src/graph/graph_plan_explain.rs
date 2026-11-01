@@ -4,7 +4,7 @@
 use super::CompiledMultiInputGraph;
 use crate::graph_plan::GraphPlanStep;
 use crate::protocol::{
-    PayloadCursor, ACT_GLU, ACT_SWIGLU, BINARY_ADD, BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL,
+    PayloadCursor, ACT_GLU, ACT_SWIGLU, BINARY_ADD, BINARY_CONCAT, BINARY_DIV, BINARY_MATMUL, BINARY_MUL,
     BINARY_SUB, LAYER_ACTIVATION, LAYER_BINARY, LAYER_FEATURE_NORM, LAYER_LINEAR, LAYER_NORM,
     LAYER_SHIFT, LAYER_TRANSPOSE,
 };
@@ -74,7 +74,7 @@ fn infer_shape(step: &GraphPlanStep, identity: &str, inputs: &[Option<Shape>]) -
                 return Projection::unknown("upstream_shape_unknown");
             };
             match variant {
-                BINARY_ADD | BINARY_SUB | BINARY_MUL => {
+                BINARY_ADD | BINARY_SUB | BINARY_MUL | BINARY_DIV => {
                     if input == other {
                         Projection::known(input)
                     } else {
@@ -267,4 +267,63 @@ pub(crate) fn report(compiled: &CompiledMultiInputGraph, registry: &LayerRegistr
         unknown_steps,
         incompatible_steps
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::infer_shape;
+    use crate::graph_plan::GraphPlanStep;
+    use crate::protocol::{LAYER_ACTIVATION, LAYER_BINARY};
+
+    fn div_step() -> GraphPlanStep {
+        GraphPlanStep {
+            arity: 2,
+            layer_type: LAYER_BINARY,
+            layer_id: 1,
+            in_slot: 0,
+            in_slot2: 1,
+            out_slot: 2,
+        }
+    }
+
+    #[test]
+    fn div_projects_known_shape_on_equal_inputs() {
+        let proj = infer_shape(
+            &div_step(),
+            "variant=05;payload=0100000000000000",
+            &[Some([1, 2, 2, 2]), Some([1, 2, 2, 2])],
+        );
+        assert_eq!(proj.status, "known");
+        assert_eq!(proj.shape, Some([1, 2, 2, 2]));
+    }
+
+    #[test]
+    fn div_projects_incompatible_on_mismatched_inputs() {
+        let proj = infer_shape(
+            &div_step(),
+            "variant=05;payload=0100000000000000",
+            &[Some([1, 2, 2, 2]), Some([1, 2, 2, 3])],
+        );
+        assert_eq!(proj.status, "incompatible");
+        assert_eq!(proj.reason, "elementwise_shape_mismatch");
+    }
+
+    #[test]
+    fn sqrt_projects_known_input_shape() {
+        let step = GraphPlanStep {
+            arity: 1,
+            layer_type: LAYER_ACTIVATION,
+            layer_id: 2,
+            in_slot: 0,
+            in_slot2: 0,
+            out_slot: 1,
+        };
+        let proj = infer_shape(
+            &step,
+            "variant=0e;payload=02000000",
+            &[Some([1, 2, 3, 4])],
+        );
+        assert_eq!(proj.status, "known");
+        assert_eq!(proj.shape, Some([1, 2, 3, 4]));
+    }
 }

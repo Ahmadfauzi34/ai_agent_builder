@@ -690,6 +690,14 @@ impl WasmActivation {
         }
     }
 
+    #[wasm_bindgen(js_name = newSqrt)]
+    pub fn new_sqrt() -> WasmActivation {
+        let device = Default::default();
+        WasmActivation {
+            inner: ActivationConfig::Sqrt.init(&device),
+        }
+    }
+
     pub fn forward(&self, input: &WasmTensor) -> WasmTensor {
         self.try_forward(input)
             .unwrap_or_else(activation_forward_fail)
@@ -740,6 +748,17 @@ impl WasmActivation {
 
 impl WasmActivation {
     pub(crate) fn try_forward(&self, input: &WasmTensor) -> Result<WasmTensor, String> {
+        // Sqrt is the only activation with a data-domain rule: it is
+        // checked here (never the _unchecked kernel path), with the
+        // offending step named. validate_nonnegative is finiteness-first,
+        // so NaN reports as non-finite, not as negative.
+        if matches!(&self.inner, Activation::Sqrt(_)) {
+            validate_nonnegative(input, "Sqrt forward")?;
+            return numeric_checked_output(
+                self.inner.forward(input.inner.clone()),
+                "Sqrt forward output",
+            );
+        }
         let shape = input.inner.dims();
         match &self.inner {
             Activation::Softmax(m) => validate_rank4_axis(m.dim, "Softmax forward")?,
@@ -789,6 +808,12 @@ impl WasmBinary {
     pub fn new_matmul() -> WasmBinary {
         WasmBinary {
             inner: Binary::new(BinaryOp::Matmul, 0),
+        }
+    }
+    #[wasm_bindgen(js_name = newDiv)]
+    pub fn new_div() -> WasmBinary {
+        WasmBinary {
+            inner: Binary::new(BinaryOp::Div, 0),
         }
     }
     #[wasm_bindgen(js_name = newConcat)]

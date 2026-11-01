@@ -20,8 +20,8 @@ use crate::layers::custom::feature_norm::DEFAULT_EPSILON as FEATURE_NORM_DEFAULT
 use crate::multi_input_graph::MultiInputGraphPlan;
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
-    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
-    BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SQRT, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
+    BINARY_CONCAT, BINARY_DIV, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, FLAG_BIAS, INT_BINARY_ADD, INT_BINARY_DIV, INT_BINARY_MATMUL,
     INT_BINARY_MUL, INT_BINARY_REM, INT_BINARY_SUB, INT_CAST_FROM_FLOAT, INT_CAST_TO_FLOAT, LAYER_ACTIVATION, LAYER_BINARY,
     LAYER_EMBEDDING, LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST,
@@ -306,6 +306,11 @@ impl AgentLayerSpec {
     #[wasm_bindgen(js_name = glu)]
     pub fn glu(layer_id: u32, dim: u32) -> AgentLayerSpec {
         Self::activation_with_dim(layer_id, ACT_GLU, dim)
+    }
+
+    #[wasm_bindgen(js_name = sqrt)]
+    pub fn sqrt(layer_id: u32) -> AgentLayerSpec {
+        Self::id_only(layer_id, LAYER_ACTIVATION, ACT_SQRT)
     }
 
     #[wasm_bindgen(js_name = linear)]
@@ -777,6 +782,11 @@ impl AgentLayerSpec {
     #[wasm_bindgen(js_name = matmul)]
     pub fn matmul(layer_id: u32) -> AgentLayerSpec {
         Self::binary_with_dim(layer_id, BINARY_MATMUL, 0)
+    }
+
+    #[wasm_bindgen(js_name = div)]
+    pub fn div(layer_id: u32) -> AgentLayerSpec {
+        Self::binary_with_dim(layer_id, BINARY_DIV, 0)
     }
 
     #[wasm_bindgen(js_name = concat)]

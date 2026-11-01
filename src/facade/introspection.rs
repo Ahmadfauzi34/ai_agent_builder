@@ -11,8 +11,8 @@ use crate::agent::AgentGraphBuilder;
 use crate::input_port_edge_binding::{binding_record_json, semantic_graph_identity_json};
 use crate::protocol::{
     ACT_GELU, ACT_GLU, ACT_HARDSIGMOID, ACT_HARDSWISH, ACT_LEAKYRELU, ACT_LOGSOFTMAX, ACT_MISH,
-    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
-    BINARY_CONCAT, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
+    ACT_PRELU, ACT_RELU, ACT_SIGMOID, ACT_SOFTMAX, ACT_SOFTPLUS, ACT_SQRT, ACT_SWIGLU, ACT_TANH, BINARY_ADD,
+    BINARY_CONCAT, BINARY_DIV, BINARY_MATMUL, BINARY_MUL, BINARY_SUB, CONV_CONV1D, CONV_CONV2D,
     CONV_CONVTRANSPOSE2D, LAYER_ACTIVATION, LAYER_BINARY, LAYER_CONV, LAYER_EMBEDDING,
     LAYER_FEATURE_NORM, LAYER_GHOST, LAYER_INT_BINARY, LAYER_INT_CAST, LAYER_LINEAR, LAYER_NORM,
     LAYER_POOL, LAYER_SEBLOCK,
@@ -152,6 +152,7 @@ fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str>
             ACT_SOFTMAX => Some("softmax"),
             ACT_LOGSOFTMAX => Some("logSoftmax"),
             ACT_GLU => Some("glu"),
+            ACT_SQRT => Some("sqrt"),
             _ => None,
         },
         LAYER_POOL => match variant? {
@@ -174,6 +175,7 @@ fn constructor_name(layer_type: u8, variant: Option<u8>) -> Option<&'static str>
             BINARY_SUB => Some("sub"),
             BINARY_MUL => Some("mul"),
             BINARY_MATMUL => Some("matmul"),
+            BINARY_DIV => Some("div"),
             BINARY_CONCAT => Some("concat"),
             _ => None,
         },
