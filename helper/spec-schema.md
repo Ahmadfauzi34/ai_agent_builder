@@ -87,14 +87,22 @@ Notes:
 
 `intAdd`, `intSub`, `intMul`, `intMatmul`, `intDiv`, `intRem`, `intToFloat`, `intFromFloat`
 operate on `WasmIntTensor` (i64) via `forwardIntBinary`/`forwardIntCast`.
-They CANNOT execute inside a `MultiInputGraphPlan` f32 graph: a spec
-that uses them validates with a `static_warnings` entry per step (not an
-error — the warning is the signal), but the engine rejects the graph at
-create. Do not mix int* layers into f32 graph plans; treat them as a
-separate integer execution path. The runnable form is `bin/int.mjs`
-(integer strings as inputs — no ports, no slots, no registry id from
-the caller); see AGENT.md for the full positive path, including what
-the warning means and what the spec's `id` and ports do and do not do.
+They CANNOT execute inside a `MultiInputGraphPlan` f32 graph — but
+since mixed-dtype v1 they do not need to: `run.mjs` (session path)
+splits a spec at dtype boundaries, running int steps as direct
+registry calls over one shared `LayerRegistry` and f32 steps as
+compiled graphs, with a segment receipt in the output. The split
+is static: dtype mismatches fail at build with a named error
+before any segment runs; boundaries are fail-closed (`intToFloat`
+rejects `|x| > 2^24`, `intFromFloat` rejects non-finite and
+out-of-i64-range inputs); the output slot must be f32 in v1.
+`validate` reports one segment-plan warning per spec (runnable
+mixed spec: segment/kind/cast summary; un-runnable spec: the
+build error it will fail with). The pure-int runnable form
+remains `bin/int.mjs` (integer strings as inputs — no ports, no
+slots, no registry id from the caller); see AGENT.md for the full
+mixed-dtype path, including what the warning means and what the
+spec's `id` and ports do and do not do.
 
 ## Weight-count formulas (validate cross-check)
 

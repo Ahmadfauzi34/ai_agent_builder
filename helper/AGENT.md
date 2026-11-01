@@ -61,11 +61,15 @@ not work around a failed selftest by adjusting the spec.
    the verdict, not as decoration: a warning that names an
    execution rejection deterministically predicts a failed run,
    even though `code` stays `"ok"`. The concrete case is an int*
-   step, which validates with a `WasmIntTensor` warning (see the
-   WasmIntTensor paragraph below) and then fails at create phase
-   in `run` — the warning was the whole execution story, and the
-   correct response is to treat it as a planning error and route
-   the work through `bin/int.mjs`, not to re-run the same spec.
+   spec that cannot run as written — a pure-int spec (output slot
+   i64) or a dtype mismatch — which validates with a segment-plan
+   warning naming the build failure (see the mixed-dtype paragraph
+   below) and then fails at build in `run` (exit 2) with that same
+   named error. The warning was the whole execution story; treat
+   it as a planning error (add the missing cast, or route pure-int
+   work through `bin/int.mjs`), not as a reason to re-run the same
+   spec. A mixed spec that DOES end in f32 runs — its warning
+   describes the segment plan, not a failure.
    `run` is the arbiter: only a run result proves executability.
    `code` stays `"ok"` here on purpose: it reports the static
    check, not executability, and warned-but-valid is still `ok`
@@ -97,7 +101,17 @@ not work around a failed selftest by adjusting the spec.
    all `null` — and `mode` is `"direct"`. Those nulls are the
    honest record of "no ingress artifacts exist", not a fake
    gate: a direct run proves nothing about ingress authority
-   because it never touches it. When in doubt, read the `meaning`
+   because it never touches it. A third shape exists for
+   mixed-dtype runs (session path only): `execution_gate`,
+   `host_provenance`, and top-level `ready` are all `null` —
+   exactly like `--direct` — because the run executes through
+   direct registry primitives rather than the ingress session;
+   but the output additionally carries `segments` (the segment
+   receipt: index, kind, steps, layers, inputs, outputs per
+   segment) and `boundary_casts`. Null gate/provenance PLUS a
+   segment receipt is the mixed-run signature — do not read the
+   nulls as "direct mode" (`mode` stays the session mode); the
+   receipt is the provenance for a mixed run. When in doubt, read the `meaning`
    text embedded in the output itself; it states the gate rule
    in full.
 3. **verify** — compare a candidate graph against a baseline graph:
@@ -130,7 +144,31 @@ All ops execute directly through the native WASM kernels (`WasmNumericKernel`, `
 Exact integers are a separate tool, not an arith flag:
 `node bin/int.mjs <add|sub|mul|div|rem> <a1,a2,...> <b1,b2,...> [--wrap]` (or `matmul` with `;`-separated rows, `to-f32 <a1,a2,...> [--allow-inexact]`, `from-f32 <f1,f2,...>`, or `--batch <ops.json>`). Int runs through the registry (`LayerRegistry.forwardIntBinary`, `forwardIntCastToFloat`, `forwardIntCastFromFloat`), never the f32 graph. Inputs for i64 ops are integer strings (full i64 range); outputs are decimal strings. By default, arithmetic overflow beyond `[-2^63, 2^63 - 1]` (including intermediate `matmul` products/accumulations) is rejected fail-closed with exit 2 (`i64 overflow ...`); pass `--wrap` (or `"wrap": true` in batch) only when two's-complement wrapping is explicitly desired. `to-f32` enforces the exact integer-in-f32 boundary (`|x| <= 16777216`, `2^24`) unless `--allow-inexact` is passed. `div` truncates toward zero; division by zero (and `MIN/-1`) is an error for `div`/`rem`.
 
-When `validate` reports a spec as valid WITH a static warning naming `WasmIntTensor` — one per int* step, of the form `step N (ctor): int_binary/int_cast layers operate on WasmIntTensor (i64) via forwardIntBinary/forwardIntCast and cannot execute inside MultiInputGraphPlan f32 graphs` — that warning is the whole story for execution: the spec is well-formed, but `run.mjs` on it fails at create phase (exit 1, `execution_started: false`, error naming `forwardIntBinary`/`forwardIntCastToFloat`/`forwardIntCastFromFloat`). This is by design, not a broken spec — do not try to "fix" the spec into running. The runnable form of the same computation is `bin/int.mjs` above: the int ops take integer strings directly (`node bin/int.mjs add 16777217 1` -> `["16777218"]`, exact beyond f32), never ports or slots. There is no int port format to construct: int.mjs takes no port, no slot, and no registry id from you (it manages its own registry ids internally). The `id` in an int spec (e.g. `intAdd(id)`) is a registry layer id for the graph path that int execution never takes, and the ports in such a spec only satisfy validate's plan shape (minimum ports, every port consumed); they carry no int values. If you need int results inside a larger f32 computation, run the int step in int.mjs first and feed its outputs back as f32 inputs (via `to-f32`, which refuses inexact values unless `--allow-inexact`).
+Mixed-dtype specs run (session path only, v1): `run.mjs` splits
+the spec at dtype boundaries into f32 graph segments and int
+registry-call segments over one shared `LayerRegistry`, and the
+output carries a segment receipt (`segments`, `boundary_casts`)
+alongside the null gate/provenance described above. The split is
+static and fail-closed: dtype propagation rejects a mismatch
+before any segment runs (named build error: step, slot, expected,
+actual, missing cast); `intToFloat` rejects any element with
+`|x| > 16777216` (`2^24`); `intFromFloat` rejects non-finite and
+out-of-i64-range inputs. The output slot must be f32 in v1: a
+pure-int spec (or a mixed spec ending in int) fails at build
+with a named output-dtype error — end it with `intToFloat`, or
+route the pure-int computation through `bin/int.mjs` above.
+`validate` reports one segment-plan warning per spec: for a
+runnable mixed spec, `mixed-dtype spec: N segments (kinds),
+boundary casts at steps [...]...`; for a spec that fails at
+build, `mixed-dtype build error (run will fail at build): <msg>`.
+The old per-step "cannot execute inside MultiInputGraphPlan f32
+graphs" text is gone: int steps no longer pretend to be graph
+steps. `--direct` does not support mixed specs in v1 (named
+refusal, exit 2); checkpoint export/restore refuse mixed specs
+(no single mixed bundle format exists). `run.mjs` outputs are
+JSON numbers, so i64 values beyond `2^53` cannot be exact there
+— int intermediates stay exact inside the run and are only
+exposed through the f32 output.
 
 Elementwise transcendental and rounding kernels are a separate tool, not arith ops:
 `node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...>` (unary),
