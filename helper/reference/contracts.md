@@ -8,7 +8,7 @@ and `bin/surface.mjs`, or scan `contracts-index/*.jsonl`.
 
 ## The contracts that matter to an agent
 
-- **Layer catalog** (`agent-layer-catalog.v1.json`, 50 constructors).
+- **Layer catalog** (`agent-layer-catalog.v1.json`, 52 constructors).
   Use when: you need to know whether an operation exists and what
   its arguments are. Query: `find-op <name>`, list: `find-op --list`.
   Do NOT use when: you want runtime behavior or performance — the
