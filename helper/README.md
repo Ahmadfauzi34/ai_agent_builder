@@ -9,14 +9,15 @@ optimization profiling to full math verification with provenance.
 
 ### Arithmetic
 
-- `node bin/arith.mjs <add|sub|mul|div> <a1,a2,...> <b1,b2,...>`
-  Elementwise vector arithmetic through the engine, without
-  hand-writing a spec (the tool builds the spec and runs it via the
-  wasm-direct path). `div` is mul by the host-computed reciprocal;
-  division by zero, length mismatch, unknown op, and non-numeric
-  input are clean errors (exit 2). V1 limits: no `matmul` (its
-  layout contract is dynamic and unprobed), no int ops (i64 family,
-  rejected by the f32 run path).
+- `node bin/arith.mjs <add|sub|mul|div|dot|dist|cos|xent|kl> <a1,a2,...> <b1,b2,...>` — binary ops; unary `<sqrt|exp|log|abs|norm|normalize|entropy|sum|mean|min|max|var|std> <a1,a2,...>`; `clamp <a1,a2,...> <min>,<max>`; `matmul <a11,a12;...> <b11,b12;...>` (single-batch, `;`-separated rows); `<sum_axis|mean_axis|min_axis|max_axis> <rows> <0|1>`; `--batch <ops.json>`.
+  Arithmetic without hand-writing a spec, routed to the engine's
+  native kernels in-process (wasm-direct, not through a graph).
+  `div` is true f32 division (no reciprocal hack): subnormal and
+  large divisors are exact (div 2e-39/2e-39 = [1], 0 ULP).
+  Division by zero, divisor underflow to f32 zero, length mismatch,
+  unknown op, and non-numeric input are clean errors (exit 2).
+  Exact i64 arithmetic lives in `bin/int.mjs` (never the f32 graph);
+  Lane E elementwise kernels live in `bin/kernel.mjs`.
 
 ### Optimization (Fase A oracle)
 
