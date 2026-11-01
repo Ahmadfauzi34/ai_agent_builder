@@ -114,7 +114,7 @@ programmatically and print exactly one entry:
 
 - `node bin/find-op.mjs <constructor>` — one layer constructor,
   complete (signature, parameters, family). `--list` prints one line
-  per constructor (50 total).
+  per constructor (52 total).
 - `node bin/surface.mjs <name>` — one wasm function, class, or
   method. For a method, the answer pairs each signature with its
   class — parameter order differs between classes, so never assume
@@ -125,12 +125,12 @@ programmatically and print exactly one entry:
   writing a spec that uses a norm/conv/embedding layer: e.g.
   `layerNorm` requires `feature_last`, not the common
   `feature_axis1_singleton`. `--list` prints one line per constructor
-  (50 total).
+  (52 total).
 
 For a quick scan without any tool, read `contracts-index/`:
-`catalog-index.jsonl` is one constructor per line (50 lines),
+`catalog-index.jsonl` is one constructor per line (52 lines),
 `surface-index.jsonl` is one surface entry per line (169 lines),
-`layout-index.jsonl` is one layout contract per line (50 lines).
+`layout-index.jsonl` is one layout contract per line (52 lines).
 One entry is one line, so grep on these files is safe. Grep on the
 raw files under `engine-audit/` is not.
 

@@ -31,14 +31,14 @@ This page is a map, not a manual: find your question, follow the link.
 - See what a wasm function, class, or method is ->
   `node bin/surface.mjs <name>` (list all: `--list`).
 - Scan all constructors at a glance ->
-  `contracts-index/catalog-index.jsonl` (50 lines, one per constructor).
+  `contracts-index/catalog-index.jsonl` (52 lines, one per constructor).
 - Scan the whole wasm surface at a glance ->
   `contracts-index/surface-index.jsonl` (169 lines, one per entry).
 - Re-run the release regression gate ->
   `node bin/regression.mjs` (cases: `reference/regression.md`).
 - See what layout a constructor requires ->
   `node bin/layout.mjs <name>` (list all: `--list`), or scan
-  `contracts-index/layout-index.jsonl` (50 lines, one per constructor).
+  `contracts-index/layout-index.jsonl` (52 lines, one per constructor).
 
 ## Understand something
 
