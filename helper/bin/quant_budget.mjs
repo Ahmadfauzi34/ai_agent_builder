@@ -21,7 +21,7 @@
 // Prints the plan JSON. Exit 0 always (plan may be empty); 1 on error.
 import { loadWasm } from '../lib/engine.mjs';
 import { loadSpec } from '../lib/spec.mjs';
-import { printJson } from '../lib/runner.mjs';
+import { printJson, assertKnownFlags } from '../lib/runner.mjs';
 import {
   linearLayerInfos,
   fetchQuantReports,
@@ -41,6 +41,7 @@ if (args.includes('--help') || args.includes('-h')) {
   console.error('usage: node bin/quant_budget.mjs <spec.json> <cases.json> --tol <num> [--scheme q8-per-block] [--mode bound|measured]');
   process.exit(2);
 }
+assertKnownFlags(args, { valued: ['--tol', '--scheme', '--mode'], boolean: ['--selftest'], prog: 'quant_budget' });
 function opt(name, def) {
   const i = args.indexOf(name);
   return i >= 0 && i + 1 < args.length ? args[i + 1] : def;

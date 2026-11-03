@@ -1,4 +1,7 @@
-// burn-math #13 Fase 3: per-layer quantization budget planner.
+// burn-math #13 Fase 3 (v3.9): per-layer quantization budget planner
+// with rigorous Lipschitz DAG bound propagation across 22 constructors
+// (including binary `mul`, envelope post-quantization operator norms, and
+// epsilon/parameter-aware bounds for `featureNorm`/`rmsNorm`/`layerNorm`).
 //
 // Given a spec with weighted linear layers and a total output-perturbation
 // tolerance, decide WHICH layers to quantize (int8) to maximize checkpoint
@@ -8,9 +11,12 @@
 //     worst-case bound is derived from the weights BEFORE running anything:
 //     per-layer perturbation (from the engine's own quant report) is
 //     propagated through downstream layers by their operator norms
-//     (oo-norm; relu/tanh/sigmoid by Lipschitz constant; add is additive).
-//     The bound is rigorous but conservative. Scope: linear + relu/tanh/
-//     sigmoid + add. Anything else -> loud error (not a silent guess).
+//     (oo-norm; Lipschitz unary ops by Lipschitz constant; add/sub are
+//     additive; mul multiplies the value bounds; concat takes the max).
+//     The bound is rigorous but conservative. Scope: the constructors this
+//     file's bound mode handles (linear + Lipschitz unary + add/sub/mul/
+//     concat, including the norm constructors); anything else -> loud error
+//     (not a silent guess).
 //
 //   measured mode: empirical iterative greedy. Candidate plans are actually
 //     RUN: at each step every remaining layer is tried on top of the current
@@ -23,9 +29,66 @@
 // (max |y_base - y_plan| over cases and output elements).
 import { buildGraph, makeBundle } from './engine.mjs';
 import { portBySlot } from './spec.mjs';
+import { ssaNormalizeSpec } from './autodiff.mjs';
 
-// 1-Lipschitz (or known) activations the bound mode understands.
-const LIPSCHITZ = { relu: 1, tanh: 1, sigmoid: 0.25 };
+const STATIC_LIPSCHITZ = {
+  relu: 1,
+  tanh: 1,
+  sigmoid: 0.25,
+  softplus: 1,
+  gelu: 1.13,
+  hardSwish: 1.5,
+  transpose: 1,
+  shiftUp: 1,
+  shiftDown: 1,
+  shiftLeft: 1,
+  shiftRight: 1,
+  avgPool1d: 1,
+  avgPool2d: 1,
+};
+
+const NORM_CONSTRUCTORS = new Set(['featureNorm', 'rmsNorm', 'layerNorm']);
+
+function unaryLipschitz(decl, spec = null, layerIdx = -1) {
+  const c = decl?.constructor;
+  if (!c) return null;
+  if (Object.hasOwn(STATIC_LIPSCHITZ, c)) return STATIC_LIPSCHITZ[c];
+  if (c === 'leakyRelu') return Math.max(1, Math.abs(decl.args?.[1] ?? 0.01));
+  if (c === 'prelu') return Math.max(1, Math.abs(decl.args?.[2] ?? 0.25));
+  if (c === 'hardSigmoid') return Math.abs(decl.args?.[1] ?? 0.2);
+  if (c === 'featureNorm') {
+    const eps = decl.args?.[1] ?? 1e-12;
+    return 2 / Math.sqrt(Math.max(eps, 1e-30));
+  }
+  if (c === 'rmsNorm' || c === 'layerNorm') {
+    const F = decl.args?.[1] ?? 1;
+    const eps = decl.args?.[2] ?? 1e-5;
+    const w = spec?.weights?.[String(layerIdx)];
+    const gamma = Array.isArray(w) && w.length >= F ? w.slice(0, F) : [1];
+    const gammaMax = Math.max(0, ...gamma.map(Math.abs));
+    return (2 * gammaMax) / Math.sqrt(Math.max(eps, 1e-30));
+  }
+  return null;
+}
+
+function normOutputBound(decl, inBound, spec = null, layerIdx = -1) {
+  const c = decl?.constructor;
+  if (c === 'featureNorm') {
+    const eps = decl.args?.[1] ?? 1e-12;
+    return Math.min(1, inBound / Math.sqrt(Math.max(eps, 1e-30)));
+  }
+  const F = decl.args?.[1] ?? 1;
+  const eps = decl.args?.[2] ?? 1e-5;
+  const w = spec?.weights?.[String(layerIdx)];
+  const gamma = Array.isArray(w) && w.length >= F ? w.slice(0, F) : [1];
+  const gammaMax = Math.max(0, ...gamma.map(Math.abs));
+  if (c === 'rmsNorm') {
+    return gammaMax * Math.min(Math.sqrt(F), inBound / Math.sqrt(Math.max(eps, 1e-30)));
+  }
+  const beta = Array.isArray(w) && w.length >= 2 * F ? w.slice(F, 2 * F) : [0];
+  const betaMax = Math.max(0, ...beta.map(Math.abs));
+  return gammaMax * Math.min(Math.sqrt(F), (2 * inBound) / Math.sqrt(Math.max(eps, 1e-30))) + betaMax;
+}
 
 // Weighted linear layers in a spec: [{index, id, inDim, outDim, bias, weights}].
 // Spec weight layout (audited): column-major flat[k*outDim + i], bias appended.
@@ -82,18 +145,6 @@ function biasNormInf(weights, inDim, outDim, bias) {
   return m;
 }
 
-// Steps referencing linear layers, in order: [{info, inSlot, outSlot}].
-function linearStepsInOrder(spec, infos) {
-  const byIndex = new Map(infos.map((i) => [i.index, i]));
-  const out = [];
-  for (const step of spec.steps ?? []) {
-    if (step.kind === 'unary' && byIndex.has(step.layer)) {
-      out.push({ info: byIndex.get(step.layer), inSlot: step.slots[0], outSlot: step.slots[1] });
-    }
-  }
-  return out;
-}
-
 // Compositional worst-case bound (oo-norm).
 // Returns { contribs: [{index, contrib}], total } where contrib_i bounds
 // layer i's quantization effect on the final output.
@@ -106,75 +157,136 @@ function linearStepsInOrder(spec, infos) {
 // worst-case bound — measured ~6x tighter than bound_W·inDim on outlier
 // weights (2026-10-24). Downstream amplification stays worst-case
 // (operator-norm product); that looseness is the documented price of the guarantee.
-export function analyticalContribs(spec, reports, inputBounds, rt, scheme) {
+export function analyticalContribs(rawSpec, reports, inputBounds, rt, scheme) {
+  const { ssaSpec: spec } = ssaNormalizeSpec(rawSpec);
   const steps = spec.steps ?? [];
   const repByIndex = new Map(reports.map((r) => [r.index, r]));
+  const deqByIndex = new Map(reports.map((r) => [r.index, dequantizedWeights(rt, r, scheme)]));
 
   // Forward: oo-norm value bound per slot.
   const bound = new Map();
   for (const [slot, b] of inputBounds) bound.set(slot, b);
-  const linSteps = [];
-  for (const step of steps) {
+  for (const p of (spec.ports ?? [])) {
+    if (!bound.has(p.slot)) bound.set(p.slot, 0);
+  }
+  const linSteps = new Map();
+  const stepInBounds = new Map();
+
+  for (let si = 0; si < steps.length; si++) {
+    const step = steps[si];
     const decl = spec.layers[step.layer];
-    if (step.kind === 'unary' && decl?.constructor === 'linear') {
+    const ctor = decl?.constructor;
+    if (step.kind === 'unary' && ctor === 'linear') {
       const rep = repByIndex.get(step.layer);
       if (!rep) throw new Error(`analyticalContribs: no report for linear layer ${step.layer}`);
       const [a, b] = step.slots;
       if (!bound.has(a)) throw new Error(`analyticalContribs: slot ${a} has no bound (dangling input?)`);
-      const wNorm = operatorNormInf(rep.weights, rep.inDim, rep.outDim);
-      const bNorm = biasNormInf(rep.weights, rep.inDim, rep.outDim, rep.bias);
-      bound.set(b, wNorm * bound.get(a) + bNorm);
-      linSteps.push({ rep, inSlot: a, outSlot: b, wNorm });
-    } else if (step.kind === 'unary' && decl?.constructor in LIPSCHITZ) {
+      const bA = bound.get(a);
+      stepInBounds.set(si, [bA]);
+      const deq = deqByIndex.get(step.layer);
+      // Sound envelope over pre- and post-quantization operator norms so upward
+      // quantization rounding (|W_q| > |W|) never underestimates multi-layer or mul bounds.
+      const wNormPre = operatorNormInf(rep.weights, rep.inDim, rep.outDim);
+      const wNormPost = deq ? operatorNormInf(deq, rep.inDim, rep.outDim) : wNormPre;
+      const wNorm = Math.max(wNormPre, wNormPost);
+      const bNormPre = biasNormInf(rep.weights, rep.inDim, rep.outDim, rep.bias);
+      const bNormPost = deq ? biasNormInf(deq, rep.inDim, rep.outDim, rep.bias) : bNormPre;
+      const bNorm = Math.max(bNormPre, bNormPost);
+      bound.set(b, wNorm * bA + bNorm);
+      linSteps.set(si, { rep, deq, inSlot: a, outSlot: b, wNorm, inBound: bA });
+    } else if (step.kind === 'unary') {
+      const L = unaryLipschitz(decl, spec, step.layer);
+      if (L === null) {
+        throw new Error(
+          `analyticalContribs: unsupported step '${ctor}' (${step.kind}) — bound mode requires known Lipschitz constant`,
+        );
+      }
       const [a, b] = step.slots;
       if (!bound.has(a)) throw new Error(`analyticalContribs: slot ${a} has no bound`);
-      bound.set(b, LIPSCHITZ[decl.constructor] * bound.get(a));
-    } else if (step.kind === 'binary' && decl?.constructor === 'add') {
+      const inB = bound.get(a);
+      stepInBounds.set(si, [inB]);
+      if (NORM_CONSTRUCTORS.has(ctor)) {
+        bound.set(b, normOutputBound(decl, inB, spec, step.layer));
+      } else {
+        bound.set(b, L * inB);
+      }
+    } else if (step.kind === 'binary' && (ctor === 'add' || ctor === 'sub')) {
       const [a, b, c] = step.slots;
-      if (!bound.has(a) || !bound.has(b)) throw new Error(`analyticalContribs: add slot missing bound`);
+      if (!bound.has(a) || !bound.has(b)) throw new Error(`analyticalContribs: ${ctor} slot missing bound`);
+      stepInBounds.set(si, [bound.get(a), bound.get(b)]);
       bound.set(c, bound.get(a) + bound.get(b));
+    } else if (step.kind === 'binary' && ctor === 'mul') {
+      const [a, b, c] = step.slots;
+      if (!bound.has(a) || !bound.has(b)) throw new Error('analyticalContribs: mul slot missing bound');
+      const bA = bound.get(a), bB = bound.get(b);
+      stepInBounds.set(si, [bA, bB]);
+      bound.set(c, bA * bB);
+    } else if (step.kind === 'binary' && ctor === 'concat') {
+      const [a, b, c] = step.slots;
+      if (!bound.has(a) || !bound.has(b)) throw new Error('analyticalContribs: concat slot missing bound');
+      stepInBounds.set(si, [bound.get(a), bound.get(b)]);
+      bound.set(c, Math.max(bound.get(a), bound.get(b)));
     } else {
       throw new Error(
-        `analyticalContribs: unsupported step '${decl?.constructor}' (${step.kind}) — ` +
-        `bound mode handles linear + relu/tanh/sigmoid + add only`);
+        `analyticalContribs: unsupported step '${ctor}' (${step.kind}) — bound mode handles linear + Lipschitz unary + add/sub/mul/concat`,
+      );
     }
   }
 
-  // Backward: amplification of each slot toward the output slot.
+  // Backward: accumulate sensitivity of each slot toward the output slot (supports shared layers, slot compaction & DAG fan-out).
   const sens = new Map([[spec.outputSlot, 1]]);
   const get = (m, k) => m.get(k) ?? 0;
-  const contribs = [];
+  const contribByLayer = new Map();
+
   for (let i = steps.length - 1; i >= 0; i--) {
     const step = steps[i];
     const decl = spec.layers[step.layer];
-    if (step.kind === 'unary' && decl?.constructor === 'linear') {
+    const ctor = decl?.constructor;
+    if (step.kind === 'unary' && ctor === 'linear') {
       const [a, b] = step.slots;
-      const ls = linSteps.find((s) => s.inSlot === a && s.outSlot === b);
+      const ls = linSteps.get(i);
       const sb = get(sens, b);
+      sens.delete(b);
       sens.set(a, get(sens, a) + sb * ls.wNorm);
       // |Δy_i| <= Σ_j|ΔW_ij|·|x_j| + |Δb_i| <= ||ΔW||_oo·||x||_oo + ||Δb||_oo.
       // ΔW/Δb are EXACT (dequantized via the engine), so this stays rigorous
       // while being ~6x tighter than the report's bound_W·inDim on outliers.
-      const deq = dequantizedWeights(rt, ls.rep, scheme);
+      const deq = ls.deq ?? dequantizedWeights(rt, ls.rep, scheme);
       const nW = ls.rep.inDim * ls.rep.outDim;
       const errW = operatorNormInf(
-        ls.rep.weights.slice(0, nW).map((w, i) => w - deq[i]),
-        ls.rep.inDim, ls.rep.outDim);
+        ls.rep.weights.slice(0, nW).map((w, idx) => w - deq[idx]),
+        ls.rep.inDim, ls.rep.outDim,
+      );
       const errB = ls.rep.bias
-        ? Math.max(...ls.rep.weights.slice(nW).map((b, i) => Math.abs(b - deq[nW + i])))
+        ? Math.max(...ls.rep.weights.slice(nW).map((bv, idx) => Math.abs(bv - deq[nW + idx])))
         : 0;
-      const pert = errW * bound.get(a) + errB;
-      contribs.push({ index: step.layer, contrib: pert * sb });
-    } else if (step.kind === 'unary' && decl?.constructor in LIPSCHITZ) {
+      const pert = errW * ls.inBound + errB;
+      contribByLayer.set(step.layer, (contribByLayer.get(step.layer) ?? 0) + pert * sb);
+    } else if (step.kind === 'unary') {
+      const L = unaryLipschitz(decl, spec, step.layer) ?? 1;
       const [a, b] = step.slots;
-      sens.set(a, get(sens, a) + get(sens, b) * LIPSCHITZ[decl.constructor]);
-    } else if (step.kind === 'binary' && decl?.constructor === 'add') {
+      const sb = get(sens, b);
+      sens.delete(b);
+      sens.set(a, get(sens, a) + sb * L);
+    } else if (step.kind === 'binary' && (ctor === 'add' || ctor === 'sub' || ctor === 'concat')) {
       const [a, b, c] = step.slots;
-      sens.set(a, get(sens, a) + get(sens, c));
-      sens.set(b, get(sens, b) + get(sens, c));
+      const sc = get(sens, c);
+      sens.delete(c);
+      sens.set(a, get(sens, a) + sc);
+      sens.set(b, get(sens, b) + sc);
+    } else if (step.kind === 'binary' && ctor === 'mul') {
+      const [a, b, c] = step.slots;
+      const sc = get(sens, c);
+      sens.delete(c);
+      const [bA, bB] = stepInBounds.get(i) ?? [1, 1];
+      sens.set(a, get(sens, a) + sc * bB);
+      sens.set(b, get(sens, b) + sc * bA);
     }
   }
-  contribs.sort((x, y) => x.index - y.index);
+
+  const contribs = [...contribByLayer.entries()]
+    .map(([index, contrib]) => ({ index, contrib }))
+    .sort((x, y) => x.index - y.index);
   return { contribs, total: contribs.reduce((s, c) => s + c.contrib, 0) };
 }
 
@@ -203,14 +315,13 @@ export function inputBoundsFromCases(cases) {
       const slot = Number(slotStr);
       let m = 0;
       for (const v of values) { const a = Math.abs(v); if (a > m) m = a; }
-      if (m > (bounds.get(slot) ?? 0)) bounds.set(slot, m);
+      if (!bounds.has(slot) || m > bounds.get(slot)) bounds.set(slot, m);
     }
   }
   return bounds;
 }
 
 // ---- measured mode ----
-
 // Dequantized f32 weights for one layer via the REAL engine path:
 // setWeightsFlat -> get_quantized_state -> load_state -> getWeightsFlat.
 export function dequantizedWeights(rt, info, scheme) {
@@ -238,15 +349,19 @@ export function runSpecOutputs(rt, spec, cases) {
   try {
     for (const c of cases) {
       const bundle = makeBundle(rt, plan, c, ports);
-      const t = g.run(reg, bundle);
+      let t = null;
       try {
+        t = g.run(reg, bundle);
         outs.push(Array.from(t.to_array()));
       } finally {
-        t.free();
+        if (t?.free) t.free();
+        if (bundle?.free) bundle.free();
       }
     }
   } finally {
-    reg.free();
+    if (g?.free) g.free();
+    if (plan?.free) plan.free();
+    if (reg?.free) reg.free();
   }
   return outs;
 }
@@ -309,7 +424,6 @@ export function measuredPlan(rt, spec, cases, scheme, tol, infos = linearLayerIn
 }
 
 // ---- main entry: analytical planner ----
-
 export function analyticalPlan(spec, cases, scheme, tol, rt, infos = linearLayerInfos(spec)) {
   const reports = fetchQuantReports(rt, spec, scheme, infos);
   const { contribs, total } = analyticalContribs(spec, reports, inputBoundsFromCases(cases), rt, scheme);

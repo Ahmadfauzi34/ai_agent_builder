@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Proof harness for the autodiff map: every rule proven TWICE.
 //   (1) hand-computed exact case (catches semantic errors),
 //   (2) central finite differences of the engine's forward pass (independent oracle).
@@ -6,6 +7,7 @@
 import { RULES, inferShapes, backwardWithSaved, numel } from '../lib/autodiff.mjs';
 
 const FEAT = 'feature_axis1_singleton';
+const FEAT_LAST = 'feature_last';
 const SEQ = 'sequence_feature_axis2_singleton_width';
 const ANY = 'any_rank4'; // accepts any rank-4 shape (for test tensors without a semantic layout)
 const P = (slot, shape, layout) => ({ slot, role: 'observation', shape, layout });
@@ -123,6 +125,29 @@ const PROOFS = [
     hand: { inGrads: [[[4, 5]], [[2, 3]]] },
   },
   {
+    name: 'div', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'div', args: [0] },
+        [
+          { shape: [1, 2, 1, 1], layout: FEAT, values: [6, 8] },
+          { shape: [1, 2, 1, 1], layout: FEAT, values: [2, 4] },
+        ]);
+      return { spec, outSlot, inSlots, dout: [1, 2] };
+    },
+    hand: { inGrads: [[[0.5, 0.5]], [[-1.5, -1.0]]] },
+  },
+  {
+    name: 'sqrt', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'sqrt', args: [0] },
+        [{ shape: [1, 2, 1, 1], layout: FEAT, values: [4, 9] }]);
+      return { spec, outSlot, inSlots, dout: [2, 6] };
+    },
+    hand: { inGrads: [[[0.5, 1.0]]] },
+  },
+  {
     name: 'relu', fdTol: 1e-3,
     build() {
       const { spec, outSlot, inSlots } = oneOpSpec(
@@ -141,6 +166,92 @@ const PROOFS = [
       return { spec, outSlot, inSlots, dout: [1, 1] };
     },
     hand: { inGrads: [[[0.1, 1]]] },
+  },
+  {
+    name: 'prelu', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'prelu', args: [0, 1, 0.25] },
+        [{ shape: [1, 2, 1, 1], layout: FEAT, values: [-2, 3] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1] };
+    },
+    hand: { inGrads: [[[0.25, 1]]] },
+  },
+  {
+    name: 'hardSigmoid', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'hardSigmoid', args: [0, 0.2, 0.5] },
+        [{ shape: [1, 3, 1, 1], layout: FEAT, values: [-4, 0, 4] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1, 1] };
+    },
+    hand: { inGrads: [[[0, 0.2, 0]]] },
+  },
+  {
+    name: 'hardSwish', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'hardSwish', args: [0] },
+        [{ shape: [1, 3, 1, 1], layout: FEAT, values: [-4, 1.5, 4] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1, 1] };
+    },
+    // at 1.5: x/3 + 0.5 = 1.0; at -4: 0; at 4: 1
+    hand: { inGrads: [[[0, 1, 1]]] },
+  },
+  {
+    name: 'mish', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'mish', args: [0] },
+        [{ shape: [1, 2, 1, 1], layout: FEAT, values: [0, 1] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1] };
+    },
+    // at 0: tanh(ln(2)) = 3/5 = 0.6; at 1: tanh(ln(1+e)) + (1 - tanh(ln(1+e))^2)*sigmoid(1) = 1.04903622
+    hand: { inGrads: [[[0.6, 1.04903622]]] },
+  },
+  {
+    name: 'glu', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'glu', args: [0, 1] },
+        [{ shape: [1, 4, 1, 1], layout: FEAT, values: [2, 4, 0, 0] }]);
+      return { spec, outSlot, inSlots, dout: [1, 1] };
+    },
+    // a=[2,4], b=[0,0], s=[0.5,0.5]; dA=[0.5,0.5], dB=[2*0.25, 4*0.25]=[0.5,1.0]
+    hand: { inGrads: [[[0.5, 0.5, 0.5, 1.0]]] },
+  },
+  {
+    name: 'featureNorm', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'featureNorm', args: [0, 1e-12] },
+        [{ shape: [1, 2, 1, 1], layout: FEAT, values: [3, 4] }]);
+      return { spec, outSlot, inSlots, dout: [1, 0] };
+    },
+    // r=5, y=[0.6, 0.8]; dot(G,y)=0.6; dx = ([1,0] - [0.6,0.8]*0.6)/5 = [0.64, -0.48]/5 = [0.128, -0.096]
+    hand: { inGrads: [[[0.128, -0.096]]] },
+  },
+  {
+    name: 'rmsNorm', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'rmsNorm', args: [0, 2, 1e-12] },
+        [{ shape: [1, 1, 1, 2], layout: FEAT_LAST, values: [3, 4] }],
+        { 0: [1, 1] });
+      return { spec, outSlot, inSlots, dout: [1, 0] };
+    },
+    hand: { inGrads: [[[0.18101934, -0.1357645]]] },
+  },
+  {
+    name: 'layerNorm', fdTol: 1e-3,
+    build() {
+      const { spec, outSlot, inSlots } = oneOpSpec(
+        { name: 'layerNorm', args: [0, 2, 1e-12] },
+        [{ shape: [1, 1, 1, 2], layout: FEAT_LAST, values: [1, 3] }],
+        { 0: [1, 1, 0, 0] });
+      return { spec, outSlot, inSlots, dout: [1, 2] };
+    },
+    hand: { inGrads: [[[0, 0]]] },
   },
   {
     name: 'sigmoid', fdTol: 1e-3,
@@ -339,8 +450,19 @@ export async function proveAll(runForward) {
         for (const w of rule.saved) if (w === 'output') need.add(os);
       }
       for (const sl of need) saved.set(sl, { values: runForward({ ...sp, outputSlot: sl }, sl), shape: shapes.get(sl) });
-      const weightOf = (li, args) => {
+      const weightOf = (li, args, ctor = 'linear') => {
         const vals = sp.weights?.[String(li)];
+        if (ctor === 'rmsNorm') {
+          const F = args[1];
+          return { w: vals ? vals.slice(0, F) : new Array(F).fill(1), b: null };
+        }
+        if (ctor === 'layerNorm') {
+          const F = args[1];
+          return {
+            w: vals ? vals.slice(0, F) : new Array(F).fill(1),
+            b: vals ? vals.slice(F, 2 * F) : new Array(F).fill(0),
+          };
+        }
         const [, inD, outD, bias] = args, nw = inD * outD;
         return { w: vals.slice(0, nw), b: bias ? vals.slice(nw, nw + outD) : null };
       };
@@ -359,7 +481,7 @@ export async function proveAll(runForward) {
       if (p.hand.paramGrads) {
         for (const [li, pg] of Object.entries(p.hand.paramGrads)) {
           const got = b.paramGrads[li];
-          if (pg.w && !got?.w.every((v, i) => approx(v, pg.w[i], 1e-6))) { ok = false; msg.push(`paramGrad w mismatch`); }
+          if (pg.w && !got?.w.every((v, i) => approx(v, pg.w[i], 1e-6))) { ok = false; msg.push('paramGrad w mismatch'); }
         }
       }
       r.hand = ok; r.detail = msg.join('; ');

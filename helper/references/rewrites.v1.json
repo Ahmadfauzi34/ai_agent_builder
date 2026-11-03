@@ -1,1 +1,99 @@
-{"engine_build":"2d8f42d (vendor/burn-research-pkg, see BUNDLE.md)","policy":"Every entry ships with a recorded proof run (verify vs the original spec). A rewrite without a proof run is not added. Re-run proofs with: node bin/verify.mjs <before> <after>","proof_date":"2026-10-15","rewrites":[{"description":"linear(a)(x) + linear(b)(x) -> linear(a+b)(x): two bias-free linears on the same input whose outputs are added fuse into one linear with summed weights.","name":"linear-branch-fusion","preconditions":"two unary linear layers (bias=false, same in/out dims, weights present) on the same input slot, consumed only by one binary add; intermediate slots private and not the output slot","proof":{"after_sha256":"sha256:ab4582124f08ba343b9fe8a445aca1e6c5bc23eb1738439b29628db4e8c28be1","before_sha256":"sha256:a699bdadf6e9631b3f95420b3ee579e4a284c16dccecff482d365424d6bb4f2b","command":"node bin/verify.mjs baseline.json rw_fused.json && node bin/opt_compare.mjs baseline.json rw_fused.json","equivalent":true,"max_abs_error":0,"pages_delta":"+0","speedup":1.64,"verdict":"ACCEPT"}},{"description":"relu(relu(x)) -> relu(x): the second relu is a no-op.","name":"relu-idempotent","preconditions":"two chained unary relus where the intermediate slot is private to the chain","proof":{"after_sha256":"sha256:440feb86f786b7b43168b354000c722d831c8e52b49c935a226d9016c1881182","before_sha256":"sha256:4696164e6e2de2d53db62e34b62ba19f0556a68e1c2a75ce9f69939b894665d9","command":"node bin/verify.mjs rw_dblrelu.json rw_singlerelu.json","equivalent":true,"max_abs_error":0,"pages_delta":"+0","speedup":null,"verdict":"EQUIVALENT (fewer steps)"}},{"description":"add(a,b) -> add(b,a): canonicalizes operand order (no numeric change).","name":"add-commute","preconditions":"at least one binary add step with distinct operands","proof":{"after_sha256":"sha256:95f2d27bfe59e152632de6a03352ee587ad69e0241992a58843df27209188edd","before_sha256":"sha256:a699bdadf6e9631b3f95420b3ee579e4a284c16dccecff482d365424d6bb4f2b","command":"node bin/verify.mjs baseline.json rw_comm.json","equivalent":true,"max_abs_error":0,"pages_delta":"+0","speedup":null,"verdict":"EQUIVALENT (operand order only)"}}],"schema_id":"burn-math.rewrite-catalog.v1","schema_version":1}
+{
+  "engine_build": "82fc8db (burn_research_bg.wasm da605e23)",
+  "policy": "Every entry ships with a recorded proof run (verify vs the original spec). A rewrite without a proof run is not added. Re-run proofs with: node bin/verify.mjs <before> <after>",
+  "proof_date": "2026-11-02",
+  "rewrites": [
+    {
+      "description": "linear(a)(x) + linear(b)(x) -> linear(a+b)(x): two bias-free linears on the same input whose outputs are added fuse into one linear with summed weights.",
+      "name": "linear-branch-fusion",
+      "preconditions": "two unary linear layers (bias=false, same in/out dims, weights present) on the same input slot, consumed only by one binary add; intermediate slots private and not the output slot",
+      "proof": {
+        "after_sha256": "sha256:ab4582124f08ba343b9fe8a445aca1e6c5bc23eb1738439b29628db4e8c28be1",
+        "before_sha256": "sha256:a699bdadf6e9631b3f95420b3ee579e4a284c16dccecff482d365424d6bb4f2b",
+        "command": "node bin/verify.mjs baseline.json rw_fused.json && node bin/opt_compare.mjs baseline.json rw_fused.json",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": 1.64,
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "description": "linear2(linear1(x)) -> linear_fused(x): two sequential unary linear layers (general rectangular dims, with or without bias) fuse into one linear layer via exact affine composition W = W2*W1, b = W2*b1 + b2.",
+      "name": "linear-chain-fusion",
+      "preconditions": "two chained unary linear layers with explicit weights where the intermediate slot is private to the chain and not the output slot",
+      "proof": {
+        "after_sha256": "sha256:6645d175c9c95885ae8350ca67a65b22f2f84309b920dbcf67f804353e449dec",
+        "before_sha256": "sha256:41e9022a556d2c086f5ce88c243702664449bc3132e588fc68a1c76289e0de8d",
+        "command": "node bin/rewrite.mjs apply linear-chain-fusion chain.json --verify",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": 1.48,
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "description": "relu(relu(x)) -> relu(x): the second relu is a no-op.",
+      "name": "relu-idempotent",
+      "preconditions": "two chained unary relus where the intermediate slot is private to the chain",
+      "proof": {
+        "after_sha256": "sha256:440feb86f786b7b43168b354000c722d831c8e52b49c935a226d9016c1881182",
+        "before_sha256": "sha256:4696164e6e2de2d53db62e34b62ba19f0556a68e1c2a75ce9f69939b894665d9",
+        "command": "node bin/verify.mjs rw_dblrelu.json rw_singlerelu.json",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": null,
+        "verdict": "EQUIVALENT (fewer steps)"
+      }
+    },
+    {
+      "description": "transpose(d0,d1)(transpose(d0,d1)(x)) -> x: two back-to-back transposes swapping the same pair of axes cancel out.",
+      "name": "transpose-involution",
+      "preconditions": "two chained unary transpose steps on the same axis pair {d0, d1} with a private intermediate slot and at least one remaining step in the graph",
+      "proof": {
+        "after_sha256": "sha256:528063cceb2e68462fdc226e3c5c3e34389ca328d935ac3dc06cc8da44e36cd4",
+        "before_sha256": "sha256:49f36846c0d2c9ec62091f4560753b6cea4868ab5b49da8a57cf3bf642b062e8",
+        "command": "node bin/rewrite.mjs apply transpose-involution tr2.json --verify",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": 1.82,
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "description": "Remove steps whose outputs never reach outputSlot (while preserving required port consumption).",
+      "name": "dead-step-elimination",
+      "preconditions": "at least one dead step that does not contribute to outputSlot and is not the sole consumer of a declared port",
+      "proof": {
+        "after_sha256": "sha256:c9e146f2983cae9f7e746084eb119eb6bb12d5140391b1871237689cb25e0006",
+        "before_sha256": "sha256:cd981e44f58b4a2179d8876805b8b9b3ee699ecb1e8ddf84f5f543d98f1e9879",
+        "command": "node bin/rewrite.mjs apply dead-step-elimination dead.json --verify",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": 1.25,
+        "verdict": "ACCEPT"
+      }
+    },
+    {
+      "description": "add(a,b) -> add(b,a): canonicalizes operand order (no numeric change).",
+      "name": "add-commute",
+      "preconditions": "at least one binary add step with distinct operands",
+      "proof": {
+        "after_sha256": "sha256:95f2d27bfe59e152632de6a03352ee587ad69e0241992a58843df27209188edd",
+        "before_sha256": "sha256:a699bdadf6e9631b3f95420b3ee579e4a284c16dccecff482d365424d6bb4f2b",
+        "command": "node bin/verify.mjs baseline.json rw_comm.json",
+        "equivalent": true,
+        "max_abs_error": 0,
+        "pages_delta": "+0",
+        "speedup": null,
+        "verdict": "EQUIVALENT (operand order only)"
+      }
+    }
+  ],
+  "schema_id": "burn-math.rewrite-catalog.v1",
+  "schema_version": 1
+}

@@ -9,10 +9,9 @@
 // This is a proof about the specs' symbolic form: with identical (W, b),
 // any faithful executor must agree on every input. It says nothing about
 // engine numerics beyond that.
-import fs from 'node:fs';
 import { loadSpec } from '../lib/spec.mjs';
 import { equivLinear, effectiveAffine } from '../lib/linear_equiv.mjs';
-import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [aFile, bFile] = process.argv.slice(2);
 if (!aFile || !bFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
@@ -33,6 +32,11 @@ if (r.verdict === 'ACCEPT') {
   for (const x of flat) { const s = String(x); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; }
   detail.effective_fingerprint = `fnv1a32:${h.toString(16).padStart(8, '0')}`;
   detail.dims = r.dims;
+  detail.active_ports = r.active_ports;
+  if (r.context_ports_folded) {
+    detail.conditional_on_context = true;
+    detail.context_ports_folded = r.context_ports_folded;
+  }
   detail.chainA = r.chainA;
   detail.chainB = r.chainB;
 } else if (r.firstDiff) {

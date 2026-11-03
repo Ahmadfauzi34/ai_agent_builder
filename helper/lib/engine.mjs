@@ -6,7 +6,7 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import fs from 'node:fs';
-import { webcrypto } from 'node:crypto';
+import { createHash, webcrypto } from 'node:crypto';
 
 // Node 18 ESM quirk (lane #2, 2026-10-28): in Node 18, globalThis.crypto
 // is present in CJS contexts but UNDEFINED inside ESM modules — and the
@@ -75,9 +75,40 @@ export function layoutContractsPath() {
   return path.join(HERE, '..', '..', 'docs', 'contracts', 'agent-layout-contracts.v1.json');
 }
 
+function verifyPkgIntegritySync(dir = PKG_DIR) {
+  const manifestCandidates = [
+    path.join(HERE, '..', 'MANIFEST.json'),
+    path.join(HERE, '..', '..', 'MANIFEST.json'),
+  ];
+  let pins = null;
+  for (const mf of manifestCandidates) {
+    if (fs.existsSync(mf)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(mf, 'utf8'));
+        pins = parsed?.sha256 ?? null;
+        if (pins) break;
+      } catch { /* ignore */ }
+    }
+  }
+  if (!pins) return;
+  for (const [file, key] of [
+    [path.join(dir, 'burn_research_bg.wasm'), 'burn_research_bg.wasm'],
+    [path.join(dir, 'burn_research.js'), 'burn_research.js'],
+  ]) {
+    let bytes;
+    try { bytes = fs.readFileSync(file); }
+    catch (e) { throw new Error(`cannot read engine file ${file}: ${e.message}`); }
+    const actual = createHash('sha256').update(bytes).digest('hex');
+    if (pins[key] && pins[key] !== actual) {
+      throw new Error(`engine package integrity check failed: ${file} sha256 ${actual} does not match MANIFEST pin ${pins[key]}`);
+    }
+  }
+}
+
 export async function loadWasm() {
   const jsPath = path.join(PKG_DIR, 'burn_research.js');
   const wasmPath = path.join(PKG_DIR, 'burn_research_bg.wasm');
+  verifyPkgIntegritySync(PKG_DIR);
   const [rt, bytes] = await Promise.all([
     import(pathToFileURL(jsPath).href),
     fs.promises.readFile(wasmPath),
@@ -104,58 +135,85 @@ const WEIGHTED_CONSTRUCTORS = {
   embedding: 'embedding',
 };
 
+function freeQuiet(obj) {
+  if (obj && typeof obj.free === 'function') {
+    try { obj.free(); } catch { /* already freed: teardown never fails */ }
+  }
+}
+
 // Build {reg, plan, g} from a spec (layers/steps/ports/weights).
 // Weight layout is column-major (audited).
+// Exception-safe and leak-free: temporary AgentLayerSpec and AgentGraphBuilder
+// handles are freed before returning, and reg/plan are freed if construction throws.
 export function buildGraph(rt, spec) {
   const reg = new rt.LayerRegistry();
   const specs = [];
   const weighted = new Map(); // layer index -> {registryId, type}
-  for (const [index, decl] of spec.layers.entries()) {
-    const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
-    if (typeof s !== 'object' || s === null) {
-      throw new Error(`unknown layer constructor: ${decl.constructor}`);
+  let b = null;
+  let plan = null;
+  try {
+    for (const [index, decl] of spec.layers.entries()) {
+      if (typeof decl.constructor !== 'string' || !Object.hasOwn(rt.AgentLayerSpec, decl.constructor) || typeof rt.AgentLayerSpec[decl.constructor] !== 'function') {
+        throw new Error(`unknown layer constructor: ${decl.constructor}`);
+      }
+      const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
+      if (typeof s !== 'object' || s === null) {
+        throw new Error(`unknown layer constructor: ${decl.constructor}`);
+      }
+      reg.initAgentLayer(s);
+      specs.push(s);
+      const wt = Object.hasOwn(WEIGHTED_CONSTRUCTORS, decl.constructor) ? WEIGHTED_CONSTRUCTORS[decl.constructor] : null;
+      if (wt) weighted.set(index, { registryId: decl.args[0], type: LAYER_TYPE[wt] });
     }
-    reg.initAgentLayer(s);
-    specs.push(s);
-    const wt = WEIGHTED_CONSTRUCTORS[decl.constructor];
-    if (wt) weighted.set(index, { registryId: decl.args[0], type: LAYER_TYPE[wt] });
+    b = new rt.AgentGraphBuilder(spec.numSlots);
+    for (const step of spec.steps) {
+      const s = specs[step.layer];
+      if (!s) throw new Error(`step references missing layer index ${step.layer}`);
+      const slots = step.slots;
+      if (step.kind === 'unary' && slots.length === 2) b.addUnary(s, slots[0], slots[1]);
+      else if (step.kind === 'binary' && slots.length === 3) b.addBinary(s, slots[0], slots[1], slots[2]);
+      else throw new Error(`bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
+    }
+    b.setOutput(spec.outputSlot);
+    plan = new rt.MultiInputGraphPlan(b);
+    for (const p of spec.ports) {
+      plan.addInputPort(p.slot, p.role, ...p.shape, p.layout, false, 0n);
+    }
+    // Deterministic zero-init is the audited default; explicit weights override.
+    for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
+      const w = weighted.get(Number(indexStr));
+      if (!w) throw new Error(`weights for layer index ${indexStr}: not a weighted layer`);
+      reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
+    }
+    const g = reg.compileMultiInputGraph(plan);
+    return { reg, plan, g };
+  } catch (e) {
+    freeQuiet(plan);
+    freeQuiet(reg);
+    throw e;
+  } finally {
+    freeQuiet(b);
+    for (let i = specs.length - 1; i >= 0; i--) freeQuiet(specs[i]);
   }
-  const b = new rt.AgentGraphBuilder(spec.numSlots);
-  for (const step of spec.steps) {
-    const s = specs[step.layer];
-    if (!s) throw new Error(`step references missing layer index ${step.layer}`);
-    const slots = step.slots;
-    if (step.kind === 'unary' && slots.length === 2) b.addUnary(s, slots[0], slots[1]);
-    else if (step.kind === 'binary' && slots.length === 3) b.addBinary(s, slots[0], slots[1], slots[2]);
-    else throw new Error(`bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
-  }
-  b.setOutput(spec.outputSlot);
-  const plan = new rt.MultiInputGraphPlan(b);
-  for (const p of spec.ports) {
-    plan.addInputPort(p.slot, p.role, ...p.shape, p.layout, false, 0n);
-  }
-  // Deterministic zero-init is the audited default; explicit weights override.
-  for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
-    const w = weighted.get(Number(indexStr));
-    if (!w) throw new Error(`weights for layer index ${indexStr}: not a weighted layer`);
-    reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
-  }
-  const g = reg.compileMultiInputGraph(plan);
-  return { reg, plan, g };
 }
 
 export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
   const bundle = new rt.MultiInputInputBundle(plan);
-  for (const [slotStr, values] of Object.entries(inputsBySlot)) {
-    const slot = Number(slotStr);
-    const port = portsBySlot.get(slot);
-    if (!port) throw new Error(`input for slot ${slot} has no declared port`);
-    const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(port.shape));
-    const ok = bundle.bindInput(slot, t, port.role, port.layout, 'wasm-opt', 1n, '');
-    t.free();
-    if (!ok) throw new Error(`bindInput failed for slot ${slot}`);
+  try {
+    for (const [slotStr, values] of Object.entries(inputsBySlot)) {
+      const slot = Number(slotStr);
+      const port = portsBySlot.get(slot);
+      if (!port) throw new Error(`input for slot ${slot} has no declared port`);
+      const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(port.shape));
+      const ok = bundle.bindInput(slot, t, port.role, port.layout, 'wasm-opt', 1n, '');
+      t.free();
+      if (!ok) throw new Error(`bindInput failed for slot ${slot}`);
+    }
+    return bundle;
+  } catch (e) {
+    freeQuiet(bundle);
+    throw e;
   }
-  return bundle;
 }
 
 // ---------------------------------------------------------------------------
