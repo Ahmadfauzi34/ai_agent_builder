@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { loadEngineWithOracle, pages, profileSpec } from '../lib/opt.mjs';
 import { compactSlotsByLiveness } from '../lib/explain.mjs';
 import { compileRecursiveSpec } from '../lib/composer.mjs';
+import { rolloutScan, rolloutFixpoint } from '../lib/rollout.mjs';
 import { printJsonAndExit } from '../lib/runner.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -191,6 +192,57 @@ test('L1.5: Symbolic Autodiff Graph Compiler (1st-order VJP & 2nd-order HVP) mat
   assert(linG2.code === 0 && JSON.stringify(linG2.json?.grad_values) === '[0,0]', `order-2 linear grad mismatch: ${linG2.out}`);
 });
 
+// --- 2. LAYER 2: TEMPORAL & EXECUTION-TIME RECURSION ---
+
+test('L2.1: rollout fixpoint converges on contractive system and fails closed on explosive system', async () => {
+  const conv = runCli(['bin/rollout.mjs', 'fixpoint', 'examples/recursive-gated-residual.v2.json', '--tol', '1e-6', '--max-steps', '50']);
+  assert(conv.code === 0 && conv.json?.converged === true && conv.json?.status === 'CONVERGED', `fixpoint failed: ${conv.out}`);
+  assert(Math.abs(conv.json.fixed_point.values[0] - 2.0) < 1e-5 && Math.abs(conv.json.fixed_point.values[1] - 4.0) < 1e-5, `wrong fixed point: ${JSON.stringify(conv.json.fixed_point.values)}`);
+  assert(conv.json.empirical_lipschitz === 0.25, `expected empirical_lipschitz 0.25, got ${conv.json.empirical_lipschitz}`);
+
+  const divSpec = {
+    schema: 'burn-math.recursive-spec.v2',
+    ports: {
+      s: { slot: 0, role: 'state', shape: [1, 2, 1, 1] },
+      b: { slot: 1, role: 'context', shape: [1, 2, 1, 1] },
+    },
+    steps: [
+      { op: 'linear', args: [2, 2, false], weights: [4, 0, 0, 4], in: ['s'], out: 's4' },
+      { op: 'add', in: ['s4', 'b'], out: 'next' },
+    ],
+    output: 'next',
+    inputs: { s: [10, 10], b: [1, 1] },
+  };
+  const df = writeTmpJson('divergent.v2.json', divSpec);
+  const divRes = runCli(['bin/rollout.mjs', 'fixpoint', df, '--div-threshold', '500', '--max-steps', '20']);
+  assert(divRes.code === 2 && divRes.json?.ok === false && divRes.json?.status === 'DIVERGED_EXPLOSIVE', `divergent fixpoint did not fail closed: ${divRes.out}`);
+});
+
+test('L2.2: rollout bisect localizes first divergent step and extracts runnable prefix subspecs', async () => {
+  const bRes = runCli(['bin/rollout.mjs', 'bisect', 'examples/linear-relu.json', 'examples/linear-relu-mutated.json']);
+  assert(bRes.code === 0 && bRes.json?.ok === true, `bisect failed: ${bRes.out}`);
+  assert(bRes.json.identical_trace === false && bRes.json.first_divergent_step === 0, `expected divergence at step 0, got ${bRes.json.first_divergent_step}`);
+  const sub = bRes.json.isolated_base_subspec;
+  assert(sub.steps.length === 2 && sub.meta.remediation_receipt[0].repair === 'drain_unused_port', `unexpected isolated subspec structure: ${JSON.stringify(sub)}`);
+  const subFile = writeTmpJson('isolated_prefix.json', sub);
+  const runSub = runCli(['bin/run.mjs', '--direct', subFile]);
+  assert(runSub.code === 0 && JSON.stringify(runSub.json?.outputs?.values) === '[1.5,-3.5]', `isolated prefix subspec failed to run: ${runSub.out}`);
+});
+
+test('L2.3: Fase A Memory Oracle proves zero steady-state WASM memory page leak over 50-step rollout', async () => {
+  const { rt } = await loadEngineWithOracle();
+  const raw = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/recursive-gated-residual.v2.json'), 'utf8'));
+  const compiled = compileRecursiveSpec(raw, { rt, useWorkspace: true });
+  await rolloutScan(rt, compiled, { steps: 5, recordTrajectory: false });
+  const pagesBefore = pages();
+  for (let i = 0; i < 10; i++) {
+    await rolloutScan(rt, compiled, { steps: 20, recordTrajectory: false });
+    await rolloutFixpoint(rt, compiled, { maxSteps: 20, tol: 1e-6, recordTrajectory: false });
+  }
+  const pagesAfter = pages();
+  assert(pagesAfter - pagesBefore === 0, `WASM linear memory leaked ${pagesAfter - pagesBefore} pages across 400 rollout ticks`);
+});
+
 // --- 5. STAGE 2: RECURSIVE UPGRADES ACROSS ALL EXISTING FEATURES ---
 
 test('S2.2: Liveness-based slot compaction (--compact-slots) recycles dead intermediate slots while preserving outputs', async () => {
@@ -367,6 +419,13 @@ test('REG-fix-B3: tied repeat with weights_per_depth fails closed with a named c
   assert(bad.code === 2 && bad.json?.code === 'tied_weights_per_depth_conflict', `tied+perdepth not rejected named: ${bad.out}`);
 });
 
+test('REG-fix-B4: unknown symbolic state-port name fails closed with a named code', async () => {
+  const bad = runCli(['bin/rollout.mjs', 'unroll', 'examples/linear-relu.json', path.join(TMP, 'fix_b4_out.json'), '--steps', '2', '--state-port', 'nosuchname']);
+  assert(bad.code === 2 && bad.json?.code === 'rollout_unknown_state_port', `unknown state-port not rejected named: ${bad.out}`);
+  const ok = runCli(['bin/rollout.mjs', 'unroll', 'examples/linear-relu.json', path.join(TMP, 'fix_b4_ok.json'), '--steps', '2', '--state-port', '0']);
+  assert(ok.code === 0 && ok.json?.ok === true, `numeric state-port control failed: ${ok.out}`);
+});
+
 test('REG-fix-B2: mutual file references fail closed with recursive_cycle_detected', async () => {
   const fa = writeTmpJson('fix_b2_fa.json', { schema: 'burn-math.recursive-spec.v2', ports: { x: { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' } }, steps: [{ op: 'ref', $ref: 'fix_b2_fb.json', in: ['x'], out: 'r' }], output: 'r', inputs: { x: [1, 2] } });
   writeTmpJson('fix_b2_fb.json', { schema: 'burn-math.recursive-spec.v2', ports: { x: { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' } }, steps: [{ op: 'ref', $ref: 'fix_b2_fa.json', in: ['x'], out: 'r' }], output: 'r', inputs: { x: [1, 2] } });
@@ -400,6 +459,36 @@ test('REG-v3.9-05 (F-05): validate.mjs and propagateLayouts seed port layouts an
   assert(v.code === 0 && (v.json?.static_warnings ?? []).some((w) => w.includes('incompatible with required input layout')), `expected layout incompatibility warning on port 0: ${v.out}`);
   const ex = runCli(['bin/validate.mjs', '--explain', bf]);
   assert(ex.code === 0 && ex.json?.slots?.[0]?.layout === 'feature_last', `expected port 0 layout in --explain to be feature_last, got ${JSON.stringify(ex.json?.slots?.[0])}`);
+});
+
+test('REG-v3.9-06 (F-06): trace_hash and rollout bisect detect outputSlot mismatch and step count difference', async () => {
+  const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  const diffOut = JSON.parse(JSON.stringify(base));
+  diffOut.outputSlot = 2;
+  const dof = writeTmpJson('reg_v39_06_diffout.json', diffOut);
+
+  const th = runCli(['bin/trace_hash.mjs', 'examples/linear-relu.json', dof]);
+  assert(th.code === 0 && th.json?.comparison?.hash_chain_equal === false && th.json?.comparison?.output_slot_equal === false, `trace_hash must report hash_chain_equal:false when outputSlot differs: ${th.out}`);
+
+  const bis = runCli(['bin/rollout.mjs', 'bisect', 'examples/linear-relu.json', dof]);
+  assert(bis.code === 0 && bis.json?.identical_trace === false && bis.json?.output_slot_equal === false, `rollout bisect must report identical_trace:false when outputSlot differs: ${bis.out}`);
+});
+
+test('REG-v3.9-09 (F-09): rollout fixpoint rejects constant-drift and expanding systems even when initial step <= tol', async () => {
+  const driftSpec = {
+    numSlots: 3,
+    layers: [{ constructor: 'add', args: [0] }],
+    steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    inputs: { '0': [1.0, 2.0], '1': [5e-7, 5e-7] },
+  };
+  const df = writeTmpJson('reg_v39_09_drift.json', driftSpec);
+  const res = runCli(['bin/rollout.mjs', 'fixpoint', df, '--tol', '1e-6', '--max-steps', '10']);
+  assert(res.code === 2 && res.json?.converged === false && res.json?.status === 'NON_CONTRACTIVE_DRIFT', `constant drift must not converge: ${res.out}`);
 });
 
 test('REG-v3.9-10 (F-10): compose grad-spec supports matmul/shift* spatial outputs and overwritten intermediate --wrt slots', async () => {

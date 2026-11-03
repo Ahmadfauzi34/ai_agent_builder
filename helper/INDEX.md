@@ -11,6 +11,13 @@ This page is a map, not a manual: find your question, follow the link.
   `node bin/compose.mjs prove <spec-v2.json> [ref.json] [--auto-repair] [--compact-slots]`
 - Compile a 1st-order VJP or 2nd-order Hessian-Vector Product (including `div`, `sqrt`, `sigmoid`, `tanh` graphs) into a runnable WASM spec ->
   `node bin/compose.mjs grad-spec <spec.json> [out.json] [--wrt <slot>] [--order 1|2]`
+- Run recurrent state handoff across $T$ ticks, solve a fixed-point equation $s_{t+1} = f(s_t, x)$ until $\|s_{t+1}-s_t\|_\infty \le \text{tol}$, or temporally unroll a 1-step recurrent spec into an $N$-step weight-tied Spec v1 ->
+  `node bin/rollout.mjs scan <spec.json> [--steps N] [--state-port <slot>]`
+  `node bin/rollout.mjs fixpoint <spec.json> [--tol 1e-6] [--max-steps 100] [--state-port <slot>]`
+  `node bin/rollout.mjs unroll <spec.json> [out.json] [--steps N] [--state-port <slot>] [--compact-slots]`
+- Localize step-level divergence between two specs and extract the minimal failing prefix sub-spec ->
+  `node bin/rollout.mjs bisect <base.json> <cand.json>`
+  (or `node bin/trace_hash.mjs <base.json> <cand.json> --isolate`)
 
 ## Do something (Core Primitives)
 
@@ -69,7 +76,7 @@ This page is a map, not a manual: find your question, follow the link.
   yourself opening a file there, stop and use `find-op` or `surface`
   instead. Exception (see `AGENT.md`): a contract file under
   `engine-audit/docs/` that a `reference/` page names explicitly.
-- `lib/` — implementation of the tools (24 modules).
+- `lib/` — implementation of the tools (25 modules).
   You run the tools; you do not need to read their code to use
   the pack.
 - Pack generation — the pack is built by the repo's
