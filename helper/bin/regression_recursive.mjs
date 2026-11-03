@@ -320,6 +320,61 @@ test('L3.2: Multi-layer es_optimize fits a 2-linear-layer spec and improves fitn
   assert(fitRes.json.final_best_fitness > fitRes.json.start_fitness, `fitness did not improve: ${fitRes.json.start_fitness} -> ${fitRes.json.final_best_fitness}`);
 });
 
+// --- 4. LAYER 4: AGENT HARNESS INTEGRATION ---
+
+test('L4.1: Artifact Store round-trip, hydration in spec.inputs, and fail-closed corruption detection', async () => {
+  const wsDir = path.join(TMP, 'ws_artifacts');
+  const dRes = runCli(['bin/harness.mjs', 'digest', 'examples/linear-relu.json', '--workspace', wsDir]);
+  assert(dRes.code === 0 && dRes.json?.digest?.artifact_ref?.startsWith('burn://sha256:'), `digest failed: ${dRes.out}`);
+  const uri = dRes.json.digest.artifact_ref;
+
+  const rRes = runCli(['bin/harness.mjs', 'resolve-artifact', uri, '--workspace', wsDir]);
+  assert(rRes.code === 0 && JSON.stringify(rRes.json?.values) === '[4.5,10.5]', `resolve-artifact mismatch: ${rRes.out}`);
+
+  const consumerSpec = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  consumerSpec.inputs['0'] = uri;
+  const cf = writeTmpJson('consumer_artifact.json', consumerSpec);
+  const cDigest = runCli(['bin/harness.mjs', 'digest', cf, '--workspace', wsDir]);
+  assert(cDigest.code === 0 && cDigest.json?.ok === true, `artifact input hydration failed: ${cDigest.out}`);
+
+  const hex = uri.replace('burn://sha256:', '');
+  const artFile = path.join(wsDir, 'artifacts', `${hex}.json`);
+  fs.writeFileSync(artFile, '{"kind":"tensor_f32","shape":[1,2,1,1],"values":[999,999]}\n');
+  const badRes = runCli(['bin/harness.mjs', 'resolve-artifact', uri, '--workspace', wsDir]);
+  assert(badRes.code === 2 && badRes.json?.ok === false && badRes.json?.code === 'artifact_integrity_failed', `corrupted artifact was not rejected: ${badRes.out}`);
+});
+
+test('L4.2: Declarative multi-stage harness workflow & subagent branch-export / branch-merge gate', async () => {
+  const wsDir = path.join(TMP, 'ws_workflow');
+  const wf = {
+    workspace: wsDir,
+    spec: path.join(ROOT, 'examples/recursive-gated-residual.v2.json'),
+    pipeline: [
+      { stage: 'compile_v2', auto_repair: true },
+      { stage: 'validate' },
+      { stage: 'search_rewrites', max_depth: 2 },
+      { stage: 'grad_spec', wrt_slot: 0, order: 1 },
+      { stage: 'rollout_fixpoint', tol: 1e-5, max_steps: 40 },
+      { stage: 'checkpoint_promote', tag: 'verified-v1' },
+    ],
+  };
+  const wfRes = runCli(['bin/harness.mjs', 'run-workflow', '-'], JSON.stringify(wf));
+  assert(wfRes.code === 0 && wfRes.json?.ok === true && wfRes.json?.stages_completed === 6, `workflow failed: ${wfRes.out}`);
+
+  const expRes = runCli(['bin/harness.mjs', 'branch-export', 'examples/linear-relu.json', '--workspace', wsDir]);
+  assert(expRes.code === 0 && expRes.json?.branch_packets?.length === 2, `branch-export failed: ${expRes.out}`);
+
+  const mergeRes = runCli([
+    'bin/harness.mjs',
+    'branch-merge',
+    'examples/linear-relu.json',
+    'examples/linear-relu.json',
+    'examples/linear-relu-mutated.json',
+  ]);
+  assert(mergeRes.code === 0 && mergeRes.json?.ok === true, `branch-merge failed: ${mergeRes.out}`);
+  assert(mergeRes.json.evaluations[0].accepted === true && mergeRes.json.evaluations[1].accepted === false, `branch-merge did not reject mutated candidate: ${mergeRes.out}`);
+});
+
 // --- 5. STAGE 2: RECURSIVE UPGRADES ACROSS ALL EXISTING FEATURES ---
 
 test('S2.1: linear-chain-fusion (rectangular 2->3->2 with bias) & transpose-involution rewrite exactly', async () => {
@@ -847,6 +902,16 @@ test('REG-fix-B5: solve-gd rejects malformed targets and declares default modes'
   assert(single.code === 0 && single.json?.targets_mode === 'scalar_objective', `single-output default mode wrong: ${single.out}`);
 });
 
+test('REG-fix-B1: branch-merge equivalence gate uses multiple deterministic cases', async () => {
+  const base = writeTmpJson('fix_b1_base.json', { numSlots: 2, layers: [{ constructor: 'linear', args: [0, 1, 1, false] }], steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }], outputSlot: 1, ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 1], layout: 'feature_axis1_singleton' }], weights: { '0': [2.0] }, inputs: { '0': [1.0] } });
+  const coincide = writeTmpJson('fix_b1_coincide.json', { numSlots: 2, layers: [{ constructor: 'linear', args: [0, 1, 1, true] }], steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }], outputSlot: 1, ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 1], layout: 'feature_axis1_singleton' }], weights: { '0': [1.0, 1.0] }, inputs: { '0': [1.0] } });
+  const rej = runCli(['bin/harness.mjs', 'branch-merge', base, coincide]);
+  assert(rej.json?.ok === false && rej.json?.evaluations?.[0]?.accepted === false, `coinciding candidate promoted: ${rej.out}`);
+  assert((rej.json?.cases_count ?? 0) >= 2 && (rej.json?.equivalence_cases ?? []).includes('baseline'), `gate did not run multiple cases: ${rej.out}`);
+  const acc = runCli(['bin/harness.mjs', 'branch-merge', base, base]);
+  assert(acc.code === 0 && acc.json?.ok === true && acc.json?.evaluations?.[0]?.accepted === true, `identical candidate rejected: ${acc.out}`);
+});
+
 test('REG-fix-B3: tied repeat with weights_per_depth fails closed with a named code', async () => {
   const v2 = writeTmpJson('fix_b3_tied_perdepth.json', { schema: 'burn-math.recursive-spec.v2', ports: { state: { slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' }, bias_ctx: { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' } }, subgraphs: { contract_step: { in: ['s', 'b'], out: 's_next', steps: [{ op: 'linear', args: [2, 2, false], weight_key: 'w', in: ['s'], out: 'scaled' }, { op: 'add', in: ['scaled', 'b'], out: 's_next' }] } }, steps: [{ op: 'repeat', subgraph: 'contract_step', depth: 2, tie_weights: true, in: ['state', 'bias_ctx'], out: 'final_state', weights_per_depth: [{ w: [0.5, 0, 0, 0.5] }, { w: [2, 0, 0, 2] }] }], output: 'final_state', inputs: { state: [0.0, 0.0], bias_ctx: [1.0, 2.0] } });
   const bad = runCli(['bin/compose.mjs', 'compile', v2, path.join(TMP, 'fix_b3_out.json')]);
@@ -884,6 +949,45 @@ test('REG-fix-B7: solve-gd reported losses match independent recomputation from 
   const finalSse = sse(run1.json.outputs.values, [1.0, 2.0]);
   assert(Math.abs(finalSse - gd.json.final_loss) < 1e-5, `final_loss not reproducible: ${finalSse} vs ${gd.json.final_loss}`);
   assert(gd.json.gd_verification?.mismatch_count === 0, `mismatch_count nonzero: ${gd.out}`);
+});
+
+test('REG-fix-B8: failing workflow returns partial reports and syncs partial state; fixpoint lipschitz independent of trajectory recording', async () => {
+  const wfFail = writeTmpJson('fix_b8_fail.json', { spec: path.join(ROOT, 'examples/linear-relu.json'), pipeline: [{ stage: 'validate' }, { stage: 'bogus_stage' }] });
+  const wsFail = path.join(TMP, 'fix_b8_ws');
+  const bad = runCli(['bin/harness.mjs', 'run-workflow', wfFail, '--workspace', wsFail]);
+  assert(bad.code === 2 && bad.json?.ok === false && bad.json?.failed_stage === 'bogus_stage', `failing workflow not reported partially: ${bad.out}`);
+  assert(bad.json?.stage_reports?.length === 2 && bad.json.stage_reports[0]?.ok === true && bad.json.stage_reports[1]?.ok === false, `partial reports missing: ${bad.out}`);
+  const st = JSON.parse(fs.readFileSync(path.join(wsFail, 'workspace-state.json'), 'utf8'));
+  assert(st.wasm_workspace !== undefined, 'partial state not synced on workflow failure');
+  const fpSpec = writeTmpJson('fix_b8_fp.json', { numSlots: 4, layers: [{ constructor: 'linear', args: [0, 2, 2, false] }, { constructor: 'add', args: [1] }], steps: [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'binary', layer: 1, slots: [2, 1, 3] }], outputSlot: 3, ports: [{ slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' }, { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' }], weights: { '0': [0.5, 0, 0, 0.5] }, inputs: { '0': [2, 4], '1': [1, 0] } });
+  const wfFp = writeTmpJson('fix_b8_fp_wf.json', { spec: fpSpec, pipeline: [{ stage: 'rollout_fixpoint' }] });
+  const fp = runCli(['bin/harness.mjs', 'run-workflow', wfFp, '--workspace', path.join(TMP, 'fix_b8_fp_ws')]);
+  assert(fp.code === 0 && fp.json?.ok === true, `fixpoint workflow failed: ${fp.out}`);
+  const rep = fp.json?.stage_reports?.[0];
+  assert(rep?.status === 'CONVERGED' && Math.abs((rep?.empirical_lipschitz ?? -1) - 0.5) < 1e-6, `lipschitz null or wrong in workflow fixpoint stage: ${fp.out}`);
+});
+
+test('REG-v3.8-08: Universal burn://sha256:... hydration in rollout/recurse/compose and 47-tool capability registry', async () => {
+  const wsDir = path.join(TMP, 'ws_v38_08');
+  const dig = runCli(['bin/harness.mjs', 'digest', 'examples/recursive-gated-residual.v2.json', '--workspace', wsDir]);
+  const uri = dig.json.digest.artifact_ref;
+  const v2Art = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/recursive-gated-residual.v2.json'), 'utf8'));
+  v2Art.workspace = wsDir;
+  v2Art.inputs.state = uri;
+  const v2ArtFile = writeTmpJson('reg_v38_08_v2_art.json', v2Art);
+
+  const compRes = runCli(['bin/compose.mjs', 'prove', v2ArtFile]);
+  assert(compRes.code === 0 && compRes.json?.ok === true, `compose prove on v2 artifact failed: ${compRes.out}`);
+
+  const scanRes = runCli(['bin/rollout.mjs', 'scan', v2ArtFile, '--steps', '2']);
+  assert(scanRes.code === 0 && scanRes.json?.ok === true, `rollout scan on v2 artifact failed: ${scanRes.out}`);
+
+  const recRes = runCli(['bin/recurse.mjs', 'search', v2ArtFile, '--max-depth', '1']);
+  assert(recRes.code === 0 && recRes.json?.ok === true, `recurse search on v2 artifact failed: ${recRes.out}`);
+
+  const capRes = runCli(['bin/harness.mjs', 'capabilities']);
+  const uniqueBins = new Set(Object.values(capRes.json?.domains ?? {}).flatMap((d) => d.tools.map((t) => t.bin)));
+  assert(capRes.code === 0 && uniqueBins.size === 47, `expected 47 unique tools in capabilities, got ${uniqueBins.size}`);
 });
 
 // --- 9. STAGE 6: v3.9 TOOL HONESTY & FAIL-CLOSED INTEGRITY REGRESSIONS (F-01..F-12) ---
@@ -1187,6 +1291,20 @@ test('REG-fix-C1: attention_head is layout-explicit (seq_axis1 pinned, heads_axi
   const bad = writeTmpJson('fix_c1_badlayout.json', { macro: 'attention_head', params: { d_model: 2, q_slot: 0, k_slot: 1, v_slot: 2, out_slot: 3, layout: 'bhsd' }, weights: {}, ports: ports1, inputs: { '0': [1, 2, 3, 4], '1': [5, 6, 7, 8], '2': [9, 10, 11, 12] } });
   const rb = runCli(['bin/macro_expand.mjs', 'expand', bad]);
   assert(rb.code !== 0 && /layout must be/.test(rb.out + rb.err), `unknown layout not rejected: ${rb.out}`);
+});
+
+test('REG-fix-T1: workflow grad_spec rejects order other than 1 or 2', async () => {
+  const spec = writeTmpJson('fix_t1_spec.json', { numSlots: 2, layers: [{ constructor: 'matmul', args: [0] }], steps: [{ kind: 'binary', layer: 0, slots: [0, 0, 1] }], outputSlot: 1, ports: [{ slot: 0, role: 'observation', shape: [1, 1, 2, 2], layout: 'any_rank4' }], inputs: { '0': [1, 2, 3, 4] } });
+  const ws = path.join(TMP, 'ws_fix_t1');
+  const bad3 = writeTmpJson('fix_t1_o3.json', { spec, pipeline: [{ stage: 'grad_spec', order: 3, wrt_slot: 0 }] });
+  const r3 = runCli(['bin/harness.mjs', 'run-workflow', bad3, '--workspace', ws]);
+  assert(r3.code === 2 && r3.json?.ok === false && r3.json?.failed_stage === 'grad_spec' && /order must be 1 or 2/.test(r3.json?.error ?? ''), `order 3 not rejected: ${r3.out}`);
+  const badStr = writeTmpJson('fix_t1_ostr.json', { spec, pipeline: [{ stage: 'grad_spec', order: '2', wrt_slot: 0 }] });
+  const rs = runCli(['bin/harness.mjs', 'run-workflow', badStr, '--workspace', ws]);
+  assert(rs.code === 2 && rs.json?.ok === false && rs.json?.failed_stage === 'grad_spec', `string order not rejected: ${rs.out}`);
+  const ok2 = writeTmpJson('fix_t1_o2.json', { spec, pipeline: [{ stage: 'grad_spec', order: 2, wrt_slot: 0 }] });
+  const r2 = runCli(['bin/harness.mjs', 'run-workflow', ok2, '--workspace', ws]);
+  assert(r2.code === 0 && r2.json?.ok === true, `order 2 rejected: ${r2.out}`);
 });
 
 const results = [];
