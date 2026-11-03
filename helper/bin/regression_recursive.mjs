@@ -243,7 +243,119 @@ test('L2.3: Fase A Memory Oracle proves zero steady-state WASM memory page leak 
   assert(pagesAfter - pagesBefore === 0, `WASM linear memory leaked ${pagesAfter - pagesBefore} pages across 400 rollout ticks`);
 });
 
+// --- 3. LAYER 3: RECURSIVE TREE SEARCH & MULTI-LAYER OPTIMIZATION ---
+
+test('L3.1: recurse search chains linear-branch-fusion + relu-idempotent + dead-step-elimination over CheckpointBranchSet', async () => {
+  const redundantSpec = {
+    numSlots: 8,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'linear', args: [1, 2, 2, false] },
+      { constructor: 'add', args: [4] },
+      { constructor: 'relu', args: [3] },
+      { constructor: 'relu', args: [4] },
+      { constructor: 'add', args: [5] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [0, 3] },
+      { kind: 'binary', layer: 2, slots: [2, 3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'unary', layer: 4, slots: [5, 6] },
+      { kind: 'binary', layer: 5, slots: [6, 1, 7] },
+    ],
+    outputSlot: 7,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [1, 0, 0, 1],
+      '1': [2, 0, 0, 2],
+    },
+    inputs: { '0': [2, -3], '1': [10, 20] },
+  };
+  const rf = writeTmpJson('redundant.json', redundantSpec);
+  const sRes = runCli(['bin/recurse.mjs', 'search', rf, '--max-depth', '3']);
+  assert(sRes.code === 0 && sRes.json?.ok === true, `recurse search failed: ${sRes.out}`);
+  assert(sRes.json.best_candidate.steps_count === 3, `expected 6 steps reduced to 3, got ${sRes.json.best_candidate.steps_count}`);
+  assert(sRes.json.best_candidate.max_abs_error === 0, `expected 0 error, got ${sRes.json.best_candidate.max_abs_error}`);
+});
+
+test('L3.2: Multi-layer es_optimize fits a 2-linear-layer spec and improves fitness', async () => {
+  const twoLayerSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'linear', args: [1, 2, 2, false] },
+      { constructor: 'add', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [0.1, 0, 0, 0.1],
+      '1': [0.1, 0, 0, 0.1],
+    },
+    inputs: { '0': [1, 2], '1': [0, 0] },
+  };
+  const targets = {
+    cases: [
+      { inputs: { '0': [1, 2], '1': [0, 0] }, expected: [1, 2] },
+      { inputs: { '0': [2, -1], '1': [0, 0] }, expected: [2, -1] },
+    ],
+  };
+  const sf = writeTmpJson('two_layer.json', twoLayerSpec);
+  const tf = writeTmpJson('targets.json', targets);
+  const fitRes = runCli(['bin/es_optimize.mjs', sf, tf, '25', '--sensitivity-guided']);
+  assert(fitRes.code === 0 && fitRes.json?.ok === true, `multi-layer es_optimize failed: ${fitRes.out}`);
+  assert(fitRes.json.active_layers.length === 2, `expected 2 active weighted layers, got ${fitRes.json.active_layers.length}`);
+  assert(fitRes.json.final_best_fitness > fitRes.json.start_fitness, `fitness did not improve: ${fitRes.json.start_fitness} -> ${fitRes.json.final_best_fitness}`);
+});
+
 // --- 5. STAGE 2: RECURSIVE UPGRADES ACROSS ALL EXISTING FEATURES ---
+
+test('S2.1: linear-chain-fusion (rectangular 2->3->2 with bias) & transpose-involution rewrite exactly', async () => {
+  const chainSpec = {
+    numSlots: 7,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 3, true] },
+      { constructor: 'linear', args: [1, 3, 2, true] },
+      { constructor: 'transpose', args: [2, 1, 2] },
+      { constructor: 'transpose', args: [3, 1, 2] },
+      { constructor: 'add', args: [4] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'binary', layer: 4, slots: [5, 1, 6] },
+    ],
+    outputSlot: 6,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [1, 0, 1, 0, 1, -1, 0.5, -0.5, 1.0],
+      '1': [2, 1, 0, -1, 1, 2, 1.0, -2.0],
+    },
+    inputs: { '0': [2, -1], '1': [0.5, 1.5] },
+  };
+  const cf = writeTmpJson('rect_chain_transpose.json', chainSpec);
+  const sRes = runCli(['bin/recurse.mjs', 'search', cf, '--max-depth', '4']);
+  assert(sRes.code === 0 && sRes.json?.ok === true, `search failed: ${sRes.out}`);
+  assert(sRes.json.best_candidate.steps_count === 2, `expected 5 steps reduced to 2, got ${sRes.json.best_candidate.steps_count}`);
+  assert(sRes.json.best_candidate.max_abs_error <= 1e-6, `expected <=1e-6 error, got ${sRes.json.best_candidate.max_abs_error}`);
+});
 
 test('S2.2: Liveness-based slot compaction (--compact-slots) recycles dead intermediate slots while preserving outputs', async () => {
   const deepChain = {
@@ -279,7 +391,111 @@ test('S2.2: Liveness-based slot compaction (--compact-slots) recycles dead inter
   assert(vRes.code === 0 && vRes.json?.verdict === 'ACCEPT', `compacted spec diverged: ${vRes.out}`);
 });
 
+test('S2.3: Layer-weight fit_hessian_diag (--layer 0) & closed-loop solve-gd with backtracking line search', async () => {
+  const hd = runCli(['bin/fit_hessian_diag.mjs', 'examples/linear-relu.json', '--layer', '0']);
+  assert(hd.code === 0 && hd.json?.ok === true && hd.json?.target_kind === 'layer_weights' && hd.json?.layer === 0, `fit_hessian_diag --layer 0 failed: ${hd.out}`);
+  assert(hd.json.param_count === 4 && hd.json.diagonal.length === 2, `unexpected Hessian dim: ${hd.out}`);
+
+  const sgdOut = path.join(TMP, 'solved_gd.json');
+  const ztS23 = zeroTargetsFor('examples/linear-relu.json', 's23_zero_targets.json');
+  const sgd = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', ztS23, '--layer', '0', '--steps', '6', '--lr', '0.1', '--precondition', '--out', sgdOut]);
+  assert(sgd.code === 0 && sgd.json?.ok === true, `solve-gd failed: ${sgd.out}`);
+  assert(sgd.json.targets_mode === 'explicit', `targets_mode not explicit: ${sgd.out}`);
+  assert(sgd.json.final_objective < sgd.json.initial_objective, `objective did not decrease: ${sgd.json.initial_objective} -> ${sgd.json.final_objective}`);
+  assert(sgd.json.trajectory_verification.ascent_count === 0 && sgd.json.trajectory_verification.mismatch_count === 0, `trajectory verification failed: ${JSON.stringify(sgd.json.trajectory_verification)}`);
+});
+
+test('S2.4: Non-linear symbolic differentiation (sigmoid & tanh order-1 VJP and order-2 HVP) + 31 proven autodiff rules', async () => {
+  const proveRes = runCli(['bin/autodiff.mjs', 'prove-rules']);
+  assert(proveRes.code === 0 && proveRes.json?.ok === true && proveRes.json?.passed >= 32, `autodiff prove-rules failed: ${proveRes.out}`);
+
+  const nlSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'sigmoid', args: [0] },
+      { constructor: 'tanh', args: [1] },
+      { constructor: 'add', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [1, 3] },
+      { kind: 'binary', layer: 2, slots: [2, 3, 4] },
+    ],
+    outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    inputs: { '0': [0.5, -0.7], '1': [0.3, -0.4] },
+  };
+  const nlf = writeTmpJson('nl_sig_tanh.json', nlSpec);
+  const g1 = runCli(['bin/compose.mjs', 'grad-spec', nlf, '--wrt', '0', '--order', '1']);
+  const g2 = runCli(['bin/compose.mjs', 'grad-spec', nlf, '--wrt', '0', '--order', '2']);
+  assert(g1.code === 0 && g2.code === 0, `non-linear grad-spec failed: ${g1.out} / ${g2.out}`);
+  for (let i = 0; i < 2; i++) {
+    const x = nlSpec.inputs['0'][i];
+    const s = 1 / (1 + Math.exp(-x));
+    const wantG1 = s * (1 - s);
+    const wantG2 = s * (1 - s) * (1 - 2 * s);
+    assert(Math.abs(g1.json.grad_values[i] - wantG1) < 1e-5, `sigmoid order-1 grad mismatch at ${i}: got ${g1.json.grad_values[i]}, want ${wantG1}`);
+    assert(Math.abs(g2.json.grad_values[i] - wantG2) < 1e-5, `sigmoid order-2 HVP mismatch at ${i}: got ${g2.json.grad_values[i]}, want ${wantG2}`);
+  }
+});
+
 // --- 6. STAGE 3: EXISTING-FEATURE RECURSIVE HARMONIZATION AUDIT (v3.6) ---
+
+test('S3.2: Weight-tied recursive BPTT & slot-compacted (--compact-slots) autodiff verify-fd and solve-gd match exact finite differences', async () => {
+  const fdV2 = runCli(['bin/autodiff.mjs', 'verify-fd', 'examples/recursive-gated-residual.v2.json']);
+  assert(fdV2.code === 0 && fdV2.json?.ok === true && fdV2.json?.mismatches?.length === 0, `autodiff verify-fd on weight-tied v2 failed: ${fdV2.out}`);
+
+  const compFile = path.join(TMP, 'rec_compacted.json');
+  runCli(['bin/compose.mjs', 'compile', 'examples/recursive-gated-residual.v2.json', compFile, '--compact-slots']);
+  const fdComp = runCli(['bin/autodiff.mjs', 'verify-fd', compFile]);
+  assert(fdComp.code === 0 && fdComp.json?.ok === true && fdComp.json?.mismatches?.length === 0, `autodiff verify-fd on --compact-slots failed: ${fdComp.out}`);
+
+  const gsComp = runCli(['bin/compose.mjs', 'grad-spec', compFile, '--wrt', '0', '--order', '1']);
+  assert(gsComp.code === 0 && JSON.stringify(gsComp.json?.grad_values) === '[0.25,0.25]', `grad-spec on --compact-slots failed: ${gsComp.out}`);
+
+  const ztS32 = zeroTargetsFor(compFile, 's32_zero_targets.json');
+  const gdComp = runCli(['bin/recurse.mjs', 'solve-gd', compFile, ztS32, '--layer', '0', '--steps', '4', '--lr', '0.05']);
+  assert(gdComp.code === 0 && gdComp.json?.ok === true && gdComp.json?.final_loss < gdComp.json?.start_loss, `solve-gd on weight-tied compacted spec failed: ${gdComp.out}`);
+});
+
+test('S3.3: gradcheck --weights and fit_sensitivity --weights rank weight-tied recursive layer sensitivities', async () => {
+  const gc = runCli(['bin/gradcheck.mjs', 'examples/recursive-gated-residual.v2.json', '--weights']);
+  assert(gc.code === 0 && gc.json?.ok === true && gc.json?.weight_jacobians?.['0']?.cols === 4, `gradcheck --weights failed: ${gc.out}`);
+
+  const fsens = runCli(['bin/fit_sensitivity.mjs', 'examples/recursive-gated-residual.v2.json', '4', '0', '--weights']);
+  assert(fsens.code === 0 && fsens.json?.ok === true && fsens.json?.global_weight_top?.length === 4, `fit_sensitivity --weights failed: ${fsens.out}`);
+  assert(Math.abs(fsens.json.global_weight_top[0].abs - 2.0) < 1e-3, `expected top weight sensitivity ~2.0, got ${fsens.json.global_weight_top[0].abs}`);
+});
+
+test('S3.4: linear_equiv proves exact algebraic equivalence across branched, residual, and unrolled recursive affine graphs', async () => {
+  const eqSelf = runCli(['bin/linear_equiv.mjs', 'examples/recursive-gated-residual.v2.json', 'examples/recursive-gated-residual.v2.json']);
+  assert(eqSelf.code === 0 && eqSelf.json?.verdict === 'ACCEPT', `linear_equiv on v2 recursive spec failed: ${eqSelf.out}`);
+
+  const closedForm = {
+    numSlots: 3,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, true] },
+      { constructor: 'relu', args: [1] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [1, 1] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [0.25, 0, 0, 0.25, 1.5, 3.0] },
+    inputs: { '0': [0, 0], '1': [1, 2] },
+  };
+  const cfFile = writeTmpJson('closed_form_affine.json', closedForm);
+  const eqClosed = runCli(['bin/linear_equiv.mjs', 'examples/recursive-gated-residual.v2.json', cfFile]);
+  assert(eqClosed.code === 0 && eqClosed.json?.verdict === 'ACCEPT', `linear_equiv unrolled vs closed-form failed: ${eqClosed.out}`);
+});
 
 test('S3.5: macro_expand supports recurrent_cell and recursive depth unrolling with tie_weights', async () => {
   const recMacro = {
@@ -314,6 +530,75 @@ test('S3.5: macro_expand supports recurrent_cell and recursive depth unrolling w
   assert(prove.code === 0 && prove.json?.equivalent === true, `macro_expand prove failed: ${prove.out}`);
 });
 
+test('S3.6: rewrite.mjs apply all (--recursive --compact-slots --verify) reaches multi-rule fixpoint in one call', async () => {
+  const multiRwSpec = {
+    numSlots: 9,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'linear', args: [1, 2, 2, false] },
+      { constructor: 'add', args: [2] },
+      { constructor: 'relu', args: [3] },
+      { constructor: 'relu', args: [4] },
+      { constructor: 'add', args: [5] },
+      { constructor: 'relu', args: [6] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [0, 3] },
+      { kind: 'binary', layer: 2, slots: [2, 3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'unary', layer: 4, slots: [5, 6] },
+      { kind: 'binary', layer: 5, slots: [6, 1, 7] },
+      { kind: 'unary', layer: 6, slots: [0, 8] },
+    ],
+    outputSlot: 7,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0, 0, 1], '1': [2, 0, 0, 2] },
+    inputs: { '0': [1.5, -2.0], '1': [0.5, 1.0] },
+  };
+  const mrf = writeTmpJson('multi_rw.json', multiRwSpec);
+  const rwRes = runCli(['bin/rewrite.mjs', 'apply', 'all', mrf, '--recursive', '--compact-slots', '--verify']);
+  assert(rwRes.code === 0 && rwRes.json?.ok === true && rwRes.json?.verify?.equivalent === true, `rewrite apply all failed: ${rwRes.out}`);
+  assert(rwRes.json.steps_before === 7 && rwRes.json.steps_after === 3, `expected 7 steps reduced to 3, got ${rwRes.json.steps_after}`);
+});
+
+test('S3.7: quant_budget bound mode supports gated recurrent mul & norm DAGs', async () => {
+  const gatedSpec = {
+    numSlots: 6,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, true] },
+      { constructor: 'sigmoid', args: [1] },
+      { constructor: 'linear', args: [2, 2, 2, true] },
+      { constructor: 'mul', args: [3] },
+      { constructor: 'add', args: [4] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [0, 4] },
+      { kind: 'binary', layer: 3, slots: [3, 4, 5] },
+      { kind: 'binary', layer: 4, slots: [5, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [0.8, -0.2, 0.1, 0.9, 0.0, 0.0],
+      '2': [0.5, 0.3, -0.4, 0.6, 0.1, -0.1],
+    },
+    inputs: { '0': [1.0, -0.5], '1': [0.2, 0.3] },
+  };
+  const gf = writeTmpJson('gated_quant.json', gatedSpec);
+  const gCases = writeTmpJson('gated_cases.json', [gatedSpec.inputs]);
+  const qb = runCli(['bin/quant_budget.mjs', gf, gCases, '--tol', '0.05', '--mode', 'bound']);
+  assert(qb.code === 0 && qb.json?.ok === true && qb.json?.layers?.length === 2, `quant_budget on gated mul spec failed: ${qb.out}`);
+});
+
 // --- 7. STAGE 4: SECOND-PASS DEEP OBSERVATION AUDIT (v3.7) ---
 
 test('S4.2: Symbolic in-graph 1st-order VJP and 2nd-order HVP for div and sqrt match analytic calculus', async () => {
@@ -344,6 +629,55 @@ test('S4.2: Symbolic in-graph 1st-order VJP and 2nd-order HVP for div and sqrt m
   assert(Math.abs(g2.json.grad_values[0] - (-0.03125)) < 1e-5 && Math.abs(g2.json.grad_values[1] - (-1 / 108)) < 1e-5, `div/sqrt order-2 HVP mismatch: ${JSON.stringify(g2.json.grad_values)}`);
 });
 
+test('S4.4: Temporal rollout unroller (rollout.mjs unroll --steps 3 --compact-slots) matches rollout scan bit-identically and supports BPTT autodiff', async () => {
+  const unrolledFile = path.join(TMP, 'unrolled_3step.json');
+  const un = runCli(['bin/rollout.mjs', 'unroll', 'examples/recursive-gated-residual.v2.json', unrolledFile, '--steps', '3', '--compact-slots']);
+  assert(un.code === 0 && un.json?.ok === true && un.json?.layers_count === 2, `rollout unroll failed: ${un.out}`);
+
+  const scanRes = runCli(['bin/rollout.mjs', 'scan', 'examples/recursive-gated-residual.v2.json', '--steps', '3']);
+  const runUnrolled = runCli(['bin/run.mjs', '--direct', unrolledFile]);
+  assert(scanRes.code === 0 && runUnrolled.code === 0, `scan or run failed: ${scanRes.out} / ${runUnrolled.out}`);
+  assert(JSON.stringify(scanRes.json.final_output.values) === JSON.stringify(runUnrolled.json.outputs.values), `unrolled output ${JSON.stringify(runUnrolled.json.outputs.values)} != scan output ${JSON.stringify(scanRes.json.final_output.values)}`);
+
+  const fdUnrolled = runCli(['bin/autodiff.mjs', 'verify-fd', unrolledFile]);
+  assert(fdUnrolled.code === 0 && fdUnrolled.json?.ok === true && fdUnrolled.json?.mismatches?.length === 0, `BPTT verify-fd on 3-step unrolled rollout failed: ${fdUnrolled.out}`);
+});
+
+test('S4.5: Joint multi-layer reflective GD (solve-gd --multi-layer) and multi-layer trajectory verification (fit_gd_verify --layer all)', async () => {
+  const twoLayerSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'linear', args: [1, 2, 2, false] },
+      { constructor: 'add', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [0.8, 0.1, -0.1, 0.8],
+      '1': [0.7, -0.2, 0.1, 0.9],
+    },
+    inputs: { '0': [1.0, 2.0], '1': [0.0, 0.0] },
+  };
+  const f = writeTmpJson('multi_gd_spec.json', twoLayerSpec);
+  const ztS45 = zeroTargetsFor(f, 's45_zero_targets.json');
+  const gd = runCli(['bin/recurse.mjs', 'solve-gd', f, ztS45, '--multi-layer', '--steps', '8', '--lr', '0.02']);
+  assert(gd.code === 0 && gd.json?.ok === true && gd.json?.layer_index === 'all', `multi-layer solve-gd failed: ${gd.out}`);
+  assert(gd.json.active_layers.length === 2 && gd.json.final_loss < gd.json.start_loss * 0.1, `multi-layer GD did not converge: ${gd.json.start_loss} -> ${gd.json.final_loss}`);
+
+  const trajFile = writeTmpJson('multi_gd_traj.json', gd.json.trajectory);
+  const fv = runCli(['bin/fit_gd_verify.mjs', f, trajFile, '1e-4', '--layer', 'all']);
+  assert(fv.code === 0 && fv.json?.ok === true && fv.json?.target_kind === 'multi_layer_weights' && fv.json?.mismatch_count === 0, `fit_gd_verify --layer all failed: ${fv.out}`);
+});
+
 // --- 8. STAGE 5: v3.8 DEEP AUDIT REMEDIATION & HARDENING REGRESSIONS ---
 
 test('REG-v3.8-01: compactSlotsByLiveness SSA-normalizes overwritten slots without silent corruption', async () => {
@@ -372,6 +706,71 @@ test('REG-v3.8-01: compactSlotsByLiveness SSA-normalizes overwritten slots witho
   const compFile = writeTmpJson('reg_v38_01_comp.json', comp);
   const runComp = runCli(['bin/run.mjs', '--direct', compFile]);
   assert(runComp.code === 0 && JSON.stringify(runComp.json?.outputs?.values) === '[208,218]', `expected [208,218], got ${runComp.out}`);
+});
+
+test('REG-v3.8-02: quant_budget bound mode handles zero-valued ports and norm Lipschitz amplification soundly', async () => {
+  const normSpec = {
+    numSlots: 4,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'transpose', args: [1, 1, 3] },
+      { constructor: 'rmsNorm', args: [2, 2, 1e-5] },
+      { constructor: 'transpose', args: [3, 1, 3] },
+      { constructor: 'add', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 2] },
+      { kind: 'unary', layer: 2, slots: [2, 3] },
+      { kind: 'unary', layer: 3, slots: [3, 3] },
+      { kind: 'binary', layer: 4, slots: [3, 1, 3] },
+    ],
+    outputSlot: 3,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1e-4, 0, 0, 1e-4], '2': [10.0, 10.0] },
+    inputs: { '0': [1.0, -1.0], '1': [0.0, 0.0] },
+  };
+  const nf = writeTmpJson('reg_v38_02_norm.json', normSpec);
+  const nCases = writeTmpJson('reg_v38_02_cases.json', [normSpec.inputs]);
+  const qbBound = runCli(['bin/quant_budget.mjs', nf, nCases, '--tol', '1e9', '--mode', 'bound']);
+  const qbMeas = runCli(['bin/quant_budget.mjs', nf, nCases, '--tol', '1e9', '--mode', 'measured']);
+  assert(qbBound.code === 0 && qbBound.json?.ok === true && qbMeas.code === 0 && qbMeas.json?.ok === true, `quant_budget failed on zero port + rmsNorm: ${qbBound.out} / ${qbMeas.out}`);
+  assert(qbBound.json.totals.bound_total_all >= qbMeas.json.totals.measured_delta_plan, `unsound bound_total_all ${qbBound.json.totals.bound_total_all} < measured_delta_plan ${qbMeas.json.totals.measured_delta_plan}`);
+});
+
+test('REG-v3.8-03: reflectiveGdSolve preserves shape metadata on compacted concat graphs and evaluates genuine 2-step hessianTrust', async () => {
+  const concatSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'concat', args: [1, 1] },
+      { constructor: 'linear', args: [2, 4, 2, false] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 2] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [0.5, 0.1, -0.2, 0.4],
+      '2': [0.2, -0.1, 0.3, 0.4, -0.2, 0.1, 0.5, -0.3],
+    },
+    inputs: { '0': [1.0, 2.0], '1': [0.5, -0.5] },
+  };
+  const cf = writeTmpJson('reg_v38_03_concat.json', concatSpec);
+  const zt3803 = zeroTargetsFor(cf, 'reg_v38_03_zero_targets.json');
+  const gd = runCli(['bin/recurse.mjs', 'solve-gd', cf, zt3803, '--layer', '0', '--steps', '3', '--lr', '0.05', '--precondition']);
+  assert(gd.code === 0 && gd.json?.ok === true && Number.isFinite(gd.json.final_loss), `solve-gd on compacted concat graph failed: ${gd.out}`);
+  assert(typeof gd.json.gd_verification?.prediction_off_count === 'number', `missing gd_verification.prediction_off_count: ${gd.out}`);
+  assert(gd.json.preconditioned === true && gd.json.final_loss < gd.json.start_loss, `expected preconditioned solve-gd loss reduction: ${gd.out}`);
 });
 
 test('REG-v3.8-04: compose.mjs grad-spec supports intermediate slots, symbolic Spec v2 names, and default zero linear weights', async () => {
@@ -413,6 +812,41 @@ test('REG-v3.8-04: compose.mjs grad-spec supports intermediate slots, symbolic S
   assert(gsNw.code === 0 && JSON.stringify(gsNw.json?.grad_values) === '[0,0]', `grad-spec on zero-default linear failed: ${gsNw.out}`);
 });
 
+test('REG-v3.8-06: profileSpec and es_optimize leak 0 WASM linear memory pages across repeated runs', async () => {
+  const eng = await loadEngineWithOracle();
+  const spec = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  profileSpec(eng.rt, spec, { iters: 2, trace: true });
+  const p0 = pages(eng);
+  for (let i = 0; i < 40; i++) {
+    profileSpec(eng.rt, spec, { iters: 2, trace: true });
+  }
+  const p1 = pages(eng);
+  assert(p1 === p0, `profileSpec leaked WASM memory pages: ${p0} -> ${p1}`);
+});
+
+test('REG-v3.8-07: fit_gd_verify verifies trajectories from recurse.mjs solve-gd with targets.json', async () => {
+  const targetsFile = writeTmpJson('reg_v38_07_targets.json', { cases: [{ inputs: { '0': [1, -2], '1': [3, 10.5] }, expected: [1.0, 2.0] }] });
+  const gd = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', '--targets', targetsFile, '--layer', '0', '--steps', '4', '--lr', '0.02']);
+  assert(gd.code === 0 && gd.json?.ok === true, `solve-gd with targets failed: ${gd.out}`);
+  const trajFile = writeTmpJson('reg_v38_07_traj.json', gd.json.trajectory);
+  const fv = runCli(['bin/fit_gd_verify.mjs', 'examples/linear-relu.json', trajFile, '1e-4', '--layer', '0']);
+  assert(fv.code === 0 && fv.json?.ok === true && fv.json?.mismatch_count === 0, `fit_gd_verify failed on targeted trajectory: ${fv.out}`);
+});
+
+test('REG-fix-B5: solve-gd rejects malformed targets and declares default modes', async () => {
+  const bare = writeTmpJson('fix_b5_bare.json', [1.0, 2.0]);
+  const bad = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', '--targets', bare, '--layer', '0', '--steps', '2']);
+  assert(bad.code === 2 && /non-empty "cases" array/.test(bad.json?.error ?? bad.out ?? ''), `bare-array targets not rejected: ${bad.out}`);
+  const empty = writeTmpJson('fix_b5_empty.json', { cases: [] });
+  const emp = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', '--targets', empty, '--layer', '0', '--steps', '2']);
+  assert(emp.code === 2 && /non-empty "cases" array/.test(emp.json?.error ?? emp.out ?? ''), `empty cases not rejected: ${emp.out}`);
+  const multi = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', '--layer', '0', '--steps', '2']);
+  assert(multi.code === 0 && multi.json?.targets_mode === 'zero_default', `multi-output default mode wrong: ${multi.out}`);
+  const singleSpec = writeTmpJson('fix_b5_single.json', { numSlots: 2, layers: [{ constructor: 'linear', args: [0, 1, 1, false] }], steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }], outputSlot: 1, ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 1], layout: 'feature_axis1_singleton' }], weights: { '0': [2.0] }, inputs: { '0': [3.0] } });
+  const single = runCli(['bin/recurse.mjs', 'solve-gd', singleSpec, '--layer', '0', '--steps', '2']);
+  assert(single.code === 0 && single.json?.targets_mode === 'scalar_objective', `single-output default mode wrong: ${single.out}`);
+});
+
 test('REG-fix-B3: tied repeat with weights_per_depth fails closed with a named code', async () => {
   const v2 = writeTmpJson('fix_b3_tied_perdepth.json', { schema: 'burn-math.recursive-spec.v2', ports: { state: { slot: 0, role: 'state', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' }, bias_ctx: { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' } }, subgraphs: { contract_step: { in: ['s', 'b'], out: 's_next', steps: [{ op: 'linear', args: [2, 2, false], weight_key: 'w', in: ['s'], out: 'scaled' }, { op: 'add', in: ['scaled', 'b'], out: 's_next' }] } }, steps: [{ op: 'repeat', subgraph: 'contract_step', depth: 2, tie_weights: true, in: ['state', 'bias_ctx'], out: 'final_state', weights_per_depth: [{ w: [0.5, 0, 0, 0.5] }, { w: [2, 0, 0, 2] }] }], output: 'final_state', inputs: { state: [0.0, 0.0], bias_ctx: [1.0, 2.0] } });
   const bad = runCli(['bin/compose.mjs', 'compile', v2, path.join(TMP, 'fix_b3_out.json')]);
@@ -433,7 +867,103 @@ test('REG-fix-B2: mutual file references fail closed with recursive_cycle_detect
   assert(bad.code === 2 && bad.json?.code === 'recursive_cycle_detected', `file-ref cycle not detected named: ${bad.out}`);
 });
 
+test('REG-fix-B7: solve-gd reported losses match independent recomputation from weights', async () => {
+  const targets = writeTmpJson('fix_b7_targets.json', { cases: [{ inputs: { '0': [1, -2], '1': [3, 10.5] }, expected: [1.0, 2.0] }] });
+  const gd = runCli(['bin/recurse.mjs', 'solve-gd', 'examples/linear-relu.json', targets, '--layer', '0', '--steps', '4', '--lr', '0.05']);
+  assert(gd.code === 0 && gd.json?.ok === true, `solve-gd failed: ${gd.out}`);
+  const sse = (y, e) => y.reduce((a, v, i) => a + (v - e[i]) ** 2, 0);
+  const run0 = runCli(['bin/run.mjs', 'examples/linear-relu.json']);
+  assert(run0.code === 0, `run original failed: ${run0.out}`);
+  const startSse = sse(run0.json.outputs.values, [1.0, 2.0]);
+  assert(Math.abs(startSse - gd.json.start_loss) < 1e-5, `start_loss not reproducible: ${startSse} vs ${gd.json.start_loss}`);
+  const spec = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  for (const [idx, w] of Object.entries(gd.json.best_weights_by_layer)) spec.weights[idx] = w;
+  const finalFile = writeTmpJson('fix_b7_final.json', spec);
+  const run1 = runCli(['bin/run.mjs', finalFile]);
+  assert(run1.code === 0, `run final failed: ${run1.out}`);
+  const finalSse = sse(run1.json.outputs.values, [1.0, 2.0]);
+  assert(Math.abs(finalSse - gd.json.final_loss) < 1e-5, `final_loss not reproducible: ${finalSse} vs ${gd.json.final_loss}`);
+  assert(gd.json.gd_verification?.mismatch_count === 0, `mismatch_count nonzero: ${gd.out}`);
+});
+
 // --- 9. STAGE 6: v3.9 TOOL HONESTY & FAIL-CLOSED INTEGRITY REGRESSIONS (F-01..F-12) ---
+
+test('REG-v3.9-01 (F-01): rewrites.v1.json catalog contains no placeholder sequential hex SHA-256 strings', async () => {
+  const rwList = runCli(['bin/rewrite.mjs', 'list']);
+  assert(rwList.code === 0 && rwList.json?.ok === true, `rewrite list failed: ${rwList.out}`);
+  const badSequential = /0123456789abcdef|12349812abcd/i;
+  for (const r of rwList.json.rewrites) {
+    const bSha = r.proof?.before_sha256 ?? '';
+    const aSha = r.proof?.after_sha256 ?? '';
+    assert(/^sha256:[0-9a-f]{64}$/.test(bSha) && !badSequential.test(bSha), `invalid or placeholder before_sha256 in ${r.name}: ${bSha}`);
+    assert(/^sha256:[0-9a-f]{64}$/.test(aSha) && !badSequential.test(aSha), `invalid or placeholder after_sha256 in ${r.name}: ${aSha}`);
+  }
+});
+
+test('REG-v3.9-02 (F-02): recurse search produces distinct candidate_state_sha256 and non-zero state_diff on structural edits', async () => {
+  const deadSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'relu', args: [0] },
+      { constructor: 'add', args: [1] },
+      { constructor: 'relu', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      { kind: 'unary', layer: 2, slots: [0, 4] },
+    ],
+    outputSlot: 3,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    inputs: { '0': [2, -3], '1': [4, 5] },
+  };
+  const df = writeTmpJson('reg_v39_02_dead.json', deadSpec);
+  const sr = runCli(['bin/recurse.mjs', 'search', df, '--max-depth', '2']);
+  assert(sr.code === 0 && sr.json?.ok === true, `recurse search failed: ${sr.out}`);
+  assert(sr.json.best_candidate.steps_count === 2, `expected 2 steps, got ${sr.json.best_candidate.steps_count}`);
+  assert(sr.json.best_candidate.candidate_state_sha256 !== sr.json.baseline.state_sha256, `structural candidate must have distinct state sha256 from baseline`);
+  const candNode = sr.json.search_tree.find((n) => n.id === sr.json.best_candidate.id);
+  assert(candNode?.state_diff && (candNode.state_diff.steps_delta !== 0 || candNode.state_diff.changed_byte_count > 0), `expected non-zero state_diff on structural edit: ${JSON.stringify(candNode?.state_diff)}`);
+});
+
+test('REG-v3.9-03 (F-03): linear_equiv REJECTS folding active non-context observation ports into constant bias', async () => {
+  const specA = {
+    numSlots: 3,
+    layers: [{ constructor: 'add', args: [0] }],
+    steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    inputs: { '0': [1, 2], '1': [10, 20] },
+  };
+  const specB = {
+    numSlots: 4,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, true] },
+      { constructor: 'relu', args: [1] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [1, 3] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0, 0, 1, 10, 20] },
+    inputs: { '0': [1, 2], '1': [10, 20] },
+  };
+  const fa = writeTmpJson('reg_v39_03_a.json', specA);
+  const fb = writeTmpJson('reg_v39_03_b.json', specB);
+  const le = runCli(['bin/linear_equiv.mjs', fa, fb]);
+  assert(le.code === 2 && le.json?.verdict === 'REJECT', `linear_equiv must REJECT non-context port folding: ${le.out}`);
+});
 
 test('REG-v3.9-05 (F-05): validate.mjs and propagateLayouts seed port layouts and warn on incompatible port-to-layer layout', async () => {
   const badPortLayoutSpec = {
@@ -472,6 +1002,38 @@ test('REG-v3.9-06 (F-06): trace_hash and rollout bisect detect outputSlot mismat
 
   const bis = runCli(['bin/rollout.mjs', 'bisect', 'examples/linear-relu.json', dof]);
   assert(bis.code === 0 && bis.json?.identical_trace === false && bis.json?.output_slot_equal === false, `rollout bisect must report identical_trace:false when outputSlot differs: ${bis.out}`);
+});
+
+test('REG-v3.9-07 (F-07): quant_budget bound mode remains >= measured delta when int8 quantization rounds weights up', async () => {
+  const mulUpSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 1, false] },
+      { constructor: 'linear', args: [1, 2, 1, false] },
+      { constructor: 'mul', args: [2] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [1, 3] },
+      { kind: 'binary', layer: 2, slots: [2, 3, 4] },
+    ],
+    outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [0.99606299, 0.99606299],
+      '1': [0.99606299, 0.99606299],
+    },
+    inputs: { '0': [1, 1], '1': [1, 1] },
+  };
+  const mf = writeTmpJson('reg_v39_07_mulup.json', mulUpSpec);
+  const cf = writeTmpJson('reg_v39_07_cases.json', [mulUpSpec.inputs]);
+  const qbBound = runCli(['bin/quant_budget.mjs', mf, cf, '--tol', '1.0', '--mode', 'bound']);
+  const qbMeas = runCli(['bin/quant_budget.mjs', mf, cf, '--tol', '1.0', '--mode', 'measured']);
+  assert(qbBound.code === 0 && qbBound.json?.ok === true && qbMeas.code === 0 && qbMeas.json?.ok === true, `quant_budget failed: ${qbBound.out} / ${qbMeas.out}`);
+  assert(qbBound.json.totals.bound_total_all >= qbMeas.json.totals.measured_delta_plan, `unsound bound: ${qbBound.json.totals.bound_total_all} < ${qbMeas.json.totals.measured_delta_plan}`);
 });
 
 test('REG-v3.9-09 (F-09): rollout fixpoint rejects constant-drift and expanding systems even when initial step <= tol', async () => {
@@ -536,6 +1098,57 @@ test('REG-v3.9-10 (F-10): compose grad-spec supports matmul/shift* spatial outpu
   const ovwf = writeTmpJson('reg_v39_10_ovw.json', ovwSpec);
   const gsOvw = runCli(['bin/compose.mjs', 'grad-spec', ovwf, '--wrt', '2']);
   assert(gsOvw.code === 0 && JSON.stringify(gsOvw.json?.grad_values) === '[5,5]', `overwritten slot 2 grad must be [5,5], got ${gsOvw.out}`);
+});
+
+test('REG-v3.9-11 (F-11): 1-layer es_optimize centers on startWeights and never degrades optimal start_fitness', async () => {
+  const optSpec = {
+    numSlots: 3,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      { constructor: 'add', args: [1] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 2] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [2, 0, 0, 3] },
+    inputs: { '0': [5, 7], '1': [0, 0] },
+  };
+  const targets = { cases: [{ inputs: { '0': [5, 7], '1': [0, 0] }, expected: [10, 21] }] };
+  const sf = writeTmpJson('reg_v39_11_spec.json', optSpec);
+  const tf = writeTmpJson('reg_v39_11_targets.json', targets);
+  const es = runCli(['bin/es_optimize.mjs', sf, tf, '3']);
+  assert(es.code === 0 && es.json?.ok === true, `es_optimize failed: ${es.out}`);
+  assert(es.json.final_best_fitness >= es.json.start_fitness, `es_optimize degraded fitness: ${es.json.start_fitness} -> ${es.json.final_best_fitness}`);
+  assert(es.json.final_best_fitness === 0, `expected optimal fitness 0 preserved, got ${es.json.final_best_fitness}`);
+});
+
+test('REG-v3.9-12 (F-12): autodiff verify-fd emits structured JSON error on unsupported op and compose prove checks output shapes', async () => {
+  const unsupSpec = {
+    numSlots: 3,
+    layers: [
+      { constructor: 'maxPool2d', args: [0, 2, 2, 1, 1, 0, 0] },
+      { constructor: 'add', args: [1] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 2] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, 2, 2], layout: 'channel_first' },
+      { slot: 1, role: 'observation', shape: [1, 1, 1, 1], layout: 'channel_first' },
+    ],
+    inputs: { '0': [1, 2, 3, 4], '1': [0] },
+  };
+  const uf = writeTmpJson('reg_v39_12_unsup.json', unsupSpec);
+  const fd = runCli(['bin/autodiff.mjs', 'verify-fd', uf]);
+  assert(fd.code !== 0 && fd.json && fd.json.ok === false && typeof fd.json.error === 'string', `verify-fd must return JSON error on stdout, got: ${fd.out}`);
 });
 
 test('REG-fix-C1: attention_head is layout-explicit (seq_axis1 pinned, heads_axis1 true attention)', async () => {

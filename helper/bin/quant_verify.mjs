@@ -13,7 +13,7 @@
 // Prints {ok, mode, layers, totals, verification, verdict}. Exit 0 iff PASS.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
@@ -89,13 +89,31 @@ try {
   const rt = await loadWasm();
   const base = buildGraph(rt, baseSpec);
   const quant = buildGraph(rt, qSpec);
-  const basePorts = portBySlot(baseSpec);
-  const quantPorts = portBySlot(qSpec);
-  const vc = new rt.MultiInputVerificationCases(base.g, quant.g);
-  for (const c of cases) {
-    vc.addCase(makeBundle(rt, base.plan, c, basePorts), makeBundle(rt, quant.plan, c, quantPorts));
+  let v;
+  try {
+    const basePorts = portBySlot(baseSpec);
+    const quantPorts = portBySlot(qSpec);
+    const vc = new rt.MultiInputVerificationCases(base.g, quant.g);
+    try {
+      for (const c of cases) {
+        const bBase = makeBundle(rt, base.plan, c, basePorts);
+        const bQuant = makeBundle(rt, quant.plan, c, quantPorts);
+        vc.addCase(bBase, bQuant);
+        if (bBase?.free) bBase.free();
+        if (bQuant?.free) bQuant.free();
+      }
+      v = JSON.parse(vc.verify(base.reg, base.g, quant.reg, quant.g, absTol, relTol));
+    } finally {
+      if (vc?.free) vc.free();
+    }
+  } finally {
+    if (base.g?.free) base.g.free();
+    if (base.plan?.free) base.plan.free();
+    if (base.reg?.free) base.reg.free();
+    if (quant.g?.free) quant.g.free();
+    if (quant.plan?.free) quant.plan.free();
+    if (quant.reg?.free) quant.reg.free();
   }
-  const v = JSON.parse(vc.verify(base.reg, base.g, quant.reg, quant.g, absTol, relTol));
 
   const pass = v.equivalent === true;
   printJsonAndExit({

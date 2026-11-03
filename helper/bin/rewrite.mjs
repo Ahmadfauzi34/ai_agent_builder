@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// burn-math rewrite: apply a cataloged, proof-backed graph rewrite.
+// burn-math rewrite: apply a cataloged, proof-backed graph rewrite (single-step or recursive fixpoint).
 //
 // Usage: node rewrite.mjs list
-//        node rewrite.mjs apply <name> <spec.json> [out.json] [--verify]
+//        node rewrite.mjs apply <name|all> <spec.json> [out.json] [--recursive] [--compact-slots] [--verify]
 //
 // `list` shows the catalog (references/rewrites.v1.json) with each entry's
 // recorded proof. `apply` runs the transform from ../lib/rewrites.mjs, then
@@ -10,9 +10,13 @@
 // the transformed graph against the ORIGINAL via verify.mjs and reports the
 // verdict. Prints {ok, rewrite, shapecheck, verify?, spec?|out_file}.
 // Exit 0 iff applied (+ shapecheck clean, + verify equivalent when asked).
+// With --recursive (or name all|fixpoint) apply runs to fixpoint and reports
+// applied_rewrites/steps_before/steps_after; with --compact-slots the result
+// is slot-compacted first (slot_compaction reported).
 import { loadSpec } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
-import { listRewrites, applyRewrite, RewriteError } from '../lib/rewrites.mjs';
+import { printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { applyRewrite, applyRewritesRecursive, RewriteError } from '../lib/rewrites.mjs';
+import { compactSlotsByLiveness } from '../lib/explain.mjs';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -22,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const rawArgs = process.argv.slice(2);
 if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
-  console.error('usage: node rewrite.mjs list | node rewrite.mjs apply <name> <spec.json> [out.json] [--verify]');
+  console.error('usage: node rewrite.mjs list | node rewrite.mjs apply <name|all> <spec.json> [out.json] [--recursive] [--compact-slots] [--verify]');
   process.exit(2);
 }
 const [cmd, ...rest] = rawArgs;
@@ -53,18 +57,40 @@ try {
   }
 
   if (cmd === 'apply') {
+    assertKnownFlags(rest, { boolean: ['--verify', '--recursive', '--compact-slots'], prog: 'rewrite apply' });
     const name = rest[0], specFile = rest[1];
-    if (!name || !specFile) throw new RewriteError('usage: node rewrite.mjs apply <name> <spec.json> [out.json] [--verify]');
+    if (!name || !specFile) throw new RewriteError('usage: node rewrite.mjs apply <name|all> <spec.json> [out.json] [--recursive] [--compact-slots] [--verify]');
     const verify = rest.includes('--verify');
-    const outFile = rest.find((a) => a.endsWith('.json') && a !== specFile);
+    const recursive = rest.includes('--recursive') || name === 'all' || name === 'fixpoint';
+    const compactSlots = rest.includes('--compact-slots');
+    const outFile = rest.find((a) => a.endsWith('.json') && a !== specFile && !a.startsWith('--'));
 
     const spec = loadSpec(specFile);
+    const stepsBefore = spec.steps.length;
     let next;
+    let appliedRewrites = [name];
     try {
-      next = applyRewrite(name, spec);
+      if (recursive) {
+        const res = applyRewritesRecursive(name, spec);
+        next = res.spec;
+        appliedRewrites = res.applied_rewrites;
+      } else {
+        next = applyRewrite(name, spec);
+      }
     } catch (e) {
       if (e instanceof RewriteError) { printJsonAndExit({ ok: false, error: e.message }, 2); }
       throw e;
+    }
+
+    let slotCompaction = null;
+    if (compactSlots) {
+      const comp = compactSlotsByLiveness(next);
+      next = comp.spec;
+      slotCompaction = {
+        slots_before: comp.slots_before,
+        slots_after: comp.slots_after,
+        slots_saved: comp.slots_saved,
+      };
     }
 
     // Gate 1 (always): shapecheck the transformed graph.
@@ -92,6 +118,13 @@ try {
     printJsonAndExit({
       ok: okAll,
       rewrite: name,
+      ...(recursive ? {
+        recursive: true,
+        applied_rewrites: appliedRewrites,
+        steps_before: stepsBefore,
+        steps_after: next.steps.length,
+      } : {}),
+      ...(slotCompaction ? { slot_compaction: slotCompaction } : {}),
       shapecheck: { ok: shapeOk, mismatches: sc.json?.mismatches ?? null, warnings: sc.json?.warnings ?? null },
       verify: verify ? verifyRes : null,
       ...(outFile ? { out_file: outFile } : { spec: next }),

@@ -16,10 +16,11 @@
 //   node autodiff.mjs prove-rules
 //     Prove every rule twice: (1) hand-computed exact case, (2) central
 //     finite differences of the engine's forward pass. Exit 2 on failure.
+//   node autodiff.mjs verify-fd <spec.json> [eps] [tol] [dout.json]
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
-import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
-import { RULES, GAPS, ruleFor, ruleNames, inferShapes, makeMap, numel, backwardWithSaved } from '../lib/autodiff.mjs';
+import { loadSpec, portBySlot, analyzePlanPorts } from '../lib/spec.mjs';
+import { printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { inferShapes, makeMap, backwardWithSaved, captureSavedForSpec } from '../lib/autodiff.mjs';
 import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
@@ -35,46 +36,56 @@ if (cmd === 'map') {
 
 const rt = await loadWasm();
 
-function runForward(spec, outputSlot) {
-  const s = { ...spec, outputSlot };
-  const { reg, plan, g } = buildGraph(rt, s);
-  const out = g.run(reg, makeBundle(rt, plan, s.inputs, portBySlot(s)));
-  const v = Array.from(out.to_array());
-  out.free();
-  return v;
-}
-
-// Capture forward values: every step-input slot, plus output slots that any
-// rule lists in `saved`. (Capturing all inputs is simple and robust; probe
-// runs are cheap next to a finite-difference sweep.)
-function captureSaved(spec, shapes) {
-  const saved = new Map(); // slot -> {values, shape}
-  const need = new Set();
-  for (const step of spec.steps) {
-    const rule = ruleFor(spec.layers[step.layer].constructor);
-    const inSlots = step.slots.slice(0, step.kind === 'binary' ? 2 : 1);
-    const outSlot = step.slots[step.kind === 'binary' ? 2 : 1];
-    inSlots.forEach((s) => need.add(s));
-    for (const w of rule.saved) if (w === 'output') need.add(outSlot);
+function ensurePortsConsumed(spec) {
+  const planCheck = analyzePlanPorts(spec);
+  if (planCheck.valid || planCheck.code !== 'plan_unused_ports') return spec;
+  const s = JSON.parse(JSON.stringify(spec));
+  let nextRegId = Math.max(0, ...s.layers.map((l) => l.args[0] ?? 0)) + 1;
+  let nextSlot = s.numSlots;
+  for (const unusedSlot of planCheck.unused_ports) {
+    const drainIdx = s.layers.length;
+    s.layers.push({ constructor: 'relu', args: [nextRegId++] });
+    s.steps.push({ kind: 'unary', layer: drainIdx, slots: [unusedSlot, nextSlot++] });
   }
-  for (const s of need) saved.set(s, { values: runForward(spec, s), shape: shapes.get(s) });
-  return saved;
+  s.numSlots = nextSlot;
+  return s;
 }
 
-function splitWeights(values, args) {
-  // linear(id,in_dim,out_dim,bias): [W column-major (in*out), b (out)?]
-  const [, inD, outD, bias] = args;
-  const nw = inD * outD;
-  return { w: values.slice(0, nw), b: bias ? values.slice(nw, nw + outD) : null };
+function runForward(spec, outputSlot) {
+  const s = ensurePortsConsumed({ ...spec, outputSlot });
+  const { reg, plan, g } = buildGraph(rt, s);
+  const bundle = makeBundle(rt, plan, s.inputs, portBySlot(s));
+  try {
+    const out = g.run(reg, bundle);
+    const v = Array.from(out.to_array());
+    out.free();
+    return v;
+  } finally {
+    if (bundle?.free) bundle.free();
+    if (g?.free) g.free();
+    if (plan?.free) plan.free();
+    if (reg?.free) reg.free();
+  }
 }
 
 export function backward(spec, doutSeed) {
   const shapes = inferShapes(spec);
-  const saved = captureSaved(spec, shapes);
-  const weightOf = (layerIdx, args) => {
+  const saved = captureSavedForSpec(spec, shapes, runForward);
+  const weightOf = (layerIdx, args, ctor = 'linear') => {
     const vals = spec.weights?.[String(layerIdx)];
-    if (!vals) failCli(`linear layer ${layerIdx} has no weights`);
+    if (ctor === 'rmsNorm') {
+      const F = args[1];
+      return { w: vals ? vals.slice(0, F) : new Array(F).fill(1), b: null };
+    }
+    if (ctor === 'layerNorm') {
+      const F = args[1];
+      return {
+        w: vals ? vals.slice(0, F) : new Array(F).fill(1),
+        b: vals ? vals.slice(F, 2 * F) : new Array(F).fill(0),
+      };
+    }
     const [, inD, outD, bias] = args;
+    if (!vals) failCli(`linear layer ${layerIdx} has no weights`);
     const nw = inD * outD;
     return { w: vals.slice(0, nw), b: bias ? vals.slice(nw, nw + outD) : null };
   };
@@ -83,7 +94,8 @@ export function backward(spec, doutSeed) {
 
 if (cmd === 'grad') {
   if (!aFile) failCli('usage: node autodiff.mjs grad <spec.json> [dout.json]');
-  const spec = loadSpec(aFile);
+  let spec;
+  try { spec = loadSpec(aFile); } catch (e) { failCli(e.message); }
   const dout = bFile ? JSON.parse(fs.readFileSync(bFile, 'utf8')) : null;
   try {
     const r = backward(spec, dout);
@@ -106,42 +118,49 @@ if (cmd === 'verify-fd') {
   // agent (or human) runs to audit the map on an arbitrary graph.
   if (!aFile) failCli('usage: node autodiff.mjs verify-fd <spec.json> [eps] [tol] [dout.json]');
   const eps = Number(process.argv[4] ?? 1e-3), tol = Number(process.argv[5] ?? 1e-3);
-  const spec = loadSpec(aFile);
-  const dout = process.argv[6] ? JSON.parse(fs.readFileSync(process.argv[6], 'utf8')) : null;
-  const b = backward(spec, dout);
-  const seed = dout?.[spec.outputSlot] ?? null;
-  const L = (vals) => seed ? vals.reduce((a, v, i) => a + seed[i] * v, 0) : vals.reduce((a, v) => a + v, 0);
-  const checks = [];
-  let maxErr = 0, ok = true;
-  const fwd = (sp) => runForward({ ...sp, outputSlot: spec.outputSlot }, spec.outputSlot);
-  for (const p of spec.ports) {
-    const slot = String(p.slot), base = [...spec.inputs[p.slot]];
-    const ag = b.inputGrads[slot];
-    for (let i = 0; i < base.length; i++) {
-      const xp = { ...spec.inputs, [p.slot]: base.map((v, j) => (j === i ? v + eps : v)) };
-      const xm = { ...spec.inputs, [slot]: base.map((v, j) => (j === i ? v - eps : v)) };
-      const nd = (L(fwd({ ...spec, inputs: xp })) - L(fwd({ ...spec, inputs: xm }))) / (2 * eps);
-      const err = Math.abs(nd - ag[i]);
-      maxErr = Math.max(maxErr, err);
-      if (err > tol) { ok = false; checks.push(`in slot ${slot}[${i}]: analytic=${ag[i]} fd=${nd}`); }
-    }
-  }
-  for (const [li, pg] of Object.entries(b.paramGrads)) {
-    for (const [k, arr] of Object.entries(pg)) {
-      if (!arr) continue;
-      const base = [...spec.weights[li]];
-      const off = k === 'b' ? base.length - arr.length : 0;
-      for (let i = 0; i < arr.length; i++) {
-        const wp = base.map((v, j) => (j === off + i ? v + eps : v));
-        const wm = base.map((v, j) => (j === off + i ? v - eps : v));
-        const nd = (L(fwd({ ...spec, weights: { ...spec.weights, [li]: wp } })) - L(fwd({ ...spec, weights: { ...spec.weights, [li]: wm } }))) / (2 * eps);
-        const err = Math.abs(nd - arr[i]);
+  let spec;
+  try { spec = loadSpec(aFile); } catch (e) { failCli(e.message); }
+  try {
+    const dout = process.argv[6] ? JSON.parse(fs.readFileSync(process.argv[6], 'utf8')) : null;
+    const b = backward(spec, dout);
+    const seed = dout?.[spec.outputSlot] ?? null;
+    const L = (vals) => seed ? vals.reduce((a, v, i) => a + seed[i] * v, 0) : vals.reduce((a, v) => a + v, 0);
+    const checks = [];
+    let maxErr = 0, ok = true;
+    const fwd = (sp) => runForward({ ...sp, outputSlot: spec.outputSlot }, spec.outputSlot);
+    for (const p of spec.ports) {
+      const slot = String(p.slot), base = [...spec.inputs[p.slot]];
+      const ag = b.inputGrads[slot];
+      for (let i = 0; i < base.length; i++) {
+        const xp = { ...spec.inputs, [p.slot]: base.map((v, j) => (j === i ? v + eps : v)) };
+        const xm = { ...spec.inputs, [slot]: base.map((v, j) => (j === i ? v - eps : v)) };
+        const nd = (L(fwd({ ...spec, inputs: xp })) - L(fwd({ ...spec, inputs: xm }))) / (2 * eps);
+        const err = Math.abs(nd - ag[i]);
         maxErr = Math.max(maxErr, err);
-        if (err > tol) { ok = false; checks.push(`param ${li}.${k}[${i}]: analytic=${arr[i]} fd=${nd}`); }
+        if (err > tol) { ok = false; checks.push(`in slot ${slot}[${i}]: analytic=${ag[i]} fd=${nd}`); }
       }
     }
+    for (const [li, pg] of Object.entries(b.paramGrads)) {
+      for (const [k, arr] of Object.entries(pg)) {
+        if (!arr) continue;
+        const decl = spec.layers[Number(li)];
+        const [, inD, outD, bias] = decl?.args ?? [];
+        const base = [...(spec.weights?.[li] ?? new Array((inD * outD) + (bias ? outD : 0)).fill(0))];
+        const off = k === 'b' ? base.length - arr.length : 0;
+        for (let i = 0; i < arr.length; i++) {
+          const wp = base.map((v, j) => (j === off + i ? v + eps : v));
+          const wm = base.map((v, j) => (j === off + i ? v - eps : v));
+          const nd = (L(fwd({ ...spec, weights: { ...spec.weights, [li]: wp } })) - L(fwd({ ...spec, weights: { ...spec.weights, [li]: wm } }))) / (2 * eps);
+          const err = Math.abs(nd - arr[i]);
+          maxErr = Math.max(maxErr, err);
+          if (err > tol) { ok = false; checks.push(`param ${li}.${k}[${i}]: analytic=${arr[i]} fd=${nd}`); }
+        }
+      }
+    }
+    printJsonAndExit({ ok, maxErr, mismatches: checks.slice(0, 5), note: ok ? 'backward() matches finite differences' : 'MISMATCH: map disagrees with oracle' }, ok ? 0 : 2);
+  } catch (e) {
+    failCli(e instanceof Error ? e.message : String(e));
   }
-  printJsonAndExit({ ok, maxErr, mismatches: checks.slice(0, 5), note: ok ? 'backward() matches finite differences' : 'MISMATCH: map disagrees with oracle' }, ok ? 0 : 2);
 }
 
 failCli('usage: node autodiff.mjs map | grad <spec.json> [dout.json] | prove-rules | verify-fd <spec.json> [eps] [tol] [dout.json]');

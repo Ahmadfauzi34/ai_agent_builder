@@ -18,6 +18,13 @@ This page is a map, not a manual: find your question, follow the link.
 - Localize step-level divergence between two specs and extract the minimal failing prefix sub-spec ->
   `node bin/rollout.mjs bisect <base.json> <cand.json>`
   (or `node bin/trace_hash.mjs <base.json> <cand.json> --isolate`)
+- Search a multi-step tree of proof-backed graph rewrites (`linear-branch-fusion`, `linear-chain-fusion`, `relu-idempotent`, `transpose-involution`, `dead-step-elimination`) + int8 quantization over `CheckpointBranchSet` ->
+  `node bin/recurse.mjs search <spec.json> [out.json] [--max-depth 3] [--quant-tol 1e-3]`
+- Fit weights across ONE or MULTIPLE weighted layers with sensitivity-guided Evolution Strategies ->
+  `node bin/recurse.mjs fit <spec.json> <targets.json> [gens=40] [--sensitivity-guided]`
+  (or `node bin/es_optimize.mjs <spec.json> <targets.json> [gens] [--multi-layer]`)
+- Solve for single-layer or joint multi-layer weights with closed-loop reflective backtracking gradient descent + Hessian preconditioning + trajectory verification ->
+  `node bin/recurse.mjs solve-gd <spec.json> [targets.json] [--steps 20] [--lr 0.1] [--layer 0|all] [--multi-layer] [--precondition] [--out out.json]`
 
 ## Do something (Core Primitives)
 
@@ -63,6 +70,8 @@ This page is a map, not a manual: find your question, follow the link.
   host's adapter and limits are -> `reference/hosts.md`.
 - Provenance, replay ledgers, execution receipts, checkpoint branches
   (when each matters, when to ignore it) -> `reference/provenance.md`.
+- Fitting, sensitivity ranking, Hessian diagonal, and GD trajectory verification ->
+  `reference/fit.md`.
 - Old research and evidence documents (historical, NOT normative) ->
   `reference/history.md`.
 - Which engine build this is, its sha256, and its audit result ->
@@ -76,7 +85,7 @@ This page is a map, not a manual: find your question, follow the link.
   yourself opening a file there, stop and use `find-op` or `surface`
   instead. Exception (see `AGENT.md`): a contract file under
   `engine-audit/docs/` that a `reference/` page names explicitly.
-- `lib/` — implementation of the tools (25 modules).
+- `lib/` — implementation of the tools (26 modules).
   You run the tools; you do not need to read their code to use
   the pack.
 - Pack generation — the pack is built by the repo's
