@@ -11,7 +11,6 @@
 import { performance } from 'node:perf_hooks';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { loadWasm, buildGraph, makeBundle, pkgDir } from './engine.mjs';
 import { portBySlot } from './spec.mjs';
 
@@ -140,34 +139,43 @@ export function profileSpec(rt, spec, { iterations = 11, trace = false } = {}) {
   const buildPages = pages() - p0;
   const ports = portBySlot(spec);
 
-  // --- bind ---
-  t0 = performance.now();
-  const q0 = pages();
-  const bundle = makeBundle(rt, plan, spec.inputs, ports);
-  const bindMs = performance.now() - t0;
-  const bindPages = pages() - q0;
-
-  // --- run ---
+  let bundle = null;
   const runMs = [];
   const runPages = [];
   let outputShape = null;
   let outputValues = null;
-  for (let i = 0; i < iterations; i++) {
-    const r0 = pages();
+  let bindMs = 0;
+  let bindPages = 0;
+
+  try {
+    // --- bind ---
     t0 = performance.now();
-    const out = g.run(reg, bundle);
-    const dt = performance.now() - t0;
-    if (i === 0) {
-      const arr = out.to_array();
-      outputShape = Array.from(out.shape ?? []);
-      outputValues = Array.from(arr).slice(0, 8);
+    const q0 = pages();
+    bundle = makeBundle(rt, plan, spec.inputs, ports);
+    bindMs = performance.now() - t0;
+    bindPages = pages() - q0;
+
+    // --- run ---
+    for (let i = 0; i < iterations; i++) {
+      const r0 = pages();
+      t0 = performance.now();
+      const out = g.run(reg, bundle);
+      const dt = performance.now() - t0;
+      if (i === 0) {
+        const arr = out.to_array();
+        outputShape = Array.from(typeof out.shape === 'function' ? out.shape() : out.shape ?? []);
+        outputValues = Array.from(arr).slice(0, 8);
+      }
+      out.free();
+      runMs.push(dt);
+      runPages.push(pages() - r0);
     }
-    out.free();
-    runMs.push(dt);
-    runPages.push(pages() - r0);
+  } finally {
+    if (bundle?.free) bundle.free();
+    if (g?.free) g.free();
+    if (plan?.free) plan.free();
+    if (reg?.free) reg.free();
   }
-  if (bundle.free) bundle.free();
-  if (g.free) g.free();
 
   const coldMs = runMs[0];
   const steadyMs = runMs.slice(1);
@@ -181,8 +189,9 @@ export function profileSpec(rt, spec, { iterations = 11, trace = false } = {}) {
   let hotspots = null;
   if (trace) {
     const { reg: reg2, plan: plan2, g: g2 } = buildGraph(rt, spec);
-    const bundle2 = makeBundle(rt, plan2, spec.inputs, ports);
+    let bundle2 = null;
     try {
+      bundle2 = makeBundle(rt, plan2, spec.inputs, ports);
       steps = traceSteps(rt, spec, reg2, g2, bundle2);
       const byTime = [...steps].sort((a, b) => b.wall_ms - a.wall_ms)[0];
       const byBytes = [...steps].sort((a, b) => (b.out_bytes ?? 0) - (a.out_bytes ?? 0))[0];
@@ -191,8 +200,10 @@ export function profileSpec(rt, spec, { iterations = 11, trace = false } = {}) {
         biggest_step: byBytes ? { index: byBytes.index, layer: byBytes.layer, out_bytes: byBytes.out_bytes } : null,
       };
     } finally {
-      if (bundle2.free) bundle2.free();
-      if (g2.free) g2.free();
+      if (bundle2?.free) bundle2.free();
+      if (g2?.free) g2.free();
+      if (plan2?.free) plan2.free();
+      if (reg2?.free) reg2.free();
     }
   }
 

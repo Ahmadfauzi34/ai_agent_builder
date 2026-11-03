@@ -254,3 +254,17 @@ place to add features. The engine is frozen at the audited build in
 `MANIFEST.json`. If you need an operation that is not in
 `find-op --list`, that is a gap to report, not a reason to improvise
 a replacement in your own code.
+
+## Recursive & Agent-Harness Co-Processor (v3.8)
+
+In addition to one-shot flat specs, this pack provides a 4-layer recursive co-processor and Stage-2/3/4 recursive upgrades across all existing domain features, designed to work alongside an LLM agent harness without mutating the frozen WASM binary (`MANIFEST.json` pins remain unchanged):
+
+1. **Layer 1 — Structural & Compositional Recursion (`bin/compose.mjs` / `lib/composer.mjs`)**:
+   - Author hierarchical specs (`schema: "burn-math.recursive-spec.v2"`, see `examples/recursive-gated-residual.v2.json`) with symbolic slot names, nested `subgraphs`, macros calling macros, and combinators:
+     - `repeat` (`depth: N`, `tie_weights: true|false`) — unrolls a subgraph or macro $N$ times; when `tie_weights: true`, all iterations share the same `LayerRegistry` IDs (true weight-tied recurrence).
+     - `residual` — wraps a subgraph/macro $F(x)$ with an automatic skip connection $F(x) + x$.
+     - `parallel_concat` — runs multiple branches in parallel and joins them with a `concat` chain.
+   - Guarded against cyclic subgraph definitions (`recursive_cycle_detected`, exit 2).
+   - `--auto-repair` deterministically repairs missing `intFromFloat`/`intToFloat` boundary casts, drains unused ports, and shards oversized `linear` layers (`> 65535` weights), recording every edit in `meta.remediation_receipt`.
+   - `--compact-slots` performs liveness-based slot register allocation (`compactSlotsByLiveness` in `lib/explain.mjs`), recycling dead intermediate slots so deep unrolled graphs stay well below the 64-slot `AgentWorkspace` limit.
+   - `node bin/compose.mjs grad-spec <spec.json> [--wrt <slot>] [--order 1|2]` compiles reverse-mode VJP (order 1) or 2nd-order Hessian-Vector Product (order 2) into a standalone runnable Spec v1, supporting linear, bilinear (`mul`), rational (`div`), radical (`sqrt`), and non-linear (`sigmoid`, `tanh`) graphs.

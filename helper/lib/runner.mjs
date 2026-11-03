@@ -108,3 +108,27 @@ export function failCli(message, envelope = null, code = 1) {
   if (envelope) printJsonAndExit({ ok: false, error: text, error_envelope: envelope }, code);
   else printJsonAndExit({ ok: false, error: text }, code);
 }
+
+// F2 (strict CLI flags): reject unknown --flags before any file is read
+// or written. Unknown flags used to be silently ignored while their
+// VALUES leaked into positional slots — e.g. recurse search --beam 2
+// wrote best_spec to a file literally named "2", and the same pattern
+// lived in every bin that derives a path or parameter from a token
+// stream. args are the tokens after the subcommand (or all tokens for
+// command-less CLIs). valued flags consume the next token; boolean flags
+// take none. A token following a valued flag is its value, even if it
+// starts with '--'. Anything else starting with '--' fails fast with
+// exit 2 and the known-flag list, so a typo can never become a file.
+export function assertKnownFlags(args, { valued = [], boolean = [], prog = 'cli' } = {}) {
+  const valuedSet = new Set(valued);
+  const known = new Set([...valued, ...boolean]);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (i > 0 && valuedSet.has(args[i - 1])) continue;
+    if (!a.startsWith('--')) continue;
+    if (!known.has(a)) {
+      console.error(`unknown flag '${a}' for ${prog} (known flags: ${[...known].sort().join(', ') || 'none'})`);
+      process.exit(2);
+    }
+  }
+}

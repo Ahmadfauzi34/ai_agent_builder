@@ -1,0 +1,52 @@
+{
+  "schema": "burn-math.recursive-spec.v2",
+  "ports": {
+    "state": {
+      "slot": 0,
+      "role": "state",
+      "shape": [1, 2, 1, 1],
+      "layout": "feature_axis1_singleton"
+    },
+    "bias_ctx": {
+      "slot": 1,
+      "role": "context",
+      "shape": [1, 2, 1, 1],
+      "layout": "feature_axis1_singleton"
+    }
+  },
+  "subgraphs": {
+    "contract_step": {
+      "in": ["s", "b"],
+      "out": "s_next",
+      "steps": [
+        {
+          "op": "linear",
+          "args": [2, 2, false],
+          "weights": [0.5, 0.0, 0.0, 0.5],
+          "in": ["s"],
+          "out": "scaled"
+        },
+        {
+          "op": "add",
+          "in": ["scaled", "b"],
+          "out": "s_next"
+        }
+      ]
+    }
+  },
+  "steps": [
+    {
+      "op": "repeat",
+      "subgraph": "contract_step",
+      "depth": 2,
+      "tie_weights": true,
+      "in": ["state", "bias_ctx"],
+      "out": "final_state"
+    }
+  ],
+  "output": "final_state",
+  "inputs": {
+    "state": [0.0, 0.0],
+    "bias_ctx": [1.0, 2.0]
+  }
+}
