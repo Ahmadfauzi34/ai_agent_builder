@@ -1,4 +1,5 @@
-// burn-math explain: the slot-by-slot map behind `validate.mjs --explain`.
+// burn-math explain: the slot-by-slot map behind `validate.mjs --explain`
+// + Linear-Scan Liveness Slot Compaction (`compactSlotsByLiveness`).
 // Pure static analysis — no session, no engine run. Shapes come only
 // from checkSpec (shapecore, the single shape authority); parameter
 // counts only from expectedWeightCount; layouts only from the layout
@@ -15,6 +16,8 @@
 // at every step — validate.mjs's per-step compatibility warnings can
 // read it directly.
 import { expectedWeightCount } from './spec.mjs';
+import { checkSpec } from './shapecore.mjs';
+import { ssaNormalizeSpec } from './autodiff.mjs';
 
 export function propagateLayouts(spec, layoutCtors) {
   const map = new Map();
@@ -51,8 +54,9 @@ const numelOf = (shape) => (Array.isArray(shape) ? shape.reduce((a, b) => a * b,
 // peak: this models a runtime that frees dead outputs right after the
 // producing step. Bytes come from the slot map (numel * 4, f32); a slot
 // with unknown bytes that is ever live makes the peak a lower bound.
+// Note: missing slot entries are now filled from port shapes (numel * 4) or null.
 export function analyzeLiveness(spec, slots) {
-  const bytesBySlot = new Map(slots.map((s) => [s.slot, s.bytes]));
+  const bytesBySlot = new Map((slots ?? []).map((s) => [s.slot, s.bytes]));
   const steps = spec.steps ?? [];
   const n = steps.length;
   const def = new Map();
@@ -61,6 +65,10 @@ export function analyzeLiveness(spec, slots) {
     if (!p || typeof p !== 'object' || !Number.isInteger(p.slot)) continue;
     def.set(p.slot, -1);
     lastUse.set(p.slot, -1);
+    if (!bytesBySlot.has(p.slot)) {
+      const nel = numelOf(p.shape);
+      bytesBySlot.set(p.slot, nel === null ? null : nel * 4);
+    }
   }
   steps.forEach((st, si) => {
     if (!st || !Array.isArray(st.slots)) return;
@@ -72,6 +80,7 @@ export function analyzeLiveness(spec, slots) {
     const outSlot = st.slots[st.slots.length - 1];
     if (!def.has(outSlot)) def.set(outSlot, si);
     if (!lastUse.has(outSlot)) lastUse.set(outSlot, si);
+    if (!bytesBySlot.has(outSlot)) bytesBySlot.set(outSlot, null);
   });
   if (Number.isInteger(spec.outputSlot)) lastUse.set(spec.outputSlot, n);
 
@@ -111,9 +120,70 @@ export function analyzeLiveness(spec, slots) {
   };
 }
 
+export function compactSlotsByLiveness(spec) {
+  const oldNumSlots = spec.numSlots;
+  // Normalize to SSA first so any slot written multiple times in the input spec
+  // gets distinct virtual lifetimes before physical register allocation.
+  const { ssaSpec: s } = ssaNormalizeSpec(spec);
+  const liveness = analyzeLiveness(s, []);
+  const rowBySlot = new Map(liveness.slots.map((r) => [r.slot, r]));
+  const portSlots = new Set((s.ports ?? []).map((p) => p.slot));
+
+  let nextPhysSlot = Math.max(-1, ...portSlots) + 1;
+  const freePool = [];
+  const virtToPhys = new Map();
+  for (const ps of portSlots) virtToPhys.set(ps, ps);
+
+  const releaseAtStep = new Map();
+  for (const r of liveness.slots) {
+    if (portSlots.has(r.slot)) continue;
+    if (r.last_use_step !== null && r.last_use_step < s.steps.length) {
+      if (!releaseAtStep.has(r.last_use_step)) releaseAtStep.set(r.last_use_step, []);
+      releaseAtStep.get(r.last_use_step).push(r.slot);
+    }
+  }
+
+  const allocPhys = (virt) => {
+    if (virtToPhys.has(virt)) return virtToPhys.get(virt);
+    freePool.sort((a, b) => a - b);
+    const phys = freePool.length > 0 ? freePool.shift() : nextPhysSlot++;
+    virtToPhys.set(virt, phys);
+    return phys;
+  };
+
+  for (let si = 0; si < s.steps.length; si++) {
+    const st = s.steps[si];
+    const inCount = st.kind === 'binary' ? 2 : 1;
+    const mappedIn = st.slots.slice(0, inCount).map((v) => allocPhys(v));
+    const virtOut = st.slots[inCount];
+    const physOut = allocPhys(virtOut);
+    st.slots = [...mappedIn, physOut];
+
+    for (const deadVirt of (releaseAtStep.get(si) ?? [])) {
+      if (deadVirt === s.outputSlot) continue;
+      const deadPhys = virtToPhys.get(deadVirt);
+      if (deadPhys !== undefined && !freePool.includes(deadPhys)) {
+        freePool.push(deadPhys);
+      }
+    }
+    void rowBySlot;
+  }
+
+  s.outputSlot = virtToPhys.get(s.outputSlot) ?? s.outputSlot;
+  s.numSlots = Math.max(nextPhysSlot, s.outputSlot + 1);
+  return {
+    spec: s,
+    slots_before: oldNumSlots,
+    slots_after: s.numSlots,
+    slots_saved: Math.max(0, oldNumSlots - s.numSlots),
+    slot_remap: Object.fromEntries(virtToPhys.entries()),
+  };
+}
+
 export function explainSpec(spec, checked, layoutCtors) {
+  const resolvedChecked = checked ?? checkSpec(spec);
   const layouts = propagateLayouts(spec, layoutCtors);
-  const steps = checked?.steps ?? [];
+  const steps = resolvedChecked?.steps ?? [];
 
   // Slot -> {shape, producer} from ports, then step outputs.
   const slotInfo = new Map();
@@ -184,8 +254,8 @@ export function explainSpec(spec, checked, layoutCtors) {
   for (let s = 0; s < (spec.numSlots ?? 0); s++) if (!mapped.has(s)) unmapped_slots.push(s);
 
   return {
-    ok: true,
-    valid: true,
+    ok: resolvedChecked.ok,
+    valid: resolvedChecked.ok,
     mode: 'explain',
     slots,
     layers,

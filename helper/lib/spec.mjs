@@ -1,7 +1,13 @@
 // Spec format for the helper CLIs (see ../spec-schema.md).
 // Loads a JSON spec file and normalizes the optional sections.
+// Upgraded in v3.8: transparently hydrates content-addressed `burn://sha256:...`
+// artifact URIs (including inside Recursive Spec v2 step/subgraph weights) and
+// compiles `burn-math.recursive-spec.v2` specs across all spec-consuming CLIs.
 import fs from 'node:fs';
+import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { catalogPath } from './engine.mjs';
+import { compileRecursiveSpec } from './composer.mjs';
 
 export function loadCatalog() {
   return JSON.parse(fs.readFileSync(catalogPath(), 'utf8'));
@@ -15,6 +21,7 @@ export function loadCatalog() {
 // never "", "01", or " 1".
 const MAX_U32 = 0xFFFFFFFF;
 const CANONICAL_UINT_KEY = /^(?:0|[1-9]\d*)$/;
+const ARTIFACT_URI_PREFIX = 'burn://sha256:';
 
 export function isFiniteF32(v) {
   return typeof v === 'number' && Number.isFinite(v) && Number.isFinite(Math.fround(v));
@@ -186,13 +193,138 @@ export function expectedWeightCount(decl) {
   }
 }
 
-export function loadSpec(file) {
+function resolveArtifactUriFromCandidates(uri, candidateWorkspaces) {
+  if (typeof uri !== 'string' || !uri.startsWith(ARTIFACT_URI_PREFIX)) {
+    throw new Error(`invalid artifact URI: ${JSON.stringify(uri)} (expected ${ARTIFACT_URI_PREFIX}<64-hex>)`);
+  }
+  const expectedHex = uri.slice(ARTIFACT_URI_PREFIX.length);
+  if (!/^[0-9a-f]{64}$/.test(expectedHex)) {
+    throw new Error(`malformed sha256 in artifact URI: ${uri}`);
+  }
+  for (const ws of candidateWorkspaces) {
+    if (!ws) continue;
+    const file = path.join(path.resolve(ws), 'artifacts', `${expectedHex}.json`);
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, 'utf8').trim();
+      const actualHex = createHash('sha256').update(raw).digest('hex');
+      if (actualHex !== expectedHex) {
+        const err = new Error(`artifact integrity check failed for ${uri}: expected ${expectedHex}, got ${actualHex}`);
+        err.code = 'artifact_integrity_failed';
+        throw err;
+      }
+      return JSON.parse(raw);
+    }
+  }
+  throw new Error(`artifact not found in workspace: ${uri}`);
+}
+
+function hydrateValueOrUri(v, candidateWorkspaces) {
+  if (typeof v === 'string' && v.startsWith(ARTIFACT_URI_PREFIX)) {
+    return resolveArtifactUriFromCandidates(v, candidateWorkspaces).values;
+  }
+  if (v && typeof v === 'object' && !Array.isArray(v) && typeof v.$artifact === 'string') {
+    return resolveArtifactUriFromCandidates(v.$artifact, candidateWorkspaces).values;
+  }
+  return v;
+}
+
+function weightsContainUri(w) {
+  if (typeof w === 'string') return w.startsWith(ARTIFACT_URI_PREFIX);
+  if (Array.isArray(w)) return w.some(weightsContainUri);
+  if (w && typeof w === 'object') {
+    if (typeof w.$artifact === 'string') return true;
+    return Object.values(w).some(weightsContainUri);
+  }
+  return false;
+}
+
+function hydrateStepListArtifacts(steps, candidateWorkspaces, isV2 = true) {
+  if (!Array.isArray(steps)) return;
+  for (const st of steps) {
+    if (!st || typeof st !== 'object') continue;
+    if (st.weights !== undefined) {
+      // Minor fail-closed fix: a v1 step carries no weights (the
+      // engine reads top-level spec.weights), so a URI in v1 step
+      // weights used to be "resolved" into a field nothing reads —
+      // silently misleading. v2 step weights are real (the composer
+      // consumes them), so only the v1 case is rejected.
+      if (!isV2 && weightsContainUri(st.weights)) {
+        throw new Error('hydrate: artifact URI in v1 step weights is ignored by the engine (v1 steps carry no weights); move artifact URIs to top-level "weights" or "inputs"');
+      }
+      if (typeof st.weights === 'string' || (st.weights && typeof st.weights === 'object' && !Array.isArray(st.weights) && typeof st.weights.$artifact === 'string')) {
+        st.weights = hydrateValueOrUri(st.weights, candidateWorkspaces);
+      } else if (st.weights && typeof st.weights === 'object' && !Array.isArray(st.weights)) {
+        for (const [k, v] of Object.entries(st.weights)) {
+          st.weights[k] = hydrateValueOrUri(v, candidateWorkspaces);
+        }
+      }
+    }
+    if (Array.isArray(st.branches)) {
+      for (const b of st.branches) {
+        if (Array.isArray(b)) hydrateStepListArtifacts(b, candidateWorkspaces);
+        else if (b && typeof b === 'object') hydrateStepListArtifacts([b], candidateWorkspaces);
+      }
+    }
+  }
+}
+
+export function hydrateSpecArtifactsInPlace(spec, baseDir = process.cwd(), explicitWorkspace = null) {
+  if (!spec || typeof spec !== 'object') return spec;
+  const candidateWorkspaces = [
+    explicitWorkspace,
+    spec.workspace ? path.resolve(baseDir, spec.workspace) : null,
+    process.env.BURN_HARNESS_WORKSPACE,
+    path.join(baseDir, '.burn-harness'),
+    path.resolve('.burn-harness'),
+  ].filter(Boolean);
+
+  for (const section of ['inputs', 'weights']) {
+    const obj = spec[section];
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue;
+    for (const [k, v] of Object.entries(obj)) {
+      obj[k] = hydrateValueOrUri(v, candidateWorkspaces);
+    }
+  }
+  hydrateStepListArtifacts(spec.steps, candidateWorkspaces, isRecursiveSpecV2(spec));
+  if (spec.subgraphs && typeof spec.subgraphs === 'object') {
+    for (const sg of Object.values(spec.subgraphs)) {
+      if (sg && typeof sg === 'object') hydrateStepListArtifacts(sg.steps, candidateWorkspaces, true);
+    }
+  }
+  return spec;
+}
+
+export function isRecursiveSpecV2(spec) {
+  if (!spec || typeof spec !== 'object') return false;
+  if (spec.schema === 'burn-math.recursive-spec.v2') return true;
+  if (spec.subgraphs && typeof spec.subgraphs === 'object') return true;
+  if (spec.output !== undefined && spec.numSlots === undefined) return true;
+  if (Array.isArray(spec.steps) && spec.steps.some((s) => s && typeof s === 'object' && typeof s.op === 'string')) return true;
+  return false;
+}
+
+export function loadSpec(file, opts = {}) {
   let raw;
   try { raw = fs.readFileSync(file, 'utf8'); }
   catch (e) { throw new Error(`cannot read spec file ${file}: ${e.message}`); }
   let spec;
   try { spec = JSON.parse(raw); }
   catch (e) { throw new Error(`spec file ${file} is not valid JSON: ${e.message}`); }
+
+  const baseDir = path.dirname(path.resolve(file));
+  hydrateSpecArtifactsInPlace(spec, baseDir, opts.workspaceDir ?? null);
+
+  if (isRecursiveSpecV2(spec)) {
+    const compiled = compileRecursiveSpec(spec, {
+      baseDir,
+      autoRepair: Boolean(opts.autoRepair ?? spec.auto_repair ?? false),
+      compactSlots: Boolean(opts.compactSlots ?? spec.compact_slots ?? false),
+      validate: false,
+    });
+    hydrateSpecArtifactsInPlace(compiled, baseDir, opts.workspaceDir ?? null);
+    return compiled;
+  }
+
   for (const key of ['numSlots', 'layers', 'steps', 'outputSlot', 'ports']) {
     if (spec[key] === undefined) throw new Error(`spec missing required key: ${key}`);
   }

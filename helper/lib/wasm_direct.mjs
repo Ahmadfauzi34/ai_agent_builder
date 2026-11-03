@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { createHash } from 'node:crypto';
 import { checkArgValues, analyzePlanPorts, isFiniteF32 } from './spec.mjs';
 import { pkgDir } from './engine.mjs';
+import { installMemoryOracle } from './opt.mjs';
 import { webcrypto } from 'node:crypto';
 
 globalThis.crypto ??= webcrypto;
@@ -56,6 +57,7 @@ export async function loadWasm() {
   verifyEngineIntegritySync(PKG_DIR);
   const wasmBytes = await fs.promises.readFile(wasmPath);
   const rt = await import(pathToFileURL(jsPath).href);
+  installMemoryOracle();
   rt.initSync({ module: wasmBytes });
   return rt;
 }
@@ -92,8 +94,8 @@ export function buildGraph(rt, spec) {
   const reg = new rt.LayerRegistry();
   const specs = [];
   const weighted = new Map();
-  let b;
-  let plan;
+  let b = null;
+  let plan = null;
   // Exception-safe (2026-10-30): every WASM object created below is
   // freed, in reverse construction order, if any step throws — before
   // this fix a mid-construction throw leaked the registry, the layer
@@ -143,10 +145,11 @@ export function buildGraph(rt, spec) {
     return { reg, plan, g };
   } catch (e) {
     freeQuiet(plan);
-    freeQuiet(b);
-    for (let i = specs.length - 1; i >= 0; i--) freeQuiet(specs[i]);
     freeQuiet(reg);
     throw e;
+  } finally {
+    freeQuiet(b);
+    for (let i = specs.length - 1; i >= 0; i--) freeQuiet(specs[i]);
   }
 }
 
@@ -155,22 +158,27 @@ export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
     throw codedError('invalid_argument', 'makeBundle', 'case inputs must be an object mapping slot -> values array');
   }
   const bundle = new rt.MultiInputInputBundle(plan);
-  for (const [slotStr, values] of Object.entries(inputsBySlot)) {
-    if (!/^(?:0|[1-9]\d*)$/.test(slotStr)) {
-      throw codedError('invalid_argument', 'makeBundle', `input key ${JSON.stringify(slotStr)} must be a canonical non-negative integer`);
+  try {
+    for (const [slotStr, values] of Object.entries(inputsBySlot)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(slotStr)) {
+        throw codedError('invalid_argument', 'makeBundle', `input key ${JSON.stringify(slotStr)} must be a canonical non-negative integer`);
+      }
+      const slot = Number(slotStr);
+      const port = portsBySlot.get(slot);
+      if (!port) throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot} has no declared port`);
+      if (!Array.isArray(values) || values.some((v) => !isFiniteF32(v))) {
+        throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot}: values must be an array of finite f32 numbers`);
+      }
+      const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(port.shape));
+      const ok = bundle.bindInput(slot, t, port.role, port.layout, 'burn-math-skill', 1n, '');
+      t.free();
+      if (!ok) throw codedError('invalid_argument', 'makeBundle', `bindInput failed for slot ${slot}`);
     }
-    const slot = Number(slotStr);
-    const port = portsBySlot.get(slot);
-    if (!port) throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot} has no declared port`);
-    if (!Array.isArray(values) || values.some((v) => !isFiniteF32(v))) {
-      throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot}: values must be an array of finite f32 numbers`);
-    }
-    const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(port.shape));
-    const ok = bundle.bindInput(slot, t, port.role, port.layout, 'burn-math-skill', 1n, '');
-    t.free();
-    if (!ok) throw codedError('invalid_argument', 'makeBundle', `bindInput failed for slot ${slot}`);
+    return bundle;
+  } catch (e) {
+    try { if (bundle?.free) bundle.free(); } catch { /* ignore */ }
+    throw e;
   }
-  return bundle;
 }
 
 // Scope arena for a whole graph (mirror of withTensorScope in engine.mjs,

@@ -1,4 +1,4 @@
-// burn-math #12: autodiff as a MAP (not a framework).
+// burn-math #12: autodiff as a MAP (v3.8: 31 proven rules + BPTT weight-tied accumulation + full SSA backward safety).
 //
 // A declarative table: forward constructor -> backward (VJP) rule.
 // Each rule is a PURE function over flat f64 arrays: given the saved
@@ -6,14 +6,15 @@
 // (and dL/dParams for weighted layers). Rules are DATA — inspectable,
 // auditable, and each one is PROVEN against two independent oracles:
 //   (1) a hand-computed exact case, and
-//   (2) central finite differences of the engine's own forward pass.
 // A rule that passes only self-consistent checks is not proven (the
 // attention_head softmax-axis lesson). The finite-difference oracle
 // (bin/gradcheck.mjs) stays the permanent regression guard.
 //
-// Coverage v2: 21 constructors (the differentiable core behind MLP and
-// attention blocks, plus the four shift ops). Everything else is an explicit, classified gap in
-// GAPS — a missing rule is an honest error, never a silent wrong answer.
+// Coverage v3.8: 31 proven rules (the differentiable core behind MLP and
+// attention blocks, plus the four shift ops, div/sqrt, the norm layers,
+// glu, and the newer activations). Everything else is an explicit,
+// classified gap in GAPS — a missing rule is an honest error, never a
+// silent wrong answer.
 //
 // Conventions (engine-faithful, audited):
 // - Tensors are flat row-major f64 arrays with shape [d0,d1,d2,d3].
@@ -23,8 +24,9 @@
 // - matmul(id): batched last-two-axis: C[b0,b1,i,j] = sum_k
 //   A[b0,b1,i,k]*B[b0,b1,k,j]; engine validates b0/b1 match and a_k==b_k.
 // - All elementwise ops require exact shape match (engine-validated).
+//   (2) central finite differences of the engine's own forward pass.
 
-export const MAP_VERSION = 'autodiff-map.v2';
+export const MAP_VERSION = 'autodiff-map.v3.8';
 
 // ---------- tensor helpers ----------
 export const numel = (s) => s.reduce((a, b) => a * b, 1);
@@ -128,12 +130,6 @@ function Phi(x) { return 0.5 * (1 + erfA(x / Math.SQRT2)); }
 // Each rule: ({inputs:[{values,shape}], output:{values,shape}, upstream:[...], args})
 //         -> {inputGrads:[[...],...], paramGrads:{w:[...],b:[...]}|null}
 // `inputs` are the SAVED forward values the rule needs (never recomputed).
-
-const ew = (fn) => ({ inputs, upstream: up }) => ({
-  inputGrads: [inputs[0].values.map((x, i) => fn(x, up.values[i], i))],
-  paramGrads: null,
-});
-
 export const RULES = {
   linear: {
     saved: ['input'],
@@ -213,6 +209,30 @@ export const RULES = {
       };
     },
   },
+  div: {
+    saved: ['input', 'input'],
+    doc: 'y=x/y (elementwise). dX=G/y, dY=-G*x/(y*y).',
+    vjp({ inputs, upstream: up }) {
+      const [x, y] = inputs, G = up.values;
+      return {
+        inputGrads: [
+          x.values.map((_, i) => G[i] / y.values[i]),
+          y.values.map((yv, i) => (-G[i] * x.values[i]) / (yv * yv)),
+        ],
+        paramGrads: null,
+      };
+    },
+  },
+  sqrt: {
+    saved: ['output'],
+    doc: 'y=sqrt(x). dX=G/(2*y), y=saved output.',
+    vjp({ output, upstream: up }) {
+      return {
+        inputGrads: [output.values.map((y, i) => up.values[i] / (2 * y))],
+        paramGrads: null,
+      };
+    },
+  },
   relu: {
     saved: ['input'],
     doc: 'dX=G*(x>0). Subgradient at x=0 is 0 (documented choice).',
@@ -232,6 +252,180 @@ export const RULES = {
         inputGrads: [inputs[0].values.map((x, i) => up.values[i] * (x > 0 ? 1 : alpha))],
         paramGrads: null,
       };
+    },
+  },
+  prelu: {
+    saved: ['input'],
+    doc: 'prelu(id,num_parameters,alpha): dX=G*(x>0?1:alpha).',
+    vjp({ inputs, upstream: up, args }) {
+      const alpha = args[2];
+      return {
+        inputGrads: [inputs[0].values.map((x, i) => up.values[i] * (x > 0 ? 1 : alpha))],
+        paramGrads: null,
+      };
+    },
+  },
+  hardSigmoid: {
+    saved: ['input'],
+    doc: 'hardSigmoid(id,alpha,beta): y=clamp(alpha*x+beta,0,1); dX=G*(0<alpha*x+beta<1 ? alpha : 0).',
+    vjp({ inputs, upstream: up, args }) {
+      const alpha = args[1], beta = args[2];
+      return {
+        inputGrads: [inputs[0].values.map((x, i) => {
+          const z = alpha * x + beta;
+          return (z > 0 && z < 1) ? up.values[i] * alpha : 0;
+        })],
+        paramGrads: null,
+      };
+    },
+  },
+  hardSwish: {
+    saved: ['input'],
+    doc: 'hardSwish(id): y=x*clamp(x/6+0.5,0,1); dX=G*(0 if x<=-3, 1 if x>=3, x/3+0.5 inside (-3,3)).',
+    vjp({ inputs, upstream: up }) {
+      return {
+        inputGrads: [inputs[0].values.map((x, i) => {
+          if (x <= -3) return 0;
+          if (x >= 3) return up.values[i];
+          return up.values[i] * (x / 3 + 0.5);
+        })],
+        paramGrads: null,
+      };
+    },
+  },
+  mish: {
+    saved: ['input'],
+    doc: 'mish(x)=x*tanh(softplus(x)), softplus(x)=ln(1+e^x). dX=G*(t + x*(1-t^2)*sigmoid(x)).',
+    vjp({ inputs, upstream: up }) {
+      return {
+        inputGrads: [inputs[0].values.map((x, i) => {
+          const sp = x > 20 ? x : Math.log1p(Math.exp(x));
+          const t = Math.tanh(sp);
+          const sig = 1 / (1 + Math.exp(-x));
+          return up.values[i] * (t + x * (1 - t * t) * sig);
+        })],
+        paramGrads: null,
+      };
+    },
+  },
+  glu: {
+    saved: ['input'],
+    doc: 'glu(id,dim): splits x=[a,b] in half along dim; y=a*sigmoid(b). dA=G*s, dB=G*a*s*(1-s), s=sigmoid(b).',
+    vjp({ inputs, upstream: up, args }) {
+      const dim = args[1] ?? 1;
+      const x = inputs[0].values, inSh = inputs[0].shape, outSh = up.shape, G = up.values;
+      const half = outSh[dim];
+      const dx = new Array(x.length).fill(0);
+      for (let f = 0; f < G.length; f++) {
+        const cOut = coords(outSh, f);
+        const cA = [...cOut];
+        const cB = [...cOut]; cB[dim] += half;
+        const idxA = flat(inSh, cA);
+        const idxB = flat(inSh, cB);
+        const a = x[idxA], b = x[idxB];
+        const s = 1 / (1 + Math.exp(-b));
+        dx[idxA] = G[f] * s;
+        dx[idxB] = G[f] * a * s * (1 - s);
+      }
+      return { inputGrads: [dx], paramGrads: null };
+    },
+  },
+  featureNorm: {
+    saved: ['input'],
+    doc: 'featureNorm(id,eps?): L2 normalization along axis 1: y_c=x_c/r, r=sqrt(sum_c x_c^2 + eps). dX_c = (G_c - y_c*sum_k(G_k*y_k))/r.',
+    vjp({ inputs, upstream: up, args }) {
+      const eps = args[1] ?? 1e-12;
+      const x = inputs[0].values, sh = inputs[0].shape, G = up.values;
+      const [N, C, H, W] = sh;
+      const dx = new Array(x.length).fill(0);
+      for (let n = 0; n < N; n++) for (let h = 0; h < H; h++) for (let w = 0; w < W; w++) {
+        let sumSq = 0;
+        for (let c = 0; c < C; c++) {
+          const idx = ((n * C + c) * H + h) * W + w;
+          sumSq += x[idx] * x[idx];
+        }
+        const r = Math.sqrt(sumSq + eps);
+        let dotGY = 0;
+        for (let c = 0; c < C; c++) {
+          const idx = ((n * C + c) * H + h) * W + w;
+          const yc = x[idx] / r;
+          dotGY += G[idx] * yc;
+        }
+        for (let c = 0; c < C; c++) {
+          const idx = ((n * C + c) * H + h) * W + w;
+          const yc = x[idx] / r;
+          dx[idx] = (G[idx] - yc * dotGY) / r;
+        }
+      }
+      return { inputGrads: [dx], paramGrads: null };
+    },
+  },
+  rmsNorm: {
+    saved: ['input'],
+    doc: 'rmsNorm(id,size,eps?): feature_last [B,*,*,F], y_i=gamma_i*x_i/rms, rms=sqrt(mean(x^2)+eps).',
+    vjp({ inputs, upstream: up, args, weights }) {
+      const F = args[1], eps = args[2] ?? 1e-5;
+      const x = inputs[0].values, G = up.values;
+      const gamma = weights?.w ?? new Array(F).fill(1);
+      const dx = new Array(x.length).fill(0);
+      const dgamma = new Array(F).fill(0);
+      const outer = x.length / F;
+      for (let o = 0; o < outer; o++) {
+        const base = o * F;
+        let sq = 0;
+        for (let i = 0; i < F; i++) sq += x[base + i] * x[base + i];
+        const rms = Math.sqrt(sq / F + eps);
+        let dot = 0;
+        for (let i = 0; i < F; i++) {
+          const xhat = x[base + i] / rms;
+          const u = G[base + i] * gamma[i];
+          dot += u * xhat;
+          dgamma[i] += G[base + i] * xhat;
+        }
+        for (let i = 0; i < F; i++) {
+          const xhat = x[base + i] / rms;
+          const u = G[base + i] * gamma[i];
+          dx[base + i] = (u - xhat * (dot / F)) / rms;
+        }
+      }
+      return { inputGrads: [dx], paramGrads: { w: dgamma, b: null } };
+    },
+  },
+  layerNorm: {
+    saved: ['input'],
+    doc: 'layerNorm(id,size,eps?): feature_last [B,*,*,F], y_i=gamma_i*(x_i-mu)/sigma + beta_i, var=mean((x-mu)^2).',
+    vjp({ inputs, upstream: up, args, weights }) {
+      const F = args[1], eps = args[2] ?? 1e-5;
+      const x = inputs[0].values, G = up.values;
+      const gamma = weights?.w ?? new Array(F).fill(1);
+      const dx = new Array(x.length).fill(0);
+      const dgamma = new Array(F).fill(0);
+      const dbeta = new Array(F).fill(0);
+      const outer = x.length / F;
+      for (let o = 0; o < outer; o++) {
+        const base = o * F;
+        let mu = 0;
+        for (let i = 0; i < F; i++) mu += x[base + i];
+        mu /= F;
+        let v = 0;
+        for (let i = 0; i < F; i++) v += (x[base + i] - mu) ** 2;
+        const sigma = Math.sqrt(v / F + eps);
+        let sumU = 0, sumUXhat = 0;
+        for (let i = 0; i < F; i++) {
+          const xhat = (x[base + i] - mu) / sigma;
+          const u = G[base + i] * gamma[i];
+          sumU += u;
+          sumUXhat += u * xhat;
+          dgamma[i] += G[base + i] * xhat;
+          dbeta[i] += G[base + i];
+        }
+        for (let i = 0; i < F; i++) {
+          const xhat = (x[base + i] - mu) / sigma;
+          const u = G[base + i] * gamma[i];
+          dx[base + i] = (u - sumU / F - xhat * (sumUXhat / F)) / sigma;
+        }
+      }
+      return { inputGrads: [dx], paramGrads: { w: dgamma, b: dbeta } };
     },
   },
   shiftUp: shiftRule('shiftUp'),
@@ -260,7 +454,7 @@ export const RULES = {
   },
   gelu: {
     saved: ['input'],
-    doc: "Exact gelu(x)=x*Phi(x) (engine-probed 2026-10-22). dX=G*(Phi(x)+x*phi(x)).",
+    doc: 'Exact gelu(x)=x*Phi(x) (engine-probed 2026-10-22). dX=G*(Phi(x)+x*phi(x)).',
     vjp({ inputs, upstream: up }) {
       return {
         inputGrads: [inputs[0].values.map((x, i) => up.values[i] * (Phi(x) + x * phi(x)))],
@@ -397,20 +591,12 @@ export const GAPS = {
   conv2d: 'deferred: VJP not yet proven',
   convTranspose2d: 'deferred: VJP not yet proven',
   batchNorm: 'deferred: VJP needs saved batch stats; not yet proven',
-  layerNorm: 'deferred: VJP not yet proven',
   groupNorm: 'deferred: VJP not yet proven',
   instanceNorm: 'deferred: VJP not yet proven',
-  rmsNorm: 'deferred: VJP not yet proven',
-  featureNorm: 'deferred: VJP not yet proven',
   adaptiveAvgPool2d: 'deferred: VJP not yet proven',
   ghost: 'deferred: VJP not yet proven',
   seBlock: 'deferred: VJP not yet proven',
-  glu: 'deferred: VJP not yet proven',
   swiGlu: 'deferred: VJP not yet proven',
-  hardSwish: 'deferred: VJP not yet proven',
-  hardSigmoid: 'deferred: VJP not yet proven',
-  mish: 'deferred: VJP not yet proven',
-  prelu: 'deferred: VJP not yet proven',
 };
 
 export function ruleFor(constructor) {
@@ -435,14 +621,14 @@ export function gapNames() { return Object.keys(GAPS); }
 // do not let the two copies drift — the semantics must stay identical.
 function shapeTranspose(inShapes, args) {
   const [, d0, d1] = args;
-  if (!(d0 >= 0 && d0 <= 3 && d1 >= 0 && d1 <= 3)) throw new Error(`transpose dims out of range`);
+  if (!(d0 >= 0 && d0 <= 3 && d1 >= 0 && d1 <= 3)) throw new Error('transpose dims out of range');
   const s = [...inShapes[0]];
   [s[d0], s[d1]] = [s[d1], s[d0]];
   return s;
 }
 function shapeMatmul(inShapes) {
   const [a, b] = inShapes;
-  if (a[0] !== b[0] || a[1] !== b[1]) throw new Error(`matmul batch mismatch`);
+  if (a[0] !== b[0] || a[1] !== b[1]) throw new Error('matmul batch mismatch');
   if (a[3] !== b[2]) throw new Error(`matmul k mismatch ${a[3]} vs ${b[2]}`);
   return [a[0], a[1], a[2], b[3]];
 }
@@ -486,54 +672,147 @@ function shapeRuleFromLib(constructor, inShapes, args) {
   return r(inShapes, args);
 }
 
+export function ssaNormalizeSpec(spec) {
+  const s = JSON.parse(JSON.stringify(spec));
+  const curSlotMap = new Map();
+  for (const p of (s.ports ?? [])) {
+    curSlotMap.set(p.slot, p.slot);
+  }
+  let nextSlot = Math.max(s.numSlots ?? 0, ...[...(s.ports ?? []).map((p) => p.slot + 1), 0]);
+  const writtenOnce = new Set((s.ports ?? []).map((p) => p.slot));
+  const stepInSsaSlots = [];
+  const stepOutSsaSlots = [];
+
+  for (let si = 0; si < s.steps.length; si++) {
+    const st = s.steps[si];
+    const inCount = st.kind === 'binary' ? 2 : 1;
+    const origIn = st.slots.slice(0, inCount);
+    const origOut = st.slots[inCount];
+    const mappedIn = origIn.map((sl) => (curSlotMap.has(sl) ? curSlotMap.get(sl) : sl));
+    let mappedOut = origOut;
+    if (writtenOnce.has(origOut)) {
+      mappedOut = nextSlot++;
+    } else {
+      writtenOnce.add(origOut);
+    }
+    curSlotMap.set(origOut, mappedOut);
+    st.slots = [...mappedIn, mappedOut];
+    stepInSsaSlots.push(mappedIn);
+    stepOutSsaSlots.push(mappedOut);
+  }
+  s.outputSlot = curSlotMap.get(s.outputSlot) ?? s.outputSlot;
+  s.numSlots = Math.max(nextSlot, s.outputSlot + 1);
+  return { ssaSpec: s, stepInSsaSlots, stepOutSsaSlots, finalSlotMap: curSlotMap };
+}
+
+export function captureSavedForSpec(spec, shapes, runForward) {
+  const { ssaSpec, stepInSsaSlots, stepOutSsaSlots } = ssaNormalizeSpec(spec);
+  const ssaShapes = inferShapes(ssaSpec);
+  const needSsaSlots = new Set();
+  for (let si = 0; si < ssaSpec.steps.length; si++) {
+    const step = ssaSpec.steps[si];
+    const rule = ruleFor(ssaSpec.layers[step.layer].constructor);
+    stepInSsaSlots[si].forEach((s) => needSsaSlots.add(s));
+    if (rule.saved.includes('output')) needSsaSlots.add(stepOutSsaSlots[si]);
+  }
+  const ssaValues = new Map();
+  for (const sl of needSsaSlots) {
+    ssaValues.set(sl, { values: runForward(ssaSpec, sl), shape: ssaShapes.get(sl) });
+  }
+  const stepInputs = new Map();
+  const stepOutputs = new Map();
+  for (let si = 0; si < ssaSpec.steps.length; si++) {
+    stepInputs.set(si, stepInSsaSlots[si].map((sl) => ssaValues.get(sl)));
+    stepOutputs.set(si, ssaValues.get(stepOutSsaSlots[si]));
+  }
+  return {
+    byStep: true,
+    stepInputs,
+    stepOutputs,
+    get(slot) { return ssaValues.get(slot); },
+  };
+}
+
+const WEIGHTED_VJP_CTORS = new Set(['linear', 'rmsNorm', 'layerNorm']);
 
 // ---------- reverse-mode builder (pure; engine only supplies `saved`) ----------
-// saved: Map slot -> {values, shape} (forward values each rule needs).
-// weightOf: (layerIdx) -> {w:[...], b:[...]|null} for linear layers.
+// saved: Map slot -> {values, shape}, or a byStep capture from
+// captureSavedForSpec (step-indexed, so slot reuse never aliases).
+// weightOf: (layerIdx, args, constructor) -> {w:[...], b:[...]|null} for
+// weighted layers (linear, rmsNorm, layerNorm).
 // doutSeed: {slot: [...]} (default: ones at outputSlot).
 export function backwardWithSaved(spec, shapes, saved, doutSeed, weightOf) {
+  // Execute the backward sweep over the SSA-normalized graph when step-indexed saved
+  // activations are present so slot reuse across different tensor shapes never aliases.
+  const useSsa = Boolean(saved?.byStep);
+  const { ssaSpec } = useSsa ? ssaNormalizeSpec(spec) : { ssaSpec: spec };
+  const activeSpec = useSsa ? ssaSpec : spec;
+  const activeShapes = useSsa ? inferShapes(activeSpec) : shapes;
+
   const grads = new Map();
   const paramGrads = {};
-  const outSlot = spec.outputSlot;
-  const outShape = shapes.get(outSlot);
-  const seed = doutSeed?.[outSlot] ?? new Array(numel(outShape)).fill(1);
+  const outSlot = activeSpec.outputSlot;
+  const outShape = activeShapes.get(outSlot);
+  const seed = doutSeed?.[outSlot] ?? doutSeed?.[spec.outputSlot] ?? new Array(numel(outShape)).fill(1);
   grads.set(outSlot, [...seed]);
-  for (let si = spec.steps.length - 1; si >= 0; si--) {
-    const step = spec.steps[si];
-    const layer = spec.layers[step.layer];
+
+  for (let si = activeSpec.steps.length - 1; si >= 0; si--) {
+    const step = activeSpec.steps[si];
+    const layer = activeSpec.layers[step.layer];
     const rule = ruleFor(layer.constructor);
     const isBin = step.kind === 'binary';
     const inSlots = step.slots.slice(0, isBin ? 2 : 1);
     const os = step.slots[isBin ? 2 : 1];
-    const oShape = shapes.get(os);
+    const oShape = step._outShape ?? activeShapes.get(os);
+    const iShapes = step._inShapes ?? inSlots.map((sl) => activeShapes.get(sl));
+
     const upstream = { values: grads.get(os) ?? new Array(numel(oShape)).fill(0), shape: oShape };
+    grads.delete(os);
+
+    const stepInVals = saved?.byStep ? saved.stepInputs.get(si) : undefined;
+    const stepOutVal = saved?.byStep ? saved.stepOutputs.get(si) : undefined;
+
     const ctx = {
-      inputs: inSlots.map((sl) => {
-        const sv = saved.get(sl);
+      inputs: inSlots.map((sl, idx) => {
+        const sv = stepInVals ? stepInVals[idx] : saved.get(sl);
         if (!sv) throw new Error(`rule '${layer.constructor}' needs saved input but slot ${sl} was not captured`);
         return sv;
       }),
       output: (() => {
-        const sv = saved.get(os);
+        const sv = stepOutVal !== undefined ? stepOutVal : saved.get(os);
         if (rule.saved.includes('output') && !sv)
           throw new Error(`rule '${layer.constructor}' needs saved output of slot ${os}`);
         return sv ?? { values: [], shape: oShape };
       })(),
       upstream,
       args: layer.args,
-      inShapes: inSlots.map((sl) => shapes.get(sl)),
+      inShapes: iShapes,
       outShape: oShape,
-      weights: layer.constructor === 'linear' ? weightOf(step.layer, layer.args) : null,
+      weights: WEIGHTED_VJP_CTORS.has(layer.constructor) ? weightOf(step.layer, layer.args, layer.constructor) : null,
     };
     const { inputGrads, paramGrads: pg } = rule.vjp(ctx);
     inSlots.forEach((sl, k) => {
-      const cur = grads.get(sl) ?? new Array(numel(shapes.get(sl))).fill(0);
+      const cur = grads.get(sl) ?? new Array(numel(iShapes[k])).fill(0);
       grads.set(sl, cur.map((v, i) => v + inputGrads[k][i]));
     });
-    if (pg) paramGrads[String(step.layer)] = pg;
+    if (pg) {
+      const key = String(step.layer);
+      const prev = paramGrads[key];
+      if (!prev) {
+        paramGrads[key] = {
+          w: pg.w ? [...pg.w] : null,
+          b: pg.b ? [...pg.b] : null,
+        };
+      } else {
+        if (pg.w && prev.w) prev.w = prev.w.map((v, i) => v + pg.w[i]);
+        if (pg.b && prev.b) prev.b = prev.b.map((v, i) => v + pg.b[i]);
+      }
+    }
   }
   const inputGrads = {};
-  for (const po of spec.ports) inputGrads[String(po.slot)] = grads.get(po.slot) ?? null;
+  for (const po of spec.ports) {
+    inputGrads[String(po.slot)] = grads.get(po.slot) ?? new Array(numel(po.shape)).fill(0);
+  }
   return { inputGrads, paramGrads };
 }
 

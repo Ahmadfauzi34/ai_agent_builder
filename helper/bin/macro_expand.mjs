@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { expandMacro, macroNames } from '../lib/macros.mjs';
-import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [cmd, aFile, bFile] = process.argv.slice(2);
 if (!cmd || !aFile || !['expand', 'prove'].includes(cmd) || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
@@ -45,10 +45,17 @@ function runOne(s) {
   const { reg, plan, g } = buildGraph(rt, s);
   const ports = portBySlot(s);
   const bundle = makeBundle(rt, plan, s.inputs, ports);
-  const out = g.run(reg, bundle);
-  const values = Array.from(out.to_array());
-  out.free();
-  return values;
+  try {
+    const out = g.run(reg, bundle);
+    const values = Array.from(out.to_array());
+    out.free();
+    return values;
+  } finally {
+    if (bundle?.free) bundle.free();
+    if (g?.free) g.free();
+    if (plan?.free) plan.free();
+    if (reg?.free) reg.free();
+  }
 }
 let vM, vR;
 try { vM = runOne(spec); } catch (e) { failCli(`macro spec failed on engine: ${e.message}`); }

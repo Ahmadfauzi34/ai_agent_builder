@@ -4,10 +4,18 @@ Start with `AGENT.md`. It is the only file you must read in full.
 (Repo note: this index lives at `helper/INDEX.md`; the built pack carries the same map.)
 This page is a map, not a manual: find your question, follow the link.
 
-## Do something
+## Recursive & Agent-Harness Co-Processor (Start Here for Multi-Step Work)
+
+- Compile or prove a hierarchical / recursive `spec.v2.json` (nested subgraphs, `repeat` with `tie_weights`, `residual`, `parallel_concat`, symbolic slot names, `--auto-repair`, and `--compact-slots` liveness slot recycling) ->
+  `node bin/compose.mjs compile <spec-v2.json> [out.json] [--auto-repair] [--compact-slots] [--workspace]`
+  `node bin/compose.mjs prove <spec-v2.json> [ref.json] [--auto-repair] [--compact-slots]`
+- Compile a 1st-order VJP or 2nd-order Hessian-Vector Product (including `div`, `sqrt`, `sigmoid`, `tanh` graphs) into a runnable WASM spec ->
+  `node bin/compose.mjs grad-spec <spec.json> [out.json] [--wrt <slot>] [--order 1|2]`
+
+## Do something (Core Primitives)
 
 - Run a computation -> `node bin/run.mjs <spec.json>`
-  (spec format: `spec-schema.md`; first try `examples/linear-relu.json`).
+  (spec format: `spec-schema.md`; first try `examples/linear-relu.json` or `examples/recursive-gated-residual.v2.json`).
 - Do arithmetic & engineering math without writing a spec ->
   `node bin/arith.mjs <add|sub|mul|div|dot|dist|cos|xent|kl> <a1,a2,...> <b1,b2,...>`
   or unary/statistical `<sqrt|exp|log|abs|norm|normalize|entropy|sum|mean|min|max|var|std> <a1,a2,...>`,
@@ -22,7 +30,7 @@ This page is a map, not a manual: find your question, follow the link.
   `node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...>`,
   `<atan2|powf|hypot> <a1,a2,...> <b1,b2,...>`, or `fma <a1,a2,...> <b1,b2,...> <c1,c2,...>`
   (see `AGENT.md` for the traps: kernel cos is not arith cos, round is half-to-even, atan2 takes y first, no broadcast).
-- Check a plan before running it -> `node bin/validate.mjs <spec.json>`.
+- Check a plan before running it -> `node bin/validate.mjs [--explain] <spec.json>`.
 - Compare two graphs -> `node bin/verify.mjs <baseline.json> <candidate.json>`.
 - Save / check / restore a program bundle ->
   `node bin/checkpoint.mjs export|verify|restore ...` (see `AGENT.md`).
@@ -61,7 +69,7 @@ This page is a map, not a manual: find your question, follow the link.
   yourself opening a file there, stop and use `find-op` or `surface`
   instead. Exception (see `AGENT.md`): a contract file under
   `engine-audit/docs/` that a `reference/` page names explicitly.
-- `lib/` — implementation of the tools (21 modules).
+- `lib/` — implementation of the tools (24 modules).
   You run the tools; you do not need to read their code to use
   the pack.
 - Pack generation — the pack is built by the repo's
