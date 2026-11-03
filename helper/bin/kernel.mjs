@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // burn-math kernel: the Lane E WasmNumericKernel elementwise kernels,
-// exposed as a CLI tool (previously engine-only: reachable from surface
-// listings but from no pack tool).
+// exposed as a CLI tool with --batch and $prev / $<index> register chaining.
 //
 //   node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...>
 //   node bin/kernel.mjs <atan2|powf|hypot> <a1,a2,...> <b1,b2,...>
 //   node bin/kernel.mjs fma <a1,a2,...> <b1,b2,...> <c1,c2,...>
+//   node bin/kernel.mjs --batch <ops.json>
 //
 // Argument order is the engine's, and it is NOT symmetric where it
 // matters — read it before calling:
@@ -39,8 +39,10 @@ import {
   assertAllFiniteOutput,
   engineProvenance,
   parseVector,
+  parseVectorValues,
   quantizationWarnings,
 } from '../lib/cli.mjs';
+import fs from 'node:fs';
 
 const UNARY_OPS = new Set(['sin', 'cos', 'tan', 'floor', 'ceil', 'round']);
 const BINARY_OPS = new Set(['atan2', 'powf', 'hypot']);
@@ -50,7 +52,8 @@ const USAGE =
   'usage: node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...> ' +
   'OR <atan2|powf|hypot> <a1,a2,...> <b1,b2,...> ' +
   '(atan2 takes y first, then x; powf takes base, then exp) ' +
-  'OR fma <a1,a2,...> <b1,b2,...> <c1,c2,...> (a*b+c per element). ' +
+  'OR fma <a1,a2,...> <b1,b2,...> <c1,c2,...> (a*b+c per element) ' +
+  'OR --batch <ops.json>. ' +
   'All input vectors must have exactly the same length (no broadcast).';
 
 function vectorTensor(rt, values) {
@@ -122,6 +125,69 @@ function execTernaryKernel(rt, op, a, b, c) {
   }
 }
 
+function resolveBatchRef(argVal, curIndex, results) {
+  if (typeof argVal !== 'string' || !argVal.startsWith('$')) return argVal;
+  let refIdx = -1;
+  if (argVal === '$prev') refIdx = curIndex - 1;
+  else if (/^\$(?:0|[1-9]\d*)$/.test(argVal)) refIdx = Number(argVal.slice(1));
+  else throw new Error(`invalid batch register reference ${JSON.stringify(argVal)} (use "$prev" or "$<stepIndex>")`);
+
+  if (refIdx < 0 || refIdx >= curIndex) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} out of bounds (must reference an earlier step 0..${curIndex - 1})`);
+  }
+  const prev = results[refIdx];
+  if (!prev || !prev.ok || !Array.isArray(prev.values)) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} points to failed step ${refIdx}`);
+  }
+  return prev.values;
+}
+
+async function runBatch(file) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf8'); }
+  catch (e) { throw new Error(`cannot read batch file ${file}: ${e.message}`); }
+  let doc;
+  try { doc = JSON.parse(text); }
+  catch (e) { throw new Error(`invalid batch JSON in ${file}: ${e.message}`); }
+  if (doc === null || typeof doc !== 'object' || Array.isArray(doc) || !Array.isArray(doc.ops)) {
+    throw new Error('batch must be an object with an ops array');
+  }
+  const rt = await loadWasm();
+  const engine = engineProvenance();
+  const results = [];
+  for (let i = 0; i < doc.ops.length; i++) {
+    const entry = doc.ops[i];
+    try {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        throw new Error(`op entry ${i} must be an object`);
+      }
+      const { op } = entry;
+      if (UNARY_OPS.has(op)) {
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
+        const values = execUnaryKernel(rt, op, a);
+        results.push({ index: i, ok: true, op, a, broadcast: null, values, precision_warnings: quantizationWarnings(a, 'a') });
+      } else if (BINARY_OPS.has(op)) {
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
+        const b = parseVectorValues(resolveBatchRef(entry.b, i, results), 'b');
+        const values = execBinaryKernel(rt, op, a, b);
+        results.push({ index: i, ok: true, op, a, b, broadcast: null, values, precision_warnings: [...quantizationWarnings(a, 'a'), ...quantizationWarnings(b, 'b')] });
+      } else if (TERNARY_OPS.has(op)) {
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
+        const b = parseVectorValues(resolveBatchRef(entry.b, i, results), 'b');
+        const c = parseVectorValues(resolveBatchRef(entry.c, i, results), 'c');
+        const values = execTernaryKernel(rt, op, a, b, c);
+        results.push({ index: i, ok: true, op, a, b, c, broadcast: null, values, precision_warnings: [...quantizationWarnings(a, 'a'), ...quantizationWarnings(b, 'b'), ...quantizationWarnings(c, 'c')] });
+      } else {
+        throw new Error(`unknown kernel op: ${JSON.stringify(op)}`);
+      }
+    } catch (e) {
+      results.push({ index: i, ok: false, op: entry?.op ?? null, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  const allOk = results.every((r) => r.ok);
+  printJsonAndExit({ ok: allOk, engine, results }, allOk ? 0 : 2);
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
@@ -129,6 +195,10 @@ async function main() {
     process.exit(2);
   }
   const [op, aText, bText, cText, extra] = argv;
+  if (op === '--batch') {
+    if (aText === undefined || bText !== undefined || cText !== undefined || extra !== undefined) throw new Error(USAGE);
+    return runBatch(aText);
+  }
   if (UNARY_OPS.has(op)) {
     if (aText === undefined || bText !== undefined || cText !== undefined || extra !== undefined) throw new Error(USAGE);
     const a = parseVector(aText, 'a', USAGE);

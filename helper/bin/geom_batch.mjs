@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// burn-math geom_batch: batched 3D model -> 2D screen projection.
+// burn-math geom_batch: batched 3D model or scene-tree -> 2D screen projection.
 //
 // Same pipeline as bin/geom_project.mjs (engine does the linear MVP part as
 // f32, host does perspective divide + viewport), but vertices are processed
@@ -17,33 +17,15 @@
 //    "model": [chain ops, geom_build format],
 //    "camera": {"eye","target","up","fov_deg","aspect","near","far"},
 //    "viewport": {"w":800,"h":600}}
-import { startRunner, unwrap, printJson } from '../lib/runner.mjs';
+// or a scene-tree: {"nodes": [...]} (compiled via compileSceneTree).
+import { startRunner, unwrap, printJson, assertKnownFlags } from '../lib/runner.mjs';
 import {
-  rotX4, rotY4, rotZ4, rotAxisAngle4, euler4, quatToMat4,
-  translate4, scale4, mat4Mul, composeChain, lookAt4, perspective4,
-  homogenize,
+  opToMat4, mat4Mul, composeChain, lookAt4, perspective4,
+  homogenize, compileSceneTree,
 } from '../lib/geom3.mjs';
 import fs from 'node:fs';
 
 export const BATCH_MAX = 63; // setWeights cap: weight count <= 65535 -> (4N)^2 <= 65535
-
-function opToMat4(op) {
-  switch (op.op) {
-    case 'rotate_x': return rotX4(op.degrees ?? 0);
-    case 'rotate_y': return rotY4(op.degrees ?? 0);
-    case 'rotate_z': return rotZ4(op.degrees ?? 0);
-    case 'rotate_axis': return rotAxisAngle4(...op.axis, op.degrees ?? 0);
-    case 'euler': return euler4(op.roll ?? 0, op.pitch ?? 0, op.yaw ?? 0, op.order ?? 'ZYX');
-    case 'quaternion': return quatToMat4(op.w ?? 1, op.x ?? 0, op.y ?? 0, op.z ?? 0);
-    case 'translate': return translate4(...op.by);
-    case 'scale': return scale4(...op.by);
-    case 'matrix': {
-      if (!Array.isArray(op.m) || op.m.length !== 16) throw new Error('"matrix" op needs "m": 16 numbers (row-major)');
-      return op.m.slice();
-    }
-    default: throw new Error(`unknown op '${op.op}'`);
-  }
-}
 
 function buildMVP(model) {
   const M = composeChain((model.model ?? []).map(opToMat4));
@@ -260,11 +242,23 @@ if (rawArgs.includes('--selftest')) {
 }
 
 const modelFile = rawArgs[0];
-if (!modelFile || rawArgs.includes('--help') || rawArgs.includes('-h')) { console.error('usage: node geom_batch.mjs <model.json> [out.json] [--selftest]'); process.exit(2); }
+if (!modelFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node geom_batch.mjs <model.json> [out.json] [--selftest]');
+  process.exit(2);
+}
+assertKnownFlags(rawArgs.slice(1), { boolean: ['--selftest'], prog: 'geom_batch' });
 const outFile = rawArgs.find((a) => a !== modelFile && a.endsWith('.json') && !a.startsWith('--'));
 try {
   const model = JSON.parse(fs.readFileSync(modelFile, 'utf8'));
-  if (!Array.isArray(model.vertices) || model.vertices.length === 0) throw new Error('model.json needs "vertices": [[x,y,z], ...]');
+  let sceneNodes = null;
+  if ((!Array.isArray(model.vertices) || model.vertices.length === 0) && Array.isArray(model.nodes) && model.nodes.length > 0) {
+    const compiledTree = compileSceneTree({ nodes: model.nodes });
+    sceneNodes = compiledTree.nodes;
+    model.vertices = sceneNodes.map((n) => n.world_point);
+  }
+  if (!Array.isArray(model.vertices) || model.vertices.length === 0) {
+    throw new Error('model.json needs "vertices": [[x,y,z], ...] or "nodes": [...]');
+  }
   if (!model.camera || !model.viewport) throw new Error('model.json needs "camera" and "viewport"');
   const t0 = Date.now();
   const results = await projectModel(model);
@@ -275,6 +269,14 @@ try {
     projected: results.filter((r) => !r.behind).length,
     behind_camera: results.filter((r) => r.behind).length,
     engine_ms: Date.now() - t0,
+    ...(sceneNodes ? {
+      scene_nodes: sceneNodes.map((n, i) => ({
+        id: n.id,
+        parent: n.parent,
+        world_point: n.world_point,
+        projection: results[i],
+      })),
+    } : {}),
     results,
   };
   if (outFile) { fs.writeFileSync(outFile, JSON.stringify(out, null, 1)); out.out_file = outFile; }

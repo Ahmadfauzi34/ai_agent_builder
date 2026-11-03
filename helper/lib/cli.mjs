@@ -5,23 +5,33 @@
 // the second f32 tool must NOT copy-paste these functions — a duplicated
 // parser/warning/provenance drifts the next time one of them is fixed
 // (the quantization warnings below already carry one such audit fix).
-// Pure functions only: no engine objects, no tool-specific dispatch, so
-// importing this module can never change a tool's computed values.
+// Pure functions only: no tool-specific dispatch, so importing this
+// module can never change a tool's computed values. (engineProvenance
+// alone resolves the wasm path via engine.mjs and hashes the real
+// binary, with the MANIFEST sha as fallback.)
 // Tools that need different semantics (int.mjs: BigInt strings) keep
 // their own parsers — this module is f32 CLI parsing, nothing more.
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { isFiniteF32 } from './spec.mjs';
+import { pkgDir } from './engine.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 export function engineProvenance() {
   try {
-    const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
-    const full = m?.sha256?.['burn_research_bg.wasm'] ?? m?.engine?.wasm_sha256 ?? null;
-    return { wasm_sha256_short: full ? full.slice(0, 16) : null, mode: 'direct' };
-  } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
+    const wasmPath = path.join(pkgDir(), 'burn_research_bg.wasm');
+    const actualFull = createHash('sha256').update(fs.readFileSync(wasmPath)).digest('hex');
+    return { wasm_sha256_short: actualFull.slice(0, 16), mode: 'direct' };
+  } catch {
+    try {
+      const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
+      const full = m?.sha256?.['burn_research_bg.wasm'] ?? m?.engine?.wasm_sha256 ?? null;
+      return { wasm_sha256_short: full ? full.slice(0, 16) : null, mode: 'direct' };
+    } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
+  }
 }
 
 // Quantization-loss warnings (audit finding #5, closed 2026-10-31):

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// burn-math fuzz_cases: deterministic test-case generation for verify/diff_ref.
+// burn-math fuzz_cases: deterministic test-case generation for verify / diff_ref
+// + Recursive Adversarial Interval Narrowing (`--zoom-vs <cand.json> [--zoom-depth 4]`).
 //
-// Usage: node fuzz_cases.mjs <spec.json> [out.json] [--seed 42] [--count 8] [--only-slots 0,1] [--lo -2] [--hi 2]
+// Usage: node fuzz_cases.mjs <spec.json> [out.json] [--seed N] [--count N] [--lo X] [--hi X] [--only-slots s0,s1] [--zoom-vs cand.json] [--zoom-depth D]
 //
 // Builds a cases.json array (verify-compatible) via lib/fuzz.mjs — the
 // same generator verify.mjs --fuzz uses, so the two can never drift:
@@ -15,36 +16,62 @@
 // for a given seed: the seed is reported in the envelope so runs are
 // reproducible.
 //
-// Prints {ok, seed, cases, out_file|null} and writes the bare array to
-// out.json (or stdout as {envelope, cases} when no file given).
-import { loadSpec } from '../lib/spec.mjs';
-import { generateCases } from '../lib/fuzz.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+// Prints the envelope {ok, seed, cases, includes_golden, discrete_ports,
+// meta, out_file|null} (plus cases_data on stdout when no file is given)
+// and writes the cases array to out.json.
 import fs from 'node:fs';
+import { loadSpec } from '../lib/spec.mjs';
+import { printJson, printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { generateCases, findWorstCaseInput } from '../lib/fuzz.mjs';
+import { loadWasm } from '../lib/wasm_direct.mjs';
 
-const rawArgs = process.argv.slice(2);
-const specFile = rawArgs[0];
-if (!specFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
-  console.error('usage: node fuzz_cases.mjs <spec.json> [out.json] [--seed 42] [--count 8] [--only-slots 0,1] [--lo -2] [--hi 2]');
+const args = process.argv.slice(2);
+const specFile = args[0];
+if (!specFile || specFile.startsWith('--') || args.includes('--help') || args.includes('-h')) {
+  console.error('usage: node fuzz_cases.mjs <spec.json> [out.json] [--seed 42] [--count 8] [--lo -2] [--hi 2] [--only-slots 0,1] [--zoom-vs cand.json] [--zoom-depth 4]');
   process.exit(2);
 }
-const opts = { seed: 42, count: 8, lo: -2, hi: 2, onlySlots: null, out: null };
-for (let i = 1; i < rawArgs.length; i++) {
-  const a = rawArgs[i];
-  if (a === '--seed') opts.seed = Number(rawArgs[++i]);
-  else if (a === '--count') opts.count = Number(rawArgs[++i]);
-  else if (a === '--only-slots') opts.onlySlots = rawArgs[++i].split(',').map(Number);
-  else if (a === '--lo') opts.lo = Number(rawArgs[++i]);
-  else if (a === '--hi') opts.hi = Number(rawArgs[++i]);
-  else if (!opts.out) opts.out = a;
-  else throw new Error(`unexpected argument: ${a}`);
+assertKnownFlags(args.slice(1), { valued: ['--seed', '--count', '--lo', '--hi', '--only-slots', '--zoom-vs', '--zoom-depth'], prog: 'fuzz_cases' });
+
+let outFile = null, seed = 42, count = 8, lo = -2, hi = 2, onlySlots = null;
+let zoomVsFile = null, zoomDepth = 4;
+for (let i = 1; i < args.length; i++) {
+  const a = args[i];
+  if (a === '--seed') seed = Number(args[++i]);
+  else if (a === '--count') count = Number(args[++i]);
+  else if (a === '--lo') lo = Number(args[++i]);
+  else if (a === '--hi') hi = Number(args[++i]);
+  else if (a === '--only-slots') onlySlots = args[++i].split(',').map(Number);
+  else if (a === '--zoom-vs') zoomVsFile = args[++i];
+  else if (a === '--zoom-depth') zoomDepth = Number(args[++i]);
+  else if (!a.startsWith('--')) {
+    if (outFile) throw new Error(`unexpected argument: ${a}`);
+    outFile = a;
+  }
 }
-if (!Number.isInteger(opts.seed) || !Number.isInteger(opts.count) || opts.count < 0)
+if (!Number.isInteger(seed) || !Number.isInteger(count) || count < 0)
   throw new Error('--seed and --count must be integers, --count >= 0');
 
 try {
   const spec = loadSpec(specFile);
-  const { cases, meta } = generateCases(spec, opts);
+  if (zoomVsFile) {
+    const candSpec = loadSpec(zoomVsFile);
+    const rt = await loadWasm();
+    const zoomRes = findWorstCaseInput(rt, spec, candSpec, {
+      seed,
+      samplesPerLevel: Math.max(4, count),
+      zoomDepth,
+      lo,
+      hi,
+    });
+    if (outFile) {
+      fs.writeFileSync(outFile, JSON.stringify([zoomRes.worst_case_input], null, 1));
+      zoomRes.out_file = outFile;
+    }
+    printJsonAndExit(zoomRes, 0);
+  }
+
+  const { cases, meta } = generateCases(spec, { seed, count, lo, hi, onlySlots });
   const envelope = {
     ok: true,
     seed: meta.seed,
@@ -54,15 +81,13 @@ try {
     cases: cases.length,
     includes_golden: meta.includes_golden,
     discrete_ports: meta.discrete_ports,
+    meta,
   };
-  // Both branches exit drain-safely; the trailing exit(0) was dead code
-  // once both prints exit, so it is gone (it also used to truncate the
-  // large cases_data output past ~64KB).
-  if (opts.out) {
-    fs.writeFileSync(opts.out, JSON.stringify(cases));
-    printJsonAndExit({ ...envelope, out_file: opts.out }, 0);
+  if (outFile) {
+    fs.writeFileSync(outFile, JSON.stringify(cases, null, 1));
+    printJson({ ...envelope, out_file: outFile });
   } else {
-    printJsonAndExit({ ...envelope, cases_data: cases }, 0);
+    printJson({ ...envelope, cases_data: cases });
   }
 } catch (e) {
   printJsonAndExit({ ok: false, error: e.message }, 2);

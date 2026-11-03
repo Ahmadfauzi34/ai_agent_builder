@@ -1,5 +1,5 @@
-// burn-math fuzz: deterministic test-case generation, shared by
-// fuzz_cases.mjs (CLI) and verify.mjs --fuzz. ONE producer: both CLIs
+// burn-math fuzz: deterministic test-case generation + Recursive Adversarial Interval Narrowing (`findWorstCaseInput`).
+// Shared by fuzz_cases.mjs (CLI) and verify.mjs --fuzz. ONE producer: both CLIs
 // call generateCases, so the two can never drift apart.
 //
 // Case layout (identical to the original fuzz_cases.mjs for continuous
@@ -21,7 +21,8 @@
 // (args[1]); a discrete port with no embedding consumer, or with two
 // consumers disagreeing on vocab, is a fail-closed error, never a guess.
 import { portBySlot } from './spec.mjs';
-import { generateStream } from './prng.mjs';
+import { generateStream, mulberry32 } from './prng.mjs';
+import { buildGraph, makeBundle } from './engine.mjs';
 
 const DISCRETE_LAYOUT = 'token_ids_axis1_singleton';
 
@@ -160,4 +161,115 @@ export function generateCases(spec, opts = {}) {
       discrete_ports: [...vocabs.entries()].map(([slot, vocab]) => ({ slot, vocab })),
     },
   };
+}
+
+// Recursive Adversarial Interval Narrowing (Zoom Fuzzing):
+// Recursively narrows a box around the input case that maximizes |Base(x) - Cand(x)|_oo
+// across `zoomDepth` levels (halving the search radius at each depth).
+export function findWorstCaseInput(rt, baseSpec, candSpec, {
+  seed = 42,
+  samplesPerLevel = 12,
+  zoomDepth = 4,
+  lo = -5,
+  hi = 5,
+} = {}) {
+  const baseBuilt = buildGraph(rt, baseSpec);
+  const candBuilt = buildGraph(rt, candSpec);
+  const basePorts = portBySlot(baseSpec);
+  const candPorts = portBySlot(candSpec);
+  const ports = [...basePorts.values()].sort((a, b) => a.slot - b.slot);
+  const vocabs = discreteVocabs(baseSpec, ports);
+  const rng = mulberry32(seed);
+
+  let outLenA = null, outLenB = null;
+  const evalDelta = (caseInputs) => {
+    const bA = makeBundle(rt, baseBuilt.plan, caseInputs, basePorts);
+    const bB = makeBundle(rt, candBuilt.plan, caseInputs, candPorts);
+    const outA = baseBuilt.g.run(baseBuilt.reg, bA);
+    const outB = candBuilt.g.run(candBuilt.reg, bB);
+    try {
+      const vA = Array.from(outA.to_array());
+      const vB = Array.from(outB.to_array());
+      outLenA = vA.length; outLenB = vB.length;
+      // Length mismatch IS a difference: the old prefix-only loop reported
+      // 0 for pairs whose shared prefix matched (e.g. [3,7] vs [3,7,3,7]).
+      // Infinity keeps mismatch cases as worst-case; the report below
+      // states the mismatch explicitly instead of a bare 0.
+      if (vA.length !== vB.length) return Number.POSITIVE_INFINITY;
+      let m = 0;
+      for (let i = 0; i < Math.min(vA.length, vB.length); i++) {
+        const d = Math.abs(vA[i] - vB[i]);
+        if (d > m) m = d;
+      }
+      return m;
+    } finally {
+      outA.free();
+      outB.free();
+      if (bA.free) bA.free();
+      if (bB.free) bB.free();
+    }
+  };
+
+  try {
+    // Level 0: initial generateCases sweep
+    const initial = generateCases(baseSpec, { seed, count: samplesPerLevel, lo, hi }).cases;
+    let bestCase = initial[0];
+    let bestDelta = -1;
+    for (const c of initial) {
+      const d = evalDelta(c);
+      if (d > bestDelta) { bestDelta = d; bestCase = c; }
+    }
+    const level0MaxDelta = bestDelta;
+    const history = [{ depth: 0, radius: (hi - lo) / 2, max_abs_error: bestDelta }];
+
+    let radius = (hi - lo) / 4;
+    for (let d = 1; d <= zoomDepth; d++) {
+      for (let s = 0; s < samplesPerLevel; s++) {
+        const trial = {};
+        for (const p of ports) {
+          const k = String(p.slot);
+          const center = bestCase[k];
+          if (vocabs.has(p.slot)) {
+            trial[k] = [...center];
+          } else {
+            trial[k] = center.map((v) => {
+              const jitter = (rng() * 2 - 1) * radius;
+              return Math.min(hi, Math.max(lo, v + jitter));
+            });
+          }
+        }
+        const delta = evalDelta(trial);
+        if (delta > bestDelta) {
+          bestDelta = delta;
+          bestCase = trial;
+        }
+      }
+      history.push({ depth: d, radius, max_abs_error: bestDelta });
+      radius *= 0.5;
+    }
+
+    // Infinity (length mismatch) would serialize to null in JSON — emit the
+    // string 'Infinity' instead, so a 0/mismatch can never be confused again.
+    const fmtDelta = (d) => (Number.isFinite(d) ? d : 'Infinity');
+    return {
+      ok: true,
+      seed,
+      zoom_depth: zoomDepth,
+      samples_per_level: samplesPerLevel,
+      initial_max_abs_error: fmtDelta(level0MaxDelta),
+      zoomed_max_abs_error: fmtDelta(bestDelta),
+      output_lengths: { base: outLenA, candidate: outLenB },
+      length_mismatch: outLenA !== null && outLenB !== null && outLenA !== outLenB,
+      amplification_ratio: (level0MaxDelta > 0 && Number.isFinite(level0MaxDelta) && Number.isFinite(bestDelta)) ? +(bestDelta / level0MaxDelta).toFixed(4) : null,
+      worst_case_input: bestCase,
+      zoom_history: history.map((h) => ({ ...h, max_abs_error: fmtDelta(h.max_abs_error) })),
+    };
+  } finally {
+    if (baseBuilt.g?.free) baseBuilt.g.free();
+    if (baseBuilt.plan?.free) baseBuilt.plan.free();
+    if (baseBuilt.reg?.free) baseBuilt.reg.free();
+    if (candBuilt.g?.free) candBuilt.g.free();
+    if (candBuilt.plan?.free) candBuilt.plan.free();
+    if (candBuilt.reg?.free) candBuilt.reg.free();
+  }
 }

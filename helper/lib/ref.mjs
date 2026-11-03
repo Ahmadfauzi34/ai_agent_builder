@@ -6,27 +6,33 @@
 // with the engine beyond f32 rounding is a signal, not a verdict —
 // investigate which side is wrong (each op below was probed against the
 // engine during development; see SUPPORTED).
-import { portBySlot } from './spec.mjs';
-
+//
+// Extended in v3.7 to cover 34 constructors across linear, activations (incl. mish, glu),
+// norms (featureNorm, rmsNorm, layerNorm), matmul, transpose, concat, pooling
+// (avgPool1d, avgPool2d, maxPool1d, maxPool2d), embedding, and shifts.
+//
 // Every op receives one context object:
 //   { xs: [values, ...], shapes: [[N,C,H,W], ...], args, weights }
 // and returns { values, shape? } (shape defaults to the first input's shape).
+import { transposeDims, numel } from './autodiff.mjs';
+
 function linearF64(x, w, inDim, outDim, bias) {
-  const y = new Array(outDim).fill(0);
-  for (let i = 0; i < outDim; i++) {
-    let acc = 0;
-    for (let j = 0; j < inDim; j++) acc += w[i + j * outDim] * x[j];
-    y[i] = acc;
-  }
-  if (bias) {
-    const b = w.slice(inDim * outDim, inDim * outDim + outDim);
-    for (let i = 0; i < outDim; i++) y[i] += b[i];
+  const batch = x.length / inDim;
+  const y = new Array(batch * outDim).fill(0);
+  const bVec = bias ? w.slice(inDim * outDim, inDim * outDim + outDim) : null;
+  for (let b = 0; b < batch; b++) {
+    for (let i = 0; i < outDim; i++) {
+      let acc = bVec ? bVec[i] : 0;
+      for (let j = 0; j < inDim; j++) acc += w[i + j * outDim] * x[b * inDim + j];
+      y[b * outDim + i] = acc;
+    }
   }
   return y;
 }
 
 // Softmax over one axis of a 4-D [N,C,H,W] tensor.
-function softmaxAxis(x, shape, dim) {
+// With logMode=true it returns log-softmax instead.
+function softmaxAxis(x, shape, dim, logMode = false) {
   const dims = [...shape];
   const strides = [dims[1] * dims[2] * dims[3], dims[2] * dims[3], dims[3], 1];
   const y = new Array(x.length);
@@ -42,26 +48,294 @@ function softmaxAxis(x, shape, dim) {
     for (let k = 0; k < dims[dim]; k++) { idx[dim] = k; const v = x[off(idx)]; if (v > m) m = v; }
     let s = 0;
     for (let k = 0; k < dims[dim]; k++) { idx[dim] = k; s += Math.exp(x[off(idx)] - m); }
-    for (let k = 0; k < dims[dim]; k++) { idx[dim] = k; const o = off(idx); y[o] = Math.exp(x[o] - m) / s; }
+    const logS = Math.log(s);
+    for (let k = 0; k < dims[dim]; k++) {
+      idx[dim] = k;
+      const o = off(idx);
+      y[o] = logMode ? (x[o] - m - logS) : (Math.exp(x[o] - m) / s);
+    }
   });
   return y;
 }
+
+function erfA(x) {
+  const ax = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * ax);
+  const poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  const e = 1 - poly * Math.exp(-ax * ax);
+  return x < 0 ? -e : e;
+}
+
+function shiftF64(values, shape, dir, s) {
+  const [d0, d1, d2, d3] = shape;
+  const out = new Array(values.length).fill(0);
+  for (let a = 0; a < d0; a++) for (let b = 0; b < d1; b++)
+    for (let c = 0; c < d2; c++) for (let d = 0; d < d3; d++) {
+      let sc = c, sd = d;
+      if (dir === 'shiftUp') sc = c + s;
+      else if (dir === 'shiftDown') sc = c - s;
+      else if (dir === 'shiftLeft') sd = d + s;
+      else sd = d - s;
+      if (sc >= 0 && sc < d2 && sd >= 0 && sd < d3)
+        out[((a * d1 + b) * d2 + c) * d3 + d] = values[((a * d1 + b) * d2 + sc) * d3 + sd];
+    }
+  return out;
+}
+
+const coords4 = (sh, f) => {
+  const c = [0, 0, 0, 0];
+  let r = f;
+  for (let d = 3; d >= 0; d--) { c[d] = r % sh[d]; r = Math.floor(r / sh[d]); }
+  return c;
+};
+const flatIdx4 = (sh, c) => ((c[0] * sh[1] + c[1]) * sh[2] + c[2]) * sh[3] + c[3];
 
 const OPS = {
   linear: ({ xs, shapes, args, weights }) => {
     const [x] = xs;
     const [, inDim, outDim, bias] = args;
-    if (x.length !== inDim) throw new Error(`ref linear: input len ${x.length} != in_dim ${inDim}`);
+    if (shapes[0][1] !== inDim) throw new Error(`ref linear: input dim ${shapes[0][1]} != in_dim ${inDim}`);
     if (!weights) throw new Error('ref linear: missing weights for layer');
     return { values: linearF64(x, weights, inDim, outDim, bias), shape: [shapes[0][0], outDim, shapes[0][2], shapes[0][3]] };
   },
   relu: ({ xs }) => ({ values: xs[0].map((v) => Math.max(0, v)) }),
+  leakyRelu: ({ xs, args }) => {
+    const alpha = args[1] ?? 0.01;
+    return { values: xs[0].map((v) => (v > 0 ? v : alpha * v)) };
+  },
+  prelu: ({ xs, args }) => {
+    const alpha = args[2] ?? 0.25;
+    return { values: xs[0].map((v) => (v > 0 ? v : alpha * v)) };
+  },
   sigmoid: ({ xs }) => ({ values: xs[0].map((v) => 1 / (1 + Math.exp(-v))) }),
   tanh: ({ xs }) => ({ values: xs[0].map((v) => Math.tanh(v)) }),
+  gelu: ({ xs }) => ({ values: xs[0].map((v) => 0.5 * v * (1 + erfA(v / Math.SQRT2))) }),
+  softplus: ({ xs, args }) => {
+    const beta = args[1] ?? 1.0;
+    return { values: xs[0].map((v) => Math.log(1 + Math.exp(beta * v)) / beta) };
+  },
+  hardSigmoid: ({ xs, args }) => {
+    const alpha = args[1], beta = args[2];
+    return { values: xs[0].map((v) => Math.min(1, Math.max(0, alpha * v + beta))) };
+  },
+  hardSwish: ({ xs }) => ({
+    values: xs[0].map((v) => v * Math.min(1, Math.max(0, v / 6 + 0.5))),
+  }),
+  mish: ({ xs }) => ({
+    values: xs[0].map((v) => {
+      const sp = v > 20 ? v : Math.log1p(Math.exp(v));
+      return v * Math.tanh(sp);
+    }),
+  }),
+  glu: ({ xs, shapes, args }) => {
+    const dim = args[1] ?? 1;
+    const inSh = shapes[0];
+    const outSh = [...inSh];
+    outSh[dim] = inSh[dim] / 2;
+    const half = outSh[dim];
+    const out = new Array(numel(outSh));
+    for (let f = 0; f < out.length; f++) {
+      const cA = coords4(outSh, f);
+      const cB = [...cA]; cB[dim] += half;
+      const a = xs[0][flatIdx4(inSh, cA)];
+      const b = xs[0][flatIdx4(inSh, cB)];
+      out[f] = a / (1 + Math.exp(-b));
+    }
+    return { values: out, shape: outSh };
+  },
   add: ({ xs }) => ({ values: xs[0].map((v, i) => v + xs[1][i]) }),
   sub: ({ xs }) => ({ values: xs[0].map((v, i) => v - xs[1][i]) }),
   mul: ({ xs }) => ({ values: xs[0].map((v, i) => v * xs[1][i]) }),
-  softmax: ({ xs, shapes, args }) => ({ values: softmaxAxis(xs[0], shapes[0], args[1] ?? 1) }),
+  div: ({ xs }) => ({ values: xs[0].map((v, i) => v / xs[1][i]) }),
+  sqrt: ({ xs }) => ({ values: xs[0].map((v) => Math.sqrt(v)) }),
+  softmax: ({ xs, shapes, args }) => ({ values: softmaxAxis(xs[0], shapes[0], args[1] ?? 1, false) }),
+  logSoftmax: ({ xs, shapes, args }) => ({ values: softmaxAxis(xs[0], shapes[0], args[1] ?? 1, true) }),
+  transpose: ({ xs, shapes, args }) => transposeDims(xs[0], shapes[0], args[1], args[2]),
+  matmul: ({ xs, shapes }) => {
+    const [A, B] = xs;
+    const [b0, b1, m, k] = shapes[0], n = shapes[1][3];
+    const out = new Array(b0 * b1 * m * n).fill(0);
+    for (let a = 0; a < b0; a++) for (let b = 0; b < b1; b++)
+      for (let i = 0; i < m; i++) for (let j = 0; j < n; j++) {
+        let s = 0;
+        for (let kk = 0; kk < k; kk++) {
+          s += A[(((a * b1 + b) * m + i) * k + kk)] * B[(((a * b1 + b) * k + kk) * n + j)];
+        }
+        out[(((a * b1 + b) * m + i) * n + j)] = s;
+      }
+    return { values: out, shape: [b0, b1, m, n] };
+  },
+  concat: ({ xs, shapes, args }) => {
+    const dim = args[1];
+    const outShape = [...shapes[0]];
+    outShape[dim] = shapes[0][dim] + shapes[1][dim];
+    const out = new Array(numel(outShape));
+    for (let f = 0; f < out.length; f++) {
+      const c = coords4(outShape, f);
+      if (c[dim] < shapes[0][dim]) {
+        out[f] = xs[0][flatIdx4(shapes[0], c)];
+      } else {
+        const c2 = [...c]; c2[dim] -= shapes[0][dim];
+        out[f] = xs[1][flatIdx4(shapes[1], c2)];
+      }
+    }
+    return { values: out, shape: outShape };
+  },
+  shiftUp: ({ xs, shapes, args }) => ({ values: shiftF64(xs[0], shapes[0], 'shiftUp', args[1]) }),
+  shiftDown: ({ xs, shapes, args }) => ({ values: shiftF64(xs[0], shapes[0], 'shiftDown', args[1]) }),
+  shiftLeft: ({ xs, shapes, args }) => ({ values: shiftF64(xs[0], shapes[0], 'shiftLeft', args[1]) }),
+  shiftRight: ({ xs, shapes, args }) => ({ values: shiftF64(xs[0], shapes[0], 'shiftRight', args[1]) }),
+  featureNorm: ({ xs, shapes, args }) => {
+    const eps = args[1] ?? 1e-12;
+    const x = xs[0], [N, C, H, W] = shapes[0];
+    const y = new Array(x.length);
+    for (let n = 0; n < N; n++) for (let h = 0; h < H; h++) for (let w = 0; w < W; w++) {
+      let sq = 0;
+      for (let c = 0; c < C; c++) sq += x[((n * C + c) * H + h) * W + w] ** 2;
+      const r = Math.sqrt(sq + eps);
+      for (let c = 0; c < C; c++) {
+        const idx = ((n * C + c) * H + h) * W + w;
+        y[idx] = x[idx] / r;
+      }
+    }
+    return { values: y };
+  },
+  rmsNorm: ({ xs, shapes, args, weights }) => {
+    const F = args[1], eps = args[2] ?? 1e-5;
+    const x = xs[0];
+    const gamma = weights ? weights.slice(0, F) : new Array(F).fill(1);
+    const y = new Array(x.length);
+    const outer = x.length / F;
+    for (let o = 0; o < outer; o++) {
+      const base = o * F;
+      let sq = 0;
+      for (let i = 0; i < F; i++) sq += x[base + i] * x[base + i];
+      const rms = Math.sqrt(sq / F + eps);
+      for (let i = 0; i < F; i++) y[base + i] = (x[base + i] / rms) * gamma[i];
+    }
+    return { values: y, shape: [...shapes[0]] };
+  },
+  layerNorm: ({ xs, shapes, args, weights }) => {
+    const F = args[1], eps = args[2] ?? 1e-5;
+    const x = xs[0];
+    const gamma = weights ? weights.slice(0, F) : new Array(F).fill(1);
+    const beta = weights && weights.length >= 2 * F ? weights.slice(F, 2 * F) : new Array(F).fill(0);
+    const y = new Array(x.length);
+    const outer = x.length / F;
+    for (let o = 0; o < outer; o++) {
+      const base = o * F;
+      let mu = 0;
+      for (let i = 0; i < F; i++) mu += x[base + i];
+      mu /= F;
+      let v = 0;
+      for (let i = 0; i < F; i++) v += (x[base + i] - mu) ** 2;
+      const sigma = Math.sqrt(v / F + eps);
+      for (let i = 0; i < F; i++) y[base + i] = ((x[base + i] - mu) / sigma) * gamma[i] + beta[i];
+    }
+    return { values: y, shape: [...shapes[0]] };
+  },
+  avgPool1d: ({ xs, shapes, args }) => {
+    const x = xs[0], [n, c, l, w] = shapes[0];
+    const [, k, s0, p0] = args;
+    const s = s0 ?? k, p = p0 ?? 0;
+    const ol = Math.floor((l + 2 * p - k) / s) + 1;
+    const out = new Array(n * c * ol * w).fill(0);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let ww = 0; ww < w; ww++)
+        for (let o = 0; o < ol; o++) {
+          let sum = 0;
+          const l0 = o * s - p;
+          for (let i = 0; i < k; i++) {
+            const ll = l0 + i;
+            if (ll >= 0 && ll < l) sum += x[(((b * c + cc) * l + ll) * w + ww)];
+          }
+          out[(((b * c + cc) * ol + o) * w + ww)] = sum / k;
+        }
+    return { values: out, shape: [n, c, ol, w] };
+  },
+  maxPool1d: ({ xs, shapes, args }) => {
+    const x = xs[0], [n, c, l, w] = shapes[0];
+    const [, k, s0, p0] = args;
+    const s = s0 ?? k, p = p0 ?? 0;
+    const ol = Math.floor((l + 2 * p - k) / s) + 1;
+    const out = new Array(n * c * ol * w).fill(0);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let ww = 0; ww < w; ww++)
+        for (let o = 0; o < ol; o++) {
+          let mx = -Infinity;
+          const l0 = o * s - p;
+          for (let i = 0; i < k; i++) {
+            const ll = l0 + i;
+            if (ll >= 0 && ll < l) {
+              const v = x[(((b * c + cc) * l + ll) * w + ww)];
+              if (v > mx) mx = v;
+            }
+          }
+          out[(((b * c + cc) * ol + o) * w + ww)] = mx;
+        }
+    return { values: out, shape: [n, c, ol, w] };
+  },
+  avgPool2d: ({ xs, shapes, args }) => {
+    const x = xs[0], [n, c, h, w] = shapes[0];
+    const [, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sH = sh0 ?? kh, sW = sw0 ?? kw, pH = ph0 ?? 0, pW = pw0 ?? 0;
+    const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
+    const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
+    const div = kh * kw;
+    const out = new Array(n * c * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+        let sum = 0;
+        const h0 = oh * sH - pH, w0 = ow * sW - pW;
+        for (let i = 0; i < kh; i++) for (let j = 0; j < kw; j++) {
+          const hh = h0 + i, ww = w0 + j;
+          if (hh >= 0 && hh < h && ww >= 0 && ww < w) {
+            sum += x[(((b * c + cc) * h + hh) * w + ww)];
+          }
+        }
+        out[(((b * c + cc) * oH + oh) * oW + ow)] = sum / div;
+      }
+    return { values: out, shape: [n, c, oH, oW] };
+  },
+  maxPool2d: ({ xs, shapes, args }) => {
+    const x = xs[0], [n, c, h, w] = shapes[0];
+    const [, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sH = sh0 ?? kh, sW = sw0 ?? kw, pH = ph0 ?? 0, pW = pw0 ?? 0;
+    const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
+    const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
+    const out = new Array(n * c * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+        let mx = -Infinity;
+        const h0 = oh * sH - pH, w0 = ow * sW - pW;
+        for (let i = 0; i < kh; i++) for (let j = 0; j < kw; j++) {
+          const hh = h0 + i, ww = w0 + j;
+          if (hh >= 0 && hh < h && ww >= 0 && ww < w) {
+            const v = x[(((b * c + cc) * h + hh) * w + ww)];
+            if (v > mx) mx = v;
+          }
+        }
+        out[(((b * c + cc) * oH + oh) * oW + ow)] = mx;
+      }
+    return { values: out, shape: [n, c, oH, oW] };
+  },
+  embedding: ({ xs, shapes, args, weights }) => {
+    const [x] = xs;
+    const [, vocabSize, dModel] = args;
+    if (!weights) throw new Error('ref embedding: missing weights for layer');
+    const [B, S] = shapes[0];
+    const out = new Array(B * S * dModel);
+    for (let i = 0; i < x.length; i++) {
+      const tokenIdx = Math.trunc(x[i]);
+      if (tokenIdx < 0 || tokenIdx >= vocabSize) {
+        throw new Error(`ref embedding: token index ${tokenIdx} out of bounds [0, ${vocabSize})`);
+      }
+      for (let d = 0; d < dModel; d++) {
+        out[i * dModel + d] = weights[tokenIdx * dModel + d];
+      }
+    }
+    return { values: out, shape: [B, S, dModel, 1] };
+  },
 };
 
 export const SUPPORTED = Object.keys(OPS);
@@ -89,11 +363,11 @@ export function runReference(spec, inputs) {
       if (!r) throw new Error(`ref: slot ${s} read before written`);
       return r;
     });
-    if (ins.length === 2 && ins[0].values.length !== ins[1].values.length)
+    if (ins.length === 2 && layerDef.constructor !== 'concat' && layerDef.constructor !== 'matmul' && ins[0].values.length !== ins[1].values.length)
       throw new Error(`ref: binary length mismatch ${ins[0].values.length} vs ${ins[1].values.length}`);
     const r = op({
-      xs: ins.map((r) => r.values),
-      shapes: ins.map((r) => r.shape),
+      xs: ins.map((x) => x.values),
+      shapes: ins.map((x) => x.shape),
       args: layerDef.args,
       weights: spec.weights?.[String(st.layer)],
     });

@@ -1,4 +1,4 @@
-// 3D geometry builders for burn-math (used by bin/geom_build.mjs).
+// 3D geometry builders for burn-math (used by bin/geom_build.mjs, geom_project.mjs, geom_batch.mjs).
 //
 // Canonical representation: homogeneous 4x4 matrices, ROW-MAJOR internally
 // (m[r*4+c]), because affine chains compose by plain matrix multiplication:
@@ -15,6 +15,12 @@
 //
 // Every builder is pure (no shared state) — each op's behavior is local and
 // independently testable, per the atomic-geometry principle.
+//
+// Extended in v3.7 with:
+// 1. Recursive matrix power combinator `{ "op": "repeat", "depth": N, "chain": [...] }` in `opToMat4`.
+// 2. Hierarchical Scene Graph / Kinematic Tree Compiler (`compileSceneTree`)
+//    computing world matrices recursively from root to leaves: M_world(u) = M_world(parent(u)) * M_local(u).
+// 3. Engine-Backed Inverse Kinematics Solver (`solveIK`) for multi-joint articulated 3D chains.
 
 export const deg2rad = (d) => (d * Math.PI) / 180;
 
@@ -148,6 +154,35 @@ export function composeChain(mats) {
   return mats.reduce((acc, m) => mat4Mul(m, acc), mat4Identity());
 }
 
+export function opToMat4(op) {
+  switch (op.op) {
+    case 'rotate_x': return rotX4(op.degrees ?? 0);
+    case 'rotate_y': return rotY4(op.degrees ?? 0);
+    case 'rotate_z': return rotZ4(op.degrees ?? 0);
+    case 'rotate_axis': return rotAxisAngle4(...op.axis, op.degrees ?? 0);
+    case 'euler': return euler4(op.roll ?? 0, op.pitch ?? 0, op.yaw ?? 0, op.order ?? 'ZYX');
+    case 'quaternion': return quatToMat4(op.w ?? 1, op.x ?? 0, op.y ?? 0, op.z ?? 0);
+    case 'translate': return translate4(...op.by);
+    case 'scale': return scale4(...op.by);
+    case 'matrix': {
+      if (!Array.isArray(op.m) || op.m.length !== 16) throw new Error('"matrix" op needs "m": 16 numbers (row-major)');
+      return op.m.slice();
+    }
+    case 'repeat': {
+      const depth = Number(op.depth ?? op.steps ?? op.count ?? 1);
+      if (!Number.isInteger(depth) || depth < 0 || depth > 1024) {
+        throw new Error(`"repeat" geom op needs integer depth in 0..1024, got ${JSON.stringify(op.depth ?? op.steps)}`);
+      }
+      const subChain = Array.isArray(op.chain) ? op.chain : (op.inner ? [op.inner] : []);
+      const stepM = composeChain(subChain.map(opToMat4));
+      let acc = mat4Identity();
+      for (let d = 0; d < depth; d++) acc = mat4Mul(stepM, acc);
+      return acc;
+    }
+    default: throw new Error(`unknown geom op '${op.op}'`);
+  }
+}
+
 // ---- normals (for lighting) ----
 //
 // Normals are direction vectors: they must NOT go through the projection
@@ -165,12 +200,11 @@ function mat3Inverse(m) {
   const A = e * i - f * h, B = f * g - d * i, C = d * h - e * g;
   const det = a * A + b * B + c * C;
   if (!(Math.abs(det) > 0)) throw new Error('mat3Inverse: singular matrix');
-  const inv = [
+  return [
     A / det, (c * h - b * i) / det, (b * f - c * e) / det,
     B / det, (a * i - c * g) / det, (c * d - a * f) / det,
     C / det, (b * g - a * h) / det, (a * e - b * d) / det,
   ];
-  return inv;
 }
 
 export function normalMat3(model4) {
@@ -279,4 +313,209 @@ export function perspective4(fovDeg, aspect, near, far) {
     0, 0, (far + near) / (near - far), (2 * far * near) / (near - far),
     0, 0, -1, 0,
   ];
+}
+
+export function compileSceneTree(treeSpec) {
+  const nodes = treeSpec?.nodes;
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    throw new Error('compileSceneTree: treeSpec.nodes must be a non-empty array');
+  }
+  const byId = new Map();
+  for (const n of nodes) {
+    if (!n?.id || byId.has(n.id)) throw new Error(`compileSceneTree: duplicate or missing node id '${n?.id}'`);
+    byId.set(n.id, n);
+  }
+
+  const localMats = new Map();
+  const worldMats = new Map();
+  const visiting = new Set();
+
+  const resolveWorld = (id) => {
+    if (worldMats.has(id)) return worldMats.get(id);
+    if (visiting.has(id)) {
+      throw new Error(`compileSceneTree: cycle detected in kinematic tree at node '${id}'`);
+    }
+    const n = byId.get(id);
+    if (!n) throw new Error(`compileSceneTree: unknown parent node '${id}'`);
+    visiting.add(id);
+    const localM = composeChain((n.chain ?? []).map(opToMat4));
+    localMats.set(id, localM);
+    const worldM = n.parent ? mat4Mul(resolveWorld(n.parent), localM) : localM;
+    visiting.delete(id);
+    worldMats.set(id, worldM);
+    return worldM;
+  };
+
+  for (const n of nodes) resolveWorld(n.id);
+
+  const layers = [];
+  const steps = [];
+  const weights = {};
+  const ports = [];
+  const inputs = {};
+  let nextRegId = 100;
+  let nextSlot = nodes.length < 2 ? 2 : nodes.length;
+
+  nodes.forEach((n, idx) => {
+    ports.push({ slot: idx, role: 'observation', shape: [1, 4, 1, 1], layout: 'feature_axis1_singleton' });
+    inputs[String(idx)] = homogenize(n.point ?? [0, 0, 0]);
+  });
+  if (nodes.length === 1) {
+    ports.push({ slot: 1, role: 'context', shape: [1, 4, 1, 1], layout: 'feature_axis1_singleton' });
+    inputs['1'] = [0, 0, 0, 0];
+  }
+
+  const outSlots = [];
+  nodes.forEach((n, idx) => {
+    const wMat = worldMats.get(n.id);
+    const linIdx = layers.length;
+    layers.push({ constructor: 'linear', args: [nextRegId++, 4, 4, false] });
+    weights[String(linIdx)] = mat4ToColumnMajor(wMat);
+    const outSlot = nextSlot++;
+    steps.push({ kind: 'unary', layer: linIdx, slots: [idx, outSlot] });
+    outSlots.push(outSlot);
+  });
+
+  let finalSlot = outSlots[0];
+  if (nodes.length === 1) {
+    const addIdx = layers.length;
+    layers.push({ constructor: 'add', args: [nextRegId++] });
+    const sOut = nextSlot++;
+    steps.push({ kind: 'binary', layer: addIdx, slots: [finalSlot, 1, sOut] });
+    finalSlot = sOut;
+  } else {
+    const concatIdx = layers.length;
+    layers.push({ constructor: 'concat', args: [nextRegId++, 1] });
+    for (let i = 1; i < outSlots.length; i++) {
+      const target = nextSlot++;
+      steps.push({ kind: 'binary', layer: concatIdx, slots: [finalSlot, outSlots[i], target] });
+      finalSlot = target;
+    }
+  }
+
+  const nodeSummary = nodes.map((n) => {
+    const wMat = worldMats.get(n.id);
+    const pt = n.point ?? [0, 0, 0];
+    return {
+      id: n.id,
+      parent: n.parent ?? null,
+      local_point: pt,
+      world_point: applyMat4(wMat, pt),
+      world_matrix_rowmajor: wMat,
+    };
+  });
+
+  return {
+    ok: true,
+    nodes: nodeSummary,
+    spec: {
+      numSlots: nextSlot,
+      layers,
+      steps,
+      outputSlot: finalSlot,
+      ports,
+      weights,
+      inputs,
+    },
+  };
+}
+
+export function solveIK(ikSpec) {
+  const joints = ikSpec?.joints;
+  const target = ikSpec?.target;
+  if (!Array.isArray(joints) || joints.length === 0) throw new Error('solveIK: joints must be a non-empty array');
+  if (!Array.isArray(target) || target.length !== 3) throw new Error('solveIK: target must be [tx, ty, tz]');
+  const tol = ikSpec.tol ?? 1e-3;
+  const maxIters = ikSpec.max_iters ?? 150;
+
+  const angles = joints.map((j) => Number(j.initial_deg ?? j.angle_deg ?? 0));
+
+  const forwardEndEffector = (angs) => {
+    let M = mat4Identity();
+    for (let i = 0; i < joints.length; i++) {
+      const j = joints[i];
+      const deg = angs[i];
+      const ax = (j.axis ?? 'z').toLowerCase();
+      const rot = ax === 'x' ? rotX4(deg) : (ax === 'y' ? rotY4(deg) : rotZ4(deg));
+      const tr = translate4(j.length ?? j.tx ?? 1.0, j.ty ?? 0, j.tz ?? 0);
+      M = mat4Mul(M, mat4Mul(rot, tr));
+    }
+    return { pos: applyMat4(M, [0, 0, 0]), worldMat: M };
+  };
+
+  const distToTarget = (pos) => Math.hypot(pos[0] - target[0], pos[1] - target[1], pos[2] - target[2]);
+
+  let { pos: curPos } = forwardEndEffector(angles);
+  let curErr = distToTarget(curPos);
+  const startErr = curErr;
+  let itersRun = 0;
+
+  for (let it = 0; it < maxIters && curErr > tol; it++) {
+    itersRun = it + 1;
+    const eps = 1e-3;
+    const fVal = curErr * curErr;
+    const grad = new Array(joints.length).fill(0);
+    let gradNormSq = 0;
+    for (let j = 0; j < joints.length; j++) {
+      const aPlus = [...angles]; aPlus[j] += eps;
+      const aMinus = [...angles]; aMinus[j] -= eps;
+      const ePlus = distToTarget(forwardEndEffector(aPlus).pos) ** 2;
+      const eMinus = distToTarget(forwardEndEffector(aMinus).pos) ** 2;
+      const g = (ePlus - eMinus) / (2 * eps);
+      grad[j] = g;
+      gradNormSq += g * g;
+    }
+    if (gradNormSq < 1e-20) break;
+    const polyakScale = fVal / gradNormSq;
+    let alpha = 1.0;
+    let improved = false;
+    for (let h = 0; h < 16; h++) {
+      const stepScale = alpha * polyakScale;
+      const cand = angles.map((a, j) => {
+        let next = a - stepScale * grad[j];
+        if (joints[j].min_deg !== undefined) next = Math.max(joints[j].min_deg, next);
+        if (joints[j].max_deg !== undefined) next = Math.min(joints[j].max_deg, next);
+        return next;
+      });
+      const { pos: candPos } = forwardEndEffector(cand);
+      const candErr = distToTarget(candPos);
+      if (candErr < curErr) {
+        for (let j = 0; j < joints.length; j++) angles[j] = cand[j];
+        curPos = candPos;
+        curErr = candErr;
+        improved = true;
+        break;
+      }
+      alpha *= 0.5;
+    }
+    if (!improved) break;
+  }
+
+  const treeNodes = joints.map((j, idx) => {
+    const ax = (j.axis ?? 'z').toLowerCase();
+    return {
+      id: j.id ?? `joint_${idx}`,
+      parent: idx === 0 ? null : (joints[idx - 1].id ?? `joint_${idx - 1}`),
+      chain: [
+        { op: 'translate', by: [j.length ?? j.tx ?? 1.0, j.ty ?? 0, j.tz ?? 0] },
+        { op: `rotate_${ax}`, degrees: angles[idx] },
+      ],
+      point: [0, 0, 0],
+    };
+  });
+  const compiledTree = compileSceneTree({ nodes: treeNodes });
+
+  return {
+    ok: curErr <= tol,
+    converged: curErr <= tol,
+    iterations: itersRun,
+    start_error: startErr,
+    final_error: curErr,
+    final_distance: curErr,
+    tol,
+    target,
+    end_effector: curPos,
+    solved_angles_deg: angles,
+    scene_tree: compiledTree,
+  };
 }
