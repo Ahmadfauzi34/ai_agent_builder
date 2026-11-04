@@ -6,6 +6,12 @@ This page is a map, not a manual: find your question, follow the link.
 
 ## Recursive & Agent-Harness Co-Processor (Start Here for Multi-Step Work)
 
+- Discover all 47 tools grouped by 6 intent domains (`compose`, `verify`, `differentiate`, `optimize`, `rollout`, `state`) ->
+  `node bin/harness.mjs capabilities [domain]`
+- Run a spec and get a compact (< 2 KB) Semantic Digest + Artifact URI (`burn://sha256:...`) without flooding context ->
+  `node bin/harness.mjs digest <spec.json> [--workspace .burn-harness]`
+- Execute a multi-stage declarative workflow in ONE warm WASM session ->
+  `node bin/harness.mjs run-workflow <workflow.json | ->`
 - Compile or prove a hierarchical / recursive `spec.v2.json` (nested subgraphs, `repeat` with `tie_weights`, `residual`, `parallel_concat`, symbolic slot names, `--auto-repair`, and `--compact-slots` liveness slot recycling) ->
   `node bin/compose.mjs compile <spec-v2.json> [out.json] [--auto-repair] [--compact-slots] [--workspace]`
   `node bin/compose.mjs prove <spec-v2.json> [ref.json] [--auto-repair] [--compact-slots]`
@@ -25,6 +31,9 @@ This page is a map, not a manual: find your question, follow the link.
   (or `node bin/es_optimize.mjs <spec.json> <targets.json> [gens] [--multi-layer]`)
 - Solve for single-layer or joint multi-layer weights with closed-loop reflective backtracking gradient descent + Hessian preconditioning + trajectory verification ->
   `node bin/recurse.mjs solve-gd <spec.json> [targets.json] [--steps 20] [--lr 0.1] [--layer 0|all] [--multi-layer] [--precondition] [--out out.json]`
+- Export isolated branch packets for parallel subagents and verify/merge their results ->
+  `node bin/harness.mjs branch-export <spec.json> [--workspace .burn-harness]`
+  `node bin/harness.mjs branch-merge <baseline.json> <cand1.json> [cand2.json ...]`
 
 ## Do something (Core Primitives)
 
@@ -85,7 +94,7 @@ This page is a map, not a manual: find your question, follow the link.
   yourself opening a file there, stop and use `find-op` or `surface`
   instead. Exception (see `AGENT.md`): a contract file under
   `engine-audit/docs/` that a `reference/` page names explicitly.
-- `lib/` — implementation of the tools (26 modules).
+- `lib/` — implementation of the tools (27 modules).
   You run the tools; you do not need to read their code to use
   the pack.
 - Pack generation — the pack is built by the repo's

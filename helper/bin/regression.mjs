@@ -845,7 +845,7 @@ test('kernel: Lane E elementwise kernels through the engine, traps pinned', () =
 test('CLI completeness: all interactive bin/*.mjs tools handle --help without ENOENT', () => {
   const skip = new Set(['autodiff_prove.mjs', 'engine_hardening_test.mjs', 'regression.mjs', 'regression_recursive.mjs']);
   const files = fs.readdirSync( path.join(ROOT, 'bin') ).filter((f) => f.endsWith('.mjs') && !skip.has(f));
-  assert(files.length === 42, `expected 42 interactive CLIs, got ${files.length}`);
+  assert(files.length === 43, `expected 43 interactive CLIs, got ${files.length}`);
   for (const f of files) {
     const r = runTool([path.join('bin', f), 'examples/linear-relu.json', '--help']);
     assert(r.code === 2, `${f} --help: expected exit 2, got ${r.code}`);
