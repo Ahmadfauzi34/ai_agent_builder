@@ -9,8 +9,7 @@
 //   2. profiled time/memory delta for both (Fase A memory oracle).
 // Verdict is numbers, not feelings.
 //
-// Usage: node opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations]
-// Prints a JSON envelope on stdout; exit 0 when equivalent, 2 otherwise.
+// Usage: node opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations] [--tol <tol>] [--abs-tol <tol>] [--rel-tol <tol>]
 import fs from 'node:fs';
 import { loadEngineWithOracle, profileSpec } from '../lib/opt.mjs';
 import { buildGraph, makeBundle } from '../lib/engine.mjs';
@@ -18,12 +17,35 @@ import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 import { printJsonAndExit } from '../lib/runner.mjs';
 
-const [baseFile, candFile, casesFile, iterArg] = process.argv.slice(2);
-if (!baseFile || !candFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
-  console.error('usage: node opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations]');
+const rawArgs = process.argv.slice(2);
+if (rawArgs.length < 2 || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node opt_compare.mjs <baseline.json> <candidate.json> [cases.json] [iterations] [--tol <tol>]');
   process.exit(2);
 }
-const iterations = iterArg !== undefined ? Number(iterArg) : 11;
+
+let absTol = 1e-6;
+let relTol = 1e-6;
+let flagIters = null;
+const posArgs = [];
+for (let i = 0; i < rawArgs.length; i++) {
+  const a = rawArgs[i];
+  if (a === '--tol' && i + 1 < rawArgs.length) {
+    absTol = relTol = Number(rawArgs[++i]);
+  } else if (a === '--abs-tol' && i + 1 < rawArgs.length) {
+    absTol = Number(rawArgs[++i]);
+  } else if (a === '--rel-tol' && i + 1 < rawArgs.length) {
+    relTol = Number(rawArgs[++i]);
+  } else if ((a === '--iters' || a === '--iterations') && i + 1 < rawArgs.length) {
+    flagIters = Number(rawArgs[++i]);
+  } else {
+    posArgs.push(a);
+  }
+}
+
+const [baseFile, candFile, pos3, pos4] = posArgs;
+const casesFile = (pos3 && pos3.endsWith('.json')) ? pos3 : null;
+const iterArg = casesFile ? pos4 : pos3;
+const iterations = flagIters !== null ? flagIters : (iterArg !== undefined ? Number(iterArg) : 11);
 
 try {
   const baseSpec = loadSpec(baseFile);
@@ -48,7 +70,7 @@ try {
           dataflow_issues: chk.dataflow.issues,
           remediation_hint: 'fix the listed steps, then re-run; shapecheck.mjs shows the same report standalone',
         },
-    }, 2);
+      }, 2);
     }
   }
 
@@ -57,14 +79,31 @@ try {
   // 1. Numerical equivalence (engine-provided).
   const base = buildGraph(rt, baseSpec);
   const cand = buildGraph(rt, candSpec);
-  const basePorts = portBySlot(baseSpec);
-  const candPorts = portBySlot(candSpec);
-  const vc = new rt.MultiInputVerificationCases(base.g, cand.g);
-  for (const c of cases) {
-    vc.addCase(makeBundle(rt, base.plan, c, basePorts), makeBundle(rt, cand.plan, c, candPorts));
+  let ver;
+  try {
+    const basePorts = portBySlot(baseSpec);
+    const candPorts = portBySlot(candSpec);
+    const vc = new rt.MultiInputVerificationCases(base.g, cand.g);
+    try {
+      for (const c of cases) {
+        const bBase = makeBundle(rt, base.plan, c, basePorts);
+        const bCand = makeBundle(rt, cand.plan, c, candPorts);
+        vc.addCase(bBase, bCand);
+        if (bBase?.free) bBase.free();
+        if (bCand?.free) bCand.free();
+      }
+      ver = JSON.parse(vc.verify(base.reg, base.g, cand.reg, cand.g, absTol, relTol));
+    } finally {
+      if (vc?.free) vc.free();
+    }
+  } finally {
+    if (base.g?.free) base.g.free();
+    if (base.plan?.free) base.plan.free();
+    if (base.reg?.free) base.reg.free();
+    if (cand.g?.free) cand.g.free();
+    if (cand.plan?.free) cand.plan.free();
+    if (cand.reg?.free) cand.reg.free();
   }
-  const ver = JSON.parse(vc.verify(base.reg, base.g, cand.reg, cand.g, 1e-6, 1e-6));
-  if (vc.free) vc.free();
 
   // 2. Profile both.
   const baseProfile = profileSpec(rt, baseSpec, { iterations });
@@ -82,6 +121,8 @@ try {
   printJsonAndExit({
     ok: true,
     equivalent: ver.equivalent,
+    abs_tol: absTol,
+    rel_tol: relTol,
     max_abs_error: ver.max_abs_error,
     max_rel_error: ver.max_rel_error,
     cases: cases.length,

@@ -16,7 +16,7 @@
 // cases within tol, 2 otherwise.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit } from '../lib/runner.mjs';
 import { runReference, SUPPORTED } from '../lib/ref.mjs';
 import fs from 'node:fs';
 
@@ -41,11 +41,14 @@ if (!(tol > 0)) {
 
 function engineRun(rt, built, ports, inputs) {
   const bundle = makeBundle(rt, built.plan, inputs, ports);
-  const out = built.g.run(built.reg, bundle);
-  const vals = Array.from(out.to_array());
-  out.free();
-  if (bundle.free) bundle.free();
-  return vals;
+  try {
+    const out = built.g.run(built.reg, bundle);
+    const vals = Array.from(out.to_array());
+    out.free();
+    return vals;
+  } finally {
+    if (bundle?.free) bundle.free();
+  }
 }
 
 try {
@@ -64,30 +67,35 @@ try {
 
   const perCase = [];
   let maxAbs = 0, maxRel = 0, allPass = true;
-  cases.forEach((c, ci) => {
-    const eng = engineRun(rt, built, ports, c);
-    let ref;
-    if (extRef) {
-      ref = extRef.values[ci];
-      if (!Array.isArray(ref) || ref.length !== eng.length)
-        throw new Error(`ref case ${ci}: length ${ref?.length} != engine output ${eng.length}`);
-    } else {
-      ref = runReference(spec, c);
-    }
-    let cAbs = 0, cRel = 0;
-    for (let i = 0; i < eng.length; i++) {
-      const a = Math.abs(eng[i] - ref[i]);
-      const r = a / Math.max(Math.abs(ref[i]), 1e-12);
-      if (a > cAbs) cAbs = a;
-      if (r > cRel) cRel = r;
-    }
-    const passed = cAbs <= tol || cRel <= tol;
-    if (!passed) allPass = false;
-    if (cAbs > maxAbs) maxAbs = cAbs;
-    if (cRel > maxRel) maxRel = cRel;
-    perCase.push({ index: ci, max_abs_error: cAbs, max_rel_error: cRel, passed });
-  });
-  if (built.g.free) built.g.free();
+  try {
+    cases.forEach((c, ci) => {
+      const eng = engineRun(rt, built, ports, c);
+      let ref;
+      if (extRef) {
+        ref = extRef.values[ci];
+        if (!Array.isArray(ref) || ref.length !== eng.length)
+          throw new Error(`ref case ${ci}: length ${ref?.length} != engine output ${eng.length}`);
+      } else {
+        ref = runReference(spec, c);
+      }
+      let cAbs = 0, cRel = 0;
+      for (let i = 0; i < eng.length; i++) {
+        const a = Math.abs(eng[i] - ref[i]);
+        const r = a / Math.max(Math.abs(ref[i]), 1e-12);
+        if (a > cAbs) cAbs = a;
+        if (r > cRel) cRel = r;
+      }
+      const passed = cAbs <= tol || cRel <= tol;
+      if (!passed) allPass = false;
+      if (cAbs > maxAbs) maxAbs = cAbs;
+      if (cRel > maxRel) maxRel = cRel;
+      perCase.push({ index: ci, max_abs_error: cAbs, max_rel_error: cRel, passed });
+    });
+  } finally {
+    if (built.g?.free) built.g.free();
+    if (built.plan?.free) built.plan.free();
+    if (built.reg?.free) built.reg.free();
+  }
 
   printJsonAndExit({
     ok: true,

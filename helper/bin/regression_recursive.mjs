@@ -497,7 +497,152 @@ test('S2.4: Non-linear symbolic differentiation (sigmoid & tanh order-1 VJP and 
   }
 });
 
+test('S2.5: Extended DAG quant_budget & diff_ref match WASM within f32 ULP', async () => {
+  const dagSpec = {
+    numSlots: 7,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, true] },
+      { constructor: 'gelu', args: [1] },
+      { constructor: 'leakyRelu', args: [2, 0.1] },
+      { constructor: 'sub', args: [3] },
+      { constructor: 'hardSwish', args: [4] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [1, 4] },
+      { kind: 'binary', layer: 3, slots: [3, 4, 5] },
+      { kind: 'unary', layer: 4, slots: [5, 6] },
+    ],
+    outputSlot: 6,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: {
+      '0': [1.0, -0.5, 0.25, 1.5, 0.1, -0.2],
+    },
+    inputs: { '0': [0.8, -1.2], '1': [0.4, -0.5] },
+  };
+  const df = writeTmpJson('dag_quant_ref.json', dagSpec);
+  const casesF = writeTmpJson('dag_cases.json', [dagSpec.inputs]);
+  const qb = runCli(['bin/quant_budget.mjs', df, casesF, '--tol', '0.1']);
+  assert(qb.code === 0 && qb.json?.ok === true && qb.json?.mode === 'bound' && Array.isArray(qb.json?.layers), `quant_budget on DAG failed: ${qb.out}`);
+  const dr = runCli(['bin/diff_ref.mjs', df]);
+  assert(dr.code === 0 && dr.json?.ok === true && dr.json?.verdict?.startsWith('PASS'), `diff_ref on gelu/leakyRelu/sub/hardSwish failed: ${dr.out}`);
+});
+
+test('S2.6: Rectangular m x n weight_lab & recursive weight expression tree evaluation', async () => {
+  const st = runCli(['bin/weight_lab.mjs', '--selftest']);
+  assert(st.code === 0 && st.json?.ok === true, `weight_lab --selftest failed: ${st.out}`);
+  const exprDoc = {
+    repertoire: {
+      up: { name: 'up', kind: 'map', W: [[0.5, 0], [0, 0.5], [0.25, -0.25]], b: [1, 0, -1], requires: {} },
+      down: { name: 'down', kind: 'map', W: [[1, 0, 1], [0, 1, -1]], b: [0, 2], requires: {} },
+    },
+    expr: {
+      op: 'repeat',
+      steps: 2,
+      expr: {
+        op: 'compose',
+        first: { op: 'ref', name: 'up' },
+        second: { op: 'ref', name: 'down' },
+      },
+    },
+  };
+  const ef = writeTmpJson('weight_expr.json', exprDoc);
+  const outW = path.join(TMP, 'composed_weight.json');
+  const ev = runCli(['bin/weight_lab.mjs', 'eval', ef, '--out', outW]);
+  assert(ev.code === 0 && ev.json?.ok === true && ev.json?.verdict === 'COMPOSED', `weight_lab eval failed: ${ev.out}`);
+  const runW = runCli(['bin/weight_lab.mjs', 'run', outW, '--in', '4,8']);
+  assert(runW.code === 0 && runW.json?.ok === true && runW.json?.max_abs_diff < 1e-5, `weight_lab run on composed expr failed: ${runW.out}`);
+});
+
+test('S2.7: Hierarchical 3D scene tree (--scene-tree) & inverse kinematics solver (--solve-ik)', async () => {
+  const treeDoc = {
+    nodes: [
+      { id: 'shoulder', parent: null, chain: [{ op: 'translate', by: [1, 0, 0] }, { op: 'rotate_z', degrees: 90 }], point: [0, 0, 0] },
+      { id: 'elbow', parent: 'shoulder', chain: [{ op: 'translate', by: [1, 0, 0] }], point: [0, 0, 0] },
+    ],
+  };
+  const tf = writeTmpJson('scene_tree.json', treeDoc);
+  const stRes = runCli(['bin/geom_build.mjs', '--scene-tree', tf]);
+  assert(stRes.code === 0 && stRes.json?.ok === true && stRes.json?.nodes?.length === 2, `scene-tree failed: ${stRes.out}`);
+  assert(Math.abs(stRes.json.nodes[1].world_point[1] - 2.0) < 1e-5, `unexpected elbow world_point: ${JSON.stringify(stRes.json.nodes[1].world_point)}`);
+
+  const ikDoc = {
+    joints: [
+      { id: 'j1', axis: 'z', length: 1.0, initial_deg: 10 },
+      { id: 'j2', axis: 'z', length: 1.0, initial_deg: 20 },
+    ],
+    target: [1.0, 1.0, 0],
+    max_iters: 150,
+    tol: 1e-3,
+  };
+  const ikf = writeTmpJson('ik_spec.json', ikDoc);
+  const ikRes = runCli(['bin/geom_build.mjs', '--solve-ik', ikf]);
+  assert(ikRes.code === 0 && ikRes.json?.ok === true && ikRes.json?.converged === true, `solve-ik failed: ${ikRes.out}`);
+  assert(ikRes.json.final_error <= 1e-3, `IK did not reach target within tol: final_error=${ikRes.json.final_error}`);
+});
+
+test('S2.8: Layout-aware cost_model on layerNorm & recursive zoom fuzzing (--zoom-vs)', async () => {
+  const lnSpec = {
+    numSlots: 3,
+    layers: [
+      { constructor: 'layerNorm', args: [0, 4, 1e-5] },
+      { constructor: 'add', args: [1] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 2] },
+    ],
+    outputSlot: 2,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, 1, 4], layout: 'feature_last' },
+      { slot: 1, role: 'observation', shape: [1, 1, 1, 4], layout: 'feature_last' },
+    ],
+    weights: {
+      '0': [1, 1, 1, 1, 0, 0, 0, 0],
+    },
+    inputs: { '0': [1, 2, 3, 4], '1': [0, 0, 0, 0] },
+  };
+  const lnf = writeTmpJson('ln_cost.json', lnSpec);
+  const cm = runCli(['bin/cost_model.mjs', lnf, '--iters', '10']);
+  assert(cm.code === 0 && cm.json?.ok === true && cm.json?.per_op?.some((op) => op.layer === 'layerNorm') && cm.json?.warnings?.length === 0, `layout-aware cost_model failed: ${cm.out}`);
+
+  const zoom = runCli(['bin/fuzz_cases.mjs', 'examples/linear-relu.json', '--zoom-vs', 'examples/linear-relu-mutated.json', '--zoom-depth', '3', '--count', '6']);
+  assert(zoom.code === 0 && zoom.json?.ok === true && zoom.json?.zoom_depth === 3, `zoom fuzzing failed: ${zoom.out}`);
+  assert(zoom.json.zoomed_max_abs_error >= zoom.json.initial_max_abs_error, `zoom fuzzing did not monotonically maintain/increase worst-case diff: ${zoom.out}`);
+});
+
 // --- 6. STAGE 3: EXISTING-FEATURE RECURSIVE HARMONIZATION AUDIT (v3.6) ---
+
+test('S3.1: Universal loadSpec accepts Recursive Spec v2 & burn://sha256:... artifacts across validate, run, verify, diff_ref, soak, and trace_hash', async () => {
+  const valV2 = runCli(['bin/validate.mjs', 'examples/recursive-gated-residual.v2.json']);
+  assert(valV2.code === 0 && valV2.json?.valid === true, `validate on v2 failed: ${valV2.out}`);
+
+  const runV2 = runCli(['bin/run.mjs', '--direct', 'examples/recursive-gated-residual.v2.json']);
+  assert(runV2.code === 0 && JSON.stringify(runV2.json?.outputs?.values) === '[1.5,3]', `run on v2 failed: ${runV2.out}`);
+
+  const drV2 = runCli(['bin/diff_ref.mjs', 'examples/recursive-gated-residual.v2.json']);
+  assert(drV2.code === 0 && drV2.json?.ok === true && drV2.json?.max_abs_error === 0, `diff_ref on v2 failed: ${drV2.out}`);
+
+  const soakV2 = runCli(['bin/soak.mjs', 'examples/recursive-gated-residual.v2.json', '5']);
+  assert(soakV2.code === 0 && soakV2.json?.identical === true, `soak on v2 failed: ${soakV2.out}`);
+
+  const thV2 = runCli(['bin/trace_hash.mjs', 'examples/recursive-gated-residual.v2.json']);
+  assert(thV2.code === 0 && thV2.json?.steps?.length === 4, `trace_hash on v2 failed: ${thV2.out}`);
+
+  const wsDir = path.join(TMP, 'ws_universal_art');
+  const dig = runCli(['bin/harness.mjs', 'digest', 'examples/linear-relu.json', '--workspace', wsDir]);
+  const uri = dig.json.digest.artifact_ref;
+  const specWithArt = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  specWithArt.workspace = wsDir;
+  specWithArt.inputs['0'] = uri;
+  const artSpecFile = writeTmpJson('universal_art_spec.json', specWithArt);
+  const runArt = runCli(['bin/run.mjs', '--direct', artSpecFile]);
+  assert(runArt.code === 0 && JSON.stringify(runArt.json?.outputs?.values) === '[4.875,33.75]', `run.mjs on burn://sha256:... artifact failed: ${runArt.out}`);
+});
 
 test('S3.2: Weight-tied recursive BPTT & slot-compacted (--compact-slots) autodiff verify-fd and solve-gd match exact finite differences', async () => {
   const fdV2 = runCli(['bin/autodiff.mjs', 'verify-fd', 'examples/recursive-gated-residual.v2.json']);
@@ -654,7 +799,61 @@ test('S3.7: quant_budget bound mode supports gated recurrent mul & norm DAGs', a
   assert(qb.code === 0 && qb.json?.ok === true && qb.json?.layers?.length === 2, `quant_budget on gated mul spec failed: ${qb.out}`);
 });
 
+test('S3.8: Sequential register chaining ($prev, $<idx>) in arith.mjs, int.mjs, and kernel.mjs --batch', async () => {
+  const arithBatch = writeTmpJson('arith_chain.json', {
+    ops: [
+      { op: 'add', a: [1, 2], b: [3, 4] },
+      { op: 'mul', a: '$prev', b: [2, 0.5] },
+      { op: 'add', a: '$0', b: '$prev' },
+    ],
+  });
+  const abRes = runCli(['bin/arith.mjs', '--batch', arithBatch]);
+  assert(abRes.code === 0 && JSON.stringify(abRes.json?.results?.[2]?.values) === '[12,9]', `arith --batch chaining failed: ${abRes.out}`);
+
+  const intBatch = writeTmpJson('int_chain.json', {
+    ops: [
+      { op: 'add', a: ['10000000000', '1'], b: ['20000000000', '1'] },
+      { op: 'add', a: '$prev', b: ['5000000000', '3'] },
+      { op: 'add', a: '$0', b: '$1' },
+    ],
+  });
+  const ibRes = runCli(['bin/int.mjs', '--batch', intBatch]);
+  assert(ibRes.code === 0 && JSON.stringify(ibRes.json?.results?.[2]?.values) === '["65000000000","7"]', `int --batch chaining failed: ${ibRes.out}`);
+
+  const kernelBatch = writeTmpJson('kernel_chain.json', {
+    ops: [
+      { op: 'hypot', a: [3, 5], b: [4, 12] },
+      { op: 'fma', a: '$prev', b: [2, 2], c: [0.5, 1.5] },
+      { op: 'round', a: '$prev' },
+    ],
+  });
+  const kbRes = runCli(['bin/kernel.mjs', '--batch', kernelBatch]);
+  assert(kbRes.code === 0 && JSON.stringify(kbRes.json?.results?.[2]?.values) === '[10,28]', `kernel --batch chaining failed: ${kbRes.out}`);
+});
+
 // --- 7. STAGE 4: SECOND-PASS DEEP OBSERVATION AUDIT (v3.7) ---
+
+test('S4.1: CheckpointBranchSet multi-branch competition in graph_mutate.mjs (fork -> stageBranch -> stateDiff -> verifyBranch -> commitBranchByReceipt)', async () => {
+  const mutMulti = writeTmpJson('multi_branch_mut.json', {
+    commit: true,
+    branches: [
+      {
+        branch_id: 'bad_weight',
+        edits: [{ op: 'setWeights', layer_index: 0, values: [9, 9, 9, 9] }],
+      },
+      {
+        branch_id: 'good_relu_idemp',
+        edits: [{ op: 'insertStep', index: 2, layer: { constructor: 'relu', args: [77] }, slots: [3, 3, 3] }],
+      },
+    ],
+  });
+  const outMut = path.join(TMP, 'mutated_winner.json');
+  const gm = runCli(['bin/graph_mutate.mjs', 'examples/linear-relu.json', mutMulti, '--out', outMut]);
+  assert(gm.code === 0 && gm.json?.ok === true && gm.json?.committed === true, `multi-branch graph_mutate failed: ${gm.out}`);
+  assert(gm.json.mode === 'branch_set' && gm.json.promoted_branch === 'good_relu_idemp', `expected good_relu_idemp promoted, got ${gm.json.promoted_branch}`);
+  assert(gm.json.branches[0].equivalent === false && gm.json.branches[0].state_diff.changed_byte_count > 0, `expected bad_weight state_diff changed_byte_count>0: ${JSON.stringify(gm.json.branches[0])}`);
+  assert(gm.json.branches[1].equivalent === true && JSON.stringify(gm.json.outputs.values) === '[4.5,10.5]', `unexpected promoted output: ${JSON.stringify(gm.json.outputs)}`);
+});
 
 test('S4.2: Symbolic in-graph 1st-order VJP and 2nd-order HVP for div and sqrt match analytic calculus', async () => {
   const divSqrtSpec = {
@@ -682,6 +881,67 @@ test('S4.2: Symbolic in-graph 1st-order VJP and 2nd-order HVP for div and sqrt m
   assert(g1.code === 0 && g2.code === 0, `div/sqrt grad-spec failed: ${g1.out} / ${g2.out}`);
   assert(Math.abs(g1.json.grad_values[0] - 0.75) < 1e-5 && Math.abs(g1.json.grad_values[1] - 0.5) < 1e-5, `div/sqrt order-1 mismatch: ${JSON.stringify(g1.json.grad_values)}`);
   assert(Math.abs(g2.json.grad_values[0] - (-0.03125)) < 1e-5 && Math.abs(g2.json.grad_values[1] - (-1 / 108)) < 1e-5, `div/sqrt order-2 HVP mismatch: ${JSON.stringify(g2.json.grad_values)}`);
+});
+
+test('S4.3: 34-constructor diff_ref f64 oracle matches WASM on mish, glu, rmsNorm, layerNorm, maxPool1d, avgPool1d, and embedding', async () => {
+  const normGluSpec = {
+    numSlots: 6,
+    layers: [
+      { constructor: 'mish', args: [0] },
+      { constructor: 'glu', args: [1, 3] },
+      { constructor: 'rmsNorm', args: [2, 2, 1e-5] },
+      { constructor: 'layerNorm', args: [3, 2, 1e-5] },
+      { constructor: 'add', args: [4] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'binary', layer: 4, slots: [5, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, 1, 4], layout: 'any_rank4' },
+      { slot: 1, role: 'observation', shape: [1, 1, 1, 2], layout: 'feature_last' },
+    ],
+    weights: {
+      '2': [1.2, 0.8],
+      '3': [1.0, 0.5, 0.1, -0.1],
+    },
+    inputs: { '0': [0.5, -1.0, 1.5, 0.2], '1': [0.1, 0.2] },
+  };
+  const ngf = writeTmpJson('norm_glu_ref.json', normGluSpec);
+  const dr1 = runCli(['bin/diff_ref.mjs', ngf]);
+  assert(dr1.code === 0 && dr1.json?.ok === true && dr1.json?.verdict?.startsWith('PASS'), `diff_ref on mish/glu/rmsNorm/layerNorm failed: ${dr1.out}`);
+
+  const embPoolSpec = {
+    numSlots: 5,
+    layers: [
+      { constructor: 'embedding', args: [0, 4, 3] },
+      { constructor: 'maxPool1d', args: [1, 2, 1, 0] },
+      { constructor: 'avgPool1d', args: [2, 2, 1, 0] },
+      { constructor: 'add', args: [3] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 4] },
+    ],
+    outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'context', shape: [1, 2, 1, 1], layout: 'any_rank4' },
+    ],
+    weights: {
+      '0': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    },
+    inputs: { '0': [0, 3], '1': [0, 0] },
+  };
+  const epf = writeTmpJson('emb_pool_ref.json', embPoolSpec);
+  const dr2 = runCli(['bin/diff_ref.mjs', epf]);
+  assert(dr2.code === 0 && dr2.json?.ok === true && dr2.json?.verdict?.startsWith('PASS'), `diff_ref on embedding/maxPool1d/avgPool1d failed: ${dr2.out}`);
 });
 
 test('S4.4: Temporal rollout unroller (rollout.mjs unroll --steps 3 --compact-slots) matches rollout scan bit-identically and supports BPTT autodiff', async () => {
@@ -731,6 +991,48 @@ test('S4.5: Joint multi-layer reflective GD (solve-gd --multi-layer) and multi-l
   const trajFile = writeTmpJson('multi_gd_traj.json', gd.json.trajectory);
   const fv = runCli(['bin/fit_gd_verify.mjs', f, trajFile, '1e-4', '--layer', 'all']);
   assert(fv.code === 0 && fv.json?.ok === true && fv.json?.target_kind === 'multi_layer_weights' && fv.json?.mismatch_count === 0, `fit_gd_verify --layer all failed: ${fv.out}`);
+});
+
+test('S4.6: Recursive 3D transform op (repeat) and direct scene-tree projection in geom_project.mjs and geom_batch.mjs', async () => {
+  const repeatChain = writeTmpJson('geom_repeat.json', {
+    chain: [
+      { op: 'repeat', depth: 4, chain: [{ op: 'rotate_z', degrees: 90 }] },
+    ],
+    point: [2, 3, 4],
+  });
+  const gb = runCli(['bin/geom_build.mjs', repeatChain]);
+  assert(gb.code === 0 && Math.abs(gb.json.reference_point_f64[0] - 2) < 1e-6 && Math.abs(gb.json.reference_point_f64[1] - 3) < 1e-6, `geom_build repeat op failed: ${gb.out}`);
+
+  const sceneProj = writeTmpJson('scene_proj.json', {
+    nodes: [
+      { id: 'base', parent: null, chain: [{ op: 'translate', by: [0, 0, -5] }], point: [0, 0, 0] },
+      { id: 'tip', parent: 'base', chain: [{ op: 'repeat', depth: 2, chain: [{ op: 'translate', by: [0.5, 0, 0] }] }], point: [0, 0, 0] },
+    ],
+    camera: { eye: [0, 0, 0], target: [0, 0, -1], up: [0, 1, 0], fov_deg: 60, aspect: 1, near: 0.1, far: 100 },
+    viewport: { w: 800, h: 600 },
+  });
+  const gp = runCli(['bin/geom_project.mjs', sceneProj]);
+  const gbat = runCli(['bin/geom_batch.mjs', sceneProj]);
+  assert(gp.code === 0 && gp.json?.ok === true && gp.json?.scene_nodes?.length === 2, `geom_project scene_nodes failed: ${gp.out}`);
+  assert(gbat.code === 0 && gbat.json?.ok === true && gbat.json?.scene_nodes?.length === 2, `geom_batch scene_nodes failed: ${gbat.out}`);
+  assert(Math.abs(gp.json.scene_nodes[1].world_point[0] - 1.0) < 1e-6 && Math.abs(gp.json.scene_nodes[1].world_point[2] - (-5.0)) < 1e-6, `unexpected tip world_point: ${JSON.stringify(gp.json.scene_nodes[1])}`);
+});
+
+test('S4.7: Custom tolerance in opt_compare.mjs (--tol), weight-tying detection in layer_state.mjs inspect, and divergence subspec isolation in trace_hash.mjs (--isolate)', async () => {
+  const ls = runCli(['bin/layer_state.mjs', 'inspect', 'examples/recursive-gated-residual.v2.json']);
+  assert(ls.code === 0 && ls.json?.ok === true, `layer_state inspect failed: ${ls.out}`);
+  assert(ls.json.layers[0].is_weight_tied === true && JSON.stringify(ls.json.layers[0].used_by_steps) === '[0,2]', `expected layer 0 weight-tied across steps [0,2], got ${JSON.stringify(ls.json.layers[0])}`);
+
+  const th = runCli(['bin/trace_hash.mjs', 'examples/linear-relu.json', 'examples/linear-relu-mutated.json', '--isolate']);
+  assert(th.code === 0 && th.json?.comparison?.first_divergent_step === 0 && th.json?.comparison?.isolated_base_subspec?.steps?.length === 2, `trace_hash --isolate failed: ${th.out}`);
+
+  const approxCand = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  approxCand.weights['0'][0] += 1e-4;
+  const acFile = writeTmpJson('approx_cand.json', approxCand);
+  const ocStrict = runCli(['bin/opt_compare.mjs', 'examples/linear-relu.json', acFile, '--iters', '3']);
+  const ocRelaxed = runCli(['bin/opt_compare.mjs', 'examples/linear-relu.json', acFile, '--tol', '1e-2', '--iters', '3']);
+  assert(ocStrict.code === 2 && ocStrict.json?.equivalent === false, `expected strict opt_compare to reject 1e-4 weight diff: ${ocStrict.out}`);
+  assert(ocRelaxed.code === 0 && ocRelaxed.json?.equivalent === true, `expected opt_compare --tol 1e-2 to accept 1e-4 weight diff: ${ocRelaxed.out}`);
 });
 
 // --- 8. STAGE 5: v3.8 DEEP AUDIT REMEDIATION & HARDENING REGRESSIONS ---
@@ -865,6 +1167,47 @@ test('REG-v3.8-04: compose.mjs grad-spec supports intermediate slots, symbolic S
   const nwf = writeTmpJson('reg_v38_04_noweight.json', noWeightSpec);
   const gsNw = runCli(['bin/compose.mjs', 'grad-spec', nwf, '--wrt', '0']);
   assert(gsNw.code === 0 && JSON.stringify(gsNw.json?.grad_values) === '[0,0]', `grad-spec on zero-default linear failed: ${gsNw.out}`);
+});
+
+test('REG-v3.8-05: weight_lab detects nullspace-of-ones spectral radius, 3x3 det_positive reflections, and eval accepts CAUTION', async () => {
+  const nullspaceSet = writeTmpJson('reg_v38_05_nullspace.json', {
+    name: 'nullspace_sym',
+    kind: 'dynamics',
+    W: [[1, -1], [-1, 1]],
+    b: [0, 0],
+    requires: {},
+  });
+  const cert1 = runCli(['bin/weight_lab.mjs', 'certify', nullspaceSet]);
+  assert(cert1.code !== 0 && cert1.json?.ok === false && cert1.json?.verdict === 'REFUSED', `expected REFUSED on nullspace_sym, got ${cert1.out}`);
+  assert(Math.abs(cert1.json.properties[0].value - 2.0) < 1e-4, `expected rho=2.0, got ${JSON.stringify(cert1.json.properties)}`);
+
+  const refl3Set = writeTmpJson('reg_v38_05_refl3.json', {
+    name: 'refl_3x3',
+    kind: 'calibration',
+    W: [[-1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    b: [0, 0, 0],
+    requires: { det_positive: true },
+  });
+  const cert2 = runCli(['bin/weight_lab.mjs', 'certify', refl3Set]);
+  assert(cert2.code !== 0 && cert2.json?.ok === false && cert2.json?.verdict === 'REFUSED', `expected REFUSED on 3x3 reflection, got ${cert2.out}`);
+  const detProp = cert2.json.properties.find((p) => p.name === 'det_positive');
+  assert(detProp && detProp.ok === false && Math.abs(detProp.value - (-1)) < 1e-6, `expected det_positive failure with det=-1, got ${JSON.stringify(cert2.json.properties)}`);
+
+  const exprSet = writeTmpJson('reg_v38_05_expr.json', {
+    repertoire: {
+      a: { name: 'a', kind: 'map', W: [[1, 0], [0, 1]], b: [0, 0], requires: {} },
+      b: { name: 'b', kind: 'map', W: [[0, -1], [1, 0]], b: [0, 0], requires: {} },
+    },
+    expr: {
+      op: 'blend',
+      alpha: 0.5,
+      a: { op: 'ref', name: 'a' },
+      b: { op: 'ref', name: 'b' },
+    },
+  });
+  const outEval = path.join(TMP, 'reg_v38_05_eval_out.json');
+  const ev = runCli(['bin/weight_lab.mjs', 'eval', exprSet, '--out', outEval]);
+  assert(ev.code === 0 && ev.json?.ok === true && ev.json?.verdict === 'BLENDED' && fs.existsSync(outEval), `weight_lab eval failed on BLENDED: ${ev.out}`);
 });
 
 test('REG-v3.8-06: profileSpec and es_optimize leak 0 WASM linear memory pages across repeated runs', async () => {
@@ -1069,6 +1412,20 @@ test('REG-v3.9-03 (F-03): linear_equiv REJECTS folding active non-context observ
   assert(le.code === 2 && le.json?.verdict === 'REJECT', `linear_equiv must REJECT non-context port folding: ${le.out}`);
 });
 
+test('REG-v3.9-04 (F-04): graph_mutate writes valid binary steps to --out on insertStep/replaceStep', async () => {
+  const mut = writeTmpJson('reg_v39_04_mut.json', {
+    commit: true,
+    edits: [
+      { op: 'replaceStep', index: 2, layer: { constructor: 'add', args: [99] }, slots: [3, 1, 4] },
+    ],
+  });
+  const outF = path.join(TMP, 'reg_v39_04_out.json');
+  const gm = runCli(['bin/graph_mutate.mjs', 'examples/linear-relu.json', mut, '--out', outF]);
+  assert(gm.code === 0 && gm.json?.ok === true, `graph_mutate failed: ${gm.out}`);
+  const val = runCli(['bin/validate.mjs', outF]);
+  assert(val.code === 0 && val.json?.valid === true, `mutated --out spec failed validate.mjs: ${val.out}`);
+});
+
 test('REG-v3.9-05 (F-05): validate.mjs and propagateLayouts seed port layouts and warn on incompatible port-to-layer layout', async () => {
   const badPortLayoutSpec = {
     numSlots: 3,
@@ -1138,6 +1495,30 @@ test('REG-v3.9-07 (F-07): quant_budget bound mode remains >= measured delta when
   const qbMeas = runCli(['bin/quant_budget.mjs', mf, cf, '--tol', '1.0', '--mode', 'measured']);
   assert(qbBound.code === 0 && qbBound.json?.ok === true && qbMeas.code === 0 && qbMeas.json?.ok === true, `quant_budget failed: ${qbBound.out} / ${qbMeas.out}`);
   assert(qbBound.json.totals.bound_total_all >= qbMeas.json.totals.measured_delta_plan, `unsound bound: ${qbBound.json.totals.bound_total_all} < ${qbMeas.json.totals.measured_delta_plan}`);
+});
+
+test('REG-v3.9-08 (F-08): weight_lab certify refuses mismatched probe wants and spectralRadius handles oscillatory matrices', async () => {
+  const badProbeSet = writeTmpJson('reg_v39_08_badprobe.json', {
+    name: 'bad_probe',
+    kind: 'map',
+    W: [[1, 0], [0, 1]],
+    b: [0, 0],
+    probes: [{ in: [10, 20], want: [9999, -9999] }],
+  });
+  const repTmp = path.join(TMP, 'reg_v39_08_rep.json');
+  const certBad = runCli(['bin/weight_lab.mjs', 'certify', badProbeSet, '--repertoire', repTmp]);
+  assert(certBad.code === 2 && certBad.json?.ok === false && certBad.json?.verdict === 'REFUSED', `weight_lab certify must refuse wrong probe want: ${certBad.out}`);
+
+  const oscSet = writeTmpJson('reg_v39_08_osc.json', {
+    name: 'osc_contraction',
+    kind: 'dynamics',
+    W: [[0, 5], [0.05, 0]],
+    b: [0, 0],
+    requires: { spectral_radius_lt: 1.0 },
+  });
+  const certOsc = runCli(['bin/weight_lab.mjs', 'certify', oscSet, '--repertoire', repTmp]);
+  assert(certOsc.code === 0 && certOsc.json?.ok === true && certOsc.json?.verdict === 'CERTIFIED', `oscillatory contraction with true rho=0.5 should be CERTIFIED: ${certOsc.out}`);
+  assert(Math.abs(certOsc.json.entry.properties[0].value - 0.5) < 1e-4, `expected rho=0.5, got ${certOsc.json.entry.properties[0].value}`);
 });
 
 test('REG-v3.9-09 (F-09): rollout fixpoint rejects constant-drift and expanding systems even when initial step <= tol', async () => {
@@ -1305,6 +1686,59 @@ test('REG-fix-T1: workflow grad_spec rejects order other than 1 or 2', async () 
   const ok2 = writeTmpJson('fix_t1_o2.json', { spec, pipeline: [{ stage: 'grad_spec', order: 2, wrt_slot: 0 }] });
   const r2 = runCli(['bin/harness.mjs', 'run-workflow', ok2, '--workspace', ws]);
   assert(r2.code === 0 && r2.json?.ok === true, `order 2 rejected: ${r2.out}`);
+});
+
+test('REG-fix-Z1: zoom-vs reports output length mismatch instead of 0', async () => {
+  const ports2 = [
+    { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+  ];
+  const base = writeTmpJson('fix_z1_base.json', { numSlots: 8, layers: [{ constructor: 'add', args: [0] }], steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }], outputSlot: 2, ports: ports2, weights: {}, inputs: { '0': [0, 0], '1': [0, 0] } });
+  const cand = writeTmpJson('fix_z1_cand.json', { numSlots: 8, layers: [{ constructor: 'add', args: [0] }, { constructor: 'concat', args: [1, 1] }], steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }, { kind: 'binary', layer: 1, slots: [2, 2, 3] }], outputSlot: 3, ports: ports2, weights: {}, inputs: { '0': [0, 0], '1': [0, 0] } });
+  const z = runCli(['bin/fuzz_cases.mjs', base, '--zoom-vs', cand, '--zoom-depth', '3', '--count', '6']);
+  assert(z.code === 0 && z.json?.ok === true, `zoom-vs failed: ${z.out}`);
+  assert(z.json?.length_mismatch === true, `length mismatch not flagged: ${z.out}`);
+  assert(z.json?.output_lengths?.base === 2 && z.json?.output_lengths?.candidate === 4, `output lengths wrong: ${z.out}`);
+  assert(z.json?.zoomed_max_abs_error === 'Infinity', `mismatch reported as finite delta (old bug reported 0): ${z.out}`);
+  const same = runCli(['bin/fuzz_cases.mjs', base, '--zoom-vs', base, '--zoom-depth', '3', '--count', '6']);
+  assert(same.code === 0 && same.json?.ok === true && same.json?.length_mismatch === false && same.json?.zoomed_max_abs_error === 0, `same-shape control broken: ${same.out}`);
+});
+
+test('REG-fix-F2: unknown flags fail closed with exit 2 and never become files', async () => {
+  const noStray = (name) => assert(!fs.existsSync(path.join(ROOT, name)), `stray file '${name}' created in pack root`);
+  const unknown = (args, flag) => {
+    const r = runCli(args);
+    assert(r.code === 2 && (r.err ?? '').includes(`unknown flag '${flag}'`), `unknown flag ${flag} not rejected: code=${r.code} err=${r.err} out=${r.out}`);
+    return r;
+  };
+  noStray('2'); noStray('1'); noStray('out.json');
+  // The two original repros (bedah-2 track D): values of unknown flags used to leak into positionals.
+  unknown(['bin/recurse.mjs', 'search', 'examples/linear-relu.json', '--beam', '2'], '--beam');
+  noStray('2');
+  unknown(['bin/recurse.mjs', 'search', 'examples/linear-relu.json', '--depth', '1'], '--depth');
+  noStray('1');
+  // Same class in every other bin that derives a path or parameter from the token stream.
+  unknown(['bin/harness.mjs', 'capabilities', '--bogus', '5'], '--bogus');
+  const f2roll = path.join(TMP, 'fix_f2_roll.json');
+  unknown(['bin/rollout.mjs', 'unroll', 'examples/linear-relu.json', f2roll, '--bogus', '2'], '--bogus');
+  assert(!fs.existsSync(f2roll), 'rollout wrote output despite unknown flag');
+  const f2comp = path.join(TMP, 'fix_f2_comp.json');
+  unknown(['bin/compose.mjs', 'compile', 'examples/recursive-gated-residual.v2.json', f2comp, '--bogus', '2'], '--bogus');
+  assert(!fs.existsSync(f2comp), 'compose wrote output despite unknown flag');
+  unknown(['bin/es_optimize.mjs', 'examples/linear-relu.json', 'no-such-targets.json', '--bogus', '5'], '--bogus');
+  unknown(['bin/quant_budget.mjs', 'examples/linear-relu.json', 'no-such-cases.json', '--bogus', '1'], '--bogus');
+  unknown(['bin/fuzz_cases.mjs', 'examples/linear-relu.json', '--bogus', 'out.json'], '--bogus');
+  noStray('out.json');
+  unknown(['bin/graph_mutate.mjs', 'examples/linear-relu.json', 'no-such-mut.json', '--bogus', '5'], '--bogus');
+  unknown(['bin/geom_batch.mjs', 'no-such-model.json', '--bogus', 'evil.json'], '--bogus');
+  unknown(['bin/geom_project.mjs', 'no-such-model.json', '--bogus', 'evil.json'], '--bogus');
+  unknown(['bin/geom_build.mjs', 'no-such-chain.json', '--bogus', 'out.json'], '--bogus');
+  unknown(['bin/rewrite.mjs', 'apply', 'all', 'examples/linear-relu.json', '--bogus'], '--bogus');
+  // Positive controls: the known flags these cases mistyped still work.
+  const okSearch = runCli(['bin/recurse.mjs', 'search', 'examples/linear-relu.json', '--max-depth', '1']);
+  assert(okSearch.code === 0 && okSearch.json?.ok === true, `known flag --max-depth rejected: ${okSearch.out}`);
+  const okRoll = runCli(['bin/rollout.mjs', 'unroll', 'examples/linear-relu.json', path.join(TMP, 'fix_f2_ok.json'), '--steps', '2', '--state-port', '0']);
+  assert(okRoll.code === 0 && okRoll.json?.ok === true, `known rollout flags rejected: ${okRoll.out}`);
 });
 
 const results = [];

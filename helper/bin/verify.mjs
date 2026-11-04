@@ -91,6 +91,8 @@ function verifyOne(rt, pair, fuzz = null) {
       const bBundle = makeBundle(rt, base.plan, c, basePorts);
       const cBundle = makeBundle(rt, cand.plan, c, candPorts);
       vc.addCase(bBundle, cBundle);
+      freeSafe(bBundle);
+      freeSafe(cBundle);
     }
     const result = JSON.parse(vc.verify(base.reg, base.g, cand.reg, cand.g, absTol, relTol));
     return {
@@ -252,7 +254,11 @@ try {
 
   vc = new rt.MultiInputVerificationCases(base.g, cand.g);
   for (const c of cases) {
-    vc.addCase(makeBundle(rt, base.plan, c, basePorts), makeBundle(rt, cand.plan, c, candPorts));
+    const bBase = makeBundle(rt, base.plan, c, basePorts);
+    const bCand = makeBundle(rt, cand.plan, c, candPorts);
+    vc.addCase(bBase, bCand);
+    freeSafe(bBase);
+    freeSafe(bCand);
   }
   const result = JSON.parse(vc.verify(base.reg, base.g, cand.reg, cand.g, absTol, relTol));
   printJsonAndExit({ ok: true, ...result, cases: cases.length, absTol, relTol, case_details: result.cases, verdict: result.equivalent ? 'ACCEPT' : 'REJECT', ...(fuzzOut ? { fuzz: fuzzOut } : {}) }, result.equivalent ? 0 : 2);

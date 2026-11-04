@@ -12,7 +12,7 @@
 // Matrix ops (rows separated by ';'):
 //   node bin/arith.mjs matmul <a11,a12;...> <b11,b12;...>
 //   node bin/arith.mjs <sum_axis|mean_axis|min_axis|max_axis> <a11,a12;...> <0|1>
-// Batch mode (one engine load for N ops):
+// Batch mode (one engine load for N ops, supports "$prev" / "$<idx>" register chaining):
 //   node bin/arith.mjs --batch <ops.json>
 import { printJsonAndExit } from '../lib/runner.mjs';
 import { loadWasm } from '../lib/wasm_direct.mjs';
@@ -200,6 +200,29 @@ function execAxisKernel(rt, op, A, axis2d) {
   }
 }
 
+function resolveBatchRef(argVal, curIndex, results, asMatrix = false) {
+  if (typeof argVal !== 'string' || !argVal.startsWith('$')) return argVal;
+  let refIdx = -1;
+  if (argVal === '$prev') refIdx = curIndex - 1;
+  else if (/^\$(?:0|[1-9]\d*)$/.test(argVal)) refIdx = Number(argVal.slice(1));
+  else throw new Error(`invalid batch register reference ${JSON.stringify(argVal)} (use "$prev" or "$<stepIndex>")`);
+
+  if (refIdx < 0 || refIdx >= curIndex) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} out of bounds (must reference an earlier step 0..${curIndex - 1})`);
+  }
+  const prev = results[refIdx];
+  if (!prev || !prev.ok || !Array.isArray(prev.values)) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} points to failed step ${refIdx}`);
+  }
+  if (asMatrix && Array.isArray(prev.shape) && prev.shape.length === 2) {
+    const [R, C] = prev.shape;
+    const rows = [];
+    for (let r = 0; r < R; r++) rows.push(prev.values.slice(r * C, (r + 1) * C));
+    return rows;
+  }
+  return prev.values;
+}
+
 async function runBatch(file) {
   let text;
   try { text = fs.readFileSync(file, 'utf8'); }
@@ -221,30 +244,30 @@ async function runBatch(file) {
       }
       const { op } = entry;
       if (op === 'matmul') {
-        const A = parseMatrixValues(entry.a, 'a');
-        const B = parseMatrixValues(entry.b, 'b');
+        const A = parseMatrixValues(resolveBatchRef(entry.a, i, results, true), 'a');
+        const B = parseMatrixValues(resolveBatchRef(entry.b, i, results, true), 'b');
         const { M, K, N } = prepareMatmul(A, B);
         const values = execMatmulKernel(rt, A, B, M, K, N);
         results.push({ index: i, ok: true, op, a: A, b: B, shape: [M, N], broadcast: null, values, precision_warnings: [...matrixQuantizationWarnings(A, 'a'), ...matrixQuantizationWarnings(B, 'b')] });
       } else if (AXIS_OPS.has(op)) {
-        const A = parseMatrixValues(entry.a, 'a');
+        const A = parseMatrixValues(resolveBatchRef(entry.a, i, results, true), 'a');
         const axis = Number(entry.axis ?? entry.b);
         const { values, shape } = execAxisKernel(rt, op, A, axis);
         results.push({ index: i, ok: true, op, a: A, axis, shape, values, precision_warnings: matrixQuantizationWarnings(A, 'a') });
       } else if (BINARY_OPS.has(op)) {
-        const a = parseVectorValues(entry.a, 'a');
-        const b = parseVectorValues(entry.b, 'b', op === 'div');
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
+        const b = parseVectorValues(resolveBatchRef(entry.b, i, results), 'b', op === 'div');
         const { aEff, bEff, broadcast } = prepareBinary(op, a, b);
         const values = execBinaryKernel(rt, op, aEff, bEff);
         results.push({ index: i, ok: true, op, a: aEff, b: bEff, broadcast, values, precision_warnings: [...quantizationWarnings(aEff, 'a'), ...quantizationWarnings(bEff, 'b')] });
       } else if (op === 'clamp') {
-        const a = parseVectorValues(entry.a, 'a');
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
         const min = entry.min ?? (Array.isArray(entry.b) ? entry.b[0] : undefined);
         const max = entry.max ?? (Array.isArray(entry.b) ? entry.b[1] : undefined);
         const values = execUnaryKernel(rt, 'clamp', a, { min: Number(min), max: Number(max) });
         results.push({ index: i, ok: true, op, a, min: Number(min), max: Number(max), values, precision_warnings: quantizationWarnings(a, 'a') });
       } else if (UNARY_OPS.has(op)) {
-        const a = parseVectorValues(entry.a, 'a');
+        const a = parseVectorValues(resolveBatchRef(entry.a, i, results), 'a');
         const values = execUnaryKernel(rt, op, a);
         results.push({ index: i, ok: true, op, a, values, precision_warnings: quantizationWarnings(a, 'a') });
       } else {

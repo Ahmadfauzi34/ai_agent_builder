@@ -26,7 +26,7 @@
 // reported as unshardable.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const [specFile, capArg] = process.argv.slice(2);
 if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) { console.error('usage: node shard_spec.mjs <spec.json> [maxWeights]'); process.exit(2); }
@@ -37,7 +37,7 @@ let spec;
 try { spec = loadSpec(specFile); }
 catch (e) { failCli(e.message); }
 
-// printJson + process.exit truncates large outputs still queued in the
+// process.exit truncates large outputs still queued in the
 // stdout pipe; spec-carrying prints go through a flush-awaited write.
 async function printBig(obj, code) {
   await new Promise((res) => process.stdout.write(JSON.stringify(obj, null, 2) + '\n', res));
@@ -82,7 +82,7 @@ function blockWeights(w, inDim, outDim, bias, r0, r1) {
 }
 
 // Rebuild the spec.
-let nextRegistryId = Math.max(...spec.layers.map(l => l.args[0])) + 1;
+let nextRegistryId = Math.max(...spec.layers.map((l) => l.args[0])) + 1;
 let nextSlot = spec.numSlots;
 const newLayers = [];
 const newWeights = {};
@@ -178,10 +178,17 @@ try {
   const runSpec = (s) => {
     const { reg, plan, g } = buildGraph(rt, s);
     const bundle = makeBundle(rt, plan, s.inputs, portBySlot(s));
-    const out = g.run(reg, bundle);
-    const v = Array.from(out.to_array());
-    out.free();
-    return v;
+    try {
+      const out = g.run(reg, bundle);
+      const v = Array.from(out.to_array());
+      out.free();
+      return v;
+    } finally {
+      if (bundle?.free) bundle.free();
+      if (g?.free) g.free();
+      if (plan?.free) plan.free();
+      if (reg?.free) reg.free();
+    }
   };
   const a = runSpec(spec);
   const b = runSpec(sharded);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // burn-math int: exact i64 arithmetic & casts through the engine's integer world,
-// with fail-closed i64 overflow detection (or explicit --wrap for two's-complement).
+// with fail-closed i64 overflow detection (or explicit --wrap for two's-complement)
+// and $prev / $<index> register chaining in --batch mode.
 //
 // The engine itself never wraps: overflow, division by zero, and MIN / -1
 // are always engine errors (unconditionally checked). --wrap is computed
@@ -25,13 +26,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-function engineProvenance() {
-  try {
-    const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
-    const full = m?.sha256?.['burn_research_bg.wasm'] ?? m?.engine?.wasm_sha256 ?? null;
-    return { wasm_sha256_short: full ? full.slice(0, 16) : null, mode: 'direct' };
-  } catch { return { wasm_sha256_short: null, mode: 'direct' }; }
-}
+import { engineProvenance } from '../lib/cli.mjs';
 
 const OPS = { add: 'intAdd', sub: 'intSub', mul: 'intMul', div: 'intDiv', rem: 'intRem' };
 const USAGE =
@@ -278,6 +273,29 @@ function runIntFromFloat(rt, floats) {
   }
 }
 
+function resolveBatchRef(argVal, curIndex, results, asMatrix = false) {
+  if (typeof argVal !== 'string' || !argVal.startsWith('$')) return argVal;
+  let refIdx = -1;
+  if (argVal === '$prev') refIdx = curIndex - 1;
+  else if (/^\$(?:0|[1-9]\d*)$/.test(argVal)) refIdx = Number(argVal.slice(1));
+  else throw new Error(`invalid batch register reference ${JSON.stringify(argVal)} (use "$prev" or "$<stepIndex>")`);
+
+  if (refIdx < 0 || refIdx >= curIndex) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} out of bounds (must reference an earlier step 0..${curIndex - 1})`);
+  }
+  const prev = results[refIdx];
+  if (!prev || !prev.ok || !Array.isArray(prev.values)) {
+    throw new Error(`batch reference ${argVal} at step ${curIndex} points to failed step ${refIdx}`);
+  }
+  if (asMatrix && Array.isArray(prev.shape) && prev.shape.length === 2) {
+    const [R, C] = prev.shape;
+    const rows = [];
+    for (let r = 0; r < R; r++) rows.push(prev.values.slice(r * C, (r + 1) * C));
+    return rows;
+  }
+  return prev.values;
+}
+
 async function runBatch(file) {
   let text;
   try { text = fs.readFileSync(file, 'utf8'); }
@@ -298,29 +316,31 @@ async function runBatch(file) {
         throw new Error(`op entry ${i} must be an object`);
       }
       const { op, wrap = false, allowInexact = false } = entry;
+      const rawA = resolveBatchRef(entry.a, i, results, op === 'matmul');
+      const rawB = resolveBatchRef(entry.b, i, results, op === 'matmul');
       if (op === 'matmul') {
-        const A = entry.a.map((r, ri) => r.map((v) => parseBigIntToken(v, `a row ${ri}`)));
-        const B = entry.b.map((r, ri) => r.map((v) => parseBigIntToken(v, `b row ${ri}`)));
+        const A = rawA.map((r, ri) => r.map((v) => parseBigIntToken(v, `a row ${ri}`)));
+        const B = rawB.map((r, ri) => r.map((v) => parseBigIntToken(v, `b row ${ri}`)));
         checkI64Range(A.flat(), 'a');
         checkI64Range(B.flat(), 'b');
         const { M, K, N } = prepareMatmul(A, B);
         const values = runIntMatmul(rt, A, B, M, K, N, Boolean(wrap));
         results.push({ index: i, ok: true, op, shape: [M, N], values });
       } else if (Object.hasOwn(OPS, op)) {
-        const a = entry.a.map((v) => parseBigIntToken(v, 'a'));
-        const b = entry.b.map((v) => parseBigIntToken(v, 'b'));
+        const a = rawA.map((v) => parseBigIntToken(v, 'a'));
+        const b = rawB.map((v) => parseBigIntToken(v, 'b'));
         checkI64Range(a, 'a');
         checkI64Range(b, 'b');
         const { aEff, bEff, broadcast } = prepareElementwise(a, b);
         const values = runIntBinary(rt, op, aEff, bEff, Boolean(wrap));
         results.push({ index: i, ok: true, op, a: aEff.map(String), b: bEff.map(String), broadcast, values });
       } else if (op === 'to-f32') {
-        const a = entry.a.map((v) => parseBigIntToken(v, 'a'));
+        const a = rawA.map((v) => parseBigIntToken(v, 'a'));
         checkI64Range(a, 'a');
         const values = runIntToFloat(rt, a, Boolean(allowInexact));
         results.push({ index: i, ok: true, op, a: a.map(String), values });
       } else if (op === 'from-f32') {
-        const a = parseFloatVector(entry.a.join(','), 'a');
+        const a = parseFloatVector(rawA.join(','), 'a');
         const values = runIntFromFloat(rt, a);
         results.push({ index: i, ok: true, op, a, values });
       } else {

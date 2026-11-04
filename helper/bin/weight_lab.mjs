@@ -3,6 +3,7 @@
 //
 //   run <weights.json> --in 80,80
 //       Execute v_out = W·v + b through the engine (f32); compare vs JS f64.
+//       Supports both square (n×n) and rectangular (m×n) affine weight sets.
 //   gate <current.json> <candidate.json> [--jump 1.0]
 //       Adaptation gate: ACCEPT iff (1) the candidate passes its kind's
 //       property checks (stability / orthonormality / ...) AND (2) the
@@ -20,21 +21,27 @@
 //       measuring the product); orthonormality/det compose by the product
 //       identity; otherwise the product is measured directly (a refused
 //       bound is not a rejection). Exit 0 = COMPOSED, 2 = REJECTED.
+//   eval <expr.json> [--out C.json]
+//       Evaluate a recursive weight expression tree (ref, literal, compose,
+//       blend, repeat) into a certified composite affine set.
 //   --selftest
 //       Engine execution vs the HTML thesis example's elastic preset,
 //       property checks incl. a deliberately unstable W (must FAIL),
-//       gate ACCEPT (identical set) and gate REJECT (perturbed candidate).
+//       gate ACCEPT (identical set) and gate REJECT (perturbed candidate),
+//       plus rectangular m×n composition and recursive weight expression trees.
 //
 // weights.json:
 //   {"name":"elastic","kind":"map|dynamics|calibration",
 //    "W":[[1.2,-0.4],[0.5,0.8]],"b":[20,-10],
 //    "probes":[{"in":[80,80],"want":[84,94]}],
 //    "requires":{"spectral_radius_lt":1}}
+// Probe entries may use "input" instead of "in". Sets may carry
+// "probe_tol" (default 1e-4): certify refuses when probe error exceeds it.
 import { startRunner, unwrap, printJson, failCli } from '../lib/runner.mjs';
 import { planFragment } from '../lib/spec.mjs';
 import {
-  matVecMul, affineSpec, spectralRadius, checkProperties, weightFingerprint,
-  composeProperties,
+  matVecMul, affineSpec, checkProperties, weightFingerprint,
+  composeProperties, evaluateWeightExpr,
 } from '../lib/weights.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,6 +50,17 @@ import { fileURLToPath } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPERTOIRE = path.join(HERE, '..', 'references', 'weight_repertoire.v1.json');
 const BIND = { role: 'observation', layout: 'feature_axis1_singleton', source: 'burn-math-skill', revision: 1, fingerprint: '' };
+
+function currentEngineBuild() {
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
+    const ver = (m.pack_version ?? '').slice(0, 7) || 'unknown';
+    const wasmShort = (m.sha256?.['burn_research_bg.wasm'] ?? m.engine?.wasm_sha256 ?? '').slice(0, 8) || 'unknown';
+    return `f32 burn-math (${ver}, wasm ${wasmShort})`;
+  } catch {
+    return 'f32 burn-math';
+  }
+}
 
 function loadSet(f) {
   const s = JSON.parse(fs.readFileSync(f, 'utf8'));
@@ -53,9 +71,10 @@ function loadSet(f) {
 }
 
 // One runner session; install W/b once, run all probe inputs. Returns
-// engine outputs in probe order.
+// engine outputs in probe order. Supports rectangular m×n matrices.
 async function engineProbe(W, b, inputs) {
-  const n = W.length;
+  const outDim = W.length;
+  const inDim = W[0].length;
   const spec = affineSpec(W, b, inputs[0]);
   const { send, stop } = startRunner();
   try {
@@ -64,12 +83,12 @@ async function engineProbe(W, b, inputs) {
     const logicalPorts = spec.ports.map((p, i) => ({ id: `in${i}`, slot: p.slot, source: 'burn-math-skill' }));
     unwrap(await send({ op: 'create', layers: spec.layers, steps: spec.steps, numSlots: spec.numSlots, outputSlot: spec.outputSlot, ports: spec.ports, logicalPorts }));
     unwrap(await send({ op: 'setWeights', layer: 0, values: spec.weights[0] }));
-    unwrap(await send({ op: 'bind', slot: 1, values: b, shape: [1, n, 1, 1], ...BIND }));
+    unwrap(await send({ op: 'bind', slot: 1, values: b, shape: [1, outDim, 1, 1], ...BIND }));
     const outs = [];
     for (const v of inputs) {
       unwrap(await send({ op: 'clear', slot: 0 }));
-      unwrap(await send({ op: 'bind', slot: 0, values: v, shape: [1, n, 1, 1], ...BIND }));
-      outs.push(Array.from(unwrap(await send({ op: 'run' })).values).slice(0, n));
+      unwrap(await send({ op: 'bind', slot: 0, values: v, shape: [1, inDim, 1, 1], ...BIND }));
+      outs.push(Array.from(unwrap(await send({ op: 'run' })).values).slice(0, outDim));
     }
     return outs;
   } finally {
@@ -79,7 +98,7 @@ async function engineProbe(W, b, inputs) {
 
 const rawArgs = process.argv.slice(2);
 if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
-  console.error('usage: node weight_lab.mjs (run|gate|certify|compose) ... | --selftest');
+  console.error('usage: node weight_lab.mjs (run|gate|certify|compose|eval) ... | --selftest');
   process.exit(2);
 }
 const cmd = rawArgs[0];
@@ -146,6 +165,23 @@ if (cmd === '--selftest' || rawArgs.includes('--selftest')) {
   const cBad = composeProperties(dyn(0.5, [0, 0]), { name: 'unst', kind: 'dynamics', W: [[2, 0], [0, 2]], b: [0, 0], requires: {} });
   t('compose 0.5I+2I -> REJECTED (rho_product=1.0 not < 1)',
     cBad.verdict === 'REJECTED' && cBad.method === 'measured', cBad.certificate);
+  // 9. rectangular 3x2 after 2x3 composition + recursive weight expression tree
+  const rectA = { name: 'up_3x2', kind: 'map', W: [[1, 0], [0, 1], [1, 1]], b: [1, 2, 3], requires: {} };
+  const rectB = { name: 'down_2x3', kind: 'map', W: [[1, 1, 0], [0, 1, 1]], b: [-1, -2], requires: {} };
+  const exprRes = evaluateWeightExpr({
+    op: 'repeat',
+    steps: 2,
+    expr: {
+      op: 'compose',
+      first: { op: 'ref', name: 'up_3x2' },
+      second: { op: 'ref', name: 'down_2x3' },
+    },
+  }, { up_3x2: rectA, down_2x3: rectB });
+  const [rectEng] = await engineProbe(rectA.W, rectA.b, [[2, 3]]);
+  t('rectangular 3x2 engineProbe & recursive weight expression tree',
+    exprRes.verdict === 'COMPOSED' && exprRes.W.length === 2 && exprRes.W[0].length === 2 && rectEng.length === 3,
+    { rectEng, composedW: exprRes.W, composedB: exprRes.b });
+
   const ok = results.every((r) => r.ok);
   printJson({ ok, tests: results });
   process.exit(ok ? 0 : 2);
@@ -153,8 +189,9 @@ if (cmd === '--selftest' || rawArgs.includes('--selftest')) {
 
 async function gateSets(cur, cand, jumpTol) {
   const propFails = checkProperties(cand).filter((p) => !p.ok);
-  const probeIns = [...new Map([...(cur.probes ?? []), ...(cand.probes ?? [])].map((p) => [p.in.join(','), p.in])).values()];
-  const inputs = probeIns.length ? probeIns : [[...cand.b.map(() => 0)]];
+  const probeIns = [...new Map([...(cur.probes ?? []), ...(cand.probes ?? [])].map((p) => [(p.in ?? p.input).join(','), p.in ?? p.input])).values()];
+  const inDim = cand.W[0].length;
+  const inputs = probeIns.length ? probeIns : [new Array(inDim).fill(0)];
   const [outCur, outCand] = await Promise.all([
     engineProbe(cur.W, cur.b, inputs),
     engineProbe(cand.W, cand.b, inputs),
@@ -205,14 +242,32 @@ try {
       printJson({ ok: false, verdict: 'REFUSED', reason: 'property checks failed', properties: props });
       process.exit(2);
     }
-    const probeIns = (set.probes ?? []).map((p) => p.in);
+    const probeIns = (set.probes ?? []).map((p) => p.in ?? p.input);
+    const probeTol = set.probe_tol ?? 1e-4;
     let probeMaxErr = 0;
+    const probeResults = [];
     if (probeIns.length) {
       const outs = await engineProbe(set.W, set.b, probeIns);
       set.probes.forEach((p, i) => {
-        const js = matVecMul(set.W, p.in).map((x, k) => x + set.b[k]);
-        probeMaxErr = Math.max(probeMaxErr, ...outs[i].map((x, k) => Math.abs(x - (p.want?.[k] ?? js[k]))));
+        const pIn = p.in ?? p.input;
+        const js = matVecMul(set.W, pIn).map((x, k) => x + set.b[k]);
+        const target = Array.isArray(p.want) ? p.want : js;
+        const err = Math.max(0, ...outs[i].map((x, k) => Math.abs(x - (target[k] ?? js[k]))));
+        probeMaxErr = Math.max(probeMaxErr, err);
+        probeResults.push({ in: pIn, got: outs[i], want: target, max_abs_err: err });
       });
+      if (!Number.isFinite(probeMaxErr) || probeMaxErr > probeTol) {
+        printJson({
+          ok: false,
+          verdict: 'REFUSED',
+          reason: `probe verification failed: probe_max_abs_err ${probeMaxErr} > probe_tol ${probeTol}`,
+          probe_max_abs_err: probeMaxErr,
+          probe_tol: probeTol,
+          probe_results: probeResults,
+          properties: props,
+        });
+        process.exit(2);
+      }
     }
     const entry = {
       name: set.name ?? path.basename(f, '.json'),
@@ -222,7 +277,7 @@ try {
       properties: props,
       probe_max_abs_err: probeMaxErr,
       probes: (set.probes ?? []).length,
-      engine: 'f32 burn-math (audited 2d8f42d)',
+      engine: currentEngineBuild(),
       certified_at: new Date().toISOString(),
     };
     const repPath = rFlag >= 0 ? rawArgs[rFlag + 1] : DEFAULT_REPERTOIRE;
@@ -246,10 +301,39 @@ try {
         composition_method: res.method,
       }, null, 1) + '\n');
     }
-    printJson({ ok: true, ...res, out: oFlag >= 0 ? rawArgs[oFlag + 1] : null });
+    printJson({ ok: true, ...res, out: (oFlag >= 0 && res.verdict === 'COMPOSED') ? rawArgs[oFlag + 1] : null });
     process.exit(res.verdict === 'COMPOSED' ? 0 : 2);
   }
-  throw new Error('usage: weight_lab.mjs (run|gate|certify|compose) ... | --selftest');
+  if (cmd === 'eval') {
+    const exprF = rawArgs[1];
+    const rFlag = rawArgs.indexOf('--repertoire');
+    const oFlag = rawArgs.indexOf('--out');
+    if (!exprF) throw new Error('usage: weight_lab.mjs eval <expr.json> [--repertoire <path>] [--out C.json]');
+    const exprObj = JSON.parse(fs.readFileSync(exprF, 'utf8'));
+    const repPath = rFlag >= 0 ? rawArgs[rFlag + 1] : DEFAULT_REPERTOIRE;
+    const repMap = {};
+    if (fs.existsSync(repPath)) {
+      const rep = JSON.parse(fs.readFileSync(repPath, 'utf8'));
+      for (const s of rep.sets ?? []) repMap[s.name] = s;
+    }
+    if (exprObj.repertoire && typeof exprObj.repertoire === 'object') {
+      Object.assign(repMap, exprObj.repertoire);
+    }
+    const res = evaluateWeightExpr(exprObj.expr ?? exprObj, repMap);
+    const evalOk = res.verdict !== 'REJECTED';
+    if (oFlag >= 0 && evalOk) {
+      fs.writeFileSync(rawArgs[oFlag + 1], JSON.stringify({
+        name: res.name,
+        kind: res.kind,
+        W: res.W,
+        b: res.b,
+        composition_method: res.method ?? null,
+      }, null, 1) + '\n');
+    }
+    printJson({ ok: evalOk, ...res, out: (oFlag >= 0 && evalOk) ? rawArgs[oFlag + 1] : null });
+    process.exit(evalOk ? 0 : 2);
+  }
+  throw new Error('usage: weight_lab.mjs (run|gate|certify|compose|eval) ... | --selftest');
 } catch (e) {
   failCli(e.message, e.envelope ?? null, 2);
 }

@@ -7,7 +7,7 @@
 // Exit 0 iff all runs identical, 2 otherwise.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit } from '../lib/runner.mjs';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
@@ -30,22 +30,28 @@ try {
   let refHash = null;
   let firstMismatch = -1;
   let outLen = 0;
-  const t0 = performance.now();
-  for (let i = 0; i < N; i++) {
-    const bundle = makeBundle(rt, plan, spec.inputs, ports);
-    const out = g.run(reg, bundle);
-    const arr = out.to_array(); // Float32Array view/copy
-    outLen = arr.length;
-    const h = createHash('sha256')
-      .update(Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength))
-      .digest('hex');
-    out.free();
-    if (bundle.free) bundle.free();
-    if (refHash === null) refHash = h;
-    else if (h !== refHash && firstMismatch === -1) firstMismatch = i;
+  let totalMs = 0;
+  try {
+    const t0 = performance.now();
+    for (let i = 0; i < N; i++) {
+      const bundle = makeBundle(rt, plan, spec.inputs, ports);
+      const out = g.run(reg, bundle);
+      const arr = out.to_array(); // Float32Array view/copy
+      outLen = arr.length;
+      const h = createHash('sha256')
+        .update(Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength))
+        .digest('hex');
+      out.free();
+      if (bundle.free) bundle.free();
+      if (refHash === null) refHash = h;
+      else if (h !== refHash && firstMismatch === -1) firstMismatch = i;
+    }
+    totalMs = performance.now() - t0;
+  } finally {
+    if (g?.free) g.free();
+    if (plan?.free) plan.free();
+    if (reg?.free) reg.free();
   }
-  const totalMs = performance.now() - t0;
-  if (g.free) g.free();
 
   const identical = firstMismatch === -1;
   printJsonAndExit({

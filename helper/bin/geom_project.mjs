@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// burn-math geom_project: 3D model -> 2D screen projection, end to end.
+// burn-math geom_project: 3D model or hierarchical scene-tree -> 2D screen projection, end to end.
 //
 // The engine does the LINEAR part (model/view/projection matrices fused into
 // one linear(4,4) layer, f32) and produces clip coordinates [x,y,z,w].
@@ -7,6 +7,10 @@
 // in plain JS — the engine has no div op, so this is a documented boundary,
 // not a silent gap. Vertices behind the camera (w <= 0) are flagged, never
 // projected (no NaN/Inf).
+//
+// Supports both vertex meshes (`"vertices": [[x,y,z], ...]`) and hierarchical
+// kinematic scene trees (`"nodes": [{"id": ..., "parent": ..., "chain": [...], "point": [x,y,z]}, ...]`),
+// plus recursive transform chains (`{"op": "repeat", "depth": N, "chain": [...]}`).
 //
 // Usage: node geom_project.mjs <model.json> [out.json] [--selftest]
 //
@@ -18,36 +22,18 @@
 //    "camera": {"eye":[x,y,z], "target":[x,y,z], "up":[x,y,z],
 //               "fov_deg":60, "aspect":1.333, "near":0.1, "far":100},
 //    "viewport": {"w":800, "h":600}}
+//   or {"nodes": [...]} for a scene-tree (world points become the vertices).
 //
 // --selftest: cube demo. Engine (f32, one MVP linear layer) vs a fully
 // independent f64 reference written with separate scalar code (no imports
 // from lib/geom3.mjs builders), plus a negative control (moved camera must
 // change the picture) and a behind-camera vertex (must be flagged, not NaN).
-import { startRunner, unwrap, printJson } from '../lib/runner.mjs';
+import { startRunner, unwrap, printJson, assertKnownFlags } from '../lib/runner.mjs';
 import {
-  rotX4, rotY4, rotZ4, rotAxisAngle4, euler4, quatFromEuler, quatToMat4,
-  translate4, scale4, mat4Mul, mat4ToColumnMajor, homogenize,
-  composeChain, applyMat4Clip, lookAt4, perspective4, clipTriangleNear,
+  opToMat4, mat4Mul, mat4ToColumnMajor, homogenize,
+  composeChain, lookAt4, perspective4, clipTriangleNear, compileSceneTree,
 } from '../lib/geom3.mjs';
 import fs from 'node:fs';
-
-function opToMat4(op) {
-  switch (op.op) {
-    case 'rotate_x': return rotX4(op.degrees ?? 0);
-    case 'rotate_y': return rotY4(op.degrees ?? 0);
-    case 'rotate_z': return rotZ4(op.degrees ?? 0);
-    case 'rotate_axis': return rotAxisAngle4(...op.axis, op.degrees ?? 0);
-    case 'euler': return euler4(op.roll ?? 0, op.pitch ?? 0, op.yaw ?? 0, op.order ?? 'ZYX');
-    case 'quaternion': return quatToMat4(op.w ?? 1, op.x ?? 0, op.y ?? 0, op.z ?? 0);
-    case 'translate': return translate4(...op.by);
-    case 'scale': return scale4(...op.by);
-    case 'matrix': { // raw row-major 4x4, for pre-composed or external matrices
-      if (!Array.isArray(op.m) || op.m.length !== 16) throw new Error('"matrix" op needs "m": 16 numbers (row-major)');
-      return op.m.slice();
-    }
-    default: throw new Error(`unknown op '${op.op}'`);
-  }
-}
 
 function buildMVP(model) {
   const M = composeChain((model.model ?? []).map(opToMat4));
@@ -207,20 +193,41 @@ if (rawArgs.includes('--selftest')) {
 }
 
 const modelFile = rawArgs[0];
-if (!modelFile || rawArgs.includes('--help') || rawArgs.includes('-h')) { console.error('usage: node geom_project.mjs <model.json> [out.json] [--selftest]'); process.exit(2); }
+if (!modelFile || rawArgs.includes('--help') || rawArgs.includes('-h')) {
+  console.error('usage: node geom_project.mjs <model.json> [out.json] [--selftest]');
+  process.exit(2);
+}
+assertKnownFlags(rawArgs.slice(1), { boolean: ['--selftest'], prog: 'geom_project' });
 const outFile = rawArgs.find((a) => a !== modelFile && a.endsWith('.json') && !a.startsWith('--'));
 try {
   const model = JSON.parse(fs.readFileSync(modelFile, 'utf8'));
-  if (!Array.isArray(model.vertices) || model.vertices.length === 0) throw new Error('model.json needs "vertices": [[x,y,z], ...]');
+  let vertices = model.vertices;
+  let sceneNodes = null;
+  if ((!Array.isArray(vertices) || vertices.length === 0) && Array.isArray(model.nodes) && model.nodes.length > 0) {
+    const compiledTree = compileSceneTree({ nodes: model.nodes });
+    sceneNodes = compiledTree.nodes;
+    vertices = sceneNodes.map((n) => n.world_point);
+  }
+  if (!Array.isArray(vertices) || vertices.length === 0) {
+    throw new Error('model.json needs "vertices": [[x,y,z], ...] or "nodes": [...]');
+  }
   if (!model.camera || !model.viewport) throw new Error('model.json needs "camera" and "viewport"');
   const mvp = buildMVP(model);
-  const clips = await runClips(specFor(mat4ToColumnMajor(mvp)), model.vertices);
+  const clips = await runClips(specFor(mat4ToColumnMajor(mvp)), vertices);
   const results = clips.map((c) => projectClip(c, model.viewport));
   const out = {
     ok: true,
-    vertices: model.vertices.length,
+    vertices: vertices.length,
     projected: results.filter((r) => !r.behind).length,
     behind_camera: results.filter((r) => r.behind).length,
+    ...(sceneNodes ? {
+      scene_nodes: sceneNodes.map((n, i) => ({
+        id: n.id,
+        parent: n.parent,
+        world_point: n.world_point,
+        projection: results[i],
+      })),
+    } : {}),
     results,
   };
   // Optional triangle stage: near-plane clip in clip space, then project.
