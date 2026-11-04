@@ -22,6 +22,36 @@ export function startRunner(extraArgs = []) {
   const pending = new Map();
   let seq = 0;
   let stderr = '';
+  // Upstream port of the skill's S7 hang fix (quirk #424, 2026-11-04):
+  // the runner child can die before answering (missing engine at
+  // import, missing runner file) and the parent used to wait for a
+  // stdout line that never comes: send() pend up to the 120s op
+  // timeout, then stop() awaited an 'exit' that had already fired
+  // and parked FOREVER. Fail-closed now: child death rejects every
+  // pending op at once, with the stderr tail so the cause (e.g.
+  // MODULE_NOT_FOUND) surfaces instead of a bare timeout, and
+  // stop() returns immediately when already exited.
+  let exited = false;
+  let exitCode = null;
+  const deathError = (op) => {
+    // Headline first: prefer the line that names the cause
+    // (e.g. Cannot find module); a bare stack frame does not.
+    const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
+    const head = (lines.find((l) => /Error|Cannot find|MODULE_NOT_FOUND/.test(l)) ?? lines[0] ?? '').slice(0, 300);
+    return new Error(`runner died (code ${exitCode}) before responding to '${op}'` +
+      (head ? `; runner stderr: ${head}` : ' (no runner stderr)'));
+  };
+  const failAllPending = () => {
+    for (const [id, p] of pending) {
+      clearTimeout(p.timer);
+      p.reject(deathError(p.op));
+      pending.delete(id);
+    }
+  };
+  child.on('exit', (code) => { exited = true; exitCode = code; failAllPending(); });
+  child.on('error', (err) => {
+    exited = true; exitCode = err.code ?? 'spawn-error'; failAllPending();
+  });
   child.stderr.on('data', (d) => { stderr += d.toString(); });
   child.stdout.on('data', (d) => {
     buf += d.toString();
@@ -32,24 +62,37 @@ export function startRunner(extraArgs = []) {
       if (!line.trim()) continue;
       let msg;
       try { msg = JSON.parse(line); } catch { continue; }
-      const resolve = pending.get(msg.request_id);
-      if (resolve) { pending.delete(msg.request_id); resolve(msg); }
+      const p = pending.get(msg.request_id);
+      if (p) { pending.delete(msg.request_id); p.resolve(msg); }
     }
   });
   const send = (cmd) => new Promise((resolve, reject) => {
+    if (exited) { reject(deathError(cmd.op)); return; }
     const request_id = `r${++seq}`;
     const timer = setTimeout(() => {
       if (pending.delete(request_id)) reject(new Error(`runner op timeout: ${cmd.op}`));
     }, OP_TIMEOUT_MS);
-    pending.set(request_id, (msg) => { clearTimeout(timer); resolve(msg); });
+    pending.set(request_id, {
+      op: cmd.op, timer,
+      resolve: (msg) => { clearTimeout(timer); resolve(msg); },
+      reject: (err) => { clearTimeout(timer); reject(err); },
+    });
     child.stdin.write(JSON.stringify({ request_id, ...cmd }) + '\n', (err) => {
       if (err) { clearTimeout(timer); pending.delete(request_id); reject(err); }
     });
   });
   const stop = async () => {
+    if (exited) return;
     try { await send({ op: 'close' }); } catch { /* already gone */ }
+    if (exited) return;
     try { child.stdin.end(); } catch { /* already gone */ }
-    await new Promise((r) => child.on('exit', r));
+    await Promise.race([
+      new Promise((r) => child.on('exit', r)),
+      new Promise((r) => setTimeout(() => {
+        try { child.kill('SIGKILL'); } catch { /* already gone */ }
+        r();
+      }, 5000)),
+    ]);
   };
   return { send, stop, get stderr() { return stderr; } };
 }
