@@ -1,4 +1,5 @@
 {
+  "layer_version": "v3.8",
   "sha256": {
     "burn_research_bg.wasm": "da605e236afc0095540d28c19762870797aa57c7ad784b60376c57cad36952a3",
     "burn_research.js": "7628e4de12182375b73aa5ee8e1e33ffbf639d46022d92163c6d84c114d8ce78"
