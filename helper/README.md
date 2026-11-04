@@ -13,9 +13,13 @@ optimization profiling to full math verification with provenance.
   Arithmetic without hand-writing a spec, routed to the engine's
   native kernels in-process (wasm-direct, not through a graph).
   `div` is true f32 division (no reciprocal hack): subnormal and
-  large divisors are exact (div 2e-39/2e-39 = [1], 0 ULP).
-  Division by zero, divisor underflow to f32 zero, length mismatch,
-  unknown op, and non-numeric input are clean errors (exit 2).
+  large divisors are exact (div 2e-39/2e-39 = [1], 0 ULP for the
+  division itself on f32 inputs; decimal inputs are first rounded
+  to f32, and any mantissa loss on entry is reported separately
+  in `precision_warnings`).
+  Division by zero, divisor underflow to f32 zero, length mismatch
+  (except length-1 broadcast), unknown op, and non-numeric input
+  are clean errors (exit 2).
   Exact i64 arithmetic lives in `bin/int.mjs` (never the f32 graph);
   Lane E elementwise kernels live in `bin/kernel.mjs`.
 
