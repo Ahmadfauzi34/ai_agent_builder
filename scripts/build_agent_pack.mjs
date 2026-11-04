@@ -9,8 +9,13 @@
 //       script). Default: $BURN_WASM_PKG_DIR, else <repo>/pkg.
 //     --version: pack version string. Default: repo-<shortsha>-<yyyymmdd>.
 //   Prints a JSON summary on stdout (exit 0) or an error on stderr (exit 1):
-//     {ok, out, pack_version, catalog_entries, surface_entries,
+//     {ok, out, pack_version, layer_version, catalog_entries, surface_entries,
 //      layout_entries, wasm_sha256, js_sha256}
+//   Layer version: read from helper/LAYER_VERSION (one line, e.g. v3.8).
+//   It is NOT derived from git: pack_version already carries build
+//   provenance (base commit), while layer_version changes only when the
+//   tool layer itself changes. Fail-closed: a missing/malformed file
+//   aborts the build, so the field can never silently drop again.
 //
 // What it does:
 //   1. Validates the engine bundle (all files the pack's tools read).
@@ -100,13 +105,24 @@ if (!version) {
   version = `repo-${sha}-${ymd}`;
 }
 
+// Layer version (single source of truth: helper/LAYER_VERSION).
+let layerVersion = null;
+try {
+  layerVersion = fs.readFileSync(path.join(HELPER, 'LAYER_VERSION'), 'utf8').trim();
+} catch {
+  fail('helper/LAYER_VERSION missing; refusing to build a pack whose layer version would be invisible');
+}
+if (!/^v\d+\.\d+/.test(layerVersion)) {
+  fail(`helper/LAYER_VERSION malformed: ${JSON.stringify(layerVersion)} (expected e.g. v3.8)`);
+}
+
 // 2. Copy helper/ + engine bundle.
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
 for (const sub of ['bin', 'lib', 'reference', 'references', 'examples']) {
   fs.cpSync(path.join(HELPER, sub), path.join(outDir, sub), { recursive: true });
 }
-for (const f of ['AGENT.md', 'INDEX.md', 'spec-schema.md']) {
+for (const f of ['AGENT.md', 'INDEX.md', 'spec-schema.md', 'LAYER_VERSION']) {
   fs.copyFileSync(path.join(HELPER, f), path.join(outDir, f));
 }
 fs.cpSync(engineDir, path.join(outDir, 'engine-audit'), { recursive: true });
@@ -175,6 +191,7 @@ const jsSha = sha256File(path.join(engineDir, 'burn_research.js'));
 const pins = { 'burn_research_bg.wasm': wasmSha, 'burn_research.js': jsSha };
 const packManifest = {
   pack_version: version,
+  layer_version: layerVersion,
   built_from: { repo: 'ai_agent_builder', script: 'scripts/build_agent_pack.mjs' },
   engine: { wasm_sha256: wasmSha, js_sha256: jsSha },
   sha256: pins,
@@ -182,6 +199,7 @@ const packManifest = {
 };
 fs.writeFileSync(path.join(outDir, 'MANIFEST.json'), JSON.stringify(packManifest, null, 2) + '\n');
 const helperManifest = {
+  layer_version: layerVersion,
   sha256: pins,
   engine: { wasm_sha256: wasmSha, js_sha256: jsSha },
   generated_by: 'scripts/build_agent_pack.mjs',
@@ -193,6 +211,7 @@ console.log(JSON.stringify({
   ok: true,
   out: outDir,
   pack_version: version,
+  layer_version: layerVersion,
   catalog_entries: catalogEntries,
   surface_entries: surfaceEntries,
   layout_entries: layoutEntries,
