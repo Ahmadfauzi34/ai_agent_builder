@@ -16,8 +16,10 @@ import { WEIGHTED_CONSTRUCTORS, LAYER_TYPE } from './wasm_direct.mjs';
 // - Single-write per slot (v1 rule): a slot written twice is a BUILD
 //   error. (Specs are authored this way; the rule keeps the producer
 //   map total so fan-out analysis stays exact.)
-// - Output slot must be f32 in v1 (§6.4, fork F1): an i64 output slot
-//   is a BUILD error ("end with intToFloat or use int.mjs").
+// - Output slot must be f32 in v1 (§6.4, fork F1 decision A
+//   2026-11-05): an i64 output slot is a BUILD error whose message
+//   names the concrete split (see intFinalMessage) — never just
+//   "use int.mjs".
 // - Boundary exactness (§6.1, value-dependent, checked at the cast
 //   step before the engine cast runs): intToFloat rejects any element
 //   |x| > 2^24; intFromFloat rejects non-finite and out-of-i64-range
@@ -249,12 +251,36 @@ export function segmentPlanWarning(spec, segments) {
   const hasF32 = segments.some((s) => s.kind === 'f32');
   const hasInt = segments.some((s) => s.kind === 'int');
   if (hasInt && !hasF32) {
-    return `int-only spec: single int run; output slot dtype is determined by the final cast (run.mjs cannot emit i64 outputs — end with intToFloat or use int.mjs)`;
+    return `int-only spec: single int run; output slot dtype is determined by the final cast (run.mjs emits f32 outputs only — for an i64 final, feed the port values to the int steps with int.mjs in step order, recipe references/split-int-final.md — or end with intToFloat if every |x| <= 16777216)`;
   }
   return `mixed-dtype spec: ${segments.length} segments (${kinds}), boundary casts at steps [${casts.join(',')}]; int steps execute as registry calls (not in f32 graphs); boundaries are fail-closed (intToFloat rejects |x| > 2^24; intFromFloat rejects non-finite/out-of-i64-range inputs)`;
 }
 
 // ---- Execution (direct primitives, shared registry) ----
+
+
+// Fork F1 decision A (2026-11-05): run.mjs emits f32 outputs only.
+// When a spec ends in i64, the rejection must name the concrete
+// split — which steps run where, in what order — not just
+// "use int.mjs". `segments` comes from splitSpec (maximal-run cut):
+// the f32 segment(s) run with run.mjs (as f32-only sub-specs, one
+// per segment output, exactly like the Q4 receipt verifier does),
+// the int tail runs with int.mjs (from-f32 for casts, then the int
+// ops), in step order. Full recipe: references/split-int-final.md.
+export function intFinalMessage(spec, segments, dtype) {
+  const ranges = (kind) => segments
+    .filter((s) => s.kind === kind)
+    .map((s) => `${s.steps[0]}..${s.steps[1]}`)
+    .join(', ');
+  const f32 = ranges('f32');
+  const int = ranges('int');
+  const head = `output slot ${spec.outputSlot} dtype ${dtype}; run.mjs emits f32 outputs only (v1, fork F1 = A).`;
+  const tail = `If every final |x| <= 16777216, ending the spec with intToFloat also works.\nRecipe: references/split-int-final.md`;
+  if (!f32) {
+    return `${head}\nThere is no f32 part: feed the port values directly to the int steps (steps ${int}) with int.mjs in step order (from-f32 for casts, then the int ops); the final decimal-string values are the exact answer.\n${tail}`;
+  }
+  return `${head}\nSplit at the boundary instead: run the f32 segment(s) (steps ${f32}) with run.mjs, then feed their outputs to the int tail (steps ${int}) with int.mjs in step order; the int tail's decimal-string values are the exact answer.\n${tail}`;
+}
 
 function freeQuiet(obj) {
   if (obj && typeof obj.free === 'function') {
@@ -475,7 +501,7 @@ export function runMixed(rt, spec, segments, portMap) {
     }
     const final = valueStore.get(spec.outputSlot);
     if (!final) throw new Error(`output slot ${spec.outputSlot} was never produced`);
-    if (final.dtype !== 'f32') throw new Error(`output slot ${spec.outputSlot} dtype ${final.dtype}; end with intToFloat or use int.mjs`);
+    if (final.dtype !== 'f32') throw new Error(intFinalMessage(spec, segments, final.dtype));
     return {
       outputs: { shape: final.shape, values: Array.from(final.values) },
       segments: segments.map((s) => ({

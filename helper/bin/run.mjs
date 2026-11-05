@@ -41,7 +41,7 @@
 import { startRunner, unwrap, printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 import { loadSpec, planFragment, portBySlot, checkArgValues, analyzePlanPorts } from '../lib/spec.mjs';
 import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
-import { specUsesInt, splitSpec, runMixed } from '../lib/mixed.mjs';
+import { specUsesInt, splitSpec, runMixed, intFinalMessage } from '../lib/mixed.mjs';
 
 const rawArgs = process.argv.slice(2);
 // REG-08: --help/-h in ANY position is usage, never a run (a spec file
@@ -97,7 +97,7 @@ async function runOne(send, specFile, getRt) {
     if (slotDtype.get(spec.outputSlot) !== 'f32') {
       return {
         ok: false, stage: 'build',
-        error: `output slot ${spec.outputSlot} dtype ${slotDtype.get(spec.outputSlot) ?? 'unknown'}; end with intToFloat or use int.mjs`,
+        error: intFinalMessage(spec, segments, slotDtype.get(spec.outputSlot) ?? 'unknown'),
         error_envelope: null,
       };
     }

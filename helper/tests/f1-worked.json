@@ -1,0 +1,115 @@
+{
+ "layers": [
+  {
+   "constructor": "add",
+   "args": [
+    10
+   ]
+  },
+  {
+   "constructor": "intFromFloat",
+   "args": [
+    11
+   ]
+  },
+  {
+   "constructor": "intFromFloat",
+   "args": [
+    12
+   ]
+  },
+  {
+   "constructor": "intAdd",
+   "args": [
+    13
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "kind": "binary",
+   "layer": 0,
+   "slots": [
+    0,
+    1,
+    2
+   ]
+  },
+  {
+   "kind": "unary",
+   "layer": 1,
+   "slots": [
+    2,
+    3
+   ]
+  },
+  {
+   "kind": "unary",
+   "layer": 2,
+   "slots": [
+    4,
+    5
+   ]
+  },
+  {
+   "kind": "binary",
+   "layer": 3,
+   "slots": [
+    3,
+    5,
+    6
+   ]
+  }
+ ],
+ "numSlots": 7,
+ "outputSlot": 6,
+ "ports": [
+  {
+   "slot": 0,
+   "role": "observation",
+   "shape": [
+    1,
+    1,
+    1,
+    2
+   ],
+   "layout": "feature_last"
+  },
+  {
+   "slot": 1,
+   "role": "observation",
+   "shape": [
+    1,
+    1,
+    1,
+    2
+   ],
+   "layout": "feature_last"
+  },
+  {
+   "slot": 4,
+   "role": "observation",
+   "shape": [
+    1,
+    1,
+    1,
+    2
+   ],
+   "layout": "feature_last"
+  }
+ ],
+ "inputs": {
+  "0": [
+   20000000,
+   30000000
+  ],
+  "1": [
+   5,
+   7
+  ],
+  "4": [
+   100,
+   200
+  ]
+ }
+}
