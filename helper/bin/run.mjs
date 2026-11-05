@@ -39,9 +39,10 @@
 // ledger, receipts). Its records keep the same keys with null plus
 // mode:'direct', so consumers never receive a fake gate.
 import { startRunner, unwrap, printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
-import { loadSpec, planFragment, portBySlot, checkArgValues, analyzePlanPorts } from '../lib/spec.mjs';
+import { loadSpec, planFragment, portBySlot, checkArgValues, checkInputLengths, analyzePlanPorts } from '../lib/spec.mjs';
 import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
 import { specUsesInt, splitSpec, runMixed, intFinalMessage } from '../lib/mixed.mjs';
+import { checkSpec } from '../lib/shapecore.mjs';
 
 const rawArgs = process.argv.slice(2);
 // REG-08: --help/-h in ANY position is usage, never a run (a spec file
@@ -66,6 +67,25 @@ if (!specFiles.length) {
 // (lib/mixed.mjs) with execution_gate/host_provenance null — the third
 // output shape — plus the segment receipt. The wasm runtime is loaded
 // lazily (getRt) so pure-f32 batches never pay for it.
+// Q2 gate (2026-11-05): the same static check `bin/validate.mjs`
+// runs (checkSpec: shape mismatches + dataflow) is enforced on the
+// run path, so a statically-invalid spec fails fast with step
+// attribution instead of reaching the engine and failing with a
+// bare engine message. Warnings are non-fatal (same condition as
+// validate). Stage 'build' is chosen so the existing single-spec
+// exit mapping preserves it (exit 2, full record printed).
+function staticGate(spec) {
+  const checked = checkSpec(spec);
+  if (!checked.mismatches.length && checked.dataflow.ok) return null;
+  return {
+    ok: false, stage: 'build', code: 'static_check_failed',
+    mismatches: checked.mismatches, dataflow: checked.dataflow,
+    error: checked.mismatches[0]?.message ?? checked.dataflow.issues[0] ?? 'static check failed',
+    remediation_hint: 'fix the listed steps/slots/shapes, then re-run validate',
+    error_envelope: null,
+  };
+}
+
 async function runOne(send, specFile, getRt) {
   let spec;
   try {
@@ -80,6 +100,14 @@ async function runOne(send, specFile, getRt) {
   if (argIssues.length) {
     return { ok: false, stage: 'argValues', code: 'invalid_argument', issues: argIssues, error_envelope: null };
   }
+  // Input-length gate (gap-d, 2026-11-05): same comparison validate
+  // warns about (F4) — the run path has no warning channel, so it
+  // fails here with the slot-naming issue instead of the engine's
+  // bare WasmTensor::new error.
+  const lenIssues = checkInputLengths(spec);
+  if (lenIssues.length) {
+    return { ok: false, stage: 'argValues', code: 'invalid_argument', issues: lenIssues, error_envelope: null };
+  }
   if (specUsesInt(spec)) {
     // Plan-shape gate first (same check the direct path runs
     // in-process); dtype/build errors follow, before any segment runs.
@@ -87,6 +115,13 @@ async function runOne(send, specFile, getRt) {
     if (!plan.valid) {
       return { ok: false, stage: 'validatePlan', ...plan, error_envelope: null };
     }
+    // Q2 gate (2026-11-05): fail fast with step attribution, before
+    // splitSpec. Placed after the plan gate (most fundamental defect
+    // first); the gate's dataflow is strictly more precise than the
+    // F1 message for never-written outputs, so gap-f class specs are
+    // attributed here instead of reaching intFinalMessage.
+    const gate = staticGate(spec);
+    if (gate) return gate;
     let segments;
     let slotDtype;
     try {
@@ -126,6 +161,12 @@ async function runOne(send, specFile, getRt) {
     if (!plan.valid) {
       return { ok: false, stage: 'validatePlan', ...plan, error_envelope: null };
     }
+
+    // Q2 gate, f32 sibling (2026-11-05): same staticGate as the mixed
+    // path — a statically-invalid f32 spec fails here with step
+    // attribution, before the session is created.
+    const gate = staticGate(spec);
+    if (gate) return gate;
 
     // 2. Create the session (logicalPorts maps each declared slot to a runtime
     //    source; the runner requires this mapping before run). Fresh per spec.
@@ -195,6 +236,13 @@ async function runDirectOne(rt, specFile) {
   if (argIssues.length) {
     return { ok: false, stage: 'argValues', code: 'invalid_argument', issues: argIssues, error_envelope: null };
   }
+  // Input-length gate (gap-d, 2026-11-05): see runOne — the run path
+  // fails here with the slot-naming issue instead of the engine's
+  // bare WasmTensor::new error.
+  const lenIssues = checkInputLengths(spec);
+  if (lenIssues.length) {
+    return { ok: false, stage: 'argValues', code: 'invalid_argument', issues: lenIssues, error_envelope: null };
+  }
   const plan = analyzePlanPorts(spec);
   if (!plan.valid) {
     return { ok: false, stage: 'validatePlan', ...plan, error_envelope: null };
@@ -210,6 +258,12 @@ async function runDirectOne(rt, specFile) {
       error_envelope: null,
     };
   }
+  // Q2 gate, f32 sibling (2026-11-05): same staticGate as the mixed
+  // path — reached only for non-mixed specs (mixed specs are refused
+  // above); analyzePlanPorts already ran for this spec.
+  const gate = staticGate(spec);
+  if (gate) return gate;
+
   // Phase is tracked by hand: bundle creation (bind) vs graph run.
   // Raw wasm throws carry neither code nor phase; the runner wraps
   // those as internal_error, so direct does the same — the phase is
@@ -234,12 +288,15 @@ async function runDirectOne(rt, specFile) {
       host_provenance: null,
     };
   } catch (e) {
+    // Engine throws can be bare strings (as in the mixed catches) —
+    // reading e.message unguarded turned them into "undefined".
+    const msg = e instanceof Error ? e.message : String(e);
     const envelope = {
       code: e.code ?? 'internal_error',
       phase: e.phase ?? phase,
-      message: e.message,
+      message: msg,
     };
-    return { ok: false, stage: 'run', error: e.message, error_envelope: envelope };
+    return { ok: false, stage: 'run', error: msg, error_envelope: envelope };
   }
 }
 
