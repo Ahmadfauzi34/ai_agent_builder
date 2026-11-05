@@ -887,6 +887,48 @@ test('catalog surface: find-op --list 52, surface --list 169', () => {
   assert(s.code === 0 && s.out.trim().split('\n').length === 169, `surface list: ${s.out.trim().split('\n').length} lines`);
 });
 
+
+test('F1A: i64-final run rejection names the concrete split', () => {
+  const port = (slot, shape) => ({ slot, role: 'observation', shape, layout: 'feature_last' });
+  // Int-only variant: no f32 part.
+  const gap = {
+    layers: [{ constructor: 'intFromFloat', args: [11] }, { constructor: 'intAdd', args: [12] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 1] },
+      { kind: 'unary', layer: 0, slots: [2, 3] },
+      { kind: 'binary', layer: 1, slots: [1, 3, 4] },
+    ],
+    numSlots: 5, outputSlot: 4,
+    ports: [port(0, [1, 1, 1, 2]), port(2, [1, 1, 1, 2])],
+    inputs: { 0: [20000000, 30000000], 2: [5, 7] },
+  };
+  const rg = runTool(['bin/run.mjs', writeSpec('f1-gap.json', gap)]);
+  assert(rg.json && rg.json.ok === false && rg.json.stage === 'build', `f1-gap run: ${rg.out.slice(0, 200)}`);
+  assert(rg.json.error.includes('There is no f32 part') && rg.json.error.includes('steps 0..2')
+    && rg.json.error.includes('references/split-int-final.md'), `f1-gap message: ${rg.json.error.slice(0, 300)}`);
+  // F32-prefix variant: split ranges named.
+  const worked = {
+    layers: [{ constructor: 'add', args: [10] }, { constructor: 'intFromFloat', args: [11] }, { constructor: 'intFromFloat', args: [12] }, { constructor: 'intAdd', args: [13] }],
+    steps: [
+      { kind: 'binary', layer: 0, slots: [0, 1, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [4, 5] },
+      { kind: 'binary', layer: 3, slots: [3, 5, 6] },
+    ],
+    numSlots: 7, outputSlot: 6,
+    ports: [port(0, [1, 1, 1, 2]), port(1, [1, 1, 1, 2]), port(4, [1, 1, 1, 2])],
+    inputs: { 0: [20000000, 30000000], 1: [5, 7], 4: [100, 200] },
+  };
+  const rw = runTool(['bin/run.mjs', writeSpec('f1-worked.json', worked)]);
+  assert(rw.json && rw.json.ok === false && rw.json.stage === 'build', `f1-worked run: ${rw.out.slice(0, 200)}`);
+  assert(rw.json.error.includes('steps 0..0') && rw.json.error.includes('steps 1..3')
+    && rw.json.error.includes('references/split-int-final.md'), `f1-worked message: ${rw.json.error.slice(0, 300)}`);
+  // Validate warning on the int-only spec points at the recipe.
+  const v = runTool(['bin/validate.mjs', writeSpec('f1-gap-v.json', gap)]);
+  const w = v.json?.static_warnings ?? [];
+  assert(v.code === 0 && w.some((x) => x.includes('references/split-int-final.md')), `f1-gap validate warning: ${JSON.stringify(w).slice(0, 300)}`);
+});
+
 const results = [];
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, ok: true }); }

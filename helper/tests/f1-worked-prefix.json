@@ -1,0 +1,75 @@
+{
+ "layers": [
+  {
+   "constructor": "add",
+   "args": [
+    10
+   ]
+  },
+  {
+   "constructor": "intFromFloat",
+   "args": [
+    11
+   ]
+  },
+  {
+   "constructor": "intFromFloat",
+   "args": [
+    12
+   ]
+  },
+  {
+   "constructor": "intAdd",
+   "args": [
+    13
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "kind": "binary",
+   "layer": 0,
+   "slots": [
+    0,
+    1,
+    2
+   ]
+  }
+ ],
+ "ports": [
+  {
+   "slot": 0,
+   "role": "observation",
+   "shape": [
+    1,
+    1,
+    1,
+    2
+   ],
+   "layout": "feature_last"
+  },
+  {
+   "slot": 1,
+   "role": "observation",
+   "shape": [
+    1,
+    1,
+    1,
+    2
+   ],
+   "layout": "feature_last"
+  }
+ ],
+ "numSlots": 7,
+ "outputSlot": 2,
+ "inputs": {
+  "0": [
+   20000000,
+   30000000
+  ],
+  "1": [
+   5,
+   7
+  ]
+ }
+}
