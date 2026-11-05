@@ -174,7 +174,7 @@ test('REG-04: conv stride 0 rejected', () => {
   assertValidFalse(r, 'static_check_failed');
   assert(JSON.stringify(r.json.mismatches).includes('stride'), `stride message: ${JSON.stringify(r.json.mismatches).slice(0, 200)}`);
 });
-test('REG-13: softmax dim 0 rejected by validate and by engine', () => {
+test('REG-13: softmax dim 0 rejected by validate and by the run-path gate', () => {
   // Two layers so both ports are consumed by the plan (a one-layer spec
   // fails plan_unused_ports in run before reaching the engine).
   const s = {
@@ -188,8 +188,13 @@ test('REG-13: softmax dim 0 rejected by validate and by engine', () => {
   const f = writeSpec('softmax0.json', s);
   const v = runTool(['bin/validate.mjs', f]);
   assertValidFalse(v, 'static_check_failed');
+  // Q2 gate, f32 sibling (2026-11-05): the run path enforces the same
+  // static check, so this spec now fails at stage build / exit 2 with
+  // step attribution instead of reaching the engine (exit 1, bare).
   const r = runTool(['bin/run.mjs', f]);
-  assert(r.code === 1 && r.json.ok === false, `run softmax dim 0: exit ${r.code} ${r.out.slice(0, 200)}`);
+  assert(r.code === 2 && r.json.ok === false, `run softmax dim 0: exit ${r.code} ${r.out.slice(0, 200)}`);
+  assert(r.json.stage === 'build' && r.json.code === 'static_check_failed', `run softmax dim 0 record: ${r.out.slice(0, 200)}`);
+  assert(String(JSON.stringify(r.json.mismatches)).includes('softmax dim 0'), `run softmax dim 0 mismatch: ${r.out.slice(0, 200)}`);
 });
 test('softmax/logSoftmax dims 1-3 pass validate and run', () => {
   // Chained unary steps, one per dim, plus an add drain so port 1 is
@@ -213,11 +218,14 @@ test('softmax/logSoftmax dims 1-3 pass validate and run', () => {
   const r = runTool(['bin/run.mjs', f]);
   assert(r.code === 0 && r.json.ok === true, `softmax dims 1-3 run: ${r.out.slice(0, 200)}`);
 });
-test('softmax/logSoftmax dim 4 rejected by validate and by engine init', () => {
+test('softmax/logSoftmax dim 4 rejected by validate and by the run-path gate', () => {
   // Mirrors REG-13 (dim 0) for the upper bound: the pack rule rejects
-  // at validate, and the engine init gate rejects with the named
-  // message. Dim 0 coverage stays in REG-13; it is not duplicated here.
-  for (const [ctor, want] of [['softmax', 'Softmax init'], ['logSoftmax', 'LogSoftmax init']]) {
+  // at validate. Q2 gate, f32 sibling (2026-11-05): the run path
+  // enforces the same static check, so the engine init gate's named
+  // message ("Softmax init") is no longer reached for these specs —
+  // the gate's message names the dim instead, with step attribution.
+  // Dim 0 coverage stays in REG-13; it is not duplicated here.
+  for (const [ctor, want] of [['softmax', 'softmax dim 4'], ['logSoftmax', 'logSoftmax dim 4']]) {
     const s = {
       layers: [{ args: [0, 4], constructor: ctor }, { args: [1], constructor: 'add' }],
       steps: [
@@ -231,8 +239,91 @@ test('softmax/logSoftmax dim 4 rejected by validate and by engine init', () => {
     const v = runTool(['bin/validate.mjs', f]);
     assertValidFalse(v, 'static_check_failed');
     const r = runTool(['bin/run.mjs', f]);
-    assert(r.code === 1 && r.json.ok === false, `run ${ctor} dim 4: exit ${r.code} ${r.out.slice(0, 200)}`);
-    assert(String(r.json.error).includes(want), `${ctor} dim 4 engine error must name the init gate: ${r.out.slice(0, 300)}`);
+    assert(r.code === 2 && r.json.ok === false, `run ${ctor} dim 4: exit ${r.code} ${r.out.slice(0, 200)}`);
+    assert(r.json.stage === 'build' && r.json.code === 'static_check_failed', `run ${ctor} dim 4 record: ${r.out.slice(0, 200)}`);
+    assert(String(r.json.error).includes(want), `${ctor} dim 4 gate error must name the dim: ${r.out.slice(0, 300)}`);
+  }
+});
+test('Q2 gate: mixed shape mismatch fails fast with step attribution', () => {
+  // Probe fixtures gap-a (intAdd, step 3), gap-b (intMatmul, step 2),
+  // gap-c (f32 add in the mixed f32 segment, step 6). Before the gate
+  // each reached the engine and failed with a bare engine message
+  // (exit 1, no step, no stage); now the run path enforces the same
+  // static check validate runs and fails at stage build / exit 2.
+  // --direct is default-path only for mixed specs (fork F2 refuses
+  // mixed on --direct), so the direct-path gate is covered by the
+  // pure-f32 case at the end of this test.
+  const cases = [
+    ['gap-a', {
+      layers: [{ constructor: 'add', args: [10] }, { constructor: 'intFromFloat', args: [11] }, { constructor: 'intFromFloat', args: [12] }, { constructor: 'intAdd', args: [13] }, { constructor: 'intToFloat', args: [14] }],
+      steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'unary', layer: 2, slots: [4, 5] }, { kind: 'binary', layer: 3, slots: [3, 5, 6] }, { kind: 'unary', layer: 4, slots: [6, 7] }],
+      numSlots: 8, outputSlot: 7,
+      ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 3], layout: 'feature_last' }, { slot: 1, role: 'observation', shape: [1, 1, 1, 3], layout: 'feature_last' }, { slot: 4, role: 'observation', shape: [1, 1, 1, 2], layout: 'feature_last' }],
+      inputs: { '0': [1, 2, 3], '1': [10, 20, 30], '4': [100, 200] },
+    }, 3],
+    ['gap-b', {
+      layers: [{ constructor: 'intFromFloat', args: [11] }, { constructor: 'intFromFloat', args: [12] }, { constructor: 'intMatmul', args: [13] }, { constructor: 'intToFloat', args: [14] }],
+      steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'binary', layer: 2, slots: [1, 3, 4] }, { kind: 'unary', layer: 3, slots: [4, 5] }],
+      numSlots: 6, outputSlot: 5,
+      ports: [{ slot: 0, role: 'observation', shape: [1, 1, 2, 3], layout: 'feature_last' }, { slot: 2, role: 'observation', shape: [1, 1, 2, 2], layout: 'feature_last' }],
+      inputs: { '0': [1, 2, 3, 4, 5, 6], '2': [7, 8, 9, 10] },
+    }, 2],
+    ['gap-c', {
+      layers: [{ constructor: 'intFromFloat', args: [11] }, { constructor: 'intFromFloat', args: [12] }, { constructor: 'intAdd', args: [13] }, { constructor: 'intToFloat', args: [14] }, { constructor: 'intFromFloat', args: [15] }, { constructor: 'intToFloat', args: [16] }, { constructor: 'add', args: [17] }],
+      steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'binary', layer: 2, slots: [1, 3, 4] }, { kind: 'unary', layer: 3, slots: [4, 5] }, { kind: 'unary', layer: 4, slots: [6, 7] }, { kind: 'unary', layer: 5, slots: [7, 8] }, { kind: 'binary', layer: 6, slots: [5, 8, 9] }],
+      numSlots: 10, outputSlot: 9,
+      ports: [{ slot: 0, role: 'observation', shape: [1, 1, 2, 2], layout: 'feature_last' }, { slot: 2, role: 'observation', shape: [1, 1, 2, 2], layout: 'feature_last' }, { slot: 6, role: 'observation', shape: [1, 1, 2, 3], layout: 'feature_last' }],
+      inputs: { '0': [1, 2, 3, 4], '2': [5, 6, 7, 8], '6': [10, 20, 30, 40, 50, 60] },
+    }, 6],
+  ];
+  for (const [name, s, step] of cases) {
+    const f = writeSpec(`${name}.json`, s);
+    const v = runTool(['bin/validate.mjs', f]);
+    assertValidFalse(v, 'static_check_failed');
+    const r = runTool(['bin/run.mjs', f]);
+    assert(r.code === 2 && r.json.ok === false, `${name}: exit ${r.code} ${r.out.slice(0, 200)}`);
+    assert(r.json.stage === 'build' && r.json.code === 'static_check_failed', `${name} record: ${r.out.slice(0, 200)}`);
+    assert(JSON.stringify(r.json.mismatches).includes(`"step":${step}`), `${name} step ${step}: ${r.out.slice(0, 200)}`);
+  }
+  // Pure-f32 case (probe fixture f32-a) through --direct: covers the
+  // f32 gate call site in runDirectOne.
+  const fa = {
+    layers: [{ constructor: 'add', args: [10] }],
+    steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }],
+    numSlots: 3, outputSlot: 2,
+    ports: [{ slot: 0, role: 'observation', shape: [1, 1, 2, 2], layout: 'feature_last' }, { slot: 1, role: 'observation', shape: [1, 1, 2, 3], layout: 'feature_last' }],
+    inputs: { '0': [1, 2, 3, 4], '1': [5, 6, 7, 8, 9, 10] },
+  };
+  const ff = writeSpec('f32-a.json', fa);
+  const rd = runTool(['bin/run.mjs', '--direct', ff]);
+  assert(rd.code === 2 && rd.json.ok === false, `f32-a direct: exit ${rd.code} ${rd.out.slice(0, 200)}`);
+  assert(rd.json.stage === 'build' && rd.json.code === 'static_check_failed', `f32-a direct record: ${rd.out.slice(0, 200)}`);
+  assert(JSON.stringify(rd.json.mismatches).includes('"step":0'), `f32-a direct step 0: ${rd.out.slice(0, 200)}`);
+});
+test('Q2 gate: input length mismatch fails fast naming the slot', () => {
+  // Probe fixture il-a (q2-control with inputs['0'] shortened to 2
+  // of 3 values). Validate still only warns (F4 / gap-5 model); the
+  // run path has no warning channel, so it fails at stage argValues
+  // with the slot-naming issue instead of the engine's bare
+  // WasmTensor::new error (which cannot tell slot 0 from slot 4
+  // when ports share a shape). The length gate runs before the
+  // --direct mixed refusal, so both paths are covered here.
+  const s = {
+    layers: [{ constructor: 'add', args: [10] }, { constructor: 'intFromFloat', args: [11] }, { constructor: 'intFromFloat', args: [12] }, { constructor: 'intAdd', args: [13] }, { constructor: 'intToFloat', args: [14] }],
+    steps: [{ kind: 'binary', layer: 0, slots: [0, 1, 2] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'unary', layer: 2, slots: [4, 5] }, { kind: 'binary', layer: 3, slots: [3, 5, 6] }, { kind: 'unary', layer: 4, slots: [6, 7] }],
+    numSlots: 8, outputSlot: 7,
+    ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 3], layout: 'feature_last' }, { slot: 1, role: 'observation', shape: [1, 1, 1, 3], layout: 'feature_last' }, { slot: 4, role: 'observation', shape: [1, 1, 1, 3], layout: 'feature_last' }],
+    inputs: { '0': [1, 2], '1': [10, 20, 30], '4': [100, 200, 300] },
+  };
+  const f = writeSpec('inputlen.json', s);
+  const v = runTool(['bin/validate.mjs', f]);
+  assert(v.code === 0 && v.json.valid === true, `input length must warn, not fail validate: ${v.out.slice(0, 200)}`);
+  assert((v.json.static_warnings ?? []).some((x) => x.includes('inputs slot 0: expected 3 values')), `input warning: ${JSON.stringify(v.json.static_warnings)}`);
+  for (const args of [['bin/run.mjs', f], ['bin/run.mjs', '--direct', f]]) {
+    const r = runTool(args);
+    assert(r.code === 2 && r.json.ok === false, `input length ${args[1]}: exit ${r.code} ${r.out.slice(0, 200)}`);
+    assert(r.json.stage === 'argValues' && r.json.code === 'invalid_argument', `input length ${args[1]} record: ${r.out.slice(0, 200)}`);
+    assert(String(JSON.stringify(r.json.issues)).includes('inputs slot 0: expected 3 values'), `input length ${args[1]} issue: ${r.out.slice(0, 200)}`);
   }
 });
 // Independent f64 softmax over one axis of a 4-D tensor (max-subtracted,
@@ -489,9 +580,15 @@ test('buildGraph exception-safe: failure errors unchanged, later builds healthy'
   const r1 = direct('bs-unknown.json', mk([lin, { constructor: 'noSuch', args: [1] }, add],
     [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'binary', layer: 2, slots: [2, 1, 3] }], 3));
   assert(r1.json && r1.json.ok === false && r1.json.error_envelope?.code === 'unknown_layer_constructor', `unknown ctor: ${r1.out.slice(0, 200)}`);
-  const r2 = direct('bs-badstep.json', mk([lin, { constructor: 'relu', args: [1] }, add],
-    [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'unary', layer: 1, slots: [2, 3, 9] }, { kind: 'binary', layer: 2, slots: [3, 1, 4] }], 4));
-  assert(r2.json && r2.json.ok === false && r2.json.error_envelope?.code === 'invalid_argument' && r2.json.error.includes('bad step'), `bad step: ${r2.out.slice(0, 200)}`);
+  // Q2 gate (2026-11-05): the old second case (a relu step with three
+  // slots) is now caught by the host static gate with step attribution
+  // (static_check_failed, step 1) and no longer reaches buildGraph, so
+  // it cannot pin buildGraph's error here anymore. The replacement
+  // keeps a third buildGraph-reaching failure mode: a weights-count
+  // mismatch for a weighted layer (validate only warns on it, F4).
+  const r2 = direct('bs-weights-count.json', mk([lin, { constructor: 'relu', args: [1] }, add],
+    [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'binary', layer: 2, slots: [3, 1, 4] }], 4, { 0: [1] }));
+  assert(r2.json && r2.json.ok === false && r2.json.error === 'setWeightsFlat: expected 6 floats (in*out+out), got 1', `weights count: ${r2.out.slice(0, 200)}`);
   const r3 = direct('bs-weights.json', mk([lin, { constructor: 'relu', args: [1] }, add],
     [{ kind: 'unary', layer: 0, slots: [0, 2] }, { kind: 'unary', layer: 1, slots: [2, 3] }, { kind: 'binary', layer: 2, slots: [3, 1, 4] }], 4, { 1: [1] }));
   assert(r3.json && r3.json.ok === false && r3.json.error === 'weights for layer index 1: not a weighted layer', `weights: ${r3.out.slice(0, 200)}`);

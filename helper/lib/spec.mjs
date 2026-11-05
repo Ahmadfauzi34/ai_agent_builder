@@ -157,6 +157,41 @@ export function checkArgValues(spec, catalog) {
   return issues;
 }
 
+// Input-length gate (gap-d, 2026-11-05): every inputs array must hold
+// exactly numel(port.shape) values. Same comparison validate.mjs
+// makes as a WARNING (F4 / gap-5 model: validate warns, exit 0) —
+// but the run path has no warning channel, so it fails here with
+// the same slot-naming message instead of the engine's bare
+// WasmTensor::new error (which names only shape and counts, and is
+// ambiguous when ports share a shape). Only canonical keys matching
+// a declared port with a valid 4-D shape are checked; a key with no
+// declared port is left alone here (validate already warns on it,
+// and the engine silently ignores it — no run failure to attribute).
+export function checkInputLengths(spec) {
+  const issues = [];
+  const portShapeBySlot = new Map();
+  for (const p of (spec.ports ?? [])) {
+    if (!p || typeof p !== 'object' || !isU32(p.slot)) continue;
+    if (portShapeBySlot.has(p.slot)) continue; // duplicate already reported
+    if (!Array.isArray(p.shape) || p.shape.length !== 4 ||
+        p.shape.some((d) => !isU32(d) || d <= 0)) continue; // shape issue already reported
+    portShapeBySlot.set(p.slot, p.shape);
+  }
+  const inputs = spec.inputs;
+  if (inputs === null || typeof inputs !== 'object' || Array.isArray(inputs)) return issues;
+  for (const [slotKey, values] of Object.entries(inputs)) {
+    if (!Array.isArray(values)) continue; // type issue already reported
+    if (!CANONICAL_UINT_KEY.test(slotKey) || !isU32(Number(slotKey))) continue;
+    const shape = portShapeBySlot.get(Number(slotKey));
+    if (!shape) continue;
+    const numel = shape[0] * shape[1] * shape[2] * shape[3];
+    if (values.length !== numel) {
+      issues.push(`inputs slot ${slotKey}: expected ${numel} values for shape ${JSON.stringify(shape)}, got ${values.length}`);
+    }
+  }
+  return issues;
+}
+
 // Port v2.5 (F4): exact f32 weight-element count for the 10 weighted
 // constructors, from the catalog signatures. Returns null for
 // non-weighted constructors or for args that fail basic typing
