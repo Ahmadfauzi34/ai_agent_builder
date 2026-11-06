@@ -20,7 +20,7 @@
 // What it does:
 //   1. Validates the engine bundle (all files the pack's tools read).
 //   2. Copies helper/{bin,lib,AGENT.md,INDEX.md,spec-schema.md,reference,
-//      references,examples} to <out>/ and the engine bundle to
+//      references,examples,tests} to <out>/ and the engine bundle to
 //      <out>/engine-audit/. (references/ is REQUIRED: the packed
 //      bin/ tools read ../references/ — a pack without it fails
 //      rewrite.mjs list with ENOENT and silently starts weight_lab
@@ -119,7 +119,7 @@ if (!/^v\d+\.\d+/.test(layerVersion)) {
 // 2. Copy helper/ + engine bundle.
 fs.rmSync(outDir, { recursive: true, force: true });
 fs.mkdirSync(outDir, { recursive: true });
-for (const sub of ['bin', 'lib', 'reference', 'references', 'examples']) {
+for (const sub of ['bin', 'lib', 'reference', 'references', 'examples', 'tests']) {
   fs.cpSync(path.join(HELPER, sub), path.join(outDir, sub), { recursive: true });
 }
 for (const f of ['AGENT.md', 'INDEX.md', 'spec-schema.md', 'LAYER_VERSION']) {
@@ -183,6 +183,25 @@ let rewriteJson = null;
 try { rewriteJson = JSON.parse(rewriteSmoke.stdout); } catch { /* reported below */ }
 if (rewriteSmoke.status !== 0 || !rewriteJson || rewriteJson.ok !== true || !Array.isArray(rewriteJson.rewrites) || rewriteJson.rewrites.length === 0) {
   fail(`packed rewrite list smoke failed (exit ${rewriteSmoke.status}): ${rewriteSmoke.stdout.slice(0, 300)} ${rewriteSmoke.stderr.slice(0, 300)}`);
+}
+
+// 5c. Smoke-run the PACKED run tool on tests/f1-worked-prefix.json:
+// helper/references/split-int-final.md instructs agents to run exactly
+// this command from the pack root, so a pack built without tests/ fails
+// it with ENOENT (2026-11-06: the shipped pack had no tests/ at all,
+// even though the fixtures already rode along inside
+// engine-audit/helper/tests/). ONLY this fixture is smoked: f1-worked.json
+// and f1-gap.json are i64-final by design and run.mjs refuses them
+// (fork F1: f32 outputs only) — smoking them would fail the build
+// by design, not by defect.
+const f1Smoke = runNode(
+  [path.join(outDir, 'bin', 'run.mjs'), path.join(outDir, 'tests', 'f1-worked-prefix.json')],
+  { BURN_WASM_PKG_DIR: path.join(outDir, 'engine-audit') },
+);
+let f1Json = null;
+try { f1Json = JSON.parse(f1Smoke.stdout); } catch { /* reported below */ }
+if (f1Smoke.status !== 0 || !f1Json || JSON.stringify(f1Json.outputs?.values) !== JSON.stringify([20000004, 30000008])) {
+  fail(`packed f1 smoke run failed (exit ${f1Smoke.status}): ${f1Smoke.stdout.slice(0, 300)} ${f1Smoke.stderr.slice(0, 300)}`);
 }
 
 // 6. MANIFESTs (same pins in both).
