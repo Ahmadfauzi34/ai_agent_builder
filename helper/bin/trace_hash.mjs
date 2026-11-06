@@ -27,7 +27,8 @@
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { extractPrefixSubspec } from '../lib/rollout.mjs';
-import { printJson, failCli } from '../lib/runner.mjs';
+import { gateSpec } from '../lib/gates.mjs';
+import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
 
 const rawArgs = process.argv.slice(2);
 const isolate = rawArgs.includes('--isolate');
@@ -49,16 +50,24 @@ if (otherSpecFile) {
   catch (e) { failCli(e); }
 }
 
+// Tahap 2a: fail-closed static gate BEFORE any WASM work — a defective
+// spec used to run and report ok:true with a step_failed capture.
+for (const [name, s] of [['spec', spec], ['other', otherSpec]]) {
+  if (!s) continue;
+  const gate = gateSpec(s);
+  if (gate) printJsonAndExit({ ...gate, spec: name }, 1);
+}
+
 try {
   const rt = await loadWasm();
   const traceHashes = (s) => {
     const { reg, plan, g } = buildGraph(rt, s);
-    const bundle = makeBundle(rt, plan, s.inputs, portBySlot(s));
-    const traced = g.runWithTrace(reg, bundle, 0, s.steps.length, budget);
-    let steps;
+    let bundle = null, traced = null;
     try {
+      bundle = makeBundle(rt, plan, s.inputs, portBySlot(s));
+      traced = g.runWithTrace(reg, bundle, 0, s.steps.length, budget);
       const rep = JSON.parse(traced.report());
-      steps = (rep.steps ?? []).map((st) => {
+      const steps = (rep.steps ?? []).map((st) => {
         const decl = s.layers[s.steps[st.index]?.layer] ?? {};
         return {
           index: st.index,
@@ -71,14 +80,19 @@ try {
           value_sha256: st.observation?.value_sha256 ?? null,
         };
       });
+      return { steps, fault: rep.fault ?? null };
     } finally {
-      if (traced.free) traced.free();
-      if (bundle?.free) bundle.free();
-      if (g.free) g.free();
-      if (plan.free) plan.free();
-      if (reg.free) reg.free();
+      // Tahap 2a: free every handle allocated after buildGraph, on
+      // success AND on failure. Previously the try started AFTER
+      // makeBundle/runWithTrace, so a throw there leaked bundle/g/
+      // plan/reg. (buildGraph itself is exception-safe — its internal
+      // catch frees plan/reg on failure.)
+      try { if (traced?.free) traced.free(); } catch { /* ignore */ }
+      try { if (bundle?.free) bundle.free(); } catch { /* ignore */ }
+      try { if (g?.free) g.free(); } catch { /* ignore */ }
+      try { if (plan?.free) plan.free(); } catch { /* ignore */ }
+      try { if (reg?.free) reg.free(); } catch { /* ignore */ }
     }
-    return steps;
   };
 
   const lastHashForSlot = (stepList, slot) => {
@@ -88,10 +102,12 @@ try {
     return null;
   };
 
-  const steps = traceHashes(spec);
+  const { steps, fault } = traceHashes(spec);
+  let otherResult = null;
   const result = { ok: true, max_tensor_bytes: budget, output_slot: spec.outputSlot, steps };
   if (otherSpec) {
-    const other = traceHashes(otherSpec);
+    otherResult = traceHashes(otherSpec);
+    const other = otherResult.steps;
     result.other_steps = other;
     let firstDivergent = null;
     const n = Math.min(steps.length, other.length);
@@ -131,6 +147,29 @@ try {
         isolated_cand_subspec: firstDivergent < otherSpec.steps.length ? extractPrefixSubspec(otherSpec, firstDivergent) : otherSpec,
       } : {}),
     };
+  }
+  // Tahap 2a fail-closed (keputusan kontrak): a failed capture — or a
+  // trace fault — fails the command instead of reporting ok:true with
+  // a step_failed step. The record keeps the full steps array (and the
+  // fault) so the failure stays attributed. `tensor_budget_exceeded`
+  // is NOT a failure: those steps are skipped by the comparison, as
+  // before.
+  const failedStep = (arr) => arr.find((s) => s.capture_status === 'step_failed');
+  const f1 = failedStep(steps);
+  const f2 = otherResult ? failedStep(otherResult.steps) : null;
+  const otherFault = otherResult?.fault ?? null;
+  if (fault || otherFault || f1 || f2) {
+    const bad = f1 ?? f2;
+    const activeFault = fault ?? otherFault;
+    printJsonAndExit({
+      ok: false, code: 'step_failed',
+      error: activeFault
+        ? `trace fault: ${typeof activeFault === 'string' ? activeFault : JSON.stringify(activeFault)}`
+        : `trace step ${bad.index} (${bad.layer}) failed to capture (step_failed)`,
+      steps,
+      ...(otherResult ? { other_steps: otherResult.steps } : {}),
+      fault: activeFault,
+    }, 1);
   }
   printJson(result);
 } catch (e) {

@@ -1104,6 +1104,112 @@ test('Stage: string-throw errors keep their message', () => {
   }
 });
 
+
+test('2a: fail-closed gates (trace_hash/shapecheck/verify/checkpoint)', () => {
+  // Tahap 2a (2026-11-07): six bins used to run statically defective
+  // specs and report ok:true (or a bare engine error). Representative
+  // cells of pr2a/test_2a.mjs (12 cells + 2 step_failed + 6 positive
+  // controls); the full set stays in the probe dir.
+  const badShape = {
+    inputs: { 0: [4.5, 10.5, 0.0], 1: [3, 10.5] },
+    layers: [{ constructor: 'linear', args: [0, 2, 2, false] }, { constructor: 'relu', args: [1] }, { constructor: 'add', args: [2] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    numSlots: 5, outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 3, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { 0: [1, 0.5, -0.25, 2] },
+  };
+  const badLen = clone(badShape);
+  badLen.ports[0].shape = [1, 2, 1, 1];
+  badLen.inputs[0] = [1];
+  const badShapeFile = writeSpec('2a-bad-shape.json', badShape);
+  const badLenFile = writeSpec('2a-bad-len.json', badLen);
+  const good = path.join(ROOT, 'examples/linear-relu.json');
+  const cells = [
+    ['bin/trace_hash.mjs', [badShapeFile], 1, 'static_check_failed'],
+    ['bin/checkpoint.mjs', ['export', badShapeFile], 2, 'static_check_failed'],
+    ['bin/shapecheck.mjs', [badLenFile], 2, 'invalid_argument'],
+    ['bin/verify.mjs', [good, badLenFile], 2, 'invalid_argument'],
+    ['bin/autodiff.mjs', ['grad', badShapeFile], 1, 'static_check_failed'],
+    ['bin/rollout.mjs', ['scan', badShapeFile, '--steps', '2'], 2, 'static_check_failed'],
+  ];
+  for (const [bin, args, code, exp] of cells) {
+    const r = runTool([bin, ...args]);
+    assert(r.code === code && r.json && r.json.ok === false && r.json.code === exp,
+      `${bin}: expected exit ${code} + ok:false + code ${exp}, got ${r.code}: ${r.out.slice(0, 200)}`);
+  }
+  // step_failed branch: passes the gate, fails at capture (sqrt of -1).
+  // NOTE: build from a CLEAN base — cloning badShape keeps port 0 at
+  // [1,3,1,1], so checkInputLengths would fire first (expected 3, got 2)
+  // and the capture would never run.
+  const sqrtNeg = clone(badShape);
+  sqrtNeg.layers[0] = { constructor: 'sqrt', args: [0] };
+  sqrtNeg.inputs[0] = [-1.0, -2.0];
+  sqrtNeg.ports[0].shape = [1, 2, 1, 1];
+  sqrtNeg.weights = {};
+  const t = runTool(['bin/trace_hash.mjs', writeSpec('2a-sqrt-neg.json', sqrtNeg)]);
+  assert(t.code === 1 && t.json && t.json.ok === false && t.json.code === 'step_failed'
+    && t.json.steps?.[0]?.capture_status === 'step_failed'
+    && /trace step 0 \(sqrt\) failed to capture/.test(JSON.stringify(t.json)),
+    `trace_hash sqrt_neg: ${t.out.slice(0, 200)}`);
+});
+test('2b: gated buildGraph + lenient core', () => {
+  // Tahap 2b (2026-11-07): one shared core (engine.mjs) + the gated
+  // buildGraph / strict makeBundle wrappers (wasm_direct.mjs).
+  // Representative pins of pr2b/test_2b.mjs (18 cells).
+  // HONEST NOTE: this test is a BEHAVIOR pin, not a change pin — it
+  // passes on unmodified main too (run.mjs already gates bad_shape /
+  // 1-port / 1e39 itself, and main's engine path was already ungated
+  // and array-lenient). What it binds is the C4/C5 split: if the core
+  // were re-gated (the v1 mistake — solve-gd 1-port and fit array-form
+  // would fail), or the wrapper dropped its gate, this test goes red.
+  // The change pin is the 2a test above + pr2b/test_2b.mjs lib-level.
+  const good = path.join(ROOT, 'examples/linear-relu.json');
+  const badShape = {
+    inputs: { 0: [4.5, 10.5, 0.0], 1: [3, 10.5] },
+    layers: [{ constructor: 'linear', args: [0, 2, 2, false] }, { constructor: 'relu', args: [1] }, { constructor: 'add', args: [2] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    numSlots: 5, outputSlot: 4,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 3, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { 0: [1, 0.5, -0.25, 2] },
+  };
+  const badShapeFile = writeSpec('2b-bad-shape.json', badShape);
+  const r1 = runTool(['bin/run.mjs', '--direct', badShapeFile]);
+  assert(r1.code === 2 && r1.json?.ok === false && r1.json?.code === 'static_check_failed',
+    `run --direct bad_shape: expected exit 2 + top-level code static_check_failed, got ${r1.out.slice(0, 200)}`);
+  const singlePort = { numSlots: 2, layers: [{ constructor: 'linear', args: [0, 1, 1, false] }], steps: [{ kind: 'unary', layer: 0, slots: [0, 1] }], outputSlot: 1, ports: [{ slot: 0, role: 'observation', shape: [1, 1, 1, 1], layout: 'feature_axis1_singleton' }], weights: { '0': [2.0] }, inputs: { '0': [3.0] } };
+  const singleFile = writeSpec('2b-single-port.json', singlePort);
+  const r2 = runTool(['bin/run.mjs', '--direct', singleFile]);
+  assert(r2.code === 2 && r2.json?.ok === false && r2.json?.stage === 'validatePlan' && r2.json?.code === 'plan_minimum_ports',
+    `run --direct 1-port: expected exit 2 + validatePlan plan_minimum_ports, got ${r2.out.slice(0, 200)}`);
+  const sg = runTool(['bin/recurse.mjs', 'solve-gd', singleFile, '--layer', '0', '--steps', '2']);
+  assert(sg.code === 0 && sg.json?.targets_mode === 'scalar_objective',
+    `solve-gd 1-port: expected scalar_objective, got ${sg.out.slice(0, 200)}`);
+  const targets = writeSpec('2b-targets-fit.json', { cases: [{ inputs: [[1, -2], [3, 10.5]], expected: [4.5, 10.5] }] });
+  const fit = runTool(['bin/recurse.mjs', 'fit', good, targets, '5']);
+  assert(fit.code === 0 && fit.json?.ok === true && fit.json?.generations === 5,
+    `recurse fit array-form: expected ok + 5 generations, got ${fit.out.slice(0, 200)}`);
+  const overflow = clone(JSON.parse(fs.readFileSync(good, 'utf8')));
+  overflow.inputs['0'] = [1e39, 10.5];
+  const r3 = runTool(['bin/run.mjs', '--direct', writeSpec('2b-input-1e39.json', overflow)]);
+  assert(r3.code === 2 && r3.json?.ok === false && r3.json?.stage === 'argValues' && r3.json?.code === 'invalid_argument'
+    && /finite f32/.test(JSON.stringify(r3.json?.issues ?? '')),
+    `run --direct 1e39 inputs: expected exit 2 + argValues invalid_argument + finite-f32 issue, got ${r3.out.slice(0, 200)}`);
+});
+
 const results = [];
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, ok: true }); }
