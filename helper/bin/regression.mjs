@@ -1026,6 +1026,41 @@ test('F1A: i64-final run rejection names the concrete split', () => {
   assert(v.code === 0 && w.some((x) => x.includes('references/split-int-final.md')), `f1-gap validate warning: ${JSON.stringify(w).slice(0, 300)}`);
 });
 
+test('Stage: single-spec run/loadSpec failures keep their stage', () => {
+  // failCli (2026-11-06): single-spec failures used to go through failCli,
+  // which prints only {ok, error, error_envelope} — the run-phase stage
+  // was lost while batch kept it. The single-spec block now prints the
+  // full record (exit 1, stage additive). loadSpec is unified the same way.
+  const ports = [
+    { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+  ];
+  const wcount = {
+    layers: [{ constructor: 'linear', args: [0, 2, 2, true] }, { constructor: 'relu', args: [1] }, { constructor: 'add', args: [2] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    numSlots: 5, outputSlot: 4, ports,
+    inputs: { 0: [1, 2], 1: [0, 0] },
+    weights: { 0: [1] },
+  };
+  const r1 = runTool(['bin/run.mjs', writeSpec('stage-wcount.json', wcount)]);
+  assert(r1.code === 1 && r1.json && r1.json.ok === false && r1.json.stage === 'run'
+    && r1.json.error === 'weight count mismatch for layer', `stage-wcount run: ${r1.out.slice(0, 200)}`);
+  const r1d = runTool(['bin/run.mjs', '--direct', writeSpec('stage-wcount-d.json', wcount)]);
+  assert(r1d.code === 1 && r1d.json && r1d.json.ok === false && r1d.json.stage === 'run', `stage-wcount direct: ${r1d.out.slice(0, 200)}`);
+  const base = JSON.parse(fs.readFileSync(path.join(ROOT, 'examples/linear-relu.json'), 'utf8'));
+  const noslot = clone(base);
+  noslot.inputs['2'] = [9, 9];
+  const r2 = runTool(['bin/run.mjs', writeSpec('stage-noslot.json', noslot)]);
+  assert(r2.code === 1 && r2.json && r2.json.ok === false && r2.json.stage === 'run'
+    && r2.json.error_envelope === null, `stage-noslot run: ${r2.out.slice(0, 200)}`);
+  const r3 = runTool(['bin/run.mjs', path.join(TMP, 'does-not-exist-stage.json')]);
+  assert(r3.code === 1 && r3.json && r3.json.ok === false && r3.json.stage === 'loadSpec', `stage-loadSpec: ${r3.out.slice(0, 200)}`);
+});
+
 const results = [];
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, ok: true }); }

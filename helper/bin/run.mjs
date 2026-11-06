@@ -340,12 +340,17 @@ if (direct) {
 // (Ported from pack v2.4: the old comment claimed load failures exit 2;
 // they exit 1 via failCli's default — the comment was wrong, not the
 // code.)
+// Stage preservation (failCli, 2026-11-06): failures print the FULL record
+// (stage included), not just {ok, error, error_envelope} — batch mode
+// already did, single-spec went through failCli which drops stage. The
+// stage key is additive; exit codes unchanged. loadSpec is unified too:
+// its record already carries stage 'loadSpec' + error_envelope null, so
+// printing it whole costs nothing and removes the special case.
 if (results.length === 1) {
   const r = results[0];
   if (!r.ok) {
-    if (r.stage === 'loadSpec') failCli(r.error); // exit 1 (tool-level)
     if (r.stage === 'validatePlan' || r.stage === 'argValues' || r.stage === 'build') printJsonAndExit(r, 2); // exit 2, as before
-    failCli(r.error, r.error_envelope ?? null); // exit 1, as before
+    printJsonAndExit(r, 1); // exit 1, full record incl. stage (loadSpec + run)
   }
   printJson(r);
 } else {
