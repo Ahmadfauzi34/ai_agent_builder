@@ -146,8 +146,22 @@ export function exitAfterFlush(code) {
   else process.stdout.once('drain', () => process.exit(code));
 }
 
+// errText (PR Tahap 1, 2026-11-06): extract a printable message from
+// anything a catch can hold. wasm-bindgen Result<T, String> functions
+// (setWeightsFlat, WasmTensor::new, compileMultiInputGraph, ...) throw a
+// raw JS string, not an Error — reading e.message on one yields
+// undefined, which JSON.stringify drops (bare {ok:false}) or prints as
+// "undefined". errText is the single funnel: Error -> message, string ->
+// itself, {message} -> message, anything else -> String(...).
+export function errText(e) {
+  if (e instanceof Error) return e.message;
+  if (typeof e === 'string') return e;
+  if (e && typeof e === 'object' && typeof e.message === 'string') return e.message;
+  return String(e ?? 'unknown error');
+}
+
 export function failCli(message, envelope = null, code = 1) {
-  const text = message instanceof Error ? message.message : String(message);
+  const text = errText(message);
   if (envelope) printJsonAndExit({ ok: false, error: text, error_envelope: envelope }, code);
   else printJsonAndExit({ ok: false, error: text }, code);
 }

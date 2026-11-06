@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { expandMacro, macroNames } from '../lib/macros.mjs';
-import { printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 
 const [cmd, aFile, bFile] = process.argv.slice(2);
 if (!cmd || !aFile || !['expand', 'prove'].includes(cmd) || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
@@ -58,8 +58,8 @@ function runOne(s) {
   }
 }
 let vM, vR;
-try { vM = runOne(spec); } catch (e) { failCli(`macro spec failed on engine: ${e.message}`); }
-try { vR = runOne(ref); } catch (e) { failCli(`reference spec failed on engine: ${e.message}`); }
+try { vM = runOne(spec); } catch (e) { failCli(`macro spec failed on engine: ${errText(e)}`); }
+try { vR = runOne(ref); } catch (e) { failCli(`reference spec failed on engine: ${errText(e)}`); }
 const equivalent = vM.length === vR.length && vM.every((x, i) => x === vR[i]);
 printJsonAndExit({
   ok: equivalent, equivalent,

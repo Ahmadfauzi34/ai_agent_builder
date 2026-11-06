@@ -52,7 +52,7 @@ import { createHash } from 'node:crypto';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { arityOf } from '../lib/shapes.mjs';
-import { printJson, printJsonAndExit, failCli, assertKnownFlags } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli, assertKnownFlags , errText } from '../lib/runner.mjs';
 
 // Layer-type codes (engine capabilities.layer_types; same map as
 // lib/engine.mjs uses for wiring weights).
@@ -83,9 +83,9 @@ const relTol = relTolArg !== undefined ? Number(relTolArg) : 1e-6;
 
 let spec, mutation, cases;
 try { spec = loadSpec(specFile); }
-catch (e) { failCli(e.message); }
+catch (e) { failCli(e); }
 try { mutation = JSON.parse(fs.readFileSync(mutFile, 'utf8')); }
-catch (e) { failCli(`cannot read mutation: ${e.message}`); }
+catch (e) { failCli(`cannot read mutation: ${errText(e)}`); }
 
 const isMultiBranch = Array.isArray(mutation.branches) && mutation.branches.length > 0;
 if (!isMultiBranch && (!Array.isArray(mutation.edits) || mutation.edits.length === 0)) {
@@ -93,7 +93,7 @@ if (!isMultiBranch && (!Array.isArray(mutation.edits) || mutation.edits.length =
 }
 try {
   cases = casesFile ? JSON.parse(fs.readFileSync(casesFile, 'utf8')) : [spec.inputs];
-} catch (e) { failCli(`cannot read cases: ${e.message}`); }
+} catch (e) { failCli(`cannot read cases: ${errText(e)}`); }
 
 function applyEditsToSpecCopy(baseSpec, edits) {
   const s = JSON.parse(JSON.stringify(baseSpec));
@@ -411,5 +411,5 @@ try {
   }
   printJson({ ok: true, committed: true, ...base, outputs: { values } });
 } catch (e) {
-  failCli(e.message, e.envelope ?? null);
+  failCli(e, e?.envelope ?? null);
 }

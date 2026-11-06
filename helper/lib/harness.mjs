@@ -10,6 +10,7 @@ import { compileRecursiveSpec, compileBackwardSpec, autoRepairSpec } from './com
 import { rolloutScan, rolloutFixpoint, unrollRolloutSpec } from './rollout.mjs';
 import { searchGraphTree, optimizeMultiLayerES, reflectiveGdSolve, verifyAndStageCandidate } from './recurse.mjs';
 import { buildGraph, makeBundle } from './engine.mjs';
+import { errText } from './runner.mjs'; // PR Tahap 1: evaluation_error must print a string throw, not "undefined"
 
 export const HARNESS_SCHEMA = 'burn-math.harness-session.v1';
 export const ARTIFACT_URI_PREFIX = 'burn://sha256:';
@@ -709,7 +710,7 @@ export function mergeSubagentBranches(rt, baselineSpec, candidateFiles, {
         } catch (e) {
           // A candidate that errors on a case where the baseline is
           // clean is rejected, not allowed to abort the whole merge.
-          evaluations.push({ file, branch_id: branchId, accepted: false, reason: `evaluation_error: ${e.message}` });
+          evaluations.push({ file, branch_id: branchId, accepted: false, reason: `evaluation_error: ${errText(e)}` });
           continue;
         }
         const accepted = Boolean(ver.ok && ver.equivalent);

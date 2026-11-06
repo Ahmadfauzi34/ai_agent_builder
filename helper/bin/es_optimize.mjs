@@ -24,7 +24,7 @@ import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { optimizeMultiLayerES } from '../lib/recurse.mjs';
-import { printJson, failCli, assertKnownFlags } from '../lib/runner.mjs';
+import { printJson, failCli, assertKnownFlags , errText } from '../lib/runner.mjs';
 
 const rawArgs = process.argv.slice(2);
 const multiLayerFlag = rawArgs.includes('--multi-layer');
@@ -45,9 +45,9 @@ const lr = lrArg !== undefined ? Number(lrArg) : null;
 
 let spec, targets;
 try { spec = loadSpec(specFile); }
-catch (e) { failCli(e.message); }
+catch (e) { failCli(e); }
 try { targets = JSON.parse(fs.readFileSync(targetsFile, 'utf8')); }
-catch (e) { failCli(`cannot read targets: ${e.message}`); }
+catch (e) { failCli(`cannot read targets: ${errText(e)}`); }
 if (!Array.isArray(targets.cases) || targets.cases.length === 0) {
   failCli('targets.json must hold a non-empty "cases" array');
 }
@@ -77,7 +77,7 @@ if (weightedIdx.length > 1 || multiLayerFlag) {
     printJson(res);
     process.exit(0);
   } catch (e) {
-    failCli(e.message, e.envelope ?? null);
+    failCli(e, e?.envelope ?? null);
   }
 }
 
@@ -160,5 +160,5 @@ try {
     optimized_spec: optimizedSpec,
   });
 } catch (e) {
-  failCli(e.message, e.envelope ?? null);
+  failCli(e, e?.envelope ?? null);
 }

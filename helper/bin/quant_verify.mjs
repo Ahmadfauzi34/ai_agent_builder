@@ -13,7 +13,7 @@
 // Prints {ok, mode, layers, totals, verification, verdict}. Exit 0 iff PASS.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 const rawArgs = process.argv.slice(2);
@@ -141,5 +141,5 @@ try {
     ],
   }, pass ? 0 : 2);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

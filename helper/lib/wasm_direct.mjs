@@ -146,7 +146,10 @@ export function buildGraph(rt, spec) {
   } catch (e) {
     freeQuiet(plan);
     freeQuiet(reg);
-    throw e;
+    // PR Tahap 1: normalize a raw string throw (wasm-bindgen
+    // Result<T, String>) to an Error before rethrowing, so downstream
+    // catches see e.message instead of undefined.
+    throw e instanceof Error ? e : new Error(String(e));
   } finally {
     freeQuiet(b);
     for (let i = specs.length - 1; i >= 0; i--) freeQuiet(specs[i]);
@@ -177,7 +180,10 @@ export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
     return bundle;
   } catch (e) {
     try { if (bundle?.free) bundle.free(); } catch { /* ignore */ }
-    throw e;
+    // PR Tahap 1: normalize a raw string throw (wasm-bindgen
+    // Result<T, String>) to an Error before rethrowing, so downstream
+    // catches see e.message instead of undefined.
+    throw e instanceof Error ? e : new Error(String(e));
   }
 }
 

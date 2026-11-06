@@ -24,7 +24,7 @@
 // not failures); exit 2 on bad input or a crashed run.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { hessianDiagSecondOrder, hessianTrust } from '../lib/fit.mjs';
 
 const rawArgs = process.argv.slice(2);
@@ -198,5 +198,5 @@ try {
     ],
   }, 0);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

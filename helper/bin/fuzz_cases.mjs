@@ -21,7 +21,7 @@
 // and writes the cases array to out.json.
 import fs from 'node:fs';
 import { loadSpec } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, assertKnownFlags , errText } from '../lib/runner.mjs';
 import { generateCases, findWorstCaseInput } from '../lib/fuzz.mjs';
 import { loadWasm } from '../lib/wasm_direct.mjs';
 
@@ -90,5 +90,5 @@ try {
     printJson({ ...envelope, cases_data: cases });
   }
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

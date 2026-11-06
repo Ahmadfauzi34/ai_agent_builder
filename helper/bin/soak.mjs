@@ -7,7 +7,7 @@
 // Exit 0 iff all runs identical, 2 otherwise.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { createHash } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 
@@ -65,5 +65,5 @@ try {
     ms_per_run: +(totalMs / N).toFixed(3),
   }, identical ? 0 : 2);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

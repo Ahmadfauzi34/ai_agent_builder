@@ -14,7 +14,7 @@
 import { loadWasm, buildGraph, makeBundle } from '../lib/wasm_direct.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { generateCases } from '../lib/fuzz.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import fs from 'node:fs';
 
 function tagLoadError(e) {
@@ -229,7 +229,7 @@ try {
   absTol = toTolerance(absTolArg, 'absTol');
   relTol = toTolerance(relTolArg, 'relTol');
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }
 
 let base = null, cand = null, vc = null;

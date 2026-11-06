@@ -28,7 +28,7 @@
 // independent f64 reference written with separate scalar code (no imports
 // from lib/geom3.mjs builders), plus a negative control (moved camera must
 // change the picture) and a behind-camera vertex (must be flagged, not NaN).
-import { startRunner, unwrap, printJson, assertKnownFlags } from '../lib/runner.mjs';
+import { startRunner, unwrap, printJson, assertKnownFlags , errText } from '../lib/runner.mjs';
 import {
   opToMat4, mat4Mul, mat4ToColumnMajor, homogenize,
   composeChain, lookAt4, perspective4, clipTriangleNear, compileSceneTree,
@@ -252,6 +252,6 @@ try {
   printJson(out);
   process.exit(0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
+  printJson({ ok: false, error: errText(e) });
   process.exit(2);
 }

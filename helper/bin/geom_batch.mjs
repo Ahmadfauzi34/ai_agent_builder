@@ -18,7 +18,7 @@
 //    "camera": {"eye","target","up","fov_deg","aspect","near","far"},
 //    "viewport": {"w":800,"h":600}}
 // or a scene-tree: {"nodes": [...]} (compiled via compileSceneTree).
-import { startRunner, unwrap, printJson, assertKnownFlags } from '../lib/runner.mjs';
+import { startRunner, unwrap, printJson, assertKnownFlags , errText } from '../lib/runner.mjs';
 import {
   opToMat4, mat4Mul, composeChain, lookAt4, perspective4,
   homogenize, compileSceneTree,
@@ -283,6 +283,6 @@ try {
   printJson(out);
   process.exit(0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
+  printJson({ ok: false, error: errText(e) });
   process.exit(2);
 }

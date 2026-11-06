@@ -38,7 +38,7 @@
 // or host_provenance — those are ingress-session artifacts (proofs,
 // ledger, receipts). Its records keep the same keys with null plus
 // mode:'direct', so consumers never receive a fake gate.
-import { startRunner, unwrap, printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { startRunner, unwrap, printJson, printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 import { loadSpec, planFragment, portBySlot, checkArgValues, checkInputLengths, analyzePlanPorts } from '../lib/spec.mjs';
 import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
 import { specUsesInt, splitSpec, runMixed, intFinalMessage } from '../lib/mixed.mjs';
@@ -91,7 +91,7 @@ async function runOne(send, specFile, getRt) {
   try {
     spec = loadSpec(specFile);
   } catch (e) {
-    return { ok: false, stage: 'loadSpec', error: e.message, error_envelope: null };
+    return { ok: false, stage: 'loadSpec', error: errText(e), error_envelope: null };
   }
   // Ported from pack v2.4 (Audit_7 E4): strict arg/value typing before
   // any engine call. Without this, a string bias flag was silently
@@ -127,7 +127,7 @@ async function runOne(send, specFile, getRt) {
     try {
       ({ segments, slotDtype } = splitSpec(spec));
     } catch (e) {
-      return { ok: false, stage: 'build', error: e.message, error_envelope: null };
+      return { ok: false, stage: 'build', error: errText(e), error_envelope: null };
     }
     if (slotDtype.get(spec.outputSlot) !== 'f32') {
       return {
@@ -216,7 +216,7 @@ async function runOne(send, specFile, getRt) {
     // Ported from pack v2.4 (Audit_7 A1): batch records used to call
     // this field `envelope` while single-spec mode prints
     // `error_envelope` — same field, same name, both modes.
-    return { ok: false, stage: 'run', error: e.message, error_envelope: e.envelope ?? null };
+    return { ok: false, stage: 'run', error: errText(e), error_envelope: e.envelope ?? null };
   }
 }
 
@@ -230,7 +230,7 @@ async function runDirectOne(rt, specFile) {
   try {
     spec = loadSpec(specFile);
   } catch (e) {
-    return { ok: false, stage: 'loadSpec', error: e.message, error_envelope: null };
+    return { ok: false, stage: 'loadSpec', error: errText(e), error_envelope: null };
   }
   const argIssues = checkArgValues(spec);
   if (argIssues.length) {

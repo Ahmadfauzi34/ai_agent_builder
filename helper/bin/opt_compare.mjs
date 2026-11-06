@@ -15,7 +15,7 @@ import { loadEngineWithOracle, profileSpec } from '../lib/opt.mjs';
 import { buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 
 const rawArgs = process.argv.slice(2);
 if (rawArgs.length < 2 || rawArgs.includes('--help') || rawArgs.includes('-h')) {
@@ -142,5 +142,5 @@ try {
     verdict,
   }, ver.equivalent ? 0 : 2);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

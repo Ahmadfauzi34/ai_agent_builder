@@ -14,7 +14,7 @@
 // applied_rewrites/steps_before/steps_after; with --compact-slots the result
 // is slot-compacted first (slot_compaction reported).
 import { loadSpec } from '../lib/spec.mjs';
-import { printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { printJsonAndExit, assertKnownFlags , errText } from '../lib/runner.mjs';
 import { applyRewrite, applyRewritesRecursive, RewriteError } from '../lib/rewrites.mjs';
 import { compactSlotsByLiveness } from '../lib/explain.mjs';
 import { execFileSync } from 'node:child_process';
@@ -133,5 +133,5 @@ try {
 
   printJsonAndExit({ ok: false, error: `unknown command '${cmd}' (use: list | apply)` }, 2);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

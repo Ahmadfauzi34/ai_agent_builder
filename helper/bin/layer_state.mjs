@@ -26,7 +26,7 @@
 import fs from 'node:fs';
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 
 const [sub, specFile, arg3, arg4] = process.argv.slice(2);
 if (!sub || !specFile || !['inspect', 'get', 'set'].includes(sub) || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
@@ -36,7 +36,7 @@ if (!sub || !specFile || !['inspect', 'get', 'set'].includes(sub) || process.arg
 
 let spec;
 try { spec = loadSpec(specFile); }
-catch (e) { failCli(e.message); }
+catch (e) { failCli(e); }
 
 const { createHash } = await import('node:crypto');
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -113,7 +113,7 @@ try {
     if (!arg4) failCli('usage: node layer_state.mjs set <spec.json> <layer_index> <state.b64>');
     let b64;
     try { b64 = fs.readFileSync(arg4, 'utf8').trim(); }
-    catch (e) { failCli(`cannot read state file: ${e.message}`); }
+    catch (e) { failCli(`cannot read state file: ${errText(e)}`); }
     const bytes = Buffer.from(b64, 'base64');
     const guard = JSON.parse(rt.decodeGuardCheck(bytes));
     if (!guard.accepted) {
@@ -140,5 +140,5 @@ try {
     if (reg.free) reg.free();
   }
 } catch (e) {
-  failCli(e.message, e.envelope ?? null);
+  failCli(e, e?.envelope ?? null);
 }
