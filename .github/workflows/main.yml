@@ -508,7 +508,8 @@ jobs:
       - name: Run agent-pack recursive regression gate
         env:
           BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
-        run: node helper/bin/regression_recursive.mjs
+        working-directory: helper
+        run: node bin/regression_recursive.mjs
 
       - name: Run runner hang regression gate (quirk #424)
         run: node helper/tests/hang_regression.mjs helper/lib/runner.mjs
