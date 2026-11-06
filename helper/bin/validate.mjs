@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 import { loadSpec, checkArgValues, analyzePlanPorts, expectedWeightCount } from '../lib/spec.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 import { propagateLayouts, explainSpec } from '../lib/explain.mjs';
@@ -127,7 +127,7 @@ if (specUsesInt(spec)) {
     const { segments } = splitSpec(spec);
     staticWarnings.push(segmentPlanWarning(spec, segments));
   } catch (e) {
-    staticWarnings.push(`mixed-dtype build error (run will fail at build): ${e.message}`);
+    staticWarnings.push(`mixed-dtype build error (run will fail at build): ${errText(e)}`);
   }
 }
 spec.steps.forEach((st, si) => {

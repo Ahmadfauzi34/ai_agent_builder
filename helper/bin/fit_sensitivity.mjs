@@ -23,7 +23,7 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { rankJacobian } from '../lib/fit.mjs';
 
 const rawArgs = process.argv.slice(2);
@@ -50,7 +50,7 @@ try {
   } catch (e) {
     const stderr = e.stderr ? String(e.stderr) : '';
     const stdout = e.stdout ? String(e.stdout) : '';
-    throw new Error(`gradcheck failed: ${(stdout || stderr).trim() || e.message}`);
+    throw new Error(`gradcheck failed: ${(stdout || stderr).trim() || errText(e)}`);
   }
   const gc = JSON.parse(raw);
   if (!gc.ok) throw new Error(`gradcheck failed: ${gc.error}`);
@@ -102,5 +102,5 @@ try {
     ],
   }, 0);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

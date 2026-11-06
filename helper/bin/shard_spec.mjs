@@ -26,7 +26,7 @@
 // reported as unshardable.
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 
 const [specFile, capArg] = process.argv.slice(2);
 if (!specFile || process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) { console.error('usage: node shard_spec.mjs <spec.json> [maxWeights]'); process.exit(2); }
@@ -35,7 +35,7 @@ if (!(cap >= 1)) failCli('maxWeights must be positive');
 
 let spec;
 try { spec = loadSpec(specFile); }
-catch (e) { failCli(e.message); }
+catch (e) { failCli(e); }
 
 // process.exit truncates large outputs still queued in the
 // stdout pipe; spec-carrying prints go through a flush-awaited write.
@@ -196,7 +196,7 @@ try {
   maxAbs = 0;
   for (let i = 0; i < a.length; i++) maxAbs = Math.max(maxAbs, Math.abs(a[i] - b[i]));
 } catch (e) {
-  await printBig({ ok: false, sharded: true, reassembly_exact: reassemblyExact, verified: false, error: e.message, shards, spec: sharded }, 2);
+  await printBig({ ok: false, sharded: true, reassembly_exact: reassemblyExact, verified: false, error: errText(e), shards, spec: sharded }, 2);
 }
 
 const verified = reassemblyExact && maxAbs !== null && maxAbs <= 1e-4;

@@ -95,13 +95,13 @@ export function backward(spec, doutSeed) {
 if (cmd === 'grad') {
   if (!aFile) failCli('usage: node autodiff.mjs grad <spec.json> [dout.json]');
   let spec;
-  try { spec = loadSpec(aFile); } catch (e) { failCli(e.message); }
+  try { spec = loadSpec(aFile); } catch (e) { failCli(e); }
   const dout = bFile ? JSON.parse(fs.readFileSync(bFile, 'utf8')) : null;
   try {
     const r = backward(spec, dout);
     printJsonAndExit({ ok: true, ...r }, 0);
   } catch (e) {
-    failCli(e.message);
+    failCli(e);
   }
 }
 
@@ -119,7 +119,7 @@ if (cmd === 'verify-fd') {
   if (!aFile) failCli('usage: node autodiff.mjs verify-fd <spec.json> [eps] [tol] [dout.json]');
   const eps = Number(process.argv[4] ?? 1e-3), tol = Number(process.argv[5] ?? 1e-3);
   let spec;
-  try { spec = loadSpec(aFile); } catch (e) { failCli(e.message); }
+  try { spec = loadSpec(aFile); } catch (e) { failCli(e); }
   try {
     const dout = process.argv[6] ? JSON.parse(fs.readFileSync(process.argv[6], 'utf8')) : null;
     const b = backward(spec, dout);

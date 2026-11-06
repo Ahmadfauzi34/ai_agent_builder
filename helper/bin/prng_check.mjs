@@ -14,7 +14,7 @@
 // Generate prints {ok, algorithm, seed, count, sha256, preview} and exits 0.
 // `verify` re-generates from the manifest and compares hashes; exits 0 iff
 // the recorded hash matches, 2 otherwise.
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit , errText } from '../lib/runner.mjs';
 import { generateStream, PRNGS } from '../lib/prng.mjs';
 import fs from 'node:fs';
 
@@ -61,5 +61,5 @@ try {
     note: 'save this manifest; `prng_check.mjs verify <manifest.json>` reproduces the stream exactly',
   }, 0);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

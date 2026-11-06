@@ -335,5 +335,5 @@ try {
   }
   throw new Error('usage: weight_lab.mjs (run|gate|certify|compose|eval) ... | --selftest');
 } catch (e) {
-  failCli(e.message, e.envelope ?? null, 2);
+  failCli(e, e?.envelope ?? null, 2);
 }

@@ -43,10 +43,10 @@ const otherSpecFile = otherFile !== undefined && otherFile.endsWith('.json') ? o
 
 let spec, otherSpec = null;
 try { spec = loadSpec(specFile); }
-catch (e) { failCli(e.message); }
+catch (e) { failCli(e); }
 if (otherSpecFile) {
   try { otherSpec = loadSpec(otherSpecFile); }
-  catch (e) { failCli(e.message); }
+  catch (e) { failCli(e); }
 }
 
 try {
@@ -134,5 +134,5 @@ try {
   }
   printJson(result);
 } catch (e) {
-  failCli(e.message, e.envelope ?? null);
+  failCli(e, e?.envelope ?? null);
 }

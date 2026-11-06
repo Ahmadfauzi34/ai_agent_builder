@@ -20,7 +20,7 @@
 // Prints a JSON envelope on stdout; exit 0 on success, 2 on error.
 import { loadEngineWithOracle, profileSpec, pages } from '../lib/opt.mjs';
 import { loadSpec } from '../lib/spec.mjs';
-import { printJson, printJsonAndExit } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit , errText } from '../lib/runner.mjs';
 
 // NOTE: this file used to define its own drain-safe printJsonAndExit
 // (single async write + drain wait). Port v2.5 retires it in favor of
@@ -68,13 +68,13 @@ function profileOne(rt, specFile, engine) {
   try {
     spec = loadSpec(specFile);
   } catch (e) {
-    return { spec: specFile, ok: false, error: e.message };
+    return { spec: specFile, ok: false, error: errText(e) };
   }
   try {
     const profile = profileSpec(rt, spec, { iterations, trace });
     return { spec: specFile, ok: true, iterations, trace, engine, ...profile };
   } catch (e) {
-    return { spec: specFile, ok: false, error: e.message };
+    return { spec: specFile, ok: false, error: errText(e) };
   }
 }
 
@@ -109,5 +109,5 @@ try {
   if (!allOk) printJsonAndExit(results, 2);
   printJson(results);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

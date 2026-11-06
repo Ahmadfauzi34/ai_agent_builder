@@ -21,7 +21,7 @@
 // per-op rows to a file for reuse across graphs. Exit 0; 2 on shape failure.
 import { buildGraph, makeBundle, pkgDir } from '../lib/engine.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 import { propagateLayouts } from '../lib/explain.mjs';
 import { traceSteps, profileSpec, median, loadEngineWithOracle } from '../lib/opt.mjs';
@@ -222,5 +222,5 @@ try {
     ],
   }, 0);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

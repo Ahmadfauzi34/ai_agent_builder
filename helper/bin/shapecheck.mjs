@@ -13,7 +13,7 @@
 // warnings (constructors without a reliable rule, weight/input cross-check
 // mismatches) never fail.
 import { loadSpec, checkArgValues, expectedWeightCount } from '../lib/spec.mjs';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 
 const [specFile] = process.argv.slice(2);
@@ -71,5 +71,5 @@ try {
   result.warnings = warnings;
   printJsonAndExit({ ok: result.ok, ...result }, result.ok ? 0 : 2);
 } catch (e) {
-  printJsonAndExit({ ok: false, error: e.message }, 2);
+  printJsonAndExit({ ok: false, error: errText(e) }, 2);
 }

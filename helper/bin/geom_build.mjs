@@ -25,7 +25,7 @@
 // Prints {ok, spec?|out_file, composed, steps, out_shape,
 // reference_point_f64, composed_matrix_rowmajor}.
 // Note: output is homogeneous [x,y,z,1]; dehomogenize host-side. Engine has no perspective divide.
-import { printJson, printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { printJson, printJsonAndExit, assertKnownFlags , errText } from '../lib/runner.mjs';
 import {
   rotX4, rotY4, rotZ4, rotAxisAngle4, euler4, quatFromEuler, quatToMat4,
   translate4, scale4, mat4Mul, mat4ToColumnMajor, homogenize, composeChain,
@@ -175,6 +175,6 @@ try {
   printJson(result);
   process.exit(0);
 } catch (e) {
-  printJson({ ok: false, error: e.message });
+  printJson({ ok: false, error: errText(e) });
   process.exit(2);
 }

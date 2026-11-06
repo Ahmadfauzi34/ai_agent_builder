@@ -1061,6 +1061,49 @@ test('Stage: single-spec run/loadSpec failures keep their stage', () => {
   assert(r3.code === 1 && r3.json && r3.json.ok === false && r3.json.stage === 'loadSpec', `stage-loadSpec: ${r3.out.slice(0, 200)}`);
 });
 
+test('Stage: string-throw errors keep their message', () => {
+  // PR Tahap 1 (2026-11-06): wasm-bindgen Result<T, String> functions
+  // (setWeightsFlat, WasmTensor::new, compileMultiInputGraph, ...) throw
+  // a raw JS string, not an Error. Reading e.message on one used to yield
+  // undefined: failCli callers printed "undefined", and
+  // printJsonAndExit({ok:false, error: e.message}) dropped the error key
+  // entirely (bare {ok:false}). Six CLIs that surface engine errors now
+  // carry the real message. The spec is the same wrong-weight-count
+  // shape as the stage test above; the expected message is the WASM
+  // string itself, verbatim.
+  const ports = [
+    { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+  ];
+  const wcount = {
+    layers: [{ constructor: 'linear', args: [0, 2, 2, true] }, { constructor: 'relu', args: [1] }, { constructor: 'add', args: [2] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+    ],
+    numSlots: 5, outputSlot: 4, ports,
+    inputs: { 0: [1, 2], 1: [0, 0] },
+    weights: { 0: [1] },
+  };
+  const f = writeSpec('pr1-wcount.json', wcount);
+  const expected = 'setWeightsFlat: expected 6 floats (in*out+out), got 1';
+  const checks = [
+    ['bin/autodiff.mjs', ['grad', f], 1],
+    ['bin/trace_hash.mjs', [f], 1],
+    ['bin/diff_ref.mjs', [f], 2],
+    ['bin/gradcheck.mjs', [f], 2],
+    ['bin/layer_state.mjs', ['inspect', f, '0'], 1],
+    ['bin/opt_profile.mjs', [f], 2],
+  ];
+  for (const [bin, args, code] of checks) {
+    const r = runTool([bin, ...args]);
+    assert(r.code === code && r.json && r.json.ok === false, `${bin}: expected exit ${code} + ok:false, got ${r.code}: ${r.out.slice(0, 200)}`);
+    assert(typeof r.json.error === 'string' && r.json.error.length > 0 && r.json.error !== 'undefined', `${bin}: error missing or "undefined": ${r.out.slice(0, 200)}`);
+    assert(r.json.error === expected, `${bin}: expected "${expected}", got "${r.json.error}"`);
+  }
+});
+
 const results = [];
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, ok: true }); }
