@@ -13,6 +13,7 @@ import { loadSpec, hydrateSpecArtifactsInPlace, isRecursiveSpecV2 } from '../lib
 import { compileRecursiveSpec } from '../lib/composer.mjs';
 import { rolloutScan, rolloutFixpoint, bisectDivergence, unrollRolloutSpec } from '../lib/rollout.mjs';
 import { printJsonAndExit, assertKnownFlags } from '../lib/runner.mjs';
+import { gateSpec } from '../lib/gates.mjs';
 
 const rawArgs = process.argv.slice(2);
 if (!rawArgs.length || rawArgs.includes('--help') || rawArgs.includes('-h')) {
@@ -47,6 +48,14 @@ function loadV1OrV2(file) {
   return loadSpec(file);
 }
 
+// Tahap 2a: fail-closed static gate on the loaded (V2: compiled) spec,
+// BEFORE any engine call. A defective spec used to fail with a bare
+// engine error, without slot/step attribution.
+function gateOrExit(spec, name) {
+  const gate = gateSpec(spec);
+  if (gate) printJsonAndExit({ ...gate, spec: name }, 2);
+}
+
 try {
   if (cmd === 'unroll') {
     const [specFile, outPos] = positional;
@@ -55,6 +64,7 @@ try {
       process.exit(2);
     }
     const spec = loadV1OrV2(specFile);
+    gateOrExit(spec, 'spec');
     const steps = Number(flagVal('--steps', (outPos && !outPos.endsWith('.json')) ? outPos : 3));
     const outFile = flagVal('--out', (outPos && outPos.endsWith('.json')) ? outPos : null);
     const statePort = flagVal('--state-port', null);
@@ -86,6 +96,7 @@ try {
       process.exit(2);
     }
     const spec = loadV1OrV2(specFile);
+    gateOrExit(spec, 'spec');
     const steps = Number(flagVal('--steps', positional[1] ?? 10));
     const statePort = flagVal('--state-port', null);
     const seqFile = flagVal('--inputs-seq', null);
@@ -102,6 +113,7 @@ try {
       process.exit(2);
     }
     const spec = loadV1OrV2(specFile);
+    gateOrExit(spec, 'spec');
     const tol = Number(flagVal('--tol', 1e-6));
     const maxSteps = Number(flagVal('--max-steps', 100));
     const statePort = flagVal('--state-port', null);
@@ -119,6 +131,8 @@ try {
     }
     const baseSpec = loadV1OrV2(baseFile);
     const candSpec = loadV1OrV2(candFile);
+    gateOrExit(baseSpec, 'baseline');
+    gateOrExit(candSpec, 'candidate');
     const res = await bisectDivergence(rt, baseSpec, candSpec);
     printJsonAndExit(res, 0);
   }

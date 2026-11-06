@@ -119,10 +119,32 @@ export async function loadWasm() {
 
 // Numeric layer-type codes (src/protocol.rs); these are the types whose
 // weights setWeightsFlat supports.
+// Tahap 2a+2b: codedError — a plain Error carries no machine code, so
+// the runner wrapped buildGraph failures in an `internal_error`
+// envelope (the regression "buildGraph exception-safe" test failed on
+// exactly that for unknown constructors). With .code/.phase, the
+// envelope names the failure. Defined once, here: the core lives in
+// this file, and wasm_direct.mjs imports it for the gated wrapper.
+// (Port delta C6: engine.mjs must NOT import isFiniteF32/isU32 from
+// spec.mjs — spec imports catalogPath from engine, so that import
+// would create an engine <-> spec cycle. The two one-line predicates
+// are inlined here; spec.mjs stays the canonical definition, and the
+// folded regression test pins the f32-overflow boundary (1e39).)
+export function codedError(code, phase, message) {
+  const e = new Error(message);
+  e.code = code;
+  e.phase = phase;
+  return e;
+}
+
+// Local copies of spec.mjs's predicates (see C6 above).
+const isFiniteF32 = (v) => typeof v === 'number' && Number.isFinite(v) && Number.isFinite(Math.fround(v));
+const isU32 = (d) => Number.isInteger(d) && d > 0;
+
 export const LAYER_TYPE = { linear: 1, norm: 2, conv: 3, embedding: 5 };
 
 // Spec constructor name -> LAYER_TYPE key, for the weighted layer types.
-const WEIGHTED_CONSTRUCTORS = {
+export const WEIGHTED_CONSTRUCTORS = {
   linear: 'linear',
   batchNorm: 'norm',
   groupNorm: 'norm',
@@ -141,6 +163,12 @@ function freeQuiet(obj) {
   }
 }
 
+// Tahap 2b: buildGraph IS the ungated core — the single shared build
+// loop. No host-policy gates here (no checkArgValues/analyzePlanPorts/
+// checkSpec): lib/recurse, lib/quant_budget and lib/harness import
+// this buildGraph, and a 1-port solve-gd spec or a harmless duplicate
+// registry id are legitimate engine graphs. The gated buildGraph
+// (gates + this core) lives in wasm_direct.mjs for interactive callers.
 // Build {reg, plan, g} from a spec (layers/steps/ports/weights).
 // Weight layout is column-major (audited).
 // Exception-safe and leak-free: temporary AgentLayerSpec and AgentGraphBuilder
@@ -154,11 +182,11 @@ export function buildGraph(rt, spec) {
   try {
     for (const [index, decl] of spec.layers.entries()) {
       if (typeof decl.constructor !== 'string' || !Object.hasOwn(rt.AgentLayerSpec, decl.constructor) || typeof rt.AgentLayerSpec[decl.constructor] !== 'function') {
-        throw new Error(`unknown layer constructor: ${decl.constructor}`);
+        throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
       }
       const s = rt.AgentLayerSpec[decl.constructor](...decl.args);
       if (typeof s !== 'object' || s === null) {
-        throw new Error(`unknown layer constructor: ${decl.constructor}`);
+        throw codedError('unknown_layer_constructor', 'buildGraph', `unknown layer constructor: ${decl.constructor}`);
       }
       reg.initAgentLayer(s);
       specs.push(s);
@@ -168,11 +196,11 @@ export function buildGraph(rt, spec) {
     b = new rt.AgentGraphBuilder(spec.numSlots);
     for (const step of spec.steps) {
       const s = specs[step.layer];
-      if (!s) throw new Error(`step references missing layer index ${step.layer}`);
+      if (!s) throw codedError('invalid_argument', 'buildGraph', `step references missing layer index ${step.layer}`);
       const slots = step.slots;
       if (step.kind === 'unary' && slots.length === 2) b.addUnary(s, slots[0], slots[1]);
       else if (step.kind === 'binary' && slots.length === 3) b.addBinary(s, slots[0], slots[1], slots[2]);
-      else throw new Error(`bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
+      else throw codedError('invalid_argument', 'buildGraph', `bad step (need unary:[a,b] or binary:[a,b,c]): ${JSON.stringify(step)}`);
     }
     b.setOutput(spec.outputSlot);
     plan = new rt.MultiInputGraphPlan(b);
@@ -182,7 +210,7 @@ export function buildGraph(rt, spec) {
     // Deterministic zero-init is the audited default; explicit weights override.
     for (const [indexStr, values] of Object.entries(spec.weights ?? {})) {
       const w = weighted.get(Number(indexStr));
-      if (!w) throw new Error(`weights for layer index ${indexStr}: not a weighted layer`);
+      if (!w) throw codedError('invalid_argument', 'buildGraph', `weights for layer index ${indexStr}: not a weighted layer`);
       reg.setWeightsFlat(w.registryId, w.type, Float32Array.from(values));
     }
     const g = reg.compileMultiInputGraph(plan);
@@ -200,17 +228,40 @@ export function buildGraph(rt, spec) {
   }
 }
 
+// Tahap 2b: makeBundle IS the lenient core — it accepts BOTH input
+// forms (an object mapping slot -> values AND an array whose index is
+// the slot; the lib fit path passes case.inputs in array form). The
+// strict object-only check lives in the wasm_direct.mjs wrapper, for
+// interactive callers only. Length + finite-f32 checks with slot
+// attribution run here, BEFORE the WASM call.
 export function makeBundle(rt, plan, inputsBySlot, portsBySlot) {
   const bundle = new rt.MultiInputInputBundle(plan);
   try {
     for (const [slotStr, values] of Object.entries(inputsBySlot)) {
+      if (!/^(?:0|[1-9]\d*)$/.test(slotStr)) {
+        throw codedError('invalid_argument', 'makeBundle', `input key ${JSON.stringify(slotStr)} must be a canonical non-negative integer`);
+      }
       const slot = Number(slotStr);
       const port = portsBySlot.get(slot);
-      if (!port) throw new Error(`input for slot ${slot} has no declared port`);
+      if (!port) throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot} has no declared port`);
+      // Tahap 2b: input-length check with slot attribution, BEFORE the
+      // WASM call — the bare WasmTensor::new error names the shape but
+      // not the slot. Same shape guard as checkInputLengths: only when
+      // the port shape is a valid 4-D positive-u32 array.
+      if (Array.isArray(port.shape) && port.shape.length === 4 && port.shape.every((d) => isU32(d) && d > 0)) {
+        const numel = port.shape[0] * port.shape[1] * port.shape[2] * port.shape[3];
+        if (!Array.isArray(values) || values.length !== numel) {
+          throw codedError('invalid_argument', 'makeBundle',
+            `inputs slot ${slot}: expected ${numel} values for shape ${JSON.stringify(port.shape)}, got ${Array.isArray(values) ? values.length : 'non-array'}`);
+        }
+      }
+      if (!Array.isArray(values) || values.some((v) => !isFiniteF32(v))) {
+        throw codedError('invalid_argument', 'makeBundle', `input for slot ${slot}: values must be an array of finite f32 numbers`);
+      }
       const t = new rt.WasmTensor(Float32Array.from(values), Uint32Array.from(port.shape));
-      const ok = bundle.bindInput(slot, t, port.role, port.layout, 'wasm-opt', 1n, '');
+      const ok = bundle.bindInput(slot, t, port.role, port.layout, 'burn-math-skill', 1n, '');
       t.free();
-      if (!ok) throw new Error(`bindInput failed for slot ${slot}`);
+      if (!ok) throw codedError('invalid_argument', 'makeBundle', `bindInput failed for slot ${slot}`);
     }
     return bundle;
   } catch (e) {

@@ -12,6 +12,7 @@ import { printJson, printJsonAndExit, exitAfterFlush, failCli } from '../lib/run
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { specUsesInt } from '../lib/mixed.mjs';
 import { loadWasm, buildGraph, makeBundle, verifyEngineIntegritySync } from '../lib/wasm_direct.mjs';
+import { gateSpec } from '../lib/gates.mjs';
 
 const args = process.argv.slice(2);
 const [sub, file] = args;
@@ -178,6 +179,11 @@ if (specUsesInt(spec)) {
     error: 'mixed-dtype spec: checkpoint export is not supported in v1 (no single mixed bundle format exists); run the spec with run.mjs instead',
   }, 2);
 }
+// Tahap 2a: fail-closed static gate BEFORE buildGraph — export used to
+// emit ok:true + a bundle for a statically defective spec (export
+// never creates tensors, so no engine check ever fired).
+const gate = gateSpec(spec);
+if (gate) printJsonAndExit(gate, 2);
 let built = null;
 try {
   const rt = await loadWasm();

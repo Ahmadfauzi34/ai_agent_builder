@@ -12,7 +12,7 @@
 // warnings, dataflow}. Exit 0 iff no mismatches and no dataflow errors;
 // warnings (constructors without a reliable rule, weight/input cross-check
 // mismatches) never fail.
-import { loadSpec, checkArgValues, expectedWeightCount } from '../lib/spec.mjs';
+import { loadSpec, checkArgValues, checkInputLengths, expectedWeightCount } from '../lib/spec.mjs';
 import { printJsonAndExit , errText } from '../lib/runner.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 
@@ -61,12 +61,20 @@ try {
     const port = portBySlot.get(slot);
     if (!port) {
       warnings.push(`inputs slot ${slotStr}: no declared port for slot ${slotStr}`);
-    } else if (Array.isArray(port.shape) && port.shape.length === 4 && Array.isArray(values)) {
-      const expectedLen = port.shape[0] * port.shape[1] * port.shape[2] * port.shape[3];
-      if (values.length !== expectedLen) {
-        warnings.push(`inputs slot ${slot}: expected ${expectedLen} values for shape ${JSON.stringify(port.shape)}, got ${values.length}`);
-      }
     }
+  }
+  // Tahap 2a: input-length mismatches FAIL (they used to be warnings
+  // only, so `shapecheck bad_len.json` exited 0 with ok:true). The
+  // check is checkInputLengths — the same comparison validate warns
+  // about. The record keeps the shapecheck evidence (steps, mismatches,
+  // dataflow, warnings) so both signals survive when they coincide.
+  const lenIssues = checkInputLengths(spec);
+  if (lenIssues.length) {
+    printJsonAndExit({
+      ok: false, valid: false, stage: 'static', code: 'invalid_argument',
+      issues: lenIssues, steps: result.steps, mismatches: result.mismatches,
+      dataflow: result.dataflow, warnings,
+    }, 2);
   }
   result.warnings = warnings;
   printJsonAndExit({ ok: result.ok, ...result }, result.ok ? 0 : 2);

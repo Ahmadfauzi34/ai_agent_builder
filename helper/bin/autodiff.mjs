@@ -20,6 +20,7 @@
 import { loadWasm, buildGraph, makeBundle } from '../lib/engine.mjs';
 import { loadSpec, portBySlot, analyzePlanPorts } from '../lib/spec.mjs';
 import { printJsonAndExit, failCli } from '../lib/runner.mjs';
+import { gateSpec } from '../lib/gates.mjs';
 import { inferShapes, makeMap, backwardWithSaved, captureSavedForSpec } from '../lib/autodiff.mjs';
 import fs from 'node:fs';
 
@@ -96,6 +97,11 @@ if (cmd === 'grad') {
   if (!aFile) failCli('usage: node autodiff.mjs grad <spec.json> [dout.json]');
   let spec;
   try { spec = loadSpec(aFile); } catch (e) { failCli(e); }
+  // Tahap 2a: fail-closed static gate BEFORE backward() reaches the
+  // engine — a defective spec used to fail with a bare engine/rule
+  // message, without slot/step attribution.
+  const gate = gateSpec(spec);
+  if (gate) printJsonAndExit(gate, 1);
   const dout = bFile ? JSON.parse(fs.readFileSync(bFile, 'utf8')) : null;
   try {
     const r = backward(spec, dout);
@@ -120,6 +126,9 @@ if (cmd === 'verify-fd') {
   const eps = Number(process.argv[4] ?? 1e-3), tol = Number(process.argv[5] ?? 1e-3);
   let spec;
   try { spec = loadSpec(aFile); } catch (e) { failCli(e); }
+  // Tahap 2a: same gate as `grad` (see above).
+  const gate = gateSpec(spec);
+  if (gate) printJsonAndExit(gate, 1);
   try {
     const dout = process.argv[6] ? JSON.parse(fs.readFileSync(process.argv[6], 'utf8')) : null;
     const b = backward(spec, dout);

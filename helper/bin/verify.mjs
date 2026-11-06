@@ -15,6 +15,7 @@ import { loadWasm, buildGraph, makeBundle } from '../lib/wasm_direct.mjs';
 import { loadSpec, portBySlot } from '../lib/spec.mjs';
 import { generateCases } from '../lib/fuzz.mjs';
 import { printJsonAndExit , errText } from '../lib/runner.mjs';
+import { gateSpec } from '../lib/gates.mjs';
 import fs from 'node:fs';
 
 function tagLoadError(e) {
@@ -64,6 +65,15 @@ function verifyOne(rt, pair, fuzz = null) {
     const relTol = toTolerance(pair.relTol, 'relTol');
     const baseSpec = loadOrTag(baseFile);
     const candSpec = loadOrTag(candFile);
+    // Tahap 2a: fail-closed static gate on BOTH specs, before case
+    // generation (cases derive from baseSpec.inputs) and before any
+    // engine object is built. Without it, a candidate whose own
+    // inputs were defective could still verify ok:true — the cases
+    // never used the candidate's declared inputs.
+    for (const [name, s] of [['baseline', baseSpec], ['candidate', candSpec]]) {
+      const gate = gateSpec(s);
+      if (gate) return { ...gate, spec: name };
+    }
     // Batch --fuzz: a pair with explicit cases conflicts (per-pair
     // record, batch continues); otherwise cases come from this pair's
     // own baseline spec. Generation happens before any engine object
@@ -236,6 +246,11 @@ let base = null, cand = null, vc = null;
 try {
   const baseSpec = loadOrTag(baseFile);
   const candSpec = loadOrTag(candFile);
+  // Tahap 2a: same gate as verifyOne (see above).
+  for (const [name, s] of [['baseline', baseSpec], ['candidate', candSpec]]) {
+    const gate = gateSpec(s);
+    if (gate) printJsonAndExit({ ...gate, spec: name }, 2);
+  }
   let cases;
   let fuzzOut = null;
   if (fuzz) {
