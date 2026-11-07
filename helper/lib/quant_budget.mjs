@@ -1,5 +1,5 @@
-// burn-math #13 Fase 3 (v3.9): per-layer quantization budget planner
-// with rigorous Lipschitz DAG bound propagation across 39 constructors
+// burn-math #13 Fase 3 (v3.9) + Tahap 7b: per-layer quantization budget planner
+// with rigorous Lipschitz DAG bound propagation across 42 constructors
 // (including binary `mul`, envelope post-quantization operator norms, and
 // epsilon/parameter-aware bounds for `featureNorm`/`rmsNorm`/`layerNorm`).
 //
@@ -15,11 +15,11 @@
 //     additive; mul multiplies the value bounds; concat takes the max).
 //     The bound is rigorous but conservative. Scope: the constructors this
 //     file's bound mode handles (linear + Lipschitz unary + add/sub/mul/
-//     concat + matmul + conv + embedding + the norm constructors);
-//     anything else -> loud error (not a silent guess). div, sqrt and
-//     swiGlu stay loud errors BY DESIGN: div has no finite bound without
-//     a proven denominator floor, sqrt's derivative is unbounded at 0,
-//     and swiGlu has no quantizable weights on the spec path (zero op).
+//     concat + matmul + conv + embedding + the norm constructors +
+//     swiGlu/ghost/seBlock, whose bounds are weight-derived in Tahap 7b);
+//     anything else -> loud error (not a silent guess). div and sqrt
+//     stay loud errors BY DESIGN: div has no finite bound without
+//     a proven denominator floor, sqrt's derivative is unbounded at 0.
 //
 //   measured mode: empirical iterative greedy. Candidate plans are actually
 //     RUN: at each step every remaining layer is tried on top of the current
@@ -84,7 +84,46 @@ function unaryLipschitz(decl, spec = null, layerIdx = -1, inBound = null) {
   if (!c) return null;
   if (Object.hasOwn(STATIC_LIPSCHITZ, c)) return STATIC_LIPSCHITZ[c];
   if (c === 'leakyRelu') return Math.max(1, Math.abs(decl.args?.[1] ?? 0.01));
-  if (c === 'prelu') return Math.max(1, Math.abs(decl.args?.[2] ?? 0.25));
+  if (c === 'prelu') {
+    // Tahap 7b: weight-aware. alpha is the flat weight vector (1 = shared,
+    // C = per-channel); the Lipschitz constant is max(1, max|alpha|).
+    // No weights on the spec -> the engine's init alpha from args.
+    const w = spec?.weights?.[String(layerIdx)];
+    if (Array.isArray(w) && w.length > 0) return Math.max(1, ...w.map(Math.abs));
+    return Math.max(1, Math.abs(decl.args?.[2] ?? 0.25));
+  }
+  if (c === 'swiGlu') {
+    // Tahap 7b: y = silu(a) * o, a = W_i x + b_i, o = W_o x + b_o.
+    // |dy| <= SILU_L * ||W_i||_oo * ||o||_oo * |dx| + ||a||_oo * ||W_o||_oo * |dx|
+    // with SILU_L = 1.11 (dense-grid max |silu'| = 1.09984 at x~2.40 + margin,
+    // same standard as mish's 1.11). Needs the forward value bound inBound
+    // (like glu): without it the bound is not finite in general.
+    if (inBound === null || inBound === undefined) return null;
+    const info = swiGluWeightInfo(decl, spec, layerIdx);
+    if (!info) return null;
+    const { wI, wO, dIn, dOut, bias } = info;
+    const aB = operatorNormInf(wI, dIn, dOut) * inBound + biasNormInf(wI, dIn, dOut, bias);
+    const oB = operatorNormInf(wO, dIn, dOut) * inBound + biasNormInf(wO, dIn, dOut, bias);
+    return SILU_LIPSCHITZ * operatorNormInf(wI, dIn, dOut) * oB + aB * operatorNormInf(wO, dIn, dOut);
+  }
+  if (c === 'ghost') {
+    // Tahap 7b: y = cat([primary(x), cheap(primary(x))]). primary is a
+    // conv (op norm P, bias max bP); cheap is 1x1 depthwise, op norm
+    // C = max |cheap.weight|. L = P * max(1, C).
+    const info = ghostWeightInfo(decl, spec, layerIdx);
+    if (!info) return null;
+    return convOpNormInf(info.primary) * Math.max(1, info.cheapMax);
+  }
+  if (c === 'seBlock') {
+    // Tahap 7b: y = x * gate, gate = sigmoid(fc2(relu(fc1(squeeze(x))))).
+    // |dy| <= |dx| * 1 + |x| * |dgate|, |dgate| <= 0.25 * ||W2|| * ||W1|| * |dx|
+    // (sigmoid 0.25-Lipschitz; squeeze/relu 1-Lipschitz). Needs inBound.
+    if (inBound === null || inBound === undefined) return null;
+    const info = seBlockWeightInfo(decl, spec, layerIdx);
+    if (!info) return null;
+    const { w1, w2, channels, reduced } = info;
+    return 1 + inBound * 0.25 * operatorNormInf(w1, channels, reduced) * operatorNormInf(w2, reduced, channels);
+  }
   if (c === 'hardSigmoid') return Math.abs(decl.args?.[1] ?? 0.2);
   if (c === 'glu') {
     // y = a*sigmoid(b) on the split halves: |dy/da| <= 1, |dy/db| <= |a|/4.
@@ -179,6 +218,47 @@ function convBiasMax(info) {
   return m;
 }
 
+// silu' max: dense-grid max |silu'| = 1.09984 at x~2.40 (grid step 5e-4
+// over [-30, 30]) + margin — same standard as mish's 1.11 (Tahap 6).
+const SILU_LIPSCHITZ = 1.11;
+
+// Flat-weight segments for the Tahap 7b composite layers. Each returns
+// null when the spec carries no weights for the layer (bound mode then
+// fails loudly, by design — a weight-derived bound needs the weights;
+// a zero-weight spec has zero perturbation anyway, so this only bites
+// specs that actually carry weights without a matching count).
+function swiGluWeightInfo(decl, spec, layerIdx) {
+  const w = spec?.weights?.[String(layerIdx)];
+  if (!Array.isArray(w)) return null;
+  const [, dIn, dOut, bias] = decl.args;
+  const innerLen = dIn * dOut + (bias ? dOut : 0);
+  if (w.length !== 2 * innerLen) return null;
+  return { wI: w.slice(0, innerLen), wO: w.slice(innerLen), dIn, dOut, bias: !!bias };
+}
+
+function ghostWeightInfo(decl, spec, layerIdx) {
+  const w = spec?.weights?.[String(layerIdx)];
+  if (!Array.isArray(w)) return null;
+  const [, inCh, outCh, kh, kw, ratio] = decl.args;
+  const primaryCh = outCh / ratio;
+  const primaryLen = primaryCh * (inCh * kh * kw + 1);
+  if (w.length !== primaryLen + primaryCh) return null;
+  return {
+    primary: { kind: 'conv2d', w: w.slice(0, primaryLen), inCh, outCh: primaryCh, kh, kw, bias: true },
+    cheapMax: Math.max(0, ...w.slice(primaryLen).map(Math.abs)),
+  };
+}
+
+function seBlockWeightInfo(decl, spec, layerIdx) {
+  const w = spec?.weights?.[String(layerIdx)];
+  if (!Array.isArray(w)) return null;
+  const [, channels, reduction] = decl.args;
+  const reduced = Math.floor(channels / reduction);
+  const fc1Len = channels * reduced + reduced;
+  if (w.length !== fc1Len + reduced * channels + channels) return null;
+  return { w1: w.slice(0, fc1Len), w2: w.slice(fc1Len), channels, reduced };
+}
+
 function convOutputBound(decl, inBound, spec, layerIdx) {
   const info = convWeightInfo(decl, spec, layerIdx);
   if (!info) throw new Error(`analyticalContribs: ${decl?.constructor} layer ${layerIdx} has no weights in spec`);
@@ -204,6 +284,23 @@ function unaryOutputBound(decl, inBound, spec, layerIdx, inShape, L) {
     if (!Array.isArray(w)) throw new Error(`analyticalContribs: embedding layer ${layerIdx} has no weights in spec`);
     return Math.max(0, ...w.map(Math.abs));
   }
+  if (c === 'swiGlu') {
+    // |y| <= |a| * |o| (|silu(a)| <= |a|); a/o bounds from the linear segments.
+    const info = swiGluWeightInfo(decl, spec, layerIdx);
+    if (!info) throw new Error(`analyticalContribs: swiGlu layer ${layerIdx} has no weights in spec`);
+    const { wI, wO, dIn, dOut, bias } = info;
+    const aB = operatorNormInf(wI, dIn, dOut) * inBound + biasNormInf(wI, dIn, dOut, bias);
+    const oB = operatorNormInf(wO, dIn, dOut) * inBound + biasNormInf(wO, dIn, dOut, bias);
+    return aB * oB;
+  }
+  if (c === 'ghost') {
+    // |y| = max(|primary|, |cheap(primary)|) = (P*B + bP) * max(1, C).
+    const info = ghostWeightInfo(decl, spec, layerIdx);
+    if (!info) throw new Error(`analyticalContribs: ghost layer ${layerIdx} has no weights in spec`);
+    const pB = convOpNormInf(info.primary) * inBound + convBiasMax(info.primary);
+    return pB * Math.max(1, info.cheapMax);
+  }
+  if (c === 'seBlock') return inBound; // |y| = |x * gate| <= |x| (|gate| <= 1).
   return L * inBound;
 }
 
@@ -286,9 +383,15 @@ function stepOutputShape(decl, step, shapeOf) {
     return [inSh[0], inSh[1], oH, oW];
   }
   if (step.kind === 'unary' && ctor === 'ghost') {
-    const [, , outCh, kh, kw, , sh0, sw0, ph0, pw0] = decl.args;
+    // Tahap 7b: output channels are 2*primary_ch (engine quirk: cat
+    // [primary, cheap]) — equals outCh only at ratio=2. The engine
+    // rejects outCh % ratio != 0, so fail loudly here too instead of
+    // silently flooring a bound on a wrong shape.
+    const [, , outCh, kh, kw, ratio, sh0, sw0, ph0, pw0] = decl.args;
+    if (outCh % ratio !== 0) throw new Error(`ghost out_ch ${outCh} not divisible by ratio ${ratio}`);
     const sH = sh0 ?? 1, sW = sw0 ?? 1, pH = ph0 ?? 0, pW = pw0 ?? 0;
-    return [inSh[0], outCh, Math.floor((inSh[2] + 2 * pH - kh) / sH) + 1, Math.floor((inSh[3] + 2 * pW - kw) / sW) + 1];
+    const outC = 2 * (outCh / ratio);
+    return [inSh[0], outC, Math.floor((inSh[2] + 2 * pH - kh) / sH) + 1, Math.floor((inSh[3] + 2 * pW - kw) / sW) + 1];
   }
   if (step.kind === 'unary') return [...inSh];
   if (step.kind === 'binary' && ctor === 'concat') {

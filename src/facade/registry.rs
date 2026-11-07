@@ -746,6 +746,22 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or("Norm not found")?
                 .get_weights_flat(),
+            // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
+            LAYER_ACTIVATION => self
+                .activations
+                .get(&layer_id)
+                .ok_or("Activation not found")?
+                .get_weights_flat(),
+            LAYER_GHOST => self
+                .ghosts
+                .get(&layer_id)
+                .ok_or("Ghost not found")?
+                .get_weights_flat(),
+            LAYER_SEBLOCK => self
+                .seblocks
+                .get(&layer_id)
+                .ok_or("SEBlock not found")?
+                .get_weights_flat(),
             _ => Err(format!(
                 "getWeightsFlat: not yet supported for type 0x{:02X}",
                 layer_type
@@ -781,6 +797,22 @@ impl LayerRegistry {
                 .get_mut(&layer_id)
                 .ok_or("Norm not found")?
                 .set_weights_flat(data),
+            // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
+            LAYER_ACTIVATION => self
+                .activations
+                .get_mut(&layer_id)
+                .ok_or("Activation not found")?
+                .set_weights_flat(data),
+            LAYER_GHOST => self
+                .ghosts
+                .get_mut(&layer_id)
+                .ok_or("Ghost not found")?
+                .set_weights_flat(data),
+            LAYER_SEBLOCK => self
+                .seblocks
+                .get_mut(&layer_id)
+                .ok_or("SEBlock not found")?
+                .set_weights_flat(data),
             _ => Err(format!(
                 "setWeightsFlat: not yet supported for type 0x{:02X}",
                 layer_type
@@ -811,6 +843,22 @@ impl LayerRegistry {
                 .get(&layer_id)
                 .ok_or("Norm not found")?
                 .weight_layout()),
+            // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
+            LAYER_ACTIVATION => Ok(self
+                .activations
+                .get(&layer_id)
+                .ok_or("Activation not found")?
+                .weight_layout()),
+            LAYER_GHOST => Ok(self
+                .ghosts
+                .get(&layer_id)
+                .ok_or("Ghost not found")?
+                .weight_layout()),
+            LAYER_SEBLOCK => Ok(self
+                .seblocks
+                .get(&layer_id)
+                .ok_or("SEBlock not found")?
+                .weight_layout()),
             _ => Err(format!(
                 "weightLayout: not yet supported for type 0x{:02X}",
                 layer_type
@@ -833,6 +881,7 @@ impl LayerRegistry {
 // Sync rule: if a new FlatTrainable layer type is added, extend the match
 // below AND the weights_flat_len_is_length_aware_alias_of_flat_len test —
 // binding offsets depend on weights_len() == get_weights_flat().len().
+// (Tahap 7b added LAYER_ACTIVATION / LAYER_GHOST / LAYER_SEBLOCK.)
 // ============================================================
 impl LayerRegistry {
     pub(crate) fn weights_flat_len(
@@ -860,6 +909,22 @@ impl LayerRegistry {
                 .norms
                 .get(&layer_id)
                 .ok_or("Norm not found")?
+                .weights_len()),
+            // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
+            LAYER_ACTIVATION => Ok(self
+                .activations
+                .get(&layer_id)
+                .ok_or("Activation not found")?
+                .weights_len()),
+            LAYER_GHOST => Ok(self
+                .ghosts
+                .get(&layer_id)
+                .ok_or("Ghost not found")?
+                .weights_len()),
+            LAYER_SEBLOCK => Ok(self
+                .seblocks
+                .get(&layer_id)
+                .ok_or("SEBlock not found")?
                 .weights_len()),
             _ => Err(format!(
                 "weightsFlatLen: not yet supported for type 0x{:02X}",

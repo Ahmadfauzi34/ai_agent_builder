@@ -330,6 +330,61 @@ export const RULES = {
       return { inputGrads: [dx], paramGrads: null };
     },
   },
+  // Tahap 7b: swiGlu(dIn, dOut, bias) — y = silu(W_i x + b_i) * (W_o x + b_o),
+  // silu(a) = a*sigmoid(a), on the LAST axis (feature_last; any rank-4 shape
+  // with last dim dIn). Weights arrive flat in engine order [wI, bI?, wO, bO?]
+  // (see weightOf in bin/autodiff.mjs): wI/wO are column-major like linear,
+  // w[i + j*dOut]. silu'(a) = s(a) + (a - silu(a))*s(a), s = sigmoid.
+  // dL/dx = W_i^T (silu'(a)*o*G) + W_o^T (silu(a)*G); param grads are
+  // returned as ONE flat 'w' vector in engine order (the verify-fd loop
+  // perturbs 'w' from offset 0, so a single flat vector is the only shape
+  // it can check correctly for a multi-segment layout); 'b' is null.
+  swiGlu: {
+    saved: ['input'],
+    doc: 'swiGlu(dIn,dOut,bias): y=silu(W_i x+b_i)*(W_o x+b_o) on last axis. dX=W_i^T(silu\'(a)*o*G)+W_o^T(silu(a)*G).',
+    vjp({ inputs, upstream: up, args, weights }) {
+      const [, dIn, dOut, bias] = args;
+      const x = inputs[0], sh = x.shape, G = up.values;
+      const last = sh[3];
+      if (last !== dIn) throw new Error(`swiGlu vjp: last dim ${last} != d_in ${dIn}`);
+      const pos = x.values.length / dIn; // batch*spatial positions
+      const { wI, bI, wO, bO } = weights;
+      const dx = new Array(x.values.length).fill(0);
+      const dwI = new Array(dIn * dOut).fill(0);
+      const dwO = new Array(dIn * dOut).fill(0);
+      const dbI = new Array(dOut).fill(0);
+      const dbO = new Array(dOut).fill(0);
+      for (let p = 0; p < pos; p++) {
+        for (let i = 0; i < dOut; i++) {
+          let a = bias ? bI[i] : 0, o = bias ? bO[i] : 0;
+          for (let j = 0; j < dIn; j++) {
+            const xv = x.values[p * dIn + j];
+            a += wI[i + j * dOut] * xv;
+            o += wO[i + j * dOut] * xv;
+          }
+          const s = 1 / (1 + Math.exp(-a));
+          const silu = a * s;
+          const dsilu = s + (a - silu) * s;
+          const g = G[p * dOut + i];
+          const g1 = g * dsilu * o, g2 = g * silu;
+          dbI[i] += g1; // dy/dbI = silu'(a)*o (chain through silu AND the o factor)
+          dbO[i] += g * silu;
+          for (let j = 0; j < dIn; j++) {
+            const xv = x.values[p * dIn + j];
+            dx[p * dIn + j] += g1 * wI[i + j * dOut] + g2 * wO[i + j * dOut];
+            dwI[i + j * dOut] += g1 * xv;
+            dwO[i + j * dOut] += g2 * xv;
+          }
+        }
+      }
+      // Flat param grad in engine order [wI, bI?, wO, bO?] (see weightOf).
+      // No spec weights on the layer -> the engine's zero init is not a
+      // spec parameter: return null so verify-fd doesn't try to perturb
+      // a weight vector the spec doesn't have.
+      const flat = [...dwI, ...(bias ? dbI : []), ...dwO, ...(bias ? dbO : [])];
+      return { inputGrads: [dx], paramGrads: weights.hasSpecWeights ? { w: flat, b: null } : null };
+    },
+  },
   featureNorm: {
     saved: ['input'],
     doc: 'featureNorm(id,eps?): L2 normalization along axis 1: y_c=x_c/r, r=sqrt(sum_c x_c^2 + eps). dX_c = (G_c - y_c*sum_k(G_k*y_k))/r.',
@@ -596,7 +651,6 @@ export const GAPS = {
   adaptiveAvgPool2d: 'deferred: VJP not yet proven',
   ghost: 'deferred: VJP not yet proven',
   seBlock: 'deferred: VJP not yet proven',
-  swiGlu: 'deferred: VJP not yet proven',
 };
 
 export function ruleFor(constructor) {
@@ -733,7 +787,7 @@ export function captureSavedForSpec(spec, shapes, runForward) {
   };
 }
 
-const WEIGHTED_VJP_CTORS = new Set(['linear', 'rmsNorm', 'layerNorm']);
+const WEIGHTED_VJP_CTORS = new Set(['linear', 'rmsNorm', 'layerNorm', 'swiGlu']);
 
 // ---------- reverse-mode builder (pure; engine only supplies `saved`) ----------
 // saved: Map slot -> {values, shape}, or a byStep capture from

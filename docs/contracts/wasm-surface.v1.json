@@ -273,6 +273,7 @@
     "WasmActivation": [
       "constructor",
       "forward",
+      "getWeightsFlat",
       "get_quantized_state",
       "get_state",
       "load_state",
@@ -292,7 +293,8 @@
       "newSwiGlu",
       "newTanh",
       "num_params",
-      "quantize_state_report"
+      "quantize_state_report",
+      "setWeightsFlat"
     ],
     "WasmBinary": [
       "constructor",
@@ -344,11 +346,13 @@
     "WasmGhostModule": [
       "constructor",
       "forward",
+      "getWeightsFlat",
       "get_quantized_state",
       "get_state",
       "load_state",
       "num_params",
-      "quantize_state_report"
+      "quantize_state_report",
+      "setWeightsFlat"
     ],
     "WasmIndexSource": [
       "constructor",
@@ -687,11 +691,13 @@
     "WasmSeBlock": [
       "constructor",
       "forward",
+      "getWeightsFlat",
       "get_quantized_state",
       "get_state",
       "load_state",
       "num_params",
-      "quantize_state_report"
+      "quantize_state_report",
+      "setWeightsFlat"
     ],
     "WasmShift": [
       "constructor",

@@ -1453,7 +1453,7 @@ test('REG-v3.8-10: diff_ref f64 parity (< 1e-5) for the 10 Tahap-6 reference ops
   }
 });
 
-test('REG-v3.8-11: quant_budget bounds for the Tahap-6 ops dominate measured delta; div/sqrt/swiGlu stay loud errors', async () => {
+test('REG-v3.8-11: quant_budget bounds for the Tahap-6 ops dominate measured delta; div/sqrt stay loud errors (swiGlu loud only without weights)', async () => {
   const LIN = { constructor: 'linear', args: [0, 2, 2, false] };
   const LIN2 = { constructor: 'linear', args: [2, 2, 2, false] };
   const ADD = { constructor: 'add', args: [99] };
@@ -1529,7 +1529,9 @@ test('REG-v3.8-11: quant_budget bounds for the Tahap-6 ops dominate measured del
     weights: { '0': [1, 1, 0, 0], '2': [1, 0.5, -0.25, 2] },
     inputs: { '0': [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5], '1': [0.25, 1.5] },
   });
-  // div / sqrt / swiGlu: bound mode HARUS menolak keras (tanpa bound hingga yang terbukti).
+  // div / sqrt: bound mode HARUS menolak keras (tanpa bound hingga yang terbukti).
+  // swiGlu TANPA bobot di spec juga menolak (bound butuh bobot — sama seperti conv);
+  // swiGlu BERBOBOT punya bound (diuji REG-v3.8-14).
   for (const [name, opLayer] of [
     ['div', { constructor: 'div', args: [1] }],
     ['sqrt', { constructor: 'sqrt', args: [1] }],
@@ -1541,6 +1543,196 @@ test('REG-v3.8-11: quant_budget bounds for the Tahap-6 ops dominate measured del
     assert((qb.code !== 0 || qb.json?.ok === false) && new RegExp(`analyticalContribs: unsupported step '${name}'`).test(qb.out + (qb.json?.error ?? '')),
       `quant_budget on ${name} must fail loud with unsupported step, got code=${qb.code}: ${qb.out}`);
   }
+});
+
+// Tahap 7b: flat-weight bridges — paritas berbobot, VJP swiGlu, bound quant.
+test('REG-v3.8-12: diff_ref f64 parity (< 1e-5) for WEIGHTED prelu/swiGlu/ghost/seBlock (incl. ghost ratio=4 quirk: output 2*primary_ch)', async () => {
+  const mkSpec = ({ ctor, args, weights, inShape, inLayout, inVals, outShape, carrierVals }) => {
+    const layers = [{ constructor: ctor, args }];
+    layers.push({ constructor: 'add', args: [99] });
+    return { numSlots: 10, layers,
+      steps: [
+        { kind: 'unary', layer: 0, slots: [0, 2] },
+        { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      ],
+      weights: weights ?? {},
+      inputs: { '0': inVals, '1': carrierVals },
+      ports: [
+        { slot: 0, role: 'observation', shape: inShape, layout: inLayout },
+        { slot: 1, role: 'observation', shape: outShape, layout: inLayout }],
+      outputSlot: 3 };
+  };
+  const detW = (n) => Array.from({ length: n }, (_, i) => 0.25 * ((i % 3) - 1) + 0.5);
+  const specs = {
+    'prelu-shared': mkSpec({ ctor: 'prelu', args: [1, 1, 0.25], weights: { '0': [0.5] }, inShape: [1, 2, 1, 1], inLayout: 'feature_axis1_singleton', inVals: [-1, 2], outShape: [1, 2, 1, 1], carrierVals: [0.25, 1.5] }),
+    'prelu-per-channel': mkSpec({ ctor: 'prelu', args: [1, 2, 0.25], weights: { '0': [0.5, 1.5] }, inShape: [1, 2, 1, 1], inLayout: 'feature_axis1_singleton', inVals: [-1, 2], outShape: [1, 2, 1, 1], carrierVals: [0.25, 1.5] }),
+    'swiGlu-bias': mkSpec({ ctor: 'swiGlu', args: [1, 2, 3, true], weights: { '0': detW(18) }, inShape: [1, 1, 1, 2], inLayout: 'feature_last', inVals: [0.5, -0.5], outShape: [1, 1, 1, 3], carrierVals: [0.25, 1.5, 0] }),
+    'swiGlu-nobias': mkSpec({ ctor: 'swiGlu', args: [1, 2, 3, false], weights: { '0': detW(12) }, inShape: [1, 1, 1, 2], inLayout: 'feature_last', inVals: [0.5, -0.5], outShape: [1, 1, 1, 3], carrierVals: [0.25, 1.5, 0] }),
+    'ghost-r2': mkSpec({ ctor: 'ghost', args: [1, 2, 4, 2, 2, 2, 1, 1, 0, 0], weights: { '0': detW(20) }, inShape: [1, 2, 2, 2], inLayout: 'any_rank4', inVals: [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5], outShape: [1, 4, 1, 1], carrierVals: [0.25, 1.5, 0, 0] }),
+    'ghost-r4-quirk': mkSpec({ ctor: 'ghost', args: [1, 2, 8, 2, 2, 4, 1, 1, 0, 0], weights: { '0': detW(20) }, inShape: [1, 2, 2, 2], inLayout: 'any_rank4', inVals: [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5], outShape: [1, 4, 1, 1], carrierVals: [0.25, 1.5, 0, 0] }),
+    'seBlock': mkSpec({ ctor: 'seBlock', args: [1, 4, 2], weights: { '0': detW(22) }, inShape: [1, 4, 2, 2], inLayout: 'any_rank4', inVals: [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5, 1, 0, -0.25, 0.5, 2, -1, 0.5, 0.25], outShape: [1, 4, 2, 2], carrierVals: [0.25, 1.5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] }),
+  };
+  for (const [name, spec] of Object.entries(specs)) {
+    const f = writeTmpJson(`reg_v38_12_${name}.json`, spec);
+    const dr = runCli(['bin/diff_ref.mjs', f]);
+    assert(dr.code === 0 && dr.json?.ok === true && dr.json?.verdict?.startsWith('PASS'),
+      `diff_ref on ${name} failed: ${dr.out}`);
+  }
+});
+
+test('REG-v3.8-13: compose.mjs grad-spec VJP swiGlu BERBOBOT matches autodiff grad + verify-fd (aturan swiGlu baru di autodiff)', async () => {
+  const detW = (n) => Array.from({ length: n }, (_, i) => 0.25 * ((i % 3) - 1) + 0.5);
+  for (const [tag, dIn, dOut, bias, vals, weights] of [
+    ['bias', 2, 3, true, [0.5, -0.5], detW(18)],
+    ['nobias', 2, 2, false, [1.2, -2.0], detW(8)],
+  ]) {
+    const spec = {
+      numSlots: 10,
+      layers: [{ constructor: 'swiGlu', args: [1, dIn, dOut, bias] }, { constructor: 'add', args: [99] }],
+      steps: [
+        { kind: 'unary', layer: 0, slots: [0, 2] },
+        { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+      ],
+      outputSlot: 3,
+      ports: [
+        { slot: 0, role: 'observation', shape: [1, 1, 1, dIn], layout: 'feature_last' },
+        { slot: 1, role: 'observation', shape: [1, 1, 1, dOut], layout: 'feature_last' },
+      ],
+      weights: { '0': weights },
+      inputs: { '0': vals, '1': Array(dOut).fill(0).map((_, i) => [0.25, 1.5][i % 2]) },
+    };
+    const f = writeTmpJson(`reg_v38_13_swiglu_${tag}.json`, spec);
+    const g = runCli(['bin/compose.mjs', 'grad-spec', f, '--wrt', '0', '--order', '1']);
+    const a = runCli(['bin/autodiff.mjs', 'grad', f]);
+    assert(g.code === 0 && g.json?.ok === true, `swiGlu ${tag} grad-spec failed: ${g.out}`);
+    assert(a.code === 0 && a.json?.ok === true, `swiGlu ${tag} autodiff grad failed: ${a.out}`);
+    const av = a.json.inputGrads?.['0'] ?? a.json.inputGrads?.[0] ?? a.json.grad_values ?? a.json.grads ?? a.json.values ?? a.json.output?.grad_values;
+    assert(Array.isArray(av) && Array.isArray(g.json.grad_values) && av.length === g.json.grad_values.length,
+      `swiGlu ${tag}: autodiff grad shape mismatch: ${a.out}`);
+    for (let i = 0; i < av.length; i++) {
+      assert(Math.abs(g.json.grad_values[i] - av[i]) < 1e-4,
+        `swiGlu ${tag} grad-spec vs autodiff mismatch at ${i}: got ${g.json.grad_values[i]}, want ${av[i]}`);
+    }
+    const fd = runCli(['bin/autodiff.mjs', 'verify-fd', f, '1e-3', '1e-3']);
+    assert(fd.code === 0 && fd.json?.ok === true, `swiGlu ${tag} verify-fd failed: ${fd.out}`);
+  }
+});
+
+test('REG-v3.8-14: quant_budget bounds for WEIGHTED swiGlu/ghost/seBlock/prelu dominate measured delta; swiGlu without weights stays loud', async () => {
+  const LIN_A = { constructor: 'linear', args: [0, 2, 2, false] };
+  const ADD = { constructor: 'add', args: [99] };
+  const detW = (n) => Array.from({ length: n }, (_, i) => 0.25 * ((i % 3) - 1) + 0.5);
+  const dominates = (name, spec) => {
+    const f = writeTmpJson(`reg_v38_14_${name}.json`, spec);
+    const c = writeTmpJson(`reg_v38_14_${name}_cases.json`, [spec.inputs]);
+    const qbBound = runCli(['bin/quant_budget.mjs', f, c, '--tol', '1e9', '--mode', 'bound']);
+    const qbMeas = runCli(['bin/quant_budget.mjs', f, c, '--tol', '1e9', '--mode', 'measured']);
+    assert(qbBound.code === 0 && qbBound.json?.ok === true && qbMeas.code === 0 && qbMeas.json?.ok === true,
+      `quant_budget failed on ${name}: ${qbBound.out} / ${qbMeas.out}`);
+    assert(qbBound.json.totals.bound_total_all >= qbMeas.json.totals.measured_delta_plan,
+      `unsound bound on ${name}: bound_total_all ${qbBound.json.totals.bound_total_all} < measured_delta_plan ${qbMeas.json.totals.measured_delta_plan}`);
+  };
+  // prelu: linear -> prelu -> linear -> add.
+  dominates('prelu', {
+    numSlots: 10,
+    layers: [LIN_A, { constructor: 'prelu', args: [1, 2, 0.25] }, { constructor: 'linear', args: [2, 2, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '1': [0.5, 1.5], '2': [0.5, -1, 0.25, 1.5] },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  });
+  // swiGlu: linear -> transpose(1,3) -> swiGlu -> transpose(1,3) -> linear -> add.
+  dominates('swiGlu', {
+    numSlots: 12,
+    layers: [LIN_A, { constructor: 'transpose', args: [10, 1, 3] }, { constructor: 'swiGlu', args: [2, 2, 3, true] }, { constructor: 'transpose', args: [11, 1, 3] }, { constructor: 'linear', args: [3, 3, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'unary', layer: 4, slots: [5, 6] },
+      { kind: 'binary', layer: 5, slots: [6, 1, 7] },
+    ],
+    outputSlot: 7,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '2': detW(18), '4': [0.5, -1, 0.25, 1.5, 0.75, -0.5] },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  });
+  // ghost (k=1): linear -> ghost -> linear -> add.
+  dominates('ghost', {
+    numSlots: 10,
+    layers: [LIN_A, { constructor: 'ghost', args: [1, 2, 4, 1, 1, 2, 1, 1, 0, 0] }, { constructor: 'linear', args: [2, 4, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    // Ghost weights: primary.weight 2*2*1*1=4 + primary.bias 2 + cheap.weight 2 = 8.
+    weights: { '0': [1, 0.5, -0.25, 2], '1': detW(8), '2': detW(8) },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  });
+  // seBlock: linear -> linear(2->4) -> seBlock -> linear(4->2) -> add.
+  dominates('seBlock', {
+    numSlots: 10,
+    layers: [LIN_A, { constructor: 'linear', args: [10, 2, 4, false] }, { constructor: 'seBlock', args: [2, 4, 2] }, { constructor: 'linear', args: [3, 4, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'binary', layer: 4, slots: [5, 1, 6] },
+    ],
+    outputSlot: 6,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '1': detW(8), '2': detW(22), '3': detW(8) },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  });
+  // swiGlu tanpa bobot di spec -> bound mode menolak keras.
+  const loudSpec = {
+    numSlots: 12,
+    layers: [LIN_A, { constructor: 'transpose', args: [10, 1, 3] }, { constructor: 'swiGlu', args: [2, 2, 3, true] }, { constructor: 'transpose', args: [11, 1, 3] }, { constructor: 'linear', args: [3, 3, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'unary', layer: 4, slots: [5, 6] },
+      { kind: 'binary', layer: 5, slots: [6, 1, 7] },
+    ],
+    outputSlot: 7,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '4': [0.5, -1, 0.25, 1.5, 0.75, -0.5] },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  };
+  const lf = writeTmpJson('reg_v38_14_swiglu_noweights.json', loudSpec);
+  const lc = writeTmpJson('reg_v38_14_swiglu_noweights_cases.json', [loudSpec.inputs]);
+  const qb = runCli(['bin/quant_budget.mjs', lf, lc, '--tol', '1e9', '--mode', 'bound']);
+  assert((qb.code !== 0 || qb.json?.ok === false) && /analyticalContribs: unsupported step 'swiGlu'/.test(qb.out + (qb.json?.error ?? '')),
+    `quant_budget on swiGlu without weights must fail loud with unsupported step, got code=${qb.code}: ${qb.out}`);
 });
 
 // --- 9. STAGE 6: v3.9 TOOL HONESTY & FAIL-CLOSED INTEGRITY REGRESSIONS (F-01..F-12) ---

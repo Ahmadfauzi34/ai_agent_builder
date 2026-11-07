@@ -104,17 +104,17 @@ fn classify_owner(layer_type: u8, fingerprint: &str) -> Result<ParameterClass, S
                 ACT_GELU | ACT_RELU | ACT_SIGMOID | ACT_TANH | ACT_HARDSWISH
                 | ACT_LEAKYRELU | ACT_HARDSIGMOID | ACT_SOFTPLUS | ACT_MISH
                 | ACT_SOFTMAX | ACT_LOGSOFTMAX | ACT_GLU | ACT_SQRT => Ok(ParameterClass::Stateless),
-                ACT_PRELU | ACT_SWIGLU => Err(format!(
-                    "graph parameter binding: parameterized activation variant 0x{variant:02X} has no flat-weight bridge"
-                )),
+                // Tahap 7b: parameterized activations have a flat-weight
+                // bridge (WasmActivation get/setWeightsFlat).
+                ACT_PRELU | ACT_SWIGLU => Ok(ParameterClass::FlatTrainable),
                 _ => Err(format!(
                     "graph parameter binding: unknown activation variant 0x{variant:02X}; refusing to assume it is stateless"
                 )),
             }
         }
-        LAYER_GHOST | LAYER_SEBLOCK => Err(format!(
-            "graph parameter binding: referenced parameterized layer type 0x{layer_type:02X} has no flat-weight bridge"
-        )),
+        // Tahap 7b: ghost/seBlock have a flat-weight bridge
+        // (WasmGhostModule / WasmSeBlock get/setWeightsFlat).
+        LAYER_GHOST | LAYER_SEBLOCK => Ok(ParameterClass::FlatTrainable),
         _ => Err(format!(
             "graph parameter binding: unsupported referenced layer type 0x{layer_type:02X}"
         )),
@@ -538,7 +538,10 @@ mod tests {
     }
 
     #[test]
-    fn parameterized_activation_without_flat_bridge_fails_closed() {
+    fn parameterized_activation_with_flat_bridge_builds() {
+        // Tahap 7b: prelu (dan swiGlu/ghost/seBlock) kini FlatTrainable —
+        // binding berhasil dibangun, dan apply_flat mengubah forward
+        // (dulu: build gagal "no flat-weight bridge").
         let mut registry = LayerRegistry::new();
         let prelu = AgentLayerSpec::prelu(31, 2, 0.25).unwrap();
         init(&mut registry, &prelu);
@@ -547,9 +550,31 @@ mod tests {
         builder.set_output(1).unwrap();
         let graph = builder.compile(&registry).unwrap();
 
-        let err = GraphParameterBinding::build(&graph, &registry).unwrap_err();
-        assert!(err.contains("parameterized activation"));
-        assert!(err.contains("no flat-weight bridge"));
+        let binding = GraphParameterBinding::build(&graph, &registry).unwrap();
+        assert_eq!(binding.total_len(), 2); // alpha[2]
+        let input = WasmTensor::new(&[-1.0, 2.0], &[1, 2, 1, 1]);
+        let before = graph.run(&registry, &input).unwrap().to_array();
+        assert_eq!(before, vec![-0.25, 2.0]);
+        binding
+            .apply_flat(&graph, &mut registry, &[1.0, 2.0])
+            .unwrap();
+        let after = graph.run(&registry, &input).unwrap().to_array();
+        assert_eq!(after, vec![-1.0, 2.0]);
+        // Round-trip: read_flat mengembalikan kandidat yang diterapkan.
+        assert_eq!(
+            binding.read_flat(&graph, &registry).unwrap(),
+            vec![1.0, 2.0]
+        );
+    }
+
+    #[test]
+    fn unknown_activation_variant_fails_closed() {
+        // Fail-closed dipertahankan untuk varian yang tidak dikenal — jangan
+        // pernah mengasumsikan varian baru itu stateless.
+        let err = classify_owner(LAYER_ACTIVATION, "variant=ff").unwrap_err();
+        assert!(err.contains("unknown activation variant"));
+        let err = classify_owner(LAYER_ACTIVATION, "variant=fe").unwrap_err();
+        assert!(err.contains("unknown activation variant"));
     }
 
     #[test]

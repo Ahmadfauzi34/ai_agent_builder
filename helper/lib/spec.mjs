@@ -192,7 +192,7 @@ export function checkInputLengths(spec) {
   return issues;
 }
 
-// Port v2.5 (F4): exact f32 weight-element count for the 10 weighted
+// Port v2.5 (F4) + Tahap 7b: exact f32 weight-element count for the 14 weighted
 // constructors, from the catalog signatures. Returns null for
 // non-weighted constructors or for args that fail basic typing
 // (callers run checkArgValues first; null here means "no expectation").
@@ -200,7 +200,13 @@ export function checkInputLengths(spec) {
 // batchNorm/groupNorm/instanceNorm/layerNorm 2 * features; rmsNorm size
 // (gamma only); conv1d in_ch*out_ch*kernel + out_ch;
 // conv2d/convTranspose2d in_ch*out_ch*kh*kw + out_ch; embedding
-// vocab_size*d_model. Note: the conv formulas add out_ch unconditionally
+// vocab_size*d_model; prelu num_parameters (alpha vector);
+// swiGlu 2*d_in*d_out + (bias ? 2*d_out : 0) (inner + outer linear);
+// ghost primary_ch*(in_ch*kh*kw + 2), primary_ch = out_ch/ratio
+// (primary weight+bias + cheap depthwise weight, bias=false);
+// seBlock 2*channels*reduced + reduced + channels, reduced =
+// floor(channels/reduction) (fc1 W+b + fc2 W+b).
+// Note: the conv formulas add out_ch unconditionally
 // (the doc table's convention); a wrong formula only warns, never fails.
 export function expectedWeightCount(decl) {
   if (!decl || typeof decl !== 'object' || !Array.isArray(decl.args)) return null;
@@ -224,6 +230,26 @@ export function expectedWeightCount(decl) {
         ? a[1] * a[2] * a[3] * a[4] + a[2] : null;
     case 'embedding':
       return (isU32(a[1]) && isU32(a[2])) ? a[1] * a[2] : null;
+    case 'prelu': return isU32(a[1]) ? a[1] : null;
+    case 'swiGlu': {
+      const [, dIn, dOut, bias] = a;
+      if (!isU32(dIn) || !isU32(dOut) || typeof bias !== 'boolean') return null;
+      return 2 * dIn * dOut + (bias ? 2 * dOut : 0);
+    }
+    case 'ghost': {
+      const [, inCh, outCh, kh, kw, ratio] = a;
+      if (!isU32(inCh) || !isU32(outCh) || !isU32(kh) || !isU32(kw) || !isU32(ratio)) return null;
+      if (outCh % ratio !== 0) return null; // engine validates out % ratio == 0
+      const primaryCh = outCh / ratio;
+      return primaryCh * (inCh * kh * kw + 2);
+    }
+    case 'seBlock': {
+      const [, channels, reduction] = a;
+      if (!isU32(channels) || !isU32(reduction)) return null;
+      if (channels < reduction) return null; // engine validates channels >= reduction
+      const reduced = Math.floor(channels / reduction);
+      return 2 * channels * reduced + reduced + channels;
+    }
     default: return null;
   }
 }

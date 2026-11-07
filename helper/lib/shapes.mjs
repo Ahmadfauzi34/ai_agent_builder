@@ -291,6 +291,10 @@ const RULES = {
     if (!(inCh > 0 && outCh > 0)) throw new ShapeError(`ghost channels [${inCh},${outCh}] must be > 0`);
     if (!(kh > 0 && kw > 0)) throw new ShapeError(`ghost kernel [${kh},${kw}] must be > 0`);
     if (!(ratio > 0)) throw new ShapeError(`ghost ratio ${ratio} must be > 0`);
+    // Tahap 7b: engine cat([primary, cheap]) -> 2*(out_ch/ratio) channels,
+    // BUKAN out_ch (sama hanya saat ratio=2; terbukti langsung: out 8 ratio 4
+    // -> [1,4,1,1], bukan [1,8,1,1]). Engine menolak out_ch % ratio != 0.
+    if (outCh % ratio !== 0) throw new ShapeError(`ghost out_ch ${outCh} not divisible by ratio ${ratio}`);
     if (!(sh > 0 && sw > 0)) throw new ShapeError(`ghost stride [${sh},${sw}] must be > 0`);
     const [n, c, h, w] = inShapes[0];
     if (c !== inCh) throw new ShapeError(`ghost in_ch ${inCh} != channel dim ${c}`);
@@ -298,7 +302,7 @@ const RULES = {
     const ow = Math.floor((w + 2 * pw - kw) / sw) + 1;
     if (!Number.isFinite(oh) || !Number.isFinite(ow) || oh <= 0 || ow <= 0)
       throw new ShapeError(`ghost output spatial dims non-positive [${oh},${ow}]`);
-    return [n, outCh, oh, ow];
+    return [n, 2 * (outCh / ratio), oh, ow];
   },
   maxPool1d: (inShapes, args) => pool1d('maxPool1d', inShapes, args),
   avgPool1d: (inShapes, args) => pool1d('avgPool1d', inShapes, args),

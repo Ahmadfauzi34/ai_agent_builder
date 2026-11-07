@@ -37,7 +37,9 @@ use crate::layers::embedding::{
     validate_embedding_indices, validate_embedding_state_structure, EmbeddingConfigEnum,
     EmbeddingLayer, EmbeddingLayerRecord,
 };
-use crate::layers::linear::{LinearLayer, LinearLayerConfig, LinearLayerRecord};
+use crate::layers::linear::{
+    push_linear_record, set_linear_record, LinearLayer, LinearLayerConfig, LinearLayerRecord,
+};
 use crate::layers::norm::{
     norm_fail, norm_param_len, norm_trainable_refs, push_norm_param, set_norm_param,
     validate_group_config, validate_norm_axis, validate_norm_state_structure, validate_rms_epsilon,
@@ -275,6 +277,96 @@ impl WasmGhostModule {
 }
 
 // ======================================================================
+// Tahap 7b — flat-weight bridge for GhostModule.
+// Segments (same order as get/set): primary.weight, primary.bias (iff
+// present — the config always builds it with bias), cheap.weight
+// (depthwise [primary_ch,1,1,1], bias=false so no cheap.bias segment).
+// ======================================================================
+#[wasm_bindgen]
+impl WasmGhostModule {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        let mut out = Vec::new();
+        push_param(&rec.primary.weight, &mut out)?;
+        if let Some(b) = &rec.primary.bias {
+            push_param(b, &mut out)?;
+        }
+        push_param(&rec.cheap.weight, &mut out)?;
+        if let Some(b) = &rec.cheap.bias {
+            push_param(b, &mut out)?;
+        }
+        Ok(out)
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        // Length-first (like WasmLinear): slicing below is only safe once
+        // the total is proven exact.
+        let need = self.weights_len();
+        if data.len() != need {
+            return Err(format!(
+                "setWeightsFlat: ghost expected {} floats, got {}",
+                need,
+                data.len()
+            ));
+        }
+        let mut rec = self.inner.clone().into_record();
+        let plen = rec.primary.weight.dims().iter().product::<usize>()
+            + rec
+                .primary
+                .bias
+                .as_ref()
+                .map(|b| b.dims().iter().product::<usize>())
+                .unwrap_or(0);
+        set_conv_param(
+            &mut rec.primary.weight,
+            &mut rec.primary.bias,
+            &data[..plen],
+        )?;
+        set_conv_param(
+            &mut rec.cheap.weight,
+            &mut rec.cheap.bias,
+            &data[plen..],
+        )?;
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}
+
+impl WasmGhostModule {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        let mut segs = Vec::new();
+        segs.push((
+            "primary.weight",
+            rec.primary.weight.dims().iter().product::<usize>(),
+        ));
+        if let Some(b) = &rec.primary.bias {
+            segs.push(("primary.bias", b.dims().iter().product::<usize>()));
+        }
+        segs.push((
+            "cheap.weight",
+            rec.cheap.weight.dims().iter().product::<usize>(),
+        ));
+        if let Some(b) = &rec.cheap.bias {
+            segs.push(("cheap.bias", b.dims().iter().product::<usize>()));
+        }
+        segs
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
+    }
+}
+
+// ======================================================================
 // src/layers/custom/seblock.rs — WasmSeBlock
 // ======================================================================
 
@@ -347,6 +439,73 @@ impl WasmSeBlock {
         let (_bytes, report) =
             crate::layers::state_record::quantized_record_bytes(&self.inner, scheme)?;
         Ok(report)
+    }
+}
+
+// ======================================================================
+// Tahap 7b — flat-weight bridge for SeBlock.
+// Segments (same order as get/set): fc1.weight, fc1.bias, fc2.weight,
+// fc2.bias (both linears are built with bias). Same offset-tracking
+// helpers as SwiGlu (set_linear_record).
+// ======================================================================
+#[wasm_bindgen]
+impl WasmSeBlock {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        let mut out = Vec::new();
+        push_linear_record(&rec.fc1, &mut out)?;
+        push_linear_record(&rec.fc2, &mut out)?;
+        Ok(out)
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        let mut rec = self.inner.clone().into_record();
+        let mut offset = 0usize;
+        offset = set_linear_record(&mut rec.fc1, data, offset)?;
+        offset = set_linear_record(&mut rec.fc2, data, offset)?;
+        if offset != data.len() {
+            return Err(format!(
+                "setWeightsFlat: seBlock expected {} floats, got {}",
+                offset,
+                data.len()
+            ));
+        }
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}
+
+impl WasmSeBlock {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        let mut segs = Vec::new();
+        segs.push((
+            "fc1.weight",
+            rec.fc1.weight.dims().iter().product::<usize>(),
+        ));
+        if let Some(b) = &rec.fc1.bias {
+            segs.push(("fc1.bias", b.dims().iter().product::<usize>()));
+        }
+        segs.push((
+            "fc2.weight",
+            rec.fc2.weight.dims().iter().product::<usize>(),
+        ));
+        if let Some(b) = &rec.fc2.bias {
+            segs.push(("fc2.bias", b.dims().iter().product::<usize>()));
+        }
+        segs
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
     }
 }
 
@@ -772,6 +931,114 @@ impl WasmActivation {
 
         let out = self.inner.forward(input.inner.clone());
         Ok(WasmTensor { inner: out })
+    }
+}
+
+// ======================================================================
+// Tahap 7b — flat-weight bridge for parameterized activations.
+// PRelu: one segment ("alpha", num_parameters). SwiGlu: linear_inner +
+// linear_outer (weight then bias each, iff bias). All other variants are
+// stateless: empty flat vector, empty layout. Segment order MUST stay in
+// sync with weight_segs() / weights_len() (same invariant as WasmConv:
+// GraphParameterBinding::build derives offsets from weights_len alone).
+// ======================================================================
+#[wasm_bindgen]
+impl WasmActivation {
+    #[wasm_bindgen(js_name = getWeightsFlat)]
+    pub fn get_weights_flat(&self) -> Result<Vec<f32>, String> {
+        let rec = self.inner.clone().into_record();
+        let mut out = Vec::new();
+        match rec {
+            ActivationRecord::PRelu(r) => {
+                push_param(&r.alpha, &mut out)?;
+            }
+            ActivationRecord::SwiGlu(r) => {
+                push_linear_record(&r.linear_inner, &mut out)?;
+                push_linear_record(&r.linear_outer, &mut out)?;
+            }
+            _ => {}
+        }
+        Ok(out)
+    }
+
+    #[wasm_bindgen(js_name = setWeightsFlat)]
+    pub fn set_weights_flat(&mut self, data: &[f32]) -> Result<(), String> {
+        let mut rec = self.inner.clone().into_record();
+        match &mut rec {
+            ActivationRecord::PRelu(r) => {
+                let n = r.alpha.dims().iter().product::<usize>();
+                if data.len() != n {
+                    return Err(format!(
+                        "setWeightsFlat: prelu expected {} floats (alpha), got {}",
+                        n,
+                        data.len()
+                    ));
+                }
+                let device: <WasmBackend as Backend>::Device = Default::default();
+                r.alpha = burn::module::Param::from_data(
+                    burn::tensor::TensorData::new(data.to_vec(), [n]),
+                    &device,
+                );
+            }
+            ActivationRecord::SwiGlu(r) => {
+                let mut offset = 0usize;
+                offset = set_linear_record(&mut r.linear_inner, data, offset)?;
+                offset = set_linear_record(&mut r.linear_outer, data, offset)?;
+                if offset != data.len() {
+                    return Err(format!(
+                        "setWeightsFlat: swiGlu expected {} floats, got {}",
+                        offset,
+                        data.len()
+                    ));
+                }
+            }
+            _ => {
+                if !data.is_empty() {
+                    return Err(format!(
+                        "setWeightsFlat: stateless activation takes no weights, got {} floats",
+                        data.len()
+                    ));
+                }
+            }
+        }
+        self.inner = self.inner.clone().load_record(rec);
+        Ok(())
+    }
+}
+
+impl WasmActivation {
+    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+        let rec = self.inner.clone().into_record();
+        match rec {
+            ActivationRecord::PRelu(r) => {
+                vec![("alpha", r.alpha.dims().iter().product::<usize>())]
+            }
+            ActivationRecord::SwiGlu(r) => {
+                let mut segs = Vec::new();
+                let iw = r.linear_inner.weight.dims().iter().product::<usize>();
+                segs.push(("linear_inner.weight", iw));
+                if let Some(b) = &r.linear_inner.bias {
+                    segs.push(("linear_inner.bias", b.dims().iter().product::<usize>()));
+                }
+                let ow = r.linear_outer.weight.dims().iter().product::<usize>();
+                segs.push(("linear_outer.weight", ow));
+                if let Some(b) = &r.linear_outer.bias {
+                    segs.push(("linear_outer.bias", b.dims().iter().product::<usize>()));
+                }
+                segs
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    /// Length-aware accessor: exactly `get_weights_flat().len()` without
+    /// materializing the floats (see WasmConv::weights_len for the invariant).
+    pub(crate) fn weights_len(&self) -> usize {
+        self.weight_segs().iter().map(|seg| seg.1).sum()
+    }
+
+    pub fn weight_layout(&self) -> String {
+        crate::layers::layout::segs_json(&self.weight_segs())
     }
 }
 
