@@ -1,11 +1,11 @@
 {
   "layer_version": "v3.8",
   "sha256": {
-    "burn_research_bg.wasm": "da605e236afc0095540d28c19762870797aa57c7ad784b60376c57cad36952a3",
+    "burn_research_bg.wasm": "8b4dc005069e4bdfef280c52a14679d8b32c1b718f9a32412448fbc92f468ea7",
     "burn_research.js": "7628e4de12182375b73aa5ee8e1e33ffbf639d46022d92163c6d84c114d8ce78"
   },
   "engine": {
-    "wasm_sha256": "da605e236afc0095540d28c19762870797aa57c7ad784b60376c57cad36952a3",
+    "wasm_sha256": "8b4dc005069e4bdfef280c52a14679d8b32c1b718f9a32412448fbc92f468ea7",
     "js_sha256": "7628e4de12182375b73aa5ee8e1e33ffbf639d46022d92163c6d84c114d8ce78"
   },
   "generated_by": "scripts/build_agent_pack.mjs",
