@@ -1333,6 +1333,216 @@ test('REG-v3.8-08: Universal burn://sha256:... hydration in rollout/recurse/comp
   assert(capRes.code === 0 && uniqueBins.size === 47, `expected 47 unique tools in capabilities, got ${uniqueBins.size}`);
 });
 
+// --- 8b. TAHAP 6 (PR6): VJP mish/gelu/swiGlu, ref f64 10 op baru, bound quant 15 baru ---
+
+test('REG-v3.8-09: compose.mjs grad-spec VJP mish/gelu match autodiff, gelu x=0 fails loud, swiGlu grad is exactly zero', async () => {
+  const chain = (opLayer) => ({
+    numSlots: 10,
+    layers: [
+      { constructor: 'linear', args: [0, 2, 2, false] },
+      opLayer,
+      { constructor: 'linear', args: [2, 2, 2, false] },
+      { constructor: 'add', args: [99] },
+    ],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '2': [0.5, -1, 0.25, 1.5] },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  });
+  for (const ctor of ['mish', 'gelu']) {
+    const f = writeTmpJson(`reg_v38_09_${ctor}.json`, chain({ constructor: ctor, args: [1] }));
+    const g = runCli(['bin/compose.mjs', 'grad-spec', f, '--wrt', '0', '--order', '1']);
+    const a = runCli(['bin/autodiff.mjs', 'grad', f]);
+    assert(g.code === 0 && g.json?.ok === true, `${ctor} grad-spec failed: ${g.out}`);
+    assert(a.code === 0 && a.json?.ok === true, `${ctor} autodiff grad failed: ${a.out}`);
+    const av = a.json.inputGrads?.['0'] ?? a.json.inputGrads?.[0] ?? a.json.grad_values ?? a.json.grads ?? a.json.values ?? a.json.output?.grad_values;
+    assert(Array.isArray(av) && Array.isArray(g.json.grad_values) && av.length === g.json.grad_values.length,
+      `${ctor}: autodiff grad shape mismatch: ${a.out}`);
+    for (let i = 0; i < av.length; i++) {
+      assert(Math.abs(g.json.grad_values[i] - av[i]) < 1e-4,
+        `${ctor} grad-spec vs autodiff mismatch at ${i}: got ${g.json.grad_values[i]}, want ${av[i]}`);
+    }
+    const fd = runCli(['bin/autodiff.mjs', 'verify-fd', f, '1e-3', '1e-3']);
+    assert(fd.code === 0 && fd.json?.ok === true, `${ctor} verify-fd failed: ${fd.out}`);
+  }
+  // gelu x=0: Phi(x) = gelu(x)/x membagi nol -> grad-spec HARUS gagal keras, bukan NaN diam-diam.
+  // Nol harus SAMPAI ke gelu: input rantai [0, 0] -> output linear [0, 0] -> gelu(0)/0 melempar.
+  const zeroSpec = chain({ constructor: 'gelu', args: [1] });
+  zeroSpec.inputs['0'] = [0, 0];
+  const zf = writeTmpJson('reg_v38_09_gelu_zero.json', zeroSpec);
+  const zg = runCli(['bin/compose.mjs', 'grad-spec', zf, '--wrt', '0', '--order', '1']);
+  assert((zg.code !== 0 || zg.json?.ok === false) && /zero denominator/.test(zg.out + (zg.json?.error ?? '')),
+    `gelu x=0 grad-spec must fail loud with zero denominator, got code=${zg.code}: ${zg.out}`);
+  // swiGlu: perilaku zero-weight engine -> grad-spec tepat [0, 0].
+  const swiSpec = {
+    numSlots: 10,
+    layers: [{ constructor: 'swiGlu', args: [1, 2, 2, false] }, { constructor: 'add', args: [99] }],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'binary', layer: 1, slots: [2, 1, 3] },
+    ],
+    outputSlot: 3,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 1, 1, 2], layout: 'feature_last' },
+      { slot: 1, role: 'observation', shape: [1, 1, 1, 2], layout: 'feature_last' },
+    ],
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+  };
+  const sf = writeTmpJson('reg_v38_09_swiglu.json', swiSpec);
+  const sg = runCli(['bin/compose.mjs', 'grad-spec', sf, '--wrt', '0', '--order', '1']);
+  assert(sg.code === 0 && sg.json?.ok === true && JSON.stringify(sg.json.grad_values) === '[0,0]',
+    `swiGlu grad-spec must be exactly [0,0], got: ${sg.out}`);
+});
+
+test('REG-v3.8-10: diff_ref f64 parity (< 1e-5) for the 10 Tahap-6 reference ops', async () => {
+  const mkSpec = ({ ctor, args, weights, inShape, inLayout, inVals, outShape, carrierVals, binary }) => {
+    const layers = [{ constructor: ctor, args }];
+    const steps = [];
+    if (binary) {
+      steps.push({ kind: 'binary', layer: 0, slots: [0, 1, 2] });
+      return { numSlots: 10, layers, steps, weights: weights ?? {},
+        inputs: { '0': inVals, '1': carrierVals ?? inVals },
+        ports: [
+          { slot: 0, role: 'observation', shape: inShape, layout: inLayout },
+          { slot: 1, role: 'observation', shape: inShape, layout: inLayout }],
+        outputSlot: 2 };
+    }
+    layers.push({ constructor: 'add', args: [99] });
+    steps.push({ kind: 'unary', layer: 0, slots: [0, 2] });
+    steps.push({ kind: 'binary', layer: 1, slots: [2, 1, 3] });
+    return { numSlots: 10, layers, steps, weights: weights ?? {},
+      inputs: { '0': inVals, '1': carrierVals },
+      ports: [
+        { slot: 0, role: 'observation', shape: inShape, layout: inLayout },
+        { slot: 1, role: 'observation', shape: outShape, layout: inLayout }],
+      outputSlot: 3 };
+  };
+  const S211 = { shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton', vals: [0.5, -0.5], carrier: [0.25, 1.5] };
+  const CF222 = { shape: [1, 2, 2, 2], layout: 'channel_first', vals: [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5], carrier: [0.25, 1.5, 0, 0, 0, 0, 0, 0] };
+  const U = (ctor, args, cfg = S211, weights) => mkSpec({ ctor, args, weights, inShape: cfg.shape, inLayout: cfg.layout, inVals: cfg.vals, outShape: cfg.shape, carrierVals: cfg.carrier });
+  const convSpec = (ctor, args, wLen, inShape, inVals) => {
+    const w = Array.from({ length: wLen }, (_, i) => 0.25 * ((i % 3) - 1) + 0.5);
+    return mkSpec({ ctor, args, weights: { '0': w }, inShape, inLayout: 'any_rank4', inVals, outShape: [1, 2, 1, 1], carrierVals: [0.25, 1.5] });
+  };
+  const specs = {
+    conv1d: convSpec('conv1d', [1, 2, 2, 2, 1, 0], 10, [1, 2, 2, 1], [0.5, -0.5, 1, 2]),
+    conv2d: convSpec('conv2d', [1, 2, 2, 2, 2, 1, 1, 0, 0], 18, [1, 2, 2, 2], [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5]),
+    convTranspose2d: (() => { const s = convSpec('convTranspose2d', [1, 2, 2, 2, 2, 1, 1, 0, 0], 18, [1, 2, 2, 2], [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5]); s.ports[1].shape = [1, 2, 3, 3]; s.inputs['1'] = Array(18).fill(0).map((_, i) => [0.25, 1.5][i % 2]); return s; })(),
+    batchNorm: U('batchNorm', [1, 2, 1e-5], S211, { '0': [1, 1, 0, 0] }),
+    groupNorm: U('groupNorm', [1, 1, 2, 1e-5], CF222),
+    instanceNorm: U('instanceNorm', [1, 2, 1e-5], CF222),
+    adaptiveAvgPool2d: mkSpec({ ctor: 'adaptiveAvgPool2d', args: [1, 1, 1], inShape: [1, 1, 2, 2], inLayout: 'any_rank4', inVals: [0.5, -0.5, 1, 2], outShape: [1, 1, 1, 1], carrierVals: [0.25] }),
+    ghost: (() => { const s = convSpec('ghost', [1, 2, 2, 2, 2, 2, 1, 1, 0, 0], 0, [1, 2, 2, 2], [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5]); delete s.weights['0']; return s; })(),
+    seBlock: U('seBlock', [1, 2, 2], CF222),
+    swiGlu: mkSpec({ ctor: 'swiGlu', args: [1, 2, 2, false], inShape: [1, 1, 1, 2], inLayout: 'feature_last', inVals: [0.5, -0.5], outShape: [1, 1, 1, 2], carrierVals: [0.25, 1.5] }),
+  };
+  for (const [name, spec] of Object.entries(specs)) {
+    const f = writeTmpJson(`reg_v38_10_${name}.json`, spec);
+    const dr = runCli(['bin/diff_ref.mjs', f]);
+    assert(dr.code === 0 && dr.json?.ok === true && dr.json?.verdict?.startsWith('PASS'),
+      `diff_ref on ${name} failed: ${dr.out}`);
+  }
+});
+
+test('REG-v3.8-11: quant_budget bounds for the Tahap-6 ops dominate measured delta; div/sqrt/swiGlu stay loud errors', async () => {
+  const LIN = { constructor: 'linear', args: [0, 2, 2, false] };
+  const LIN2 = { constructor: 'linear', args: [2, 2, 2, false] };
+  const ADD = { constructor: 'add', args: [99] };
+  const chainSpec = (opLayer, opWeights) => {
+    const weights = { '0': [1, 0.5, -0.25, 2], '2': [0.5, -1, 0.25, 1.5] };
+    if (opWeights !== null && opWeights !== undefined) weights['1'] = opWeights;
+    return {
+    numSlots: 10,
+    layers: [LIN, opLayer, LIN2, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights,
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5] },
+    };
+  };
+  const dominates = (name, spec) => {
+    const f = writeTmpJson(`reg_v38_11_${name}.json`, spec);
+    const c = writeTmpJson(`reg_v38_11_${name}_cases.json`, [spec.inputs]);
+    const qbBound = runCli(['bin/quant_budget.mjs', f, c, '--tol', '1e9', '--mode', 'bound']);
+    const qbMeas = runCli(['bin/quant_budget.mjs', f, c, '--tol', '1e9', '--mode', 'measured']);
+    assert(qbBound.code === 0 && qbBound.json?.ok === true && qbMeas.code === 0 && qbMeas.json?.ok === true,
+      `quant_budget failed on ${name}: ${qbBound.out} / ${qbMeas.out}`);
+    assert(qbBound.json.totals.bound_total_all >= qbMeas.json.totals.measured_delta_plan,
+      `unsound bound on ${name}: bound_total_all ${qbBound.json.totals.bound_total_all} < measured_delta_plan ${qbMeas.json.totals.measured_delta_plan}`);
+  };
+  dominates('mish', chainSpec({ constructor: 'mish', args: [1] }, null));
+  dominates('conv2d', chainSpec({ constructor: 'conv2d', args: [1, 2, 2, 1, 1, 1, 1, 0, 0] }, [0.5, -0.25, 0.75, 0.125, 0.1, -0.2]));
+  // matmul K=2: linear -> transpose(1,3) -> [1,1,1,2] -> matmul(., y [1,1,2,1]) -> linear(1->1) -> add.
+  // Carrier port harus slot 7: slot 2 sudah dipakai output linear (plan_unused_ports bila tabrakan).
+  dominates('matmul_k2', {
+    numSlots: 10,
+    layers: [LIN, { constructor: 'transpose', args: [1, 1, 3] }, { constructor: 'matmul', args: [2] }, { constructor: 'linear', args: [3, 1, 1, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'binary', layer: 2, slots: [3, 1, 4] },
+      { kind: 'unary', layer: 3, slots: [4, 5] },
+      { kind: 'binary', layer: 4, slots: [5, 7, 6] },
+    ],
+    outputSlot: 6,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+      { slot: 1, role: 'observation', shape: [1, 1, 2, 1], layout: 'any_rank4' },
+      { slot: 7, role: 'observation', shape: [1, 1, 1, 1], layout: 'any_rank4' },
+    ],
+    weights: { '0': [1, 0.5, -0.25, 2], '3': [0.5] },
+    inputs: { '0': [0.5, -0.5], '1': [0.25, 1.5], '7': [0.25] },
+  });
+  // groupNorm: linear->norm langsung panic engine di spasial 1x1; rantai port[1,2,2,2] -> norm -> pool -> linear -> add.
+  dominates('groupNorm', {
+    numSlots: 10,
+    layers: [{ constructor: 'groupNorm', args: [1, 1, 2, 1e-5] }, { constructor: 'adaptiveAvgPool2d', args: [1, 1, 1] }, { constructor: 'linear', args: [2, 2, 2, false] }, ADD],
+    steps: [
+      { kind: 'unary', layer: 0, slots: [0, 2] },
+      { kind: 'unary', layer: 1, slots: [2, 3] },
+      { kind: 'unary', layer: 2, slots: [3, 4] },
+      { kind: 'binary', layer: 3, slots: [4, 1, 5] },
+    ],
+    outputSlot: 5,
+    ports: [
+      { slot: 0, role: 'observation', shape: [1, 2, 2, 2], layout: 'channel_first' },
+      { slot: 1, role: 'observation', shape: [1, 2, 1, 1], layout: 'feature_axis1_singleton' },
+    ],
+    weights: { '0': [1, 1, 0, 0], '2': [1, 0.5, -0.25, 2] },
+    inputs: { '0': [0.5, -0.5, 1, 2, 0.25, -1, 0.75, 0.5], '1': [0.25, 1.5] },
+  });
+  // div / sqrt / swiGlu: bound mode HARUS menolak keras (tanpa bound hingga yang terbukti).
+  for (const [name, opLayer] of [
+    ['div', { constructor: 'div', args: [1] }],
+    ['sqrt', { constructor: 'sqrt', args: [1] }],
+    ['swiGlu', { constructor: 'swiGlu', args: [1, 2, 2, false] }],
+  ]) {
+    const f = writeTmpJson(`reg_v38_11_${name}_loud.json`, chainSpec(opLayer, null));
+    const c = writeTmpJson(`reg_v38_11_${name}_loud_cases.json`, [chainSpec(opLayer, null).inputs]);
+    const qb = runCli(['bin/quant_budget.mjs', f, c, '--tol', '1e9', '--mode', 'bound']);
+    assert((qb.code !== 0 || qb.json?.ok === false) && new RegExp(`analyticalContribs: unsupported step '${name}'`).test(qb.out + (qb.json?.error ?? '')),
+      `quant_budget on ${name} must fail loud with unsupported step, got code=${qb.code}: ${qb.out}`);
+  }
+});
+
 // --- 9. STAGE 6: v3.9 TOOL HONESTY & FAIL-CLOSED INTEGRITY REGRESSIONS (F-01..F-12) ---
 
 test('REG-v3.9-01 (F-01): rewrites.v1.json catalog contains no placeholder sequential hex SHA-256 strings', async () => {
