@@ -10,6 +10,11 @@
 // Extended in v3.7 to cover 34 constructors across linear, activations (incl. mish, glu),
 // norms (featureNorm, rmsNorm, layerNorm), matmul, transpose, concat, pooling
 // (avgPool1d, avgPool2d, maxPool1d, maxPool2d), embedding, and shifts.
+// Extended in Tahap 6 (PR6) to all 44 f32 constructors: + conv1d/conv2d/
+// convTranspose2d, batchNorm/groupNorm/instanceNorm, adaptiveAvgPool2d,
+// ghost, seBlock, swiGlu. ghost/seBlock/swiGlu implement the engine's
+// effective zero-weight behavior (their spec-path weights are unsettable;
+// see the per-op comments and design-6.md) — parity is the guard.
 //
 // Every op receives one context object:
 //   { xs: [values, ...], shapes: [[N,C,H,W], ...], args, weights }
@@ -335,6 +340,180 @@ const OPS = {
       }
     }
     return { values: out, shape: [B, S, dModel, 1] };
+  },
+  // --- Tahap 6 (PR6): the remaining 10 f32 constructors. Weight layouts
+  // and semantics were fitted against the engine (see pr6/semantics_probe.mjs).
+  conv1d: ({ xs, shapes, args, weights }) => {
+    // args: [id, in_ch, out_ch, kernel, stride?, padding?].
+    // Weights row-major [out][in][k], bias [out] appended.
+    const x = xs[0], [n, cIn, len] = shapes[0];
+    const [, inCh, outCh, k, s0, p0] = args;
+    const s = s0 ?? 1, p = p0 ?? 0;
+    const oL = Math.floor((len + 2 * p - k) / s) + 1;
+    if (!weights) throw new Error('ref conv1d: missing weights for layer');
+    const out = new Array(n * outCh * oL).fill(0);
+    for (let b = 0; b < n; b++) for (let o = 0; o < outCh; o++)
+      for (let l = 0; l < oL; l++) {
+        let acc = weights[inCh * outCh * k + o];
+        for (let i = 0; i < inCh; i++) for (let kk = 0; kk < k; kk++) {
+          const ll = l * s + kk - p;
+          if (ll >= 0 && ll < len) acc += weights[(o * inCh + i) * k + kk] * x[((b * cIn + i) * len + ll)];
+        }
+        out[(b * outCh + o) * oL + l] = acc;
+      }
+    return { values: out, shape: [n, outCh, oL, 1] };
+  },
+  conv2d: ({ xs, shapes, args, weights }) => {
+    // args: [id, in, out, kh, kw, sh?, sw?, ph?, pw?].
+    // Weights row-major [out][in][kh][kw], bias [out] appended.
+    const x = xs[0], [n, cIn, h, w] = shapes[0];
+    const [, inCh, outCh, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sH = sh0 ?? 1, sW = sw0 ?? 1, pH = ph0 ?? 0, pW = pw0 ?? 0;
+    const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
+    const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
+    if (!weights) throw new Error('ref conv2d: missing weights for layer');
+    const out = new Array(n * outCh * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let o = 0; o < outCh; o++)
+      for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+        let acc = weights[inCh * outCh * kh * kw + o];
+        for (let i = 0; i < inCh; i++) for (let khh = 0; khh < kh; khh++) for (let kww = 0; kww < kw; kww++) {
+          const hh = oh * sH + khh - pH, ww = ow * sW + kww - pW;
+          if (hh >= 0 && hh < h && ww >= 0 && ww < w)
+            acc += weights[((o * inCh + i) * kh + khh) * kw + kww] * x[(((b * cIn + i) * h + hh) * w + ww)];
+        }
+        out[(((b * outCh + o) * oH + oh) * oW + ow)] = acc;
+      }
+    return { values: out, shape: [n, outCh, oH, oW] };
+  },
+  convTranspose2d: ({ xs, shapes, args, weights }) => {
+    // args: [id, in, out, kh, kw, sh?, sw?, ph?, pw?].
+    // Weights row-major [in][out][kh][kw] (burn ConvTranspose2d shape),
+    // bias [out] appended. Scatter (gradient-of-conv) form.
+    const x = xs[0], [n, cIn, h, w] = shapes[0];
+    const [, inCh, outCh, kh, kw, sh0, sw0, ph0, pw0] = args;
+    const sH = sh0 ?? 1, sW = sw0 ?? 1, pH = ph0 ?? 0, pW = pw0 ?? 0;
+    const oH = (h - 1) * sH + kh - 2 * pH;
+    const oW = (w - 1) * sW + kw - 2 * pW;
+    if (!weights) throw new Error('ref convTranspose2d: missing weights for layer');
+    const out = new Array(n * outCh * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let o = 0; o < outCh; o++)
+      for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++)
+        out[(((b * outCh + o) * oH + oh) * oW + ow)] = weights[inCh * outCh * kh * kw + o];
+    for (let b = 0; b < n; b++) for (let i = 0; i < inCh; i++)
+      for (let hh = 0; hh < h; hh++) for (let ww = 0; ww < w; ww++)
+        for (let khh = 0; khh < kh; khh++) for (let kww = 0; kww < kw; kww++) {
+          const oh = hh * sH + khh - pH, ow = ww * sW + kww - pW;
+          if (oh < 0 || oh >= oH || ow < 0 || ow >= oW) continue;
+          const xv = x[(((b * cIn + i) * h + hh) * w + ww)];
+          for (let o = 0; o < outCh; o++)
+            out[(((b * outCh + o) * oH + oh) * oW + ow)] += xv * weights[((i * outCh + o) * kh + khh) * kw + kww];
+        }
+    return { values: out, shape: [n, outCh, oH, oW] };
+  },
+  // Norms: weights are [gamma(C), beta(C)] (defaults gamma=1, beta=0).
+  // batchNorm uses RUNNING stats (mean 0, var 1): the engine's BatchNorm
+  // never leaves eval mode on the spec path (probed 2026-11-07).
+  batchNorm: ({ xs, shapes, args, weights }) => {
+    const x = xs[0], [n, c] = shapes[0];
+    const [, numF, eps0] = args;
+    const eps = eps0 ?? 1e-5;
+    const gamma = weights ? weights.slice(0, numF) : new Array(numF).fill(1);
+    const beta = weights ? weights.slice(numF, 2 * numF) : new Array(numF).fill(0);
+    const inv = 1 / Math.sqrt(1 + eps);
+    const out = new Array(x.length);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let f = 0; f < x.length / (n * c); f++)
+        out[(b * c + cc) * (x.length / (n * c)) + f] = gamma[cc] * x[(b * c + cc) * (x.length / (n * c)) + f] * inv + beta[cc];
+    return { values: out };
+  },
+  groupNorm: ({ xs, shapes, args, weights }) => {
+    const x = xs[0], [n, c, h, w] = shapes[0];
+    const [, numG, numC, eps0] = args;
+    const eps = eps0 ?? 1e-5;
+    const gamma = weights ? weights.slice(0, numC) : new Array(numC).fill(1);
+    const beta = weights ? weights.slice(numC, 2 * numC) : new Array(numC).fill(0);
+    const chPerGroup = Math.floor(c / numG);
+    const out = new Array(x.length);
+    for (let b = 0; b < n; b++) for (let g = 0; g < numG; g++) {
+      const idxs = [];
+      for (let cc = g * chPerGroup; cc < (g + 1) * chPerGroup; cc++)
+        for (let f = 0; f < h * w; f++) idxs.push((b * c + cc) * h * w + f);
+      let mean = 0;
+      for (const i of idxs) mean += x[i];
+      mean /= idxs.length;
+      let va = 0;
+      for (const i of idxs) va += (x[i] - mean) * (x[i] - mean);
+      va /= idxs.length;
+      const inv = 1 / Math.sqrt(va + eps);
+      for (const i of idxs) {
+        const cc = Math.floor((i / (h * w)) % c);
+        out[i] = gamma[cc] * (x[i] - mean) * inv + beta[cc];
+      }
+    }
+    return { values: out };
+  },
+  instanceNorm: ({ xs, shapes, args, weights }) => {
+    const x = xs[0], [n, c, h, w] = shapes[0];
+    const [, numC, eps0] = args;
+    const eps = eps0 ?? 1e-5;
+    const gamma = weights ? weights.slice(0, numC) : new Array(numC).fill(1);
+    const beta = weights ? weights.slice(numC, 2 * numC) : new Array(numC).fill(0);
+    const out = new Array(x.length);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++) {
+      let mean = 0;
+      for (let f = 0; f < h * w; f++) mean += x[(b * c + cc) * h * w + f];
+      mean /= h * w;
+      let va = 0;
+      for (let f = 0; f < h * w; f++) va += (x[(b * c + cc) * h * w + f] - mean) ** 2;
+      va /= h * w;
+      const inv = 1 / Math.sqrt(va + eps);
+      for (let f = 0; f < h * w; f++)
+        out[(b * c + cc) * h * w + f] = gamma[cc] * (x[(b * c + cc) * h * w + f] - mean) * inv + beta[cc];
+    }
+    return { values: out };
+  },
+  adaptiveAvgPool2d: ({ xs, shapes, args }) => {
+    const x = xs[0], [n, c, h, w] = shapes[0];
+    const [, oH, oW] = args;
+    const out = new Array(n * c * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let cc = 0; cc < c; cc++)
+      for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+        const h0 = Math.floor((oh * h) / oH), h1 = Math.ceil(((oh + 1) * h) / oH);
+        const w0 = Math.floor((ow * w) / oW), w1 = Math.ceil(((ow + 1) * w) / oW);
+        let s = 0, cnt = 0;
+        for (let hh = h0; hh < h1; hh++) for (let ww = w0; ww < w1; ww++) {
+          s += x[(((b * c + cc) * h + hh) * w + ww)];
+          cnt++;
+        }
+        out[(((b * c + cc) * oH + oh) * oW + ow)] = s / cnt;
+      }
+    return { values: out, shape: [n, c, oH, oW] };
+  },
+  // Zero-weight behavior (engine): ghost's primary+cheap convs and
+  // seBlock's fc1/fc2 are initialized to ZEROS and their weights are
+  // unsettable via the spec path — so the engine's ghost is all-zeros
+  // (with the conv output shape) and its seBlock is x*0.5 (sigmoid(0)).
+  // If the engine ever accepts weights for these, this ref must change
+  // (the parity battery will fail loudly then, by design).
+  ghost: ({ xs, shapes, args }) => {
+    const [, , outCh, kh, kw, , sh0, sw0, ph0, pw0] = args;
+    const [n, , h, w] = shapes[0];
+    const sH = sh0 ?? 1, sW = sw0 ?? 1, pH = ph0 ?? 0, pW = pw0 ?? 0;
+    const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
+    const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
+    return { values: new Array(n * outCh * oH * oW).fill(0), shape: [n, outCh, oH, oW] };
+  },
+  seBlock: ({ xs }) => ({ values: xs[0].map((v) => v * 0.5) }),
+  swiGlu: ({ xs, shapes, args }) => {
+    // Zero-weight behavior (engine): linear_inner/outer are initialized
+    // to ZEROS and SwiGlu weights are unsettable via the spec path
+    // ("layer type carries no mutable weights"), so the engine's swiGlu
+    // is the constant-zero function. Same staleness note as ghost above.
+    const [, , dOut] = args;
+    const inSh = shapes[0];
+    const outSh = [...inSh];
+    outSh[3] = dOut;
+    return { values: new Array(numel(outSh)).fill(0), shape: outSh };
   },
 };
 

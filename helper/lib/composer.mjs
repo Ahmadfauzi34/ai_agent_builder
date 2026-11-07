@@ -897,6 +897,25 @@ function oneMinusWeights(dim) {
   return w;
 }
 
+// Build column-major weights for `1 + z = (+I) z + 1` on a [B, D, 1, 1] tensor.
+function onePlusWeights(dim) {
+  const w = [];
+  for (let j = 0; j < dim; j++) {
+    for (let i = 0; i < dim; i++) w.push(i === j ? 1 : 0);
+  }
+  for (let i = 0; i < dim; i++) w.push(1);
+  return w;
+}
+
+// Build column-major weights for `scale * z` (bias-free) on a [B, D, 1, 1] tensor.
+function scaledIdentityWeights(dim, scale) {
+  const w = [];
+  for (let j = 0; j < dim; j++) {
+    for (let i = 0; i < dim; i++) w.push(i === j ? scale : 0);
+  }
+  return w;
+}
+
 function resolveWrtSlot(forwardSpec, wrtSlot) {
   if (typeof wrtSlot === 'number' && Number.isInteger(wrtSlot) && wrtSlot >= 0) return wrtSlot;
   const k = String(wrtSlot);
@@ -976,6 +995,34 @@ export function compileBackwardSpec(forwardSpec, { wrtSlot = 0, doutValues = nul
     const linIdx = layers.length;
     layers.push({ constructor: 'linear', args: [nextRegId++, dim, dim, true] });
     weights[String(linIdx)] = oneMinusWeights(dim);
+    const resSlot = nextSlot++;
+    steps.push({ kind: 'unary', layer: linIdx, slots: [inSlot, resSlot] });
+    return resSlot;
+  };
+
+  // Emit `1 + z` via a biased linear(+I, +1) step for [B, D, 1, 1] tensors
+  const emitOnePlus = (inSlot, sh) => {
+    if (sh[2] !== 1 || sh[3] !== 1) {
+      throw new CompositionError('unsupported_shape_for_polynomial_vjp', `in-graph gelu VJP requires [B, D, 1, 1] shape, got [${sh}]`);
+    }
+    const dim = sh[1];
+    const linIdx = layers.length;
+    layers.push({ constructor: 'linear', args: [nextRegId++, dim, dim, true] });
+    weights[String(linIdx)] = onePlusWeights(dim);
+    const resSlot = nextSlot++;
+    steps.push({ kind: 'unary', layer: linIdx, slots: [inSlot, resSlot] });
+    return resSlot;
+  };
+
+  // Emit `scale * z` via a bias-free linear(scale*I) step for [B, D, 1, 1] tensors
+  const emitScale = (inSlot, sh, scale) => {
+    if (sh[2] !== 1 || sh[3] !== 1) {
+      throw new CompositionError('unsupported_shape_for_polynomial_vjp', `in-graph gelu VJP requires [B, D, 1, 1] shape, got [${sh}]`);
+    }
+    const dim = sh[1];
+    const linIdx = layers.length;
+    layers.push({ constructor: 'linear', args: [nextRegId++, dim, dim, false] });
+    weights[String(linIdx)] = scaledIdentityWeights(dim, scale);
     const resSlot = nextSlot++;
     steps.push({ kind: 'unary', layer: linIdx, slots: [inSlot, resSlot] });
     return resSlot;
@@ -1082,6 +1129,89 @@ export function compileBackwardSpec(forwardSpec, { wrtSlot = 0, doutValues = nul
       const dxSlot = nextSlot++;
       steps.push({ kind: 'binary', layer: mulIdx, slots: [upGradSlot, oneMinusYSq, dxSlot] });
       accumulateGrad(st.slots[0], dxSlot);
+    } else if (ctor === 'mish') {
+      // y = x*tanh(softplus(x)); dy/dx = tanh(sp) + x*(1-tanh^2(sp))*sigmoid(x).
+      // Requires [B, D, 1, 1] (emitOneMinus shape rule, same as sigmoid/tanh).
+      const sh = slotShapes.get(outSlot);
+      const xSlot = st.slots[0];
+      const mulIdx = layers.length;
+      layers.push({ constructor: 'mul', args: [nextRegId++] });
+      const spIdx = layers.length;
+      layers.push({ constructor: 'softplus', args: [nextRegId++, 1.0] });
+      const spSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: spIdx, slots: [xSlot, spSlot] });
+      const thIdx = layers.length;
+      layers.push({ constructor: 'tanh', args: [nextRegId++] });
+      const thSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: thIdx, slots: [spSlot, thSlot] });
+      const th2Slot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [thSlot, thSlot, th2Slot] });
+      const oneMinusTh2 = emitOneMinus(th2Slot, sh);
+      const sigIdx = layers.length;
+      layers.push({ constructor: 'sigmoid', args: [nextRegId++] });
+      const sigSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: sigIdx, slots: [xSlot, sigSlot] });
+      const xSigSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [xSlot, sigSlot, xSigSlot] });
+      const xSigOmSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [xSigSlot, oneMinusTh2, xSigOmSlot] });
+      const dydxSlot = nextSlot++;
+      const addIdx2 = layers.length;
+      layers.push({ constructor: 'add', args: [nextRegId++] });
+      steps.push({ kind: 'binary', layer: addIdx2, slots: [thSlot, xSigOmSlot, dydxSlot] });
+      const dxSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [upGradSlot, dydxSlot, dxSlot] });
+      accumulateGrad(xSlot, dxSlot);
+    } else if (ctor === 'gelu') {
+      // y = x*Phi(x); dy/dx = Phi(x) + x*phi(x).
+      // phi(x) = (1/sqrt(2*pi))*exp(-x^2/2) with exp(-x^2/2) =
+      // (1+tanh(-x^2/4))/(1-tanh(-x^2/4)) — exact, no erf primitive needed.
+      // Phi(x) = gelu(x)/x; the engine div THROWS at x=0 (fail-closed hole:
+      // grad-spec on a gelu spec with an exactly-zero input fails loudly
+      // instead of silently producing NaN). Requires [B, D, 1, 1].
+      const sh = slotShapes.get(outSlot);
+      const xSlot = st.slots[0];
+      const mulIdx = layers.length;
+      layers.push({ constructor: 'mul', args: [nextRegId++] });
+      const divIdx = layers.length;
+      layers.push({ constructor: 'div', args: [nextRegId++] });
+      const x2Slot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [xSlot, xSlot, x2Slot] });
+      const tSlot = emitScale(x2Slot, sh, -0.25);
+      const thIdx = layers.length;
+      layers.push({ constructor: 'tanh', args: [nextRegId++] });
+      const thSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: thIdx, slots: [tSlot, thSlot] });
+      const onePlusTh = emitOnePlus(thSlot, sh);
+      const oneMinusTh = emitOneMinus(thSlot, sh);
+      const expSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: divIdx, slots: [onePlusTh, oneMinusTh, expSlot] });
+      const phiSlot = emitScale(expSlot, sh, 1 / Math.sqrt(2 * Math.PI));
+      const xPhiSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [xSlot, phiSlot, xPhiSlot] });
+      const PhiSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: divIdx, slots: [outSlot, xSlot, PhiSlot] });
+      const dydxSlot = nextSlot++;
+      const addIdx2 = layers.length;
+      layers.push({ constructor: 'add', args: [nextRegId++] });
+      steps.push({ kind: 'binary', layer: addIdx2, slots: [PhiSlot, xPhiSlot, dydxSlot] });
+      const dxSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [upGradSlot, dydxSlot, dxSlot] });
+      accumulateGrad(xSlot, dxSlot);
+    } else if (ctor === 'swiGlu') {
+      // Zero-weight behavior (engine): linear_inner/outer are initialized
+      // to ZEROS and SwiGlu weights are unsettable via the spec path, so
+      // the engine's swiGlu is the constant-zero function and its exact
+      // VJP is dx = 0 (emitted as sub(x, x), shape-agnostic). Verified
+      // against verify-fd (engine forward is constant 0). If the engine
+      // ever accepts SwiGlu weights, this VJP must become the full gated
+      // form — the grad-spec/fd tests will fail loudly then, by design.
+      const xSlot = st.slots[0];
+      const subIdx = layers.length;
+      layers.push({ constructor: 'sub', args: [nextRegId++] });
+      const zeroSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: subIdx, slots: [xSlot, xSlot, zeroSlot] });
+      accumulateGrad(xSlot, zeroSlot);
     } else if (ctor === 'transpose') {
       const [, d0, d1] = decl.args;
       const trIdx = layers.length;
@@ -1115,7 +1245,7 @@ export function compileBackwardSpec(forwardSpec, { wrtSlot = 0, doutValues = nul
     } else {
       throw new CompositionError(
         'unsupported_symbolic_grad_op',
-        `symbolic graph differentiation does not support constructor '${ctor}' at step ${si} (supported in-graph VJP: linear, add, sub, mul, div, sqrt, sigmoid, tanh, transpose, matmul, shift*)`,
+        `symbolic graph differentiation does not support constructor '${ctor}' at step ${si} (supported in-graph VJP: linear, add, sub, mul, div, sqrt, sigmoid, tanh, transpose, matmul, shift*, gelu, mish, swiGlu)`,
       );
     }
   }
