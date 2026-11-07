@@ -1210,6 +1210,74 @@ test('2b: gated buildGraph + lenient core', () => {
     `run --direct 1e39 inputs: expected exit 2 + argValues invalid_argument + finite-f32 issue, got ${r3.out.slice(0, 200)}`);
 });
 
+test('Tahap 4: functional coverage for 7 CLIs', () => {
+  // Tahap 4 (2026-11-07): 5 dari 7 CLI ini TIDAK PERNAH disebut
+  // di regression/recursive (opt_guard, prng_check, quant_equiv,
+  // quant_verify, shard_spec); 2 lainnya hanya punya sel negatif
+  // (opt_profile di tes string-throw PR1, shapecheck di tes 2a).
+  // HONEST NOTE: ini behavior pin, bukan change pin — kesembilan
+  // sel lolos di main yang belum diubah (nilai di bawah = hasil
+  // live di ef89206c). Yang diikat: CLI-CLI ini tetap punya
+  // perilaku fungsional yang teruji, dan CI (S2 di main.yml)
+  // kini menjalankan recursive + hang.
+  const good = path.join(ROOT, 'examples/linear-relu.json');
+
+  // opt_guard: --bytes 16 -> accepted, di bawah tier_limit.
+  const g = runTool(['bin/opt_guard.mjs', '--bytes', '16']);
+  assert(g.code === 0 && g.json?.ok === true && g.json?.accepted === true
+    && g.json?.input_bytes === 16 && g.json?.tier_limit === 65536,
+    `opt_guard --bytes 16: ${g.out.slice(0, 200)}`);
+
+  // opt_profile: 2 iterasi (1 ditolak: "must be >= 2").
+  // JANGAN assert ms — waktu bervariasi antar mesin.
+  const p = runTool(['bin/opt_profile.mjs', good, '2']);
+  assert(p.code === 0 && p.json?.ok === true && p.json?.iterations === 2
+    && p.json?.phases?.build !== undefined,
+    `opt_profile linear-relu 2: ${p.out.slice(0, 200)}`);
+
+  // prng_check: generate lalu verify manifest yang sama.
+  const gen = runTool(['bin/prng_check.mjs', 'mulberry32', '1', '10']);
+  assert(gen.code === 0 && gen.json?.ok === true
+    && gen.json?.algorithm === 'mulberry32' && gen.json?.seed === 1
+    && gen.json?.count === 10 && typeof gen.json?.sha256 === 'string'
+    && gen.json.sha256.startsWith('sha256:')
+    && Array.isArray(gen.json?.preview) && gen.json.preview.length === 5,
+    `prng_check generate: ${gen.out.slice(0, 200)}`);
+  const manifest = path.join(TMP, 'pr4-prng-manifest.json');
+  fs.writeFileSync(manifest, gen.out);
+  const ver = runTool(['bin/prng_check.mjs', 'verify', manifest]);
+  assert(ver.code === 0 && ver.json?.ok === true && ver.json?.verified === true,
+    `prng_check verify: ${ver.out.slice(0, 200)}`);
+
+  // quant_equiv: tanpa --tol -> MEASURED (dilaporkan, tak dihakimi).
+  const qe = runTool(['bin/quant_equiv.mjs', '--in', '4', '--out', '8', '--cases', '2', '--seed', '7']);
+  assert(qe.code === 0 && qe.json?.ok === true && qe.json?.verdict === 'MEASURED'
+    && qe.json?.layer === 'linear(4,8,bias=false)',
+    `quant_equiv: ${qe.out.slice(0, 200)}`);
+
+  // quant_verify: baseline linear-relu, mode int8 default.
+  const qv = runTool(['bin/quant_verify.mjs', good]);
+  assert(qv.code === 0 && qv.json?.ok === true && qv.json?.mode === 'int8'
+    && qv.json?.totals?.compression_ratio === 2,
+    `quant_verify: ${qv.out.slice(0, 200)}`);
+
+  // shapecheck: positif (pelengkap sel negatif 2a).
+  const sc = runTool(['bin/shapecheck.mjs', good]);
+  assert(sc.code === 0 && sc.json?.ok === true
+    && sc.json?.steps?.[0]?.layer === 'linear',
+    `shapecheck linear-relu: ${sc.out.slice(0, 200)}`);
+
+  // shard_spec: cap besar -> pass-through; cap 2 -> shard + reassembly exact.
+  const s0 = runTool(['bin/shard_spec.mjs', good]);
+  assert(s0.code === 0 && s0.json?.ok === true && s0.json?.sharded === false,
+    `shard_spec linear-relu: ${s0.out.slice(0, 200)}`);
+  const s2 = runTool(['bin/shard_spec.mjs', good, '2']);
+  assert(s2.code === 0 && s2.json?.ok === true && s2.json?.sharded === true
+    && s2.json?.reassembly_exact === true && s2.json?.verified === true
+    && s2.json?.max_abs_error === 0,
+    `shard_spec linear-relu 2: ${s2.out.slice(0, 200)}`);
+});
+
 const results = [];
 for (const c of cases) {
   try { c.fn(); results.push({ name: c.name, ok: true }); }

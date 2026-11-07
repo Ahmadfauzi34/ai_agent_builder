@@ -65,6 +65,13 @@ jobs:
           python3 -m json.tool docs/contracts/wasm-surface.v1.json >/dev/null
           python3 -m json.tool docs/contracts/runtime-surface.v1.json >/dev/null
           python3 -m json.tool docs/contracts/host-support.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/agent-layout-contracts.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/agent-semantic-execution-context.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/host-branch-promotion-lineage.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/host-operation-contract-registry.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/ingress-provenance.v2.json >/dev/null
+          python3 -m json.tool docs/contracts/layer-registry-inventory.v1.json >/dev/null
+          python3 -m json.tool docs/contracts/layer-registry-operation-binding.v1.json >/dev/null
 
       - name: Audit repository mapper
         run: python3 -m unittest tests/test_repo_map.py
@@ -497,6 +504,15 @@ jobs:
         env:
           BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
         run: node helper/bin/autodiff.mjs prove-rules
+
+      - name: Run agent-pack recursive regression gate
+        env:
+          BURN_WASM_PKG_DIR: ${{ github.workspace }}/pkg
+        working-directory: helper
+        run: node bin/regression_recursive.mjs
+
+      - name: Run runner hang regression gate (quirk #424)
+        run: node helper/tests/hang_regression.mjs helper/lib/runner.mjs
 
       # Distribution (lane #4): everything above is the gate; the steps
       # below only run on main, after the gate passes, and publish the
