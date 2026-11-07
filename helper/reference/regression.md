@@ -1,4 +1,4 @@
-# Regression gate (v2.5)
+# Regression gate (v3.8)
 
 Run it before any release: `node bin/regression.mjs` from the pack root.
 Exit 0 = every case passes; exit 1 = at least one fails, with the failing
@@ -30,8 +30,22 @@ output), never just "the tool ran".
   `arith-eng`), fail-closed i64 overflow detection, `--wrap`, `to-f32` /
   `from-f32` casts, and `--batch` in `bin/int.mjs` (`int`, `int-eng`),
   catalog/surface listing checks, and universal `--help` / `-h` safety across
-  all CLI scripts in `bin/` (34 total cases, the 34th pinning
-  `precision_warnings` on f32 quantization loss).
+  all CLI scripts in `bin/` (48 total cases — `precision_warnings`
+  on f32 quantization loss is pinned by the arith-eng case; see the
+  v3.8 additions below).
+- **v3.8 additions**: Q2 gates — a mixed-shape mismatch and an
+  input-length mismatch fail fast with step/slot attribution instead
+  of the engine's bare `WasmTensor::new` error; T4b — `div`+`sqrt`
+  consecutive graph steps run, and `find-op` discovers both;
+  F1A — an i64-final run rejection names the concrete split;
+  Stage — single-spec `run`/`loadSpec` failures keep their `stage`,
+  and string-thrown errors keep their message; Tahap 2a — fail-closed
+  gates per bin (`trace_hash`, `shapecheck`, `verify`, `checkpoint`)
+  and Tahap 2b — a gated `buildGraph` over a lenient core; Tahap 4 —
+  functional coverage for 7 CLIs (`opt_guard`, `opt_profile`,
+  `prng_check`, `quant_equiv`, `quant_verify`, `shapecheck`,
+  `shard_spec`). The recursive suite is separate: 66 cases in
+  `bin/regression_recursive.mjs`.
 
 ## Honest gaps (what this suite does NOT claim)
 
@@ -71,5 +85,5 @@ output), never just "the tool ran".
 3. If the case needs a spec, build it in the suite's temp dir, never
    by editing a shipped example.
 4. Run the suite twice: once from the pack dir, once from the
-   unzipped release zip (they must both pass — see the v2.5 release
+   unzipped release zip (they must both pass — see the v3.8 release
    note for the procedure).

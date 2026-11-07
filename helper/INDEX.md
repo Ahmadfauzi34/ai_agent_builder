@@ -58,7 +58,7 @@ This page is a map, not a manual: find your question, follow the link.
 - Do EXACT integer arithmetic (i64, fail-closed overflow guard) ->
   `node bin/int.mjs <add|sub|mul|div|rem> <a1,a2,...> <b1,b2,...> [--wrap]`
   (plus `matmul`, `to-f32 [--allow-inexact]`, `from-f32`, and `--batch <ops.json>` with `"$prev"` / `"$<idx>"` — see `AGENT.md`).
-  A spec using int constructors validates with a WasmIntTensor warning but does not run — the runnable path is int.mjs itself, see `AGENT.md`.
+  A spec using int constructors runs through `run.mjs` when its output slot is f32 (mixed-dtype: f32 graph segments + int registry-call segments, see `AGENT.md`) — validate warns about the int steps. A pure-int spec, or a mixed spec ending in int, fails at build with a named output-dtype error; route that computation through `int.mjs` itself.
 - Apply the Lane E elementwise kernels (trig, rounding, atan2, powf, hypot, fma) ->
   `node bin/kernel.mjs <sin|cos|tan|floor|ceil|round> <a1,a2,...>`,
   `<atan2|powf|hypot> <a1,a2,...> <b1,b2,...>`, `fma <a1,a2,...> <b1,b2,...> <c1,c2,...>`, or `--batch <ops.json>`.
@@ -75,8 +75,8 @@ This page is a map, not a manual: find your question, follow the link.
 - Scan the whole wasm surface at a glance ->
   `contracts-index/surface-index.jsonl` (169 lines, one per entry).
 - Re-run the release regression gates ->
-  `node bin/regression.mjs` (40 core cases: `reference/regression.md`) and
-  `node bin/regression_recursive.mjs` (35 recursive, Stage-2, Stage-3 & Stage-4 feature cases).
+  `node bin/regression.mjs` (48 core cases: `reference/regression.md`) and
+  `node bin/regression_recursive.mjs` (66 recursive, Stage-2, Stage-3 & Stage-4 feature cases).
 - See what layout a constructor requires ->
   `node bin/layout.mjs <name>` (list all: `--list`), or scan
   `contracts-index/layout-index.jsonl` (52 lines, one per constructor).

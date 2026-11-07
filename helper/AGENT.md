@@ -244,6 +244,19 @@ pins the engine build (commit, sha256, entry counts).
     {code, phase, remediation_hint, execution_started}}`, exit 1.
     Pre-execution failures carry `execution_started: false`; a
     runtime shape failure may carry `execution_started: true`.
+  Run-phase failures also carry a `stage` field naming where the run
+  stopped: `loadSpec` (the spec file could not be read or parsed),
+  `argValues` (argument typing or input-length check failed — record
+  carries `code: "invalid_argument"` and an `issues` list),
+  `validatePlan` (the plan is invalid — record spreads the plan
+  object), `build` (the graph could not be built: a static check
+  failed, `splitSpec` threw, or the output slot is i64), or `run`
+  (the engine threw during execution — record carries `error` and
+  `error_envelope`, which may be null). The same five stages appear
+  in single-spec, `--direct`, and batch records; the field is
+  additive and changes no exit code. Do not confuse these with the
+  validate-layer stages above (`"static"`|`"plan"`), which belong
+  to `validate`/`shapecheck`, not to `run.mjs`.
   Either way, a failed run produces no result to use — never treat
   a partial output as an answer.
 
