@@ -420,9 +420,7 @@ dependencies = [
  "burn-backend",
  "burn-ir",
  "burn-std",
- "bytemuck",
  "const-random",
- "itertools 0.14.0",
  "libm",
  "macerator",
  "matrixmultiply",
@@ -433,7 +431,6 @@ dependencies = [
  "portable-atomic-util",
  "rand 0.9.5",
  "rayon",
- "seq-macro",
 ]
 
 [[package]]
@@ -467,14 +464,12 @@ dependencies = [
  "bincode",
  "burn",
  "burn-ndarray",
- "burn-wgpu",
  "getrandom 0.3.4",
  "js-sys",
  "serde",
  "serde_json",
  "sha2",
  "wasm-bindgen",
- "web-sys",
 ]
 
 [[package]]
@@ -558,7 +553,6 @@ checksum = "df78d62afc9b9fbb8ee4e49b72006485bb64f778a790e185a2d919479bcfc008"
 dependencies = [
  "burn-backend",
  "burn-cubecl",
- "burn-fusion",
  "cubecl",
 ]
 

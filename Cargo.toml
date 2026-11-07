@@ -8,8 +8,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # --- BURN ---
-burn = { version = "0.20.0", default-features = false, features = ["std", "wgpu"] }
-burn-wgpu = { version = "0.20.0" }
+# 7a (PR7a): `burn` DIPAKAI (src/facade/tensor.rs, src/facade/wasm_types.rs) — tetap.
+# Yang dihapus: `burn-wgpu` (0 import di src/), fitur "wgpu" pada `burn`,
+# dan `web-sys` (0 pemakaian di src/). Backend adalah burn_ndarray::NdArray<f32>.
+burn = { version = "0.20.0", default-features = false, features = ["std"] }
 # Node 18 support: burn-ndarray default features include `simd`, which pulls
 # macerator whose wasm32 backend unconditionally emits Relaxed SIMD (f32x4_relaxed_madd),
 # an opcode Node 18 (V8 10.2) cannot compile. Drop `simd`; keep std + multi-threads.
@@ -19,7 +21,6 @@ burn-ndarray = { version = "0.20.0", default-features = false, features = ["std"
 # --- WASM ---
 wasm-bindgen = "0.2"
 js-sys = "0.3"          # Untuk JS interop (SharedArrayBuffer, etc)
-web-sys = { version = "0.3", features = ["console"] }
 
 # --- SERIALISASI MINIMAL (hanya untuk state save/load, bukan runtime) ---
 serde = { version = "1.0", features = ["derive"] }
