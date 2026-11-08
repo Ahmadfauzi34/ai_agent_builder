@@ -844,11 +844,13 @@ impl LayerRegistry {
                 .ok_or("Norm not found")?
                 .weight_layout()),
             // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
-            LAYER_ACTIVATION => Ok(self
+            // WasmActivation::weight_layout returns Result (stateless
+            // variants fail closed) — propagate, don't wrap in Ok.
+            LAYER_ACTIVATION => self
                 .activations
                 .get(&layer_id)
                 .ok_or("Activation not found")?
-                .weight_layout()),
+                .weight_layout(),
             LAYER_GHOST => Ok(self
                 .ghosts
                 .get(&layer_id)
@@ -911,11 +913,13 @@ impl LayerRegistry {
                 .ok_or("Norm not found")?
                 .weights_len()),
             // Tahap 7b: parameterized activations (prelu/swiGlu) + ghost/seBlock.
-            LAYER_ACTIVATION => Ok(self
+            // WasmActivation::weights_len returns Result (stateless
+            // variants fail closed) — propagate, don't wrap in Ok.
+            LAYER_ACTIVATION => self
                 .activations
                 .get(&layer_id)
                 .ok_or("Activation not found")?
-                .weights_len()),
+                .weights_len(),
             LAYER_GHOST => Ok(self
                 .ghosts
                 .get(&layer_id)

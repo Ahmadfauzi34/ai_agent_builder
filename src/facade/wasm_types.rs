@@ -956,7 +956,16 @@ impl WasmActivation {
                 push_linear_record(&r.linear_inner, &mut out)?;
                 push_linear_record(&r.linear_outer, &mut out)?;
             }
-            _ => {}
+            // Fail-closed: a stateless activation carries NO weights, so
+            // returning Ok([]) would lie that the layer is trainable with
+            // zero params — the pre-7b registry threw here, and the ES
+            // compiled-graph research script relies on that throw to tell
+            // trainable layers apart from stateless ones (CI PR #448).
+            _ => {
+                return Err(
+                    "getWeightsFlat: stateless activation carries no weights".to_string(),
+                );
+            }
         }
         Ok(out)
     }
@@ -992,13 +1001,13 @@ impl WasmActivation {
                     ));
                 }
             }
+            // Fail-closed like get_weights_flat: a stateless activation
+            // takes no weights at all — even an empty write must fail, so
+            // no caller can mistake it for a trainable layer (CI PR #448).
             _ => {
-                if !data.is_empty() {
-                    return Err(format!(
-                        "setWeightsFlat: stateless activation takes no weights, got {} floats",
-                        data.len()
-                    ));
-                }
+                return Err(
+                    "setWeightsFlat: stateless activation carries no weights".to_string(),
+                );
             }
         }
         self.inner = self.inner.clone().load_record(rec);
@@ -1007,12 +1016,13 @@ impl WasmActivation {
 }
 
 impl WasmActivation {
-    pub fn weight_segs(&self) -> Vec<(&'static str, usize)> {
+    pub fn weight_segs(&self) -> Result<Vec<(&'static str, usize)>, String> {
         let rec = self.inner.clone().into_record();
         match rec {
-            ActivationRecord::PRelu(r) => {
-                vec![("alpha", r.alpha.dims().iter().product::<usize>())]
-            }
+            ActivationRecord::PRelu(r) => Ok(vec![(
+                "alpha",
+                r.alpha.dims().iter().product::<usize>(),
+            )]),
             ActivationRecord::SwiGlu(r) => {
                 let mut segs = Vec::new();
                 let iw = r.linear_inner.weight.dims().iter().product::<usize>();
@@ -1025,20 +1035,27 @@ impl WasmActivation {
                 if let Some(b) = &r.linear_outer.bias {
                     segs.push(("linear_outer.bias", b.dims().iter().product::<usize>()));
                 }
-                segs
+                Ok(segs)
             }
-            _ => Vec::new(),
+            // Fail-closed like get_weights_flat: no segments exist for a
+            // stateless activation, and an empty Ok would silently claim
+            // otherwise (CI PR #448).
+            _ => Err("weightLayout: stateless activation carries no weights".to_string()),
         }
     }
 
     /// Length-aware accessor: exactly `get_weights_flat().len()` without
     /// materializing the floats (see WasmConv::weights_len for the invariant).
-    pub(crate) fn weights_len(&self) -> usize {
-        self.weight_segs().iter().map(|seg| seg.1).sum()
+    pub(crate) fn weights_len(&self) -> Result<usize, String> {
+        Ok(self
+            .weight_segs()?
+            .iter()
+            .map(|seg| seg.1)
+            .sum())
     }
 
-    pub fn weight_layout(&self) -> String {
-        crate::layers::layout::segs_json(&self.weight_segs())
+    pub fn weight_layout(&self) -> Result<String, String> {
+        Ok(crate::layers::layout::segs_json(&self.weight_segs()?))
     }
 }
 

@@ -399,23 +399,23 @@ mod tests {
         use crate::facade::wasm_types::{WasmActivation, WasmGhostModule, WasmSeBlock};
         let prelu = WasmActivation::new_prelu(Some(3), Some(0.25));
         check(
-            &prelu.weight_segs(),
+            &prelu.weight_segs().unwrap(),
             prelu.get_weights_flat().unwrap().len(),
-            &prelu.weight_layout(),
+            &prelu.weight_layout().unwrap(),
         );
         assert_eq!(
-            prelu.weight_segs(),
+            prelu.weight_segs().unwrap(),
             vec![("alpha", 3)],
             "prelu: satu segmen alpha(num_parameters)"
         );
         let swi = WasmActivation::new_swiglu(2, 3, Some(true));
         check(
-            &swi.weight_segs(),
+            &swi.weight_segs().unwrap(),
             swi.get_weights_flat().unwrap().len(),
-            &swi.weight_layout(),
+            &swi.weight_layout().unwrap(),
         );
         assert_eq!(
-            swi.weight_segs(),
+            swi.weight_segs().unwrap(),
             vec![
                 ("linear_inner.weight", 6),
                 ("linear_inner.bias", 3),
@@ -428,14 +428,15 @@ mod tests {
         assert!(
             !swi_nb
                 .weight_segs()
+                .unwrap()
                 .iter()
                 .any(|s| s.0.ends_with(".bias")),
             "swiGlu no-bias: segmen bias harus absen"
         );
         check(
-            &swi_nb.weight_segs(),
+            &swi_nb.weight_segs().unwrap(),
             swi_nb.get_weights_flat().unwrap().len(),
-            &swi_nb.weight_layout(),
+            &swi_nb.weight_layout().unwrap(),
         );
         let ghost = WasmGhostModule::try_new(2, 4, 3, 3, Some(2), None, None, None, None)
             .expect("ghost valid");
@@ -499,17 +500,17 @@ mod tests {
         // Tahap 7b: parameterized activations + ghost/seBlock.
         use crate::facade::wasm_types::{WasmActivation, WasmGhostModule, WasmSeBlock};
         let prelu = WasmActivation::new_prelu(Some(3), Some(0.25));
-        assert_eq!(prelu.weights_len(), prelu.get_weights_flat().unwrap().len());
-        assert_eq!(prelu.weights_len(), 3);
+        assert_eq!(prelu.weights_len().unwrap(), prelu.get_weights_flat().unwrap().len());
+        assert_eq!(prelu.weights_len().unwrap(), 3);
         let swi = WasmActivation::new_swiglu(2, 3, Some(true));
-        assert_eq!(swi.weights_len(), swi.get_weights_flat().unwrap().len());
-        assert_eq!(swi.weights_len(), 18);
+        assert_eq!(swi.weights_len().unwrap(), swi.get_weights_flat().unwrap().len());
+        assert_eq!(swi.weights_len().unwrap(), 18);
         let swi_nb = WasmActivation::new_swiglu(2, 3, Some(false));
         assert_eq!(
-            swi_nb.weights_len(),
+            swi_nb.weights_len().unwrap(),
             swi_nb.get_weights_flat().unwrap().len()
         );
-        assert_eq!(swi_nb.weights_len(), 12);
+        assert_eq!(swi_nb.weights_len().unwrap(), 12);
         let ghost =
             WasmGhostModule::try_new(2, 4, 3, 3, Some(2), None, None, None, None).unwrap();
         assert_eq!(
@@ -520,6 +521,49 @@ mod tests {
         let seb = WasmSeBlock::try_new(4, Some(2)).unwrap();
         assert_eq!(seb.weights_len(), seb.get_weights_flat().unwrap().len());
         assert_eq!(seb.weights_len(), 22);
+    }
+
+    // ---- REGRESI CI PR #448: aktivasi stateless (ReLU) HARUS gagal loud
+    // di semua accessor bobot — bukan Ok kosong. Akar: WasmActivation
+    // get_weights_flat/weight_segs mengembalikan Ok([]) untuk varian
+    // stateless, sehingga scripts/research_es_compiled_graph_binding.mjs
+    // (expectThrow "stateless ReLU optimizer-visible weights should fail
+    // with a controlled error") tidak lagi melihat throw. Kontrak pra-7b:
+    // registry melempar untuk layer tanpa bobot; 7b hanya membuka jalan
+    // untuk prelu/swiGlu yang BERPARAMETER.
+    #[test]
+    fn stateless_activation_weight_accessors_fail_closed() {
+        use crate::facade::wasm_types::WasmActivation;
+        let mut relu = WasmActivation::new_relu();
+        assert!(
+            relu.get_weights_flat().is_err(),
+            "ReLU getWeightsFlat harus Err, bukan Ok([])"
+        );
+        assert!(
+            relu.set_weights_flat(&[]).is_err(),
+            "ReLU setWeightsFlat([]) harus Err — tulis kosong pun bukan no-op"
+        );
+        assert!(
+            relu.set_weights_flat(&[1.0]).is_err(),
+            "ReLU setWeightsFlat([1.0]) harus Err"
+        );
+        assert!(
+            relu.weight_segs().is_err(),
+            "ReLU weight_segs harus Err, bukan Ok([])"
+        );
+        assert!(
+            relu.weights_len().is_err(),
+            "ReLU weights_len harus Err, bukan Ok(0)"
+        );
+        assert!(
+            relu.weight_layout().is_err(),
+            "ReLU weight_layout harus Err, bukan Ok(\"[]\")"
+        );
+        // Sanity: jalur parameterized tetap terbuka (bukan over-correction).
+        let prelu = WasmActivation::new_prelu(Some(1), Some(0.25));
+        assert!(prelu.get_weights_flat().is_ok());
+        assert!(prelu.weight_segs().is_ok());
+        assert!(prelu.weight_layout().is_ok());
     }
 
     // ---- JANGKAR Tahap 7b: bridge 4 layer — round-trip + forward-affects ----
