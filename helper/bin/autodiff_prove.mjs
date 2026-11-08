@@ -463,6 +463,17 @@ export async function proveAll(runForward) {
             b: vals ? vals.slice(F, 2 * F) : new Array(F).fill(0),
           };
         }
+        if (ctor === 'swiGlu') {
+          // Tahap 7b: flat engine order [wI, bI?, wO, bO?].
+          const [, dIn, dOut, bias] = args;
+          const inner = dIn * dOut;
+          const wI = vals ? vals.slice(0, inner) : new Array(inner).fill(0);
+          const bI = bias ? (vals ? vals.slice(inner, inner + dOut) : new Array(dOut).fill(0)) : null;
+          const o0 = inner + (bias ? dOut : 0);
+          const wO = vals ? vals.slice(o0, o0 + inner) : new Array(inner).fill(0);
+          const bO = bias ? (vals ? vals.slice(o0 + inner) : new Array(dOut).fill(0)) : null;
+          return { wI, bI, wO, bO, hasSpecWeights: !!vals };
+        }
         const [, inD, outD, bias] = args, nw = inD * outD;
         return { w: vals.slice(0, nw), b: bias ? vals.slice(nw, nw + outD) : null };
       };

@@ -1,3 +1,4 @@
+use super::conv::push_param;
 use super::state_record::deterministic_record_bytes;
 pub use crate::facade::wasm_types::WasmLinear;
 use crate::layers::shape_contract::{require_axis_size, require_singleton_spatial};
@@ -50,6 +51,69 @@ impl<B: Backend> LinearLayer<B> {
 // ============================================================
 // WEIGHT LAYOUT (M2) — linear. Mirror urutan getWeightsFlat.
 // ============================================================
+
+// ============================================================
+// FLAT-BRIDGE HELPERS — composite layers (Tahap 7b).
+// A burn Linear record's flat segment is weight row-major [in, out]
+// then bias [out] (iff present) — the same order WasmLinear uses.
+// SwiGlu (linear_inner/linear_outer) and SeBlock (fc1/fc2) embed
+// LinearRecords, so they share these offset-tracking helpers instead
+// of duplicating the slice arithmetic (drift here silently corrupts
+// parameter slicing, same invariant as getWeightsFlat/weight_segs).
+// ============================================================
+
+/// Append one LinearRecord's flat segment (weight, then bias if present).
+pub(crate) fn push_linear_record<B: Backend>(
+    rec: &burn::nn::LinearRecord<B>,
+    out: &mut Vec<f32>,
+) -> Result<(), String> {
+    push_param(&rec.weight, out)?;
+    if let Some(b) = &rec.bias {
+        push_param(b, out)?;
+    }
+    Ok(())
+}
+
+/// Write one LinearRecord's flat segment from `data` at `offset`.
+/// Returns the new offset. Validates bounds (never panics on short data);
+/// the caller checks the final offset == data.len().
+pub(crate) fn set_linear_record<B: Backend>(
+    rec: &mut burn::nn::LinearRecord<B>,
+    data: &[f32],
+    offset: usize,
+) -> Result<usize, String> {
+    let wd = rec.weight.dims(); // [in, out]
+    let wlen = wd.iter().product::<usize>();
+    let has_bias = rec.bias.is_some();
+    let blen = if has_bias {
+        rec.bias.as_ref().unwrap().dims().iter().product::<usize>()
+    } else {
+        0
+    };
+    if data.len() < offset + wlen + blen {
+        return Err(format!(
+            "setWeightsFlat: linear segment expected {} floats at offset {}, got {} total",
+            wlen + blen,
+            offset,
+            data.len()
+        ));
+    }
+    let device: <B as Backend>::Device = Default::default();
+    rec.weight = burn::module::Param::from_data(
+        burn::tensor::TensorData::new(data[offset..offset + wlen].to_vec(), wd),
+        &device,
+    );
+    if has_bias {
+        rec.bias = Some(burn::module::Param::from_data(
+            burn::tensor::TensorData::new(
+                data[offset + wlen..offset + wlen + blen].to_vec(),
+                [blen],
+            ),
+            &device,
+        ));
+    }
+    Ok(offset + wlen + blen)
+}
 
 #[cfg(test)]
 mod tests {

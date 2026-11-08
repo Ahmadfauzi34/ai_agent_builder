@@ -1199,19 +1199,95 @@ export function compileBackwardSpec(forwardSpec, { wrtSlot = 0, doutValues = nul
       steps.push({ kind: 'binary', layer: mulIdx, slots: [upGradSlot, dydxSlot, dxSlot] });
       accumulateGrad(xSlot, dxSlot);
     } else if (ctor === 'swiGlu') {
-      // Zero-weight behavior (engine): linear_inner/outer are initialized
-      // to ZEROS and SwiGlu weights are unsettable via the spec path, so
-      // the engine's swiGlu is the constant-zero function and its exact
-      // VJP is dx = 0 (emitted as sub(x, x), shape-agnostic). Verified
-      // against verify-fd (engine forward is constant 0). If the engine
-      // ever accepts SwiGlu weights, this VJP must become the full gated
-      // form — the grad-spec/fd tests will fail loudly then, by design.
+      // Tahap 7b: FULL gated VJP (weights now settable). y = silu(a) * o,
+      // a = W_i x + b_i, o = W_o x + b_o, silu(a) = a*sigma(a).
+      // silu'(a) = sigma(a) + (a - silu(a)) * sigma(a) — written without
+      // a constant-1 tensor (none exists in-graph), so every op below is
+      // an already-supported constructor (linear/sigmoid/mul/add/sub/transpose).
+      // dL/dx = W_i^T (silu'(a) o G) + W_o^T (silu(a) G).
+      // LAYOUT: swiGlu is feature_last, but `linear` needs [B, F, 1, 1]
+      // (axis-1 features). The VJP transposes x and G to axis-1 layout
+      // for the linears and transposes the result back — which requires
+      // H = W = 1 (else transpose(1,3) leaves spatial dims the linear
+      // rejects). Other shapes fail LOUDLY, like the gelu/mish
+      // [B, D, 1, 1] restriction.
+      const [, dIn, dOut, bias] = decl.args;
       const xSlot = st.slots[0];
+      const xSh = slotShapes.get(xSlot);
+      if (!xSh || xSh[1] !== 1 || xSh[2] !== 1 || xSh[3] !== dIn) {
+        throw new CompositionError('unsupported_shape_for_polynomial_vjp',
+          `in-graph swiGlu VJP requires [B, 1, 1, d_in] shape, got [${xSh}]`);
+      }
+      const w = s.weights?.[String(st.layer)]
+        ?? new Array(2 * (dIn * dOut + (bias ? dOut : 0))).fill(0);
+      const innerLen = dIn * dOut + (bias ? dOut : 0);
+      const innerSeg = w.slice(0, innerLen);
+      const outerSeg = w.slice(innerLen);
+      // One shared transpose layer (1,3) — reused for x, G, dx1, dx2.
+      const trIdx = layers.length;
+      layers.push({ constructor: 'transpose', args: [nextRegId++, 1, 3] });
+      const xTSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: trIdx, slots: [xSlot, xTSlot] });
+      // Recompute a and o (forward linears with the original segments).
+      const linIIdx = layers.length;
+      layers.push({ constructor: 'linear', args: [nextRegId++, dIn, dOut, bias] });
+      weights[String(linIIdx)] = innerSeg;
+      const aSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: linIIdx, slots: [xTSlot, aSlot] });
+      const linOIdx = layers.length;
+      layers.push({ constructor: 'linear', args: [nextRegId++, dIn, dOut, bias] });
+      weights[String(linOIdx)] = outerSeg;
+      const oSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: linOIdx, slots: [xTSlot, oSlot] });
+      // G to axis-1 layout ([B, dOut, 1, 1]) for the elementwise chain.
+      const gTSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: trIdx, slots: [upGradSlot, gTSlot] });
+      // sigma(a) and s = silu(a) = a * sigma(a). (a/o/G all [B, dOut, 1, 1].)
+      const sigIdx = layers.length;
+      layers.push({ constructor: 'sigmoid', args: [nextRegId++] });
+      const sigSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: sigIdx, slots: [aSlot, sigSlot] });
+      const mulIdx = layers.length;
+      layers.push({ constructor: 'mul', args: [nextRegId++] });
+      const sSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [aSlot, sigSlot, sSlot] });
+      // silu'(a) = sigma(a) + (a - s) * sigma(a).
       const subIdx = layers.length;
       layers.push({ constructor: 'sub', args: [nextRegId++] });
-      const zeroSlot = nextSlot++;
-      steps.push({ kind: 'binary', layer: subIdx, slots: [xSlot, xSlot, zeroSlot] });
-      accumulateGrad(xSlot, zeroSlot);
+      const aMinusS = nextSlot++;
+      steps.push({ kind: 'binary', layer: subIdx, slots: [aSlot, sSlot, aMinusS] });
+      const termSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [aMinusS, sigSlot, termSlot] });
+      const addIdx = layers.length;
+      layers.push({ constructor: 'add', args: [nextRegId++] });
+      const siluPrimeSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: addIdx, slots: [sigSlot, termSlot, siluPrimeSlot] });
+      // g1 = silu'(a) * o * G ; g2 = s * G.
+      const g1aSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [siluPrimeSlot, oSlot, g1aSlot] });
+      const g1Slot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [g1aSlot, gTSlot, g1Slot] });
+      const g2Slot = nextSlot++;
+      steps.push({ kind: 'binary', layer: mulIdx, slots: [sSlot, gTSlot, g2Slot] });
+      // dx = W_i^T g1 + W_o^T g2 (transposed linears, same as linear VJP).
+      const linTiIdx = layers.length;
+      layers.push({ constructor: 'linear', args: [nextRegId++, dOut, dIn, false] });
+      weights[String(linTiIdx)] = transposeColumnMajorWeights(innerSeg, dIn, dOut);
+      const dx1TSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: linTiIdx, slots: [g1Slot, dx1TSlot] });
+      const linToIdx = layers.length;
+      layers.push({ constructor: 'linear', args: [nextRegId++, dOut, dIn, false] });
+      weights[String(linToIdx)] = transposeColumnMajorWeights(outerSeg, dIn, dOut);
+      const dx2TSlot = nextSlot++;
+      steps.push({ kind: 'unary', layer: linToIdx, slots: [g2Slot, dx2TSlot] });
+      // Back to feature_last for the accumulated grad.
+      const dx1Slot = nextSlot++;
+      steps.push({ kind: 'unary', layer: trIdx, slots: [dx1TSlot, dx1Slot] });
+      const dx2Slot = nextSlot++;
+      steps.push({ kind: 'unary', layer: trIdx, slots: [dx2TSlot, dx2Slot] });
+      const dxSlot = nextSlot++;
+      steps.push({ kind: 'binary', layer: addIdx, slots: [dx1Slot, dx2Slot, dxSlot] });
+      accumulateGrad(xSlot, dxSlot);
     } else if (ctor === 'transpose') {
       const [, d0, d1] = decl.args;
       const trIdx = layers.length;

@@ -673,6 +673,17 @@ export function reflectiveGdSolve(rt, spec, targets, {
         const vals = s.weights[String(idx)];
         if (ctor === 'rmsNorm') return { w: vals.slice(0, args[1]), b: null };
         if (ctor === 'layerNorm') return { w: vals.slice(0, args[1]), b: vals.slice(args[1], 2 * args[1]) };
+        if (ctor === 'swiGlu') {
+          // Tahap 7b: flat engine order [wI, bI?, wO, bO?].
+          const [, dIn, dOut, bias] = args;
+          const inner = dIn * dOut;
+          const wI = vals.slice(0, inner);
+          const bI = bias ? vals.slice(inner, inner + dOut) : null;
+          const o0 = inner + (bias ? dOut : 0);
+          const wO = vals.slice(o0, o0 + inner);
+          const bO = bias ? vals.slice(o0 + inner) : null;
+          return { wI, bI, wO, bO, hasSpecWeights: !!vals };
+        }
         const [, inD, outD, bias] = args;
         const nw = inD * outD;
         return { w: vals.slice(0, nw), b: bias ? vals.slice(nw, nw + outD) : null };

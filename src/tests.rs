@@ -341,8 +341,15 @@ mod tests {
             let sum: usize = segs.iter().map(|s| s.1).sum();
             assert_eq!(sum, flat_len, "Σ layout len != getWeightsFlat len");
             assert!(
-                segs.iter().any(|s| s.0 == "weight"),
-                "wajib ada segmen weight"
+                !segs.is_empty(),
+                "layer berbobot: daftar segmen tidak boleh kosong"
+            );
+            assert!(
+                segs.iter().all(|s| !s.0.is_empty()
+                    && s.0
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_')),
+                "nama segmen harus alfanumerik + '.'/'_' (konvensi layout.rs)"
             );
             assert_eq!(
                 json,
@@ -388,6 +395,81 @@ mod tests {
             conv.get_weights_flat().unwrap().len(),
             &conv.weight_layout(),
         );
+        // Tahap 7b: parameterized activations + ghost/seBlock.
+        use crate::facade::wasm_types::{WasmActivation, WasmGhostModule, WasmSeBlock};
+        let prelu = WasmActivation::new_prelu(Some(3), Some(0.25));
+        check(
+            &prelu.weight_segs().unwrap(),
+            prelu.get_weights_flat().unwrap().len(),
+            &prelu.weight_layout().unwrap(),
+        );
+        assert_eq!(
+            prelu.weight_segs().unwrap(),
+            vec![("alpha", 3)],
+            "prelu: satu segmen alpha(num_parameters)"
+        );
+        let swi = WasmActivation::new_swiglu(2, 3, Some(true));
+        check(
+            &swi.weight_segs().unwrap(),
+            swi.get_weights_flat().unwrap().len(),
+            &swi.weight_layout().unwrap(),
+        );
+        assert_eq!(
+            swi.weight_segs().unwrap(),
+            vec![
+                ("linear_inner.weight", 6),
+                ("linear_inner.bias", 3),
+                ("linear_outer.weight", 6),
+                ("linear_outer.bias", 3),
+            ],
+            "swiGlu bias: inner W+b lalu outer W+b"
+        );
+        let swi_nb = WasmActivation::new_swiglu(2, 3, Some(false));
+        assert!(
+            !swi_nb
+                .weight_segs()
+                .unwrap()
+                .iter()
+                .any(|s| s.0.ends_with(".bias")),
+            "swiGlu no-bias: segmen bias harus absen"
+        );
+        check(
+            &swi_nb.weight_segs().unwrap(),
+            swi_nb.get_weights_flat().unwrap().len(),
+            &swi_nb.weight_layout().unwrap(),
+        );
+        let ghost = WasmGhostModule::try_new(2, 4, 3, 3, Some(2), None, None, None, None)
+            .expect("ghost valid");
+        check(
+            &ghost.weight_segs(),
+            ghost.get_weights_flat().unwrap().len(),
+            &ghost.weight_layout(),
+        );
+        assert_eq!(
+            ghost.weight_segs(),
+            vec![
+                ("primary.weight", 36),
+                ("primary.bias", 2),
+                ("cheap.weight", 2),
+            ],
+            "ghost: primary W(2*2*3*3)+b(2), cheap depthwise(2)"
+        );
+        let seb = WasmSeBlock::try_new(4, Some(2)).expect("seblock valid");
+        check(
+            &seb.weight_segs(),
+            seb.get_weights_flat().unwrap().len(),
+            &seb.weight_layout(),
+        );
+        assert_eq!(
+            seb.weight_segs(),
+            vec![
+                ("fc1.weight", 8),
+                ("fc1.bias", 2),
+                ("fc2.weight", 8),
+                ("fc2.bias", 4),
+            ],
+            "seBlock: fc1(4->2) W+b, fc2(2->4) W+b"
+        );
     }
     #[test]
     fn weights_flat_len_is_length_aware_alias_of_flat_len() {
@@ -415,6 +497,136 @@ mod tests {
         assert_eq!(rms.weights_len(), rms.get_weights_flat().unwrap().len());
         let bn = WasmNorm::new_batch_norm(4, None);
         assert_eq!(bn.weights_len(), bn.get_weights_flat().unwrap().len());
+        // Tahap 7b: parameterized activations + ghost/seBlock.
+        use crate::facade::wasm_types::{WasmActivation, WasmGhostModule, WasmSeBlock};
+        let prelu = WasmActivation::new_prelu(Some(3), Some(0.25));
+        assert_eq!(prelu.weights_len().unwrap(), prelu.get_weights_flat().unwrap().len());
+        assert_eq!(prelu.weights_len().unwrap(), 3);
+        let swi = WasmActivation::new_swiglu(2, 3, Some(true));
+        assert_eq!(swi.weights_len().unwrap(), swi.get_weights_flat().unwrap().len());
+        assert_eq!(swi.weights_len().unwrap(), 18);
+        let swi_nb = WasmActivation::new_swiglu(2, 3, Some(false));
+        assert_eq!(
+            swi_nb.weights_len().unwrap(),
+            swi_nb.get_weights_flat().unwrap().len()
+        );
+        assert_eq!(swi_nb.weights_len().unwrap(), 12);
+        let ghost =
+            WasmGhostModule::try_new(2, 4, 3, 3, Some(2), None, None, None, None).unwrap();
+        assert_eq!(
+            ghost.weights_len(),
+            ghost.get_weights_flat().unwrap().len()
+        );
+        assert_eq!(ghost.weights_len(), 40);
+        let seb = WasmSeBlock::try_new(4, Some(2)).unwrap();
+        assert_eq!(seb.weights_len(), seb.get_weights_flat().unwrap().len());
+        assert_eq!(seb.weights_len(), 22);
+    }
+
+    // ---- REGRESI CI PR #448: aktivasi stateless (ReLU) HARUS gagal loud
+    // di semua accessor bobot — bukan Ok kosong. Akar: WasmActivation
+    // get_weights_flat/weight_segs mengembalikan Ok([]) untuk varian
+    // stateless, sehingga scripts/research_es_compiled_graph_binding.mjs
+    // (expectThrow "stateless ReLU optimizer-visible weights should fail
+    // with a controlled error") tidak lagi melihat throw. Kontrak pra-7b:
+    // registry melempar untuk layer tanpa bobot; 7b hanya membuka jalan
+    // untuk prelu/swiGlu yang BERPARAMETER.
+    #[test]
+    fn stateless_activation_weight_accessors_fail_closed() {
+        use crate::facade::wasm_types::WasmActivation;
+        let mut relu = WasmActivation::new_relu();
+        assert!(
+            relu.get_weights_flat().is_err(),
+            "ReLU getWeightsFlat harus Err, bukan Ok([])"
+        );
+        assert!(
+            relu.set_weights_flat(&[]).is_err(),
+            "ReLU setWeightsFlat([]) harus Err — tulis kosong pun bukan no-op"
+        );
+        assert!(
+            relu.set_weights_flat(&[1.0]).is_err(),
+            "ReLU setWeightsFlat([1.0]) harus Err"
+        );
+        assert!(
+            relu.weight_segs().is_err(),
+            "ReLU weight_segs harus Err, bukan Ok([])"
+        );
+        assert!(
+            relu.weights_len().is_err(),
+            "ReLU weights_len harus Err, bukan Ok(0)"
+        );
+        assert!(
+            relu.weight_layout().is_err(),
+            "ReLU weight_layout harus Err, bukan Ok(\"[]\")"
+        );
+        // Sanity: jalur parameterized tetap terbuka (bukan over-correction).
+        let prelu = WasmActivation::new_prelu(Some(1), Some(0.25));
+        assert!(prelu.get_weights_flat().is_ok());
+        assert!(prelu.weight_segs().is_ok());
+        assert!(prelu.weight_layout().is_ok());
+    }
+
+    // ---- JANGKAR Tahap 7b: bridge 4 layer — round-trip + forward-affects ----
+    #[test]
+    fn flat_bridge_7b_roundtrip_and_affects_forward() {
+        use crate::facade::wasm_types::{WasmActivation, WasmGhostModule, WasmSeBlock};
+        use crate::WasmTensor;
+
+        // prelu: alpha [1,2,0.5] mengubah output negatif; panjang salah ditolak.
+        let mut prelu = WasmActivation::new_prelu(Some(3), Some(0.25));
+        assert_eq!(prelu.get_weights_flat().unwrap(), vec![0.25, 0.25, 0.25]);
+        assert!(prelu.set_weights_flat(&[0.25, 0.25]).is_err());
+        let neg = WasmTensor::new(&[-1.0, 2.0, -3.0], &[1, 3, 1, 1]);
+        let out0 = prelu.forward(&neg).to_array();
+        assert_eq!(out0, vec![-0.25, 2.0, -0.75]);
+        prelu.set_weights_flat(&[1.0, 2.0, 0.5]).unwrap();
+        assert_eq!(
+            prelu.get_weights_flat().unwrap(),
+            vec![1.0, 2.0, 0.5]
+        );
+        assert_eq!(prelu.forward(&neg).to_array(), vec![-1.0, 2.0, -1.5]);
+
+        // swiGlu (bias): bobot 0 -> nol; bobot 0.5 -> non-nol; panjang salah ditolak.
+        let mut swi = WasmActivation::new_swiglu(2, 3, Some(true));
+        assert_eq!(swi.get_weights_flat().unwrap().len(), 18);
+        assert!(swi.get_weights_flat().unwrap().iter().all(|v| *v == 0.0));
+        assert!(swi.set_weights_flat(&[0.5; 17]).is_err());
+        let x = WasmTensor::new(&[1.0, 2.0], &[1, 1, 1, 2]);
+        assert_eq!(swi.forward(&x).to_array(), vec![0.0, 0.0, 0.0]);
+        swi.set_weights_flat(&[0.5; 18]).unwrap();
+        assert_eq!(swi.get_weights_flat().unwrap(), vec![0.5; 18]);
+        let y = swi.forward(&x).to_array();
+        assert_eq!(y.len(), 3);
+        assert!(y.iter().all(|v| *v > 3.0 && *v < 4.0)); // silu(2)*2 ≈ 3.52
+        // swiGlu tanpa bias: 12 float, forward tetap non-nol.
+        let mut swi_nb = WasmActivation::new_swiglu(2, 3, Some(false));
+        swi_nb.set_weights_flat(&[0.5; 12]).unwrap();
+        assert!(swi_nb.forward(&x).to_array().iter().all(|v| *v != 0.0));
+
+        // ghost: bobot 0 -> nol; bobot 0.5 -> non-nol, 4 kanal (ratio=2).
+        let mut ghost =
+            WasmGhostModule::try_new(2, 4, 3, 3, Some(2), None, None, None, None).unwrap();
+        assert_eq!(ghost.get_weights_flat().unwrap().len(), 40);
+        assert!(ghost.set_weights_flat(&[0.5; 39]).is_err());
+        let g_in = WasmTensor::new(&[1.0; 18], &[1, 2, 3, 3]);
+        assert_eq!(ghost.forward(&g_in).to_array(), vec![0.0; 4]);
+        ghost.set_weights_flat(&[0.5; 40]).unwrap();
+        assert_eq!(ghost.get_weights_flat().unwrap(), vec![0.5; 40]);
+        let g_out = ghost.forward(&g_in).to_array();
+        assert_eq!(g_out.len(), 4);
+        assert!(g_out.iter().all(|v| *v > 0.0));
+
+        // seBlock: bobot 0 -> x*0.5; bobot 0.5 -> gate sigmoid(3) ≈ 0.9526.
+        let mut seb = WasmSeBlock::try_new(4, Some(2)).unwrap();
+        assert_eq!(seb.get_weights_flat().unwrap().len(), 22);
+        assert!(seb.set_weights_flat(&[0.5; 21]).is_err());
+        let s_in = WasmTensor::new(&[1.0; 16], &[1, 4, 2, 2]);
+        assert_eq!(seb.forward(&s_in).to_array(), vec![0.5; 16]);
+        seb.set_weights_flat(&[0.5; 22]).unwrap();
+        assert_eq!(seb.get_weights_flat().unwrap(), vec![0.5; 22]);
+        let s_out = seb.forward(&s_in).to_array();
+        assert_eq!(s_out.len(), 16);
+        assert!(s_out.iter().all(|v| (*v - 0.95257413).abs() < 1e-5));
     }
 
     // ---- JANGKAR M1b BARU: float-bridge + layout norm (trainable-only) ----

@@ -12,9 +12,15 @@
 // (avgPool1d, avgPool2d, maxPool1d, maxPool2d), embedding, and shifts.
 // Extended in Tahap 6 (PR6) to all 44 f32 constructors: + conv1d/conv2d/
 // convTranspose2d, batchNorm/groupNorm/instanceNorm, adaptiveAvgPool2d,
-// ghost, seBlock, swiGlu. ghost/seBlock/swiGlu implement the engine's
-// effective zero-weight behavior (their spec-path weights are unsettable;
-// see the per-op comments and design-6.md) — parity is the guard.
+// ghost, seBlock, swiGlu. ghost/seBlock/swiGlu then implemented the
+// engine's effective zero-weight behavior (their spec-path weights were
+// unsettable; see design-6.md) — parity was the guard.
+// Extended in Tahap 7b (PR7b) to WEIGHTED ghost/seBlock/swiGlu + prelu:
+// the engine now exposes flat-weight bridges for all four, so the refs
+// read the flat weight vector (falling back to the zero-weight behavior
+// when the spec carries no weights — the Tahap 6 parity cases still
+// exercise exactly that path). ghost output channels are 2*primary_ch
+// (engine quirk: cat([primary, cheap]) — equals out_ch only at ratio=2).
 //
 // Every op receives one context object:
 //   { xs: [values, ...], shapes: [[N,C,H,W], ...], args, weights }
@@ -108,8 +114,22 @@ const OPS = {
     const alpha = args[1] ?? 0.01;
     return { values: xs[0].map((v) => (v > 0 ? v : alpha * v)) };
   },
-  prelu: ({ xs, args }) => {
-    const alpha = args[2] ?? 0.25;
+  prelu: ({ xs, shapes, args, weights }) => {
+    // Tahap 7b: alpha is the flat weight vector (length num_parameters:
+    // 1 = shared, C = per-channel). No weights on the spec -> the engine
+    // uses the init alpha from args (default 0.25), shared.
+    const [, numParams, alphaArg] = args;
+    const [, c, h, w] = shapes[0];
+    const hw = h * w;
+    if (weights) {
+      if (weights.length !== numParams) throw new Error(`ref prelu: weights length ${weights.length} != num_parameters ${numParams}`);
+      if (numParams !== 1 && numParams !== c) throw new Error(`ref prelu: num_parameters ${numParams} must be 1 or C (${c})`);
+      return { values: xs[0].map((v, idx) => {
+        const alpha = numParams === 1 ? weights[0] : weights[Math.floor(idx / hw) % c];
+        return v > 0 ? v : alpha * v;
+      }) };
+    }
+    const alpha = alphaArg ?? 0.25;
     return { values: xs[0].map((v) => (v > 0 ? v : alpha * v)) };
   },
   sigmoid: ({ xs }) => ({ values: xs[0].map((v) => 1 / (1 + Math.exp(-v))) }),
@@ -489,31 +509,78 @@ const OPS = {
       }
     return { values: out, shape: [n, c, oH, oW] };
   },
-  // Zero-weight behavior (engine): ghost's primary+cheap convs and
-  // seBlock's fc1/fc2 are initialized to ZEROS and their weights are
-  // unsettable via the spec path — so the engine's ghost is all-zeros
-  // (with the conv output shape) and its seBlock is x*0.5 (sigmoid(0)).
-  // If the engine ever accepts weights for these, this ref must change
-  // (the parity battery will fail loudly then, by design).
-  ghost: ({ xs, shapes, args }) => {
-    const [, , outCh, kh, kw, , sh0, sw0, ph0, pw0] = args;
+  // Tahap 7b: ghost/seBlock/swiGlu are WEIGHTED now (flat-weight bridge).
+  // With no weights on the spec the engine still uses its zero init, so
+  // the fallback below reproduces the Tahap 6 zero behavior exactly
+  // (ghost: zeros; seBlock: x*0.5; swiGlu: zeros). With weights the refs
+  // implement the full formulas; parity is the guard.
+  ghost: ({ xs, shapes, args, weights }) => {
+    const [, inCh, outCh, kh, kw, ratio, sh0, sw0, ph0, pw0] = args;
     const [n, , h, w] = shapes[0];
     const sH = sh0 ?? 1, sW = sw0 ?? 1, pH = ph0 ?? 0, pW = pw0 ?? 0;
     const oH = Math.floor((h + 2 * pH - kh) / sH) + 1;
     const oW = Math.floor((w + 2 * pW - kw) / sW) + 1;
-    return { values: new Array(n * outCh * oH * oW).fill(0), shape: [n, outCh, oH, oW] };
+    const primaryCh = outCh / ratio;
+    // Engine quirk: forward cats [primary, cheap] -> 2*primary_ch channels
+    // (equals outCh only at ratio=2). The ref mirrors the engine, not the
+    // declared out_ch.
+    const outC = 2 * primaryCh;
+    if (!weights) return { values: new Array(n * outC * oH * oW).fill(0), shape: [n, outC, oH, oW] };
+    const primaryLen = primaryCh * (inCh * kh * kw + 1);
+    if (weights.length !== primaryLen + primaryCh) throw new Error(`ref ghost: weights length ${weights.length} != ${primaryLen + primaryCh}`);
+    const primaryW = weights.slice(0, primaryLen);
+    const cheapW = weights.slice(primaryLen);
+    const primary = OPS.conv2d({ xs, shapes, args: [0, inCh, primaryCh, kh, kw, sH, sW, pH, pW], weights: primaryW });
+    const pVals = primary.values;
+    const out = new Array(n * outC * oH * oW).fill(0);
+    for (let b = 0; b < n; b++) for (let c = 0; c < primaryCh; c++) for (let oh = 0; oh < oH; oh++) for (let ow = 0; ow < oW; ow++) {
+      const pv = pVals[(((b * primaryCh + c) * oH + oh) * oW + ow)];
+      out[(((b * outC + c) * oH + oh) * oW + ow)] = pv;
+      // cheap: 1x1 depthwise (groups=primary_ch), no bias -> per-channel scale.
+      out[(((b * outC + primaryCh + c) * oH + oh) * oW + ow)] = cheapW[c] * pv;
+    }
+    return { values: out, shape: [n, outC, oH, oW] };
   },
-  seBlock: ({ xs }) => ({ values: xs[0].map((v) => v * 0.5) }),
-  swiGlu: ({ xs, shapes, args }) => {
-    // Zero-weight behavior (engine): linear_inner/outer are initialized
-    // to ZEROS and SwiGlu weights are unsettable via the spec path
-    // ("layer type carries no mutable weights"), so the engine's swiGlu
-    // is the constant-zero function. Same staleness note as ghost above.
-    const [, , dOut] = args;
+  seBlock: ({ xs, shapes, args, weights }) => {
+    const [, channels, reduction] = args;
+    const [n, c, h, w] = shapes[0];
+    const x = xs[0];
+    if (!weights) return { values: x.map((v) => v * 0.5) };
+    const reduced = Math.floor(channels / reduction);
+    const fc1Len = channels * reduced + reduced;
+    if (weights.length !== fc1Len + reduced * channels + channels) throw new Error(`ref seBlock: weights length ${weights.length} != ${fc1Len + reduced * channels + channels}`);
+    const fc1W = weights.slice(0, fc1Len);
+    const fc2W = weights.slice(fc1Len);
+    // squeeze: mean over H*W per (b, c) -> [n, channels]; fc1 -> relu -> fc2 -> sigmoid.
+    const hw = h * w;
+    const out = new Array(x.length);
+    for (let b = 0; b < n; b++) {
+      const squeezed = new Array(channels);
+      for (let ci = 0; ci < channels; ci++) {
+        let acc = 0;
+        for (let k = 0; k < hw; k++) acc += x[((b * c + ci) * hw) + k];
+        squeezed[ci] = acc / hw;
+      }
+      const hidden = linearF64(squeezed, fc1W, channels, reduced, true).map((v) => Math.max(0, v));
+      const gate = linearF64(hidden, fc2W, reduced, channels, true).map((v) => 1 / (1 + Math.exp(-v)));
+      for (let ci = 0; ci < channels; ci++) for (let k = 0; k < hw; k++) {
+        out[((b * c + ci) * hw) + k] = x[((b * c + ci) * hw) + k] * gate[ci];
+      }
+    }
+    return { values: out };
+  },
+  swiGlu: ({ xs, shapes, args, weights }) => {
+    const [, dIn, dOut, bias] = args;
     const inSh = shapes[0];
     const outSh = [...inSh];
     outSh[3] = dOut;
-    return { values: new Array(numel(outSh)).fill(0), shape: outSh };
+    if (!weights) return { values: new Array(numel(outSh)).fill(0), shape: outSh };
+    const innerLen = dIn * dOut + (bias ? dOut : 0);
+    if (weights.length !== 2 * innerLen) throw new Error(`ref swiGlu: weights length ${weights.length} != ${2 * innerLen}`);
+    const inner = linearF64(xs[0], weights.slice(0, innerLen), dIn, dOut, bias);
+    const outer = linearF64(xs[0], weights.slice(innerLen), dIn, dOut, bias);
+    const values = inner.map((a, i) => (a / (1 + Math.exp(-a))) * outer[i]);
+    return { values, shape: outSh };
   },
 };
 

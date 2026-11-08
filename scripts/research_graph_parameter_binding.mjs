@@ -153,18 +153,32 @@ assert(repeatLayout.owners[0].layer_id === 201, 'repeated owner id mismatch');
 assert(repeatLayout.total_len === firstWeights.length, 'repeated layer consumed duplicate coordinates');
 
 // -----------------------------------------------------------------------------
-// 5. Parameterized layers without a flat bridge fail closed.
+// 5. Parameterized activations bind through the flat bridge (Tahap 7b).
+//    PReLU used to fail here ("without flat bridge"); the bridge now exists,
+//    so the binding succeeds with one owner of length num_parameters, and
+//    the flat values round-trip. No parameterized layer is left without a
+//    bridge (linear/conv/embedding/norm + prelu/swiGlu/ghost/seBlock), and
+//    no unknown activation variant is constructible from a spec — so the
+//    old fail-closed expectation has no remaining case in this script.
+//    (classify_owner still Errs on unknown variants/types; unreachable here.)
 // -----------------------------------------------------------------------------
-const unsupportedRegistry = new m.LayerRegistry();
+const bridgedRegistry = new m.LayerRegistry();
 const prelu = m.AgentLayerSpec.prelu(301, 2, 0.25);
-unsupportedRegistry.initAgentLayer(prelu);
-const unsupportedBuilder = new m.AgentGraphBuilder(2);
-unsupportedBuilder.addUnary(prelu, 0, 1);
-unsupportedBuilder.setOutput(1);
-const unsupportedGraph = unsupportedBuilder.compile(unsupportedRegistry);
-expectThrow(
-  () => m.graphParameterLayout(unsupportedGraph, unsupportedRegistry),
-  'PReLU graph parameter binding without flat bridge',
+bridgedRegistry.initAgentLayer(prelu);
+const bridgedBuilder = new m.AgentGraphBuilder(2);
+bridgedBuilder.addUnary(prelu, 0, 1);
+bridgedBuilder.setOutput(1);
+const bridgedGraph = bridgedBuilder.compile(bridgedRegistry);
+const bridgedLayout = JSON.parse(m.graphParameterLayout(bridgedGraph, bridgedRegistry));
+assert(bridgedLayout.owners.length === 1, 'PReLU binding must have exactly one owner');
+assert(bridgedLayout.owners[0].layer_id === 301, 'PReLU owner id mismatch');
+assert(bridgedLayout.total_len === 2, 'PReLU binding total_len must equal num_parameters');
+const bridgedFlat = Array.from(m.getGraphParametersFlat(bridgedGraph, bridgedRegistry));
+assert(exactArrayEqual(bridgedFlat, [0.25, 0.25]), 'PReLU flat params must start at init alpha');
+m.setGraphParametersFlat(bridgedGraph, bridgedRegistry, new Float32Array([1.0, 2.0]));
+assert(
+  exactArrayEqual(Array.from(m.getGraphParametersFlat(bridgedGraph, bridgedRegistry)), [1.0, 2.0]),
+  'PReLU flat round-trip failed',
 );
 
 // -----------------------------------------------------------------------------

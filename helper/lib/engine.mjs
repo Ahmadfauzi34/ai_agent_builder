@@ -141,9 +141,10 @@ export function codedError(code, phase, message) {
 const isFiniteF32 = (v) => typeof v === 'number' && Number.isFinite(v) && Number.isFinite(Math.fround(v));
 const isU32 = (d) => Number.isInteger(d) && d > 0;
 
-export const LAYER_TYPE = { linear: 1, norm: 2, conv: 3, embedding: 5 };
+export const LAYER_TYPE = { linear: 1, norm: 2, conv: 3, activation: 4, embedding: 5, ghost: 0x11, seblock: 0x12 };
 
 // Spec constructor name -> LAYER_TYPE key, for the weighted layer types.
+// (Tahap 7b: prelu/swiGlu -> 'activation', ghost -> 'ghost', seBlock -> 'seblock'.)
 export const WEIGHTED_CONSTRUCTORS = {
   linear: 'linear',
   batchNorm: 'norm',
@@ -155,6 +156,10 @@ export const WEIGHTED_CONSTRUCTORS = {
   conv2d: 'conv',
   convTranspose2d: 'conv',
   embedding: 'embedding',
+  prelu: 'activation',
+  swiGlu: 'activation',
+  ghost: 'ghost',
+  seBlock: 'seblock',
 };
 
 function freeQuiet(obj) {
