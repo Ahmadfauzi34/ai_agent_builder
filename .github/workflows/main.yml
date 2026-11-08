@@ -11,6 +11,8 @@ env:
   CARGO_TERM_COLOR: always
   BINARYEN_VERSION: version_131
   BINARYEN_SHA256: b5bf1f0eaf17c63ee588ff7a5954dc8f6ce2c26989051c66f24dfe9ece3e46db
+  WASM_PACK_VERSION: v0.15.0
+  WASM_PACK_SHA256: c09f971ecaed9a2efc80fdcea7a00ef6b53c7fadc8c57d1f61b53a6aa66b668a
 
 jobs:
   build-and-test:
@@ -109,10 +111,16 @@ jobs:
       - name: Check WASM target
         run: cargo check --target wasm32-unknown-unknown --verbose
 
+      - name: Cache wasm-pack
+        id: cache-wasm-pack
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: wasm-pack-${{ runner.os }}-${{ runner.arch }}-${{ env.WASM_PACK_VERSION }}
+
       - name: Install wasm-pack
+        if: steps.cache-wasm-pack.outputs.cache-hit != 'true'
         shell: bash
-        env:
-          WASM_PACK_VERSION: v0.15.0
         run: |
           set -euxo pipefail
           # Replaces jetli/wasm-pack-action@v0.4.0 (2026-10-21): the action
@@ -120,17 +128,30 @@ jobs:
           # fails with EXDEV on current runner images (/tmp and $HOME on
           # different mounts). A direct download + `install` copy into
           # $HOME/.cargo/bin is immune to EXDEV.
+          # Hardened 2026-11-08 (main CI red twice on a 504 from the release
+          # CDN, 4/4 curl attempts each run): the binary is cached across
+          # runs (see "Cache wasm-pack" above, same pattern as Binaryen),
+          # the download retries longer, the tarball hash is verified like
+          # Binaryen's, and a failed download falls back to `cargo install`
+          # from crates.io — a different host, so a github.com outage no
+          # longer blocks the build.
           archive="wasm-pack-${WASM_PACK_VERSION}-x86_64-unknown-linux-musl.tar.gz"
-          curl --fail --location --retry 3 \
-            "https://github.com/rustwasm/wasm-pack/releases/download/${WASM_PACK_VERSION}/${archive}" \
-            -o "${{ runner.temp }}/${archive}"
-          stage="${{ runner.temp }}/wasm-pack-install"
-          rm -rf "$stage"
-          mkdir -p "$stage"
-          tar -xzf "${{ runner.temp }}/${archive}" -C "$stage"
-          install -m 755 \
-            "$stage/wasm-pack-${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack" \
-            "$HOME/.cargo/bin/wasm-pack"
+          if curl --fail --location --retry 6 --retry-delay 10 \
+              --retry-max-time 300 --retry-all-errors \
+              "https://github.com/rustwasm/wasm-pack/releases/download/${WASM_PACK_VERSION}/${archive}" \
+              -o "${{ runner.temp }}/${archive}"; then
+            echo "${WASM_PACK_SHA256}  ${{ runner.temp }}/${archive}" | sha256sum --check
+            stage="${{ runner.temp }}/wasm-pack-install"
+            rm -rf "$stage"
+            mkdir -p "$stage"
+            tar -xzf "${{ runner.temp }}/${archive}" -C "$stage"
+            install -m 755 \
+              "$stage/wasm-pack-${WASM_PACK_VERSION}-x86_64-unknown-linux-musl/wasm-pack" \
+              "$HOME/.cargo/bin/wasm-pack"
+          else
+            echo "::warning::wasm-pack release download failed; falling back to cargo install from crates.io"
+            cargo install wasm-pack --version "${WASM_PACK_VERSION#v}"
+          fi
           wasm-pack --version
 
       - name: Cache Binaryen
