@@ -4,6 +4,27 @@ Reference execution and research infrastructure for deterministic math/graph wor
 
 This README is a navigation hub. Detailed semantics and support claims live in the documents below.
 
+## Quickstart (agents start here)
+
+This repo is the source of truth for the burn-math helper and engine:
+a deterministic math reference machine for agents — you describe a
+computation as a JSON graph and the machine executes it through a
+verified WASM engine, instead of the agent guessing float arithmetic.
+To run the linear-relu example end-to-end (validate → run → verify):
+
+```sh
+# 1. Build the engine first — the repo does not ship a built `pkg/`:
+wasm-pack build --target web --out-dir pkg
+# 2. Run the example from the agent entry point:
+node helper/bin/run.mjs helper/examples/linear-relu.json
+#    expect `ok: true` and outputs `[4.5, 10.5]`
+```
+
+The agent entry point is `helper/AGENT.md` (start there); `helper/`
+is the agent-facing toolset and the distributable agent pack is built
+from it. The `docs/` links below are contract references, not the
+entry point.
+
 ## Start here
 
 - [Burn contract baseline](docs/burn-contract-baseline.md) — numerical/backend authority and current non-autodiff execution baseline.

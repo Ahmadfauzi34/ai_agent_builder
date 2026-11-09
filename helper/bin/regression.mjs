@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { printJsonAndExit } from '../lib/runner.mjs';
+import { printJsonAndExit, selectStderrHeadline } from '../lib/runner.mjs';
 import { expectedWeightCount } from '../lib/spec.mjs';
 import { ruleFor } from '../lib/shapes.mjs';
 import { expandMacro } from '../lib/macros.mjs';
@@ -22,8 +22,8 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'burn-regression-'));
 const CKPT_SHA = '8c209c9fabf256bcf6dda2fc66d1ca347b6d5ad04eaf1331a08b6ee46059b454';
 
-function runTool(args, { cwd = ROOT } = {}) {
-  const r = spawnSync('node', args, { cwd, encoding: 'utf8', timeout: 180000, maxBuffer: 256 * 1024 * 1024 });
+function runTool(args, { cwd = ROOT, env } = {}) {
+  const r = spawnSync('node', args, { cwd, encoding: 'utf8', timeout: 180000, maxBuffer: 256 * 1024 * 1024, ...(env ? { env: { ...process.env, ...env } } : {}) });
   let json = null;
   try { json = JSON.parse(r.stdout); } catch { /* non-JSON stdout (e.g. --list) */ }
   return { code: r.status, out: r.stdout, err: r.stderr, json };
@@ -77,6 +77,69 @@ test('run: linear-relu [4.5, 10.5]', () => {
   const r = runTool(['bin/run.mjs', 'examples/linear-relu.json']);
   assert(r.code === 0 && r.json.ok === true, `run: ${r.out.slice(0, 200)}`);
   assert(JSON.stringify(r.json.outputs.values) === JSON.stringify([4.5, 10.5]), `values: ${JSON.stringify(r.json.outputs.values)}`);
+});
+test('first-look R4: runner death names the missing module', () => {
+  // Unit: the exact Node 24 ESM stderr for a missing engine import.
+  // The bare `throw new ERR_MODULE_NOT_FOUND(` frame line comes FIRST
+  // and the Cannot-find line AFTER it; the old flat .find() picked the
+  // frame, so the error read truncated mid-sentence. The selector must
+  // skip the frame and return the line that names the module.
+  const stderr = `node:internal/modules/esm/resolve:272
+    throw new ERR_MODULE_NOT_FOUND(
+          ^
+
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/tmp/empty-pkg/node.mjs' imported from /home/hatch/workspace/burn-math-probe/first-look-upstream/scripts/interactive_multi_input_ingress.mjs
+    at finalizeResolution (node:internal/modules/esm/resolve:272:11)
+`;
+  const head = selectStderrHeadline(stderr);
+  assert(head.includes("Cannot find module '/tmp/empty-pkg/node.mjs'"), `headline: ${head}`);
+  // Integration: the exact probe scenario — engine dir without the
+  // node host file. The run must fail LOUDLY (exit 1, stage run) and
+  // its error must name the missing file, not end mid-sentence.
+  // The empty dir is seeded with the layer catalog + the runner
+  // script only: the parent imports the catalog at startup (via
+  // catalogPath) and the runner script is resolved from the pkg dir
+  // first, so without both seeds the parent dies at import (pack
+  // layout) or the spawn itself fails (no repo scripts/ fallback) —
+  // before reaching the runner-death path this case pins. The seeds
+  // are copied from whichever layout this gate runs in (repo or
+  // built pack), so the case is real in CI, not vacuous.
+  const emptyPkg = fs.mkdtempSync(path.join(TMP, 'empty-pkg-'));
+  const findSeed = (relRepo, relPack) => [path.join(ROOT, '..', relRepo), path.join(ROOT, relPack)]
+    .find((p) => fs.existsSync(p));
+  const catalogSrc = findSeed(path.join('docs', 'contracts', 'agent-layer-catalog.v1.json'), path.join('engine-audit', 'docs', 'agent-layer-catalog.v1.json'));
+  const runnerSrc = findSeed(path.join('scripts', 'interactive_multi_input_ingress.mjs'), path.join('engine-audit', 'interactive_multi_input_ingress.mjs'));
+  assert(catalogSrc, 'no layer catalog found for the R4 fixture');
+  assert(runnerSrc, 'no runner script found for the R4 fixture');
+  fs.mkdirSync(path.join(emptyPkg, 'docs'), { recursive: true });
+  fs.copyFileSync(catalogSrc, path.join(emptyPkg, 'docs', 'agent-layer-catalog.v1.json'));
+  fs.copyFileSync(runnerSrc, path.join(emptyPkg, 'interactive_multi_input_ingress.mjs'));
+  const r = runTool(['bin/run.mjs', 'examples/linear-relu.json'], { env: { BURN_WASM_PKG_DIR: emptyPkg } });
+  assert(r.code === 1, `expected exit 1, got ${r.code}: ${r.out.slice(0, 200)}`);
+  assert(r.json && r.json.ok === false && r.json.stage === 'run', `record: ${r.out.slice(0, 200)}`);
+  assert(typeof r.json.error === 'string' && r.json.error.includes('Cannot find module'), `error: ${r.json.error}`);
+  // The missing file is named with its full path under the engine dir.
+  // Which file fails first depends on import order (node.mjs in repo
+  // layout, ingress_provenance.mjs when the runner is seeded into the
+  // empty dir), so the assertion is on the named path, not one
+  // filename — the old headline named nothing at all.
+  assert(r.json.error.includes(emptyPkg), `error names the missing file under the engine dir: ${r.json.error}`);
+});
+test('first-look P4: run output carries engine pin', () => {
+  // The pin comes from the committed MANIFEST (single source of truth),
+  // never from a hardcoded literal. Both run paths (session + --direct)
+  // must carry the same pin, and it must equal the enforced pin.
+  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'MANIFEST.json'), 'utf8'));
+  const wasmSha = manifest?.engine?.wasm_sha256 ?? manifest?.sha256?.['burn_research_bg.wasm'];
+  const jsSha = manifest?.engine?.js_sha256 ?? manifest?.sha256?.['burn_research.js'];
+  assert(typeof wasmSha === 'string' && wasmSha.length === 64, 'MANIFEST has no wasm sha');
+  assert(typeof jsSha === 'string' && jsSha.length === 64, 'MANIFEST has no js sha');
+  for (const args of [['bin/run.mjs', 'examples/linear-relu.json'], ['bin/run.mjs', '--direct', 'examples/linear-relu.json']]) {
+    const r = runTool(args);
+    assert(r.code === 0 && r.json.ok === true, `run ${args.join(' ')}: ${r.out.slice(0, 200)}`);
+    assert(r.json.engine && r.json.engine.wasm_sha256 === wasmSha, `wasm pin ${args.join(' ')}: ${JSON.stringify(r.json.engine)} (MANIFEST: ${wasmSha})`);
+    assert(r.json.engine.js_sha256 === jsSha, `js pin ${args.join(' ')}: ${JSON.stringify(r.json.engine)} (MANIFEST: ${jsSha})`);
+  }
 });
 test('validate: linear-relu valid', () => {
   const r = runTool(['bin/validate.mjs', 'examples/linear-relu.json']);

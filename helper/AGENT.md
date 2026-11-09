@@ -37,7 +37,18 @@ You must get `ok: true` and outputs `[4.5, 10.5]`. If you do not, stop:
 the pack is broken or you are running it from the wrong directory. Do
 not work around a failed selftest by adjusting the spec.
 
+Two readings that look wrong but are by design: in `caller_declared`
+mode the output field `ready` is `null` — there is no host signature
+to gate on, so `ready: null` next to `ok: true` means "no host gate in
+this mode", not "not ready"; the success signal is `ok: true`
+(`execution_gate` explains the gate). And the first run takes ~5 s —
+mostly session startup/teardown, not the 2-element computation; that
+is normal.
+
 ## The workflow
+
+"End-to-end" in this document means the full chain validate → run →
+verify. The selftest above is the run step alone.
 
 1. **validate** — check a plan before running it:
    `node bin/validate.mjs <spec.json>`

@@ -177,7 +177,10 @@ spec from row-major `W`. See `references/weights.md`.
 ## Engine location
 
 Defaults to `<repo>/pkg/` (the `wasm-pack build --target web --out-dir pkg`
-output). Override with `BURN_WASM_PKG_DIR`. When this helper is packaged
+output). The repo does NOT ship a built `pkg/` — build the engine first
+with that command (same command CI runs) before running any example; if
+`pkg/` is absent, the runner dies at import with `ERR_MODULE_NOT_FOUND`
+naming the missing file. Override with `BURN_WASM_PKG_DIR`. When this helper is packaged
 (`scripts/package_node_host.mjs` copies it to `<pkg>/helper/`), it
 automatically resolves the engine next to itself — so a packed bundle carries
 the helper and the helper finds its engine.

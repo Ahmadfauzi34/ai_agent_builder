@@ -56,6 +56,26 @@ export async function loadWasm() {
   return rt;
 }
 
+// First-look fix (2026-11-09): the engine pins for run output.
+// Reads the SAME MANIFEST file verifyEngineIntegritySync enforces
+// (HERE/../MANIFEST.json), so the reported pin is the enforced pin:
+// a successful run executed exactly this engine, because a mismatch
+// throws before any import. Prefers the `engine` block, falls back to
+// the `sha256` map. Returns null when no MANIFEST is readable —
+// callers print that as `engine: null` (unknown), never a guess.
+// Full 64-hex hashes, not 8-char prefixes: an agent verifying the
+// engine against `sha256sum` needs the full hash.
+export function enginePins() {
+  let manifest;
+  try {
+    manifest = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'MANIFEST.json'), 'utf8'));
+  } catch { return null; }
+  const wasm_sha256 = manifest?.engine?.wasm_sha256 ?? manifest?.sha256?.['burn_research_bg.wasm'] ?? null;
+  const js_sha256 = manifest?.engine?.js_sha256 ?? manifest?.sha256?.['burn_research.js'] ?? null;
+  if (typeof wasm_sha256 !== 'string' || typeof js_sha256 !== 'string') return null;
+  return { wasm_sha256, js_sha256 };
+}
+
 export { LAYER_TYPE, WEIGHTED_CONSTRUCTORS } from './engine.mjs';
 
 // The gated buildGraph for interactive callers (Tahap 2b): the three
