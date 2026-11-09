@@ -132,6 +132,12 @@ verify. The selftest above is the run step alone.
    and `max_rel_error`, plus `verdict: ACCEPT|REJECT`; a REJECT is
    a result, not an error to hide. `cases` is the case count;
    per-case detail lives under `case_details`.
+   Worked example for the linear-relu chain:
+   `node bin/verify.mjs examples/linear-relu.json examples/linear-relu-mutated.json`
+   — the mutated file differs from the baseline in one weight only
+   (first weight 1 → 2), so expect `verdict: REJECT`,
+   `max_abs_error: 1`, exit 2. That REJECT is the correct answer
+   for this pair, not a broken tool.
 4. **checkpoint** — persist and restore a program bundle:
    `node bin/checkpoint.mjs export <spec.json>` gives `{bundle_base64, sha256}`.
    Extract `bundle_base64` into a `.b64` file first: `verify`/`restore` take a file,
