@@ -7,7 +7,11 @@
 //                {ok:false} and the batch continues with the rest.
 //
 // Prints {"ok":true,"outputs":{"shape":[...],"values":[...]},"execution_gate":{...},
-// "host_provenance":{...}} on success. The plan is validated BEFORE any
+// "host_provenance":{...},"engine":{"wasm_sha256":"...","js_sha256":"..."}} on success.
+// `engine` (first-look fix, 2026-11-09) names the exact engine build that
+// executed the spec, read from the same MANIFEST the integrity check
+// enforces — so a run output is self-identifying without opening a
+// second file. The plan is validated BEFORE any
 // session is created, so spec errors surface as structured, self-correcting
 // messages (codes plan_minimum_ports / plan_unused_ports / invalid_enum with
 // remediation hints) instead of mid-run failures.
@@ -40,7 +44,7 @@
 // mode:'direct', so consumers never receive a fake gate.
 import { startRunner, unwrap, printJson, printJsonAndExit, failCli , errText } from '../lib/runner.mjs';
 import { loadSpec, planFragment, portBySlot, checkArgValues, checkInputLengths, analyzePlanPorts } from '../lib/spec.mjs';
-import { loadWasm, withGraphScope } from '../lib/wasm_direct.mjs';
+import { loadWasm, withGraphScope, enginePins } from '../lib/wasm_direct.mjs';
 import { specUsesInt, splitSpec, runMixed, intFinalMessage } from '../lib/mixed.mjs';
 import { checkSpec } from '../lib/shapecore.mjs';
 
@@ -145,6 +149,7 @@ async function runOne(send, specFile, getRt) {
         execution_gate: null,
         ready: null,
         host_provenance: null,
+        engine: enginePins(),
         segments: mixed.segments,
         boundary_casts: mixed.boundary_casts,
       };
@@ -210,6 +215,7 @@ async function runOne(send, specFile, getRt) {
       execution_gate: ran.host_provenance?.execution_gate ?? null,
       ready: ran.host_provenance?.ready ?? null,
       host_provenance: ran.host_provenance ?? null,
+      engine: enginePins(),
     };
   } catch (e) {
     // Structured engine errors already carry code/phase/remediation_hint.
@@ -286,6 +292,7 @@ async function runDirectOne(rt, specFile) {
       execution_gate: null,
       ready: null,
       host_provenance: null,
+      engine: enginePins(),
     };
   } catch (e) {
     // Engine throws can be bare strings (as in the mixed catches) —

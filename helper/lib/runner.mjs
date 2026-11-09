@@ -34,10 +34,7 @@ export function startRunner(extraArgs = []) {
   let exited = false;
   let exitCode = null;
   const deathError = (op) => {
-    // Headline first: prefer the line that names the cause
-    // (e.g. Cannot find module); a bare stack frame does not.
-    const lines = stderr.split('\n').map((l) => l.trim()).filter(Boolean);
-    const head = (lines.find((l) => /Error|Cannot find|MODULE_NOT_FOUND/.test(l)) ?? lines[0] ?? '').slice(0, 300);
+    const head = selectStderrHeadline(stderr);
     return new Error(`runner died (code ${exitCode}) before responding to '${op}'` +
       (head ? `; runner stderr: ${head}` : ' (no runner stderr)'));
   };
@@ -95,6 +92,26 @@ export function startRunner(extraArgs = []) {
     ]);
   };
   return { send, stop, get stderr() { return stderr; } };
+}
+
+// First-look fix (2026-11-09): pick the stderr headline that names the
+// cause. Node's ESM ERR_MODULE_NOT_FOUND stderr starts with a bare
+// `throw new ERR_MODULE_NOT_FOUND(` frame line — it matches
+// /MODULE_NOT_FOUND/ but names nothing — and only AFTER it comes the
+// line that names the missing module (`Cannot find module '<path>' ...`).
+// A flat .find() over /Error|Cannot find|MODULE_NOT_FOUND/ therefore
+// always picked the bare frame and the error looked truncated
+// mid-sentence. Prefer, in order: the Cannot-find line, an `Error [...]`
+// line, any Error/MODULE_NOT_FOUND line, then the first line. Pure (takes
+// the stderr text, returns the headline) so the regression gate can test
+// it without spawning a runner.
+export function selectStderrHeadline(stderrText) {
+  const lines = String(stderrText ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
+  const head = (lines.find((l) => /Cannot find module/.test(l))
+    ?? lines.find((l) => /^Error \[/.test(l))
+    ?? lines.find((l) => /Error|Cannot find|MODULE_NOT_FOUND/.test(l))
+    ?? lines[0] ?? '').slice(0, 300);
+  return head;
 }
 
 // Throw the structured error envelope on ok:false so CLIs print it verbatim.

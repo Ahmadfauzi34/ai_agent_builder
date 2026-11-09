@@ -1,5 +1,10 @@
 # Index: question -> where to go
 
+This pack is a deterministic math reference machine for agents: you
+describe a computation as a JSON graph (or call the CLI) and the
+machine executes it through a verified WASM engine, instead of the
+agent guessing float arithmetic.
+
 Start with `AGENT.md`. It is the only file you must read in full.
 (Repo note: this index lives at `helper/INDEX.md`; the built pack carries the same map.)
 This page is a map, not a manual: find your question, follow the link.
