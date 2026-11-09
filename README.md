@@ -13,6 +13,16 @@ verified WASM engine, instead of the agent guessing float arithmetic.
 To run the linear-relu example end-to-end (validate → run → verify):
 
 ```sh
+# 0. Install wasm-pack first if `wasm-pack --version` fails — the
+#    pinned version is v0.15.0 (same as CI, .github/workflows/main.yml):
+curl -fL --retry 6 --retry-delay 10 --retry-max-time 300 --retry-all-errors \
+  "https://github.com/rustwasm/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz" \
+  -o /tmp/wasm-pack.tar.gz
+echo "c09f971ecaed9a2efc80fdcea7a00ef6b53c7fadc8c57d1f61b53a6aa66b668a  /tmp/wasm-pack.tar.gz" | sha256sum --check
+mkdir -p /tmp/wasm-pack-install && tar -xzf /tmp/wasm-pack.tar.gz -C /tmp/wasm-pack-install
+install -m 755 /tmp/wasm-pack-install/wasm-pack-v0.15.0-x86_64-unknown-linux-musl/wasm-pack ~/.cargo/bin/wasm-pack
+#    (make sure ~/.cargo/bin is on your PATH; fallback if the download
+#    fails: `cargo install wasm-pack --version 0.15.0`)
 # 1. Build the engine first — the repo does not ship a built `pkg/`:
 wasm-pack build --target web --out-dir pkg
 # 2. Run the example from the agent entry point:
